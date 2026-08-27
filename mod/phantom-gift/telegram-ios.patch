@@ -1,53 +1,17 @@
-diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
-index 5da8c15e..cb3d5df5 100644
---- a/submodules/TelegramUI/BUILD
-+++ b/submodules/TelegramUI/BUILD
-@@ -467,6 +467,7 @@ swift_library(
-         "//submodules/TelegramUI/Components/Gifts/GiftStoreScreen",
-         "//submodules/TelegramUI/Components/Gifts/GiftSetupScreen",
-         "//submodules/TelegramUI/Components/Gifts/GiftCraftScreen",
-+        "//submodules/TelegramUI/Components/Gifts/PhantomGiftKit",
-         "//submodules/TelegramUI/Components/ContentReportScreen",
-         "//submodules/TelegramUI/Components/PeerInfo/AffiliateProgramSetupScreen",
-         "//submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent",
-diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
-index 1ddd9b86..f30f67da 100644
---- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
-+++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
-@@ -81,6 +81,7 @@ swift_library(
-         "//submodules/TelegramUI/Components/Chat/ChatMessageUnsupportedBubbleContentNode",
-         "//submodules/TelegramUI/Components/Chat/ChatMessageWallpaperBubbleContentNode",
-         "//submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode",
-+        "//submodules/TelegramUI/Components/Gifts/PhantomGiftKit",
-         "//submodules/TelegramUI/Components/Chat/ChatMessageGiftOfferBubbleContentNode",
-         "//submodules/TelegramUI/Components/Chat/ChatMessageDisableCopyProtectionBubbleContentNode",
-         "//submodules/TelegramUI/Components/Chat/ChatMessageGiveawayBubbleContentNode",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-index 2dcfc95e..6ca29560 100644
+index 2dcfc95e..c0980b72 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-@@ -74,6 +74,7 @@ import ChatMessageUnsupportedBubbleContentNode
- import ChatMessageWallpaperBubbleContentNode
- import ChatMessageGiftBubbleContentNode
- import ChatMessageGiftOfferBubbleContentNode
-+import PhantomGiftKit
- import ChatMessageDisableCopyProtectionBubbleContentNode
- import ChatMessageGiveawayBubbleContentNode
- import ChatMessageJoinedChannelBubbleContentNode
-@@ -152,7 +153,16 @@ private func contentNodeMessagesAndClassesForItem(_ item: ChatMessageItem) -> ([
+@@ -152,7 +152,12 @@ private func contentNodeMessagesAndClassesForItem(_ item: ChatMessageItem) -> ([
          if let updatingMedia = itemAttributes.updatingMedia, messageMedia.isEmpty, case let .update(media) = updatingMedia.media {
              messageMedia.append(media.media)
          }
 -        
 +
-+        // "Фантом" gifts are plain text messages (see PhantomGiftKit) carrying a hidden
-+        // phantomgift:// link. Turning a matching one into a synthetic, local-only
-+        // TelegramMediaAction.starGift here lets it fall through the existing .starGift
-+        // case below and reuse ChatMessageGiftBubbleContentNode as-is — nothing is sent
-+        // to, or was ever confirmed by, the server.
-+        if messageMedia.isEmpty, let phantomPayload = PhantomGiftMessageDetector.detectPayload(text: message.text, attributes: message.attributes) {
-+            messageMedia.append(PhantomGiftMessageDetector.syntheticAction(for: phantomPayload, authorId: message.author?.id))
-+        }
++        // PampGram Phantom Gifts are inserted directly as real, local-only messages
++        // (see PampGramPhantomGiftMessage.insertLocalGiftMessage) carrying a genuine
++        // TelegramMediaAction.starGift, so they already fall through the normal
++        // .starGift case below — no special-casing needed here.
 +
          var isFile = false
          inner: for media in messageMedia {
@@ -65,7 +29,7 @@ index 81bce800..3df27238 100644
          "//submodules/TelegramUI/Components/Gifts/GiftItemComponent",
      ],
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
-index bf1b1cde..b23013fd 100644
+index bf1b1cde..8666e214 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
 @@ -23,6 +23,7 @@ import ChatMessageBubbleContentNode
@@ -85,23 +49,45 @@ index bf1b1cde..b23013fd 100644
                              var incoming = incoming
                              var convertStars = convertStars
                              if case let .generic(gift) = gift {
-@@ -689,6 +690,16 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
+@@ -689,6 +690,20 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                          buttonTitle = item.presentationData.strings.Notification_StarGift_View
                                      }
                                  }
 +
-+                                // PampGram: cosmetic-only send (see PhantomGiftKit) — never a real
-+                                // StarGift, so it must never look like one. Overrides whatever the
-+                                // logic above picked, unconditionally.
-+                                if prepaidUpgradeHash == PhantomGiftMessageDetector.ribbonMarker {
++                                // PampGram: cosmetic-only, locally-inserted message (see
++                                // PhantomGiftKit) — never a real StarGift, so it must never look
++                                // like one. Overrides whatever the logic above picked, unconditionally.
++                                if prepaidUpgradeHash == PampGramPhantomGiftMessage.ribbonMarker {
 +                                    ribbonTitle = "Фантом"
 +                                    customRibbonColors = [UIColor(rgb: 0x8e44ec), UIColor(rgb: 0xb37bf5)]
-+                                    text = "Визуальный подарок — ничего не покупалось и не передавалось по-настоящему."
++                                    if let convertStars, convertStars > 0 {
++                                        text = "Визуальный подарок за ⭐ \(convertStars) — локально, ничего не покупалось и не передавалось по-настоящему."
++                                    } else {
++                                        text = "Визуальный подарок — локально, ничего не покупалось и не передавалось по-настоящему."
++                                    }
 +                                    entities = []
 +                                }
                              }
                          case let .starGiftUnique(gift, isUpgrade, _, _, _, _, isRefunded, _, _, _, _, _, _, _, _, _, fromOffer, _, isCrafted):
                              if case let .unique(uniqueGift) = gift {
+@@ -762,6 +777,17 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
+                                         break
+                                     }
+                                 }
++
++                                // PampGram: locally-minted "collectible" Phantom Gift (see
++                                // PampGramUniqueGiftGenerator) — the slug it's tagged with never
++                                // occurs on a real unique gift. Unlike .starGift, this action type
++                                // has no spare field for a marker, so the marker lives on the gift
++                                // value itself instead.
++                                if uniqueGift.slug.hasPrefix("pampgram-phantom-") {
++                                    ribbonTitle = "Фантом"
++                                    customRibbonColors = [UIColor(rgb: 0x8e44ec), UIColor(rgb: 0xb37bf5)]
++                                    text = "Визуальный подарок — локально, ничего не покупалось и не передавалось по-настоящему."
++                                }
+                             } else if isRefunded, case let .generic(gift) = gift {
+                                 isStarGift = true
+                                 let authorName = item.message.author.flatMap { EnginePeer($0) }?.compactDisplayTitle ?? ""
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
 index 1820be66..dcbfa561 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
@@ -115,7 +101,7 @@ index 1820be66..dcbfa561 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-index 429cf39c..d4e42a18 100644
+index 429cf39c..30d3c8d3 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 @@ -28,6 +28,8 @@ import GiftViewScreen
@@ -170,13 +156,15 @@ index 429cf39c..d4e42a18 100644
                                  return true
                              case .limited:
                                  if case let .generic(gift) = $0 {
-@@ -291,15 +298,85 @@ final class GiftOptionsScreenComponent: Component {
+@@ -291,15 +298,110 @@ final class GiftOptionsScreenComponent: Component {
              self.updateScrolling(interactive: true, transition: self.nextScrollTransition ?? .immediate)
          }
          
 +        // "Фантом" send: cosmetic-only, never touches Stars or the real StarGift purchase
-+        // APIs. Confirms with the user first, since even a cosmetic gift shouldn't fire
-+        // silently, then hands off to `PhantomGiftSender`.
++        // APIs — see PampGramPhantomGiftManager. Deducts the local fake-Stars balance,
++        // inserts a real but local-only chat message, and stores the gift so it survives
++        // an app restart. Confirms with the user first, since even a fake spend shouldn't
++        // fire silently.
 +        private func openPhantomGift(gift: StarGift.Gift) {
 +            guard let component = self.component, let environment = self.environment else {
 +                return
@@ -193,49 +181,72 @@ index 429cf39c..d4e42a18 100644
 +            let context = component.context
 +            let peerId = component.peerId
 +            let title = gift.title ?? "Gift"
++            let starPrice = gift.price
++            let asCollectible = gift.availability != nil
 +
-+            let theme = AlertControllerTheme(presentationData: context.sharedContext.currentPresentationData.with { $0 })
-+            let font = Font.regular(floor(theme.baseFontSize * 13.0 / 17.0))
-+            let alertController = textAlertController(
-+                theme: theme,
-+                title: NSAttributedString(string: "Фантом-подарок", font: Font.semibold(theme.baseFontSize), textColor: theme.primaryColor, paragraphAlignment: .center),
-+                text: NSAttributedString(string: "Отправить «\(title)» визуально? Это не настоящая передача: ничего не будет куплено, получатель увидит анимацию, только если у него тоже установлен этот мод.", font: font, textColor: theme.primaryColor, paragraphAlignment: .center),
-+                actions: [
-+                    TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
-+                    TextAlertAction(type: .defaultAction, title: "Отправить", action: { [weak mainController] in
-+                        let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer.init(id: context.account.peerId))
-+                        |> mapToSignal { accountPeer -> Signal<String, NoError> in
-+                            return .single(accountPeer?.compactDisplayTitle ?? "Аноним")
-+                        }
-+                        |> mapToSignal { senderName -> Signal<Never, NoError> in
-+                            return PhantomGiftSender.send(context: context, peerId: peerId, gift: gift, senderName: senderName)
-+                        }
-+                        |> deliverOnMainQueue).start(completed: { [weak mainController] in
-+                            guard let mainController, let navigationController = mainController.navigationController as? NavigationController else {
-+                                return
-+                            }
-+                            mainController.dismiss()
-+                            let tooltipController = UndoOverlayController(
-+                                presentationData: context.sharedContext.currentPresentationData.with { $0 },
-+                                content: .sticker(
-+                                    context: context,
-+                                    file: gift.file,
-+                                    loop: true,
-+                                    title: nil,
-+                                    text: "Фантом-подарок «\(title)» отправлен визуально — Stars не списаны.",
-+                                    undoText: nil,
-+                                    customAction: nil
-+                                ),
-+                                action: { _ in return true }
-+                            )
-+                            (navigationController.viewControllers.last as? ViewController)?.present(tooltipController, in: .current)
-+                            navigationController.view.addSubview(ConfettiView(frame: navigationController.view.bounds))
-+                        })
-+                    }),
-+                ],
-+                actionLayout: .horizontal
-+            )
-+            controller.present(alertController, in: .window(.root))
++            let _ = (PampGramPhantomGiftStore.fakeStarsBalanceSignal(context: context)
++            |> deliverOnMainQueue).start(next: { [weak controller] currentBalance in
++                guard let controller else {
++                    return
++                }
++                let theme = AlertControllerTheme(presentationData: context.sharedContext.currentPresentationData.with { $0 })
++                let font = Font.regular(floor(theme.baseFontSize * 13.0 / 17.0))
++
++                guard currentBalance >= starPrice else {
++                    controller.present(textAlertController(
++                        theme: theme,
++                        title: NSAttributedString(string: "Недостаточно Фантом-Stars", font: Font.semibold(theme.baseFontSize), textColor: theme.primaryColor, paragraphAlignment: .center),
++                        text: NSAttributedString(string: "У вас ⭐ \(currentBalance) локальных Stars, а «\(title)» стоит ⭐ \(starPrice).", font: font, textColor: theme.primaryColor, paragraphAlignment: .center),
++                        actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})],
++                        actionLayout: .horizontal
++                    ), in: .window(.root))
++                    return
++                }
++
++                let alertController = textAlertController(
++                    theme: theme,
++                    title: NSAttributedString(string: "Фантом-подарок", font: Font.semibold(theme.baseFontSize), textColor: theme.primaryColor, paragraphAlignment: .center),
++                    text: NSAttributedString(string: "Отправить «\(title)» визуально за ⭐ \(starPrice) локальных Stars (баланс: ⭐ \(currentBalance))? Это не настоящая передача — ничего не покупается, серверу Telegram ничего не отправляется.", font: font, textColor: theme.primaryColor, paragraphAlignment: .center),
++                    actions: [
++                        TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
++                        TextAlertAction(type: .defaultAction, title: "Отправить", action: { [weak mainController] in
++                            let _ = (PampGramPhantomGiftManager.send(context: context, peerId: peerId, baseGift: gift, starPrice: starPrice, asCollectible: asCollectible)
++                            |> deliverOnMainQueue).start(next: { [weak mainController] result in
++                                guard let mainController, let navigationController = mainController.navigationController as? NavigationController else {
++                                    return
++                                }
++                                mainController.dismiss()
++
++                                let text: String
++                                switch result {
++                                case let .success(sendResult):
++                                    text = "Фантом-подарок «\(title)» отправлен визуально — локальный баланс: ⭐ \(sendResult.remainingBalance)."
++                                case .failure:
++                                    text = "Не удалось отправить: недостаточно локальных Stars."
++                                }
++
++                                let tooltipController = UndoOverlayController(
++                                    presentationData: context.sharedContext.currentPresentationData.with { $0 },
++                                    content: .sticker(
++                                        context: context,
++                                        file: gift.file,
++                                        loop: true,
++                                        title: nil,
++                                        text: text,
++                                        undoText: nil,
++                                        customAction: nil
++                                    ),
++                                    action: { _ in return true }
++                                )
++                                (navigationController.viewControllers.last as? ViewController)?.present(tooltipController, in: .current)
++                                navigationController.view.addSubview(ConfettiView(frame: navigationController.view.bounds))
++                            })
++                        }),
++                    ],
++                    actionLayout: .horizontal
++                )
++                controller.present(alertController, in: .window(.root))
++            })
 +        }
 +
          private func openGift(gift: StarGift, skipDateCheck: Bool = false) {
@@ -257,7 +268,7 @@ index 429cf39c..d4e42a18 100644
              if let controller = environment.controller() as? GiftOptionsScreen {
                  let mainController: ViewController
                  if let parentController = controller.parentController() {
-@@ -1646,7 +1723,15 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1646,7 +1748,15 @@ final class GiftOptionsScreenComponent: Component {
                          title: strings.Gift_Options_Gift_Filter_Collectibles
                      ))
                  }
@@ -274,32 +285,3 @@ index 429cf39c..d4e42a18 100644
                  let tabSelectorSize = self.tabSelector.update(
                      transition: transition,
                      component: AnyComponent(TabSelectorComponent(
-diff --git a/submodules/TelegramUI/Sources/OpenUrl.swift b/submodules/TelegramUI/Sources/OpenUrl.swift
-index 6c964bad..41389f65 100644
---- a/submodules/TelegramUI/Sources/OpenUrl.swift
-+++ b/submodules/TelegramUI/Sources/OpenUrl.swift
-@@ -13,6 +13,7 @@ import OpenInExternalAppUI
- import BrowserUI
- import OverlayStatusController
- import PresentationDataUtils
-+import PhantomGiftKit
- 
- public struct ParsedSecureIdUrl {
-     public let peerId: EnginePeer.Id
-@@ -377,7 +378,15 @@ func openExternalUrlImpl(context: AccountContext, urlContext: OpenURLContext, ur
-     guard let canonicalUrl = canonicalExternalUrl(from: url) else {
-         return
-     }
--    
-+
-+    // "Фантом" gift links never leave this client and are never resolved externally:
-+    // they only exist to be caught here and turned into the cosmetic reveal. A stock
-+    // Telegram build doesn't have this branch, so tapping the link there does nothing.
-+    if canonicalUrl.scheme?.lowercased() == PhantomGiftLink.scheme, let payload = PhantomGiftLink.payload(from: canonicalUrl) {
-+        PhantomGiftReceivedScreen.present(context: context, payload: payload)
-+        return
-+    }
-+
-     if canonicalUrl.scheme == "mailto" {
-         context.sharedContext.applicationBindings.openUrl(url)
-         return
