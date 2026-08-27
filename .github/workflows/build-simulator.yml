@@ -1,0 +1,129 @@
+name: Build (simulator, no signing)
+
+# Manual only — this is a genuinely huge build (Telegram-iOS + WebRTC/dav1d/libvpx/td built
+# from source), so we don't want it firing on every push and burning macOS-runner time by
+# accident. Run it from the Actions tab when you actually want to check that the mod compiles.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    # versions.json in Telegram-iOS currently asks for Xcode 26.2 / macOS 26. GitHub's hosted
+    # runners may not have exactly that yet — we pass --overrideXcodeVersion to attempt the
+    # build anyway, but a real version mismatch can still cause unrelated compile failures.
+    # If this runner label doesn't exist, replace it with whatever `macos-*` label is
+    # currently available in Settings → Actions → Runners.
+    runs-on: macos-15
+    timeout-minutes: 350 # stay under the 6h hosted-runner hard cap
+    steps:
+      - name: Check out PampGram (patch + PhantomGiftKit)
+        uses: actions/checkout@v4
+        with:
+          path: pampgram
+
+      - name: Check out Telegram-iOS
+        run: |
+          git clone --recursive --shallow-submodules --depth 1 -j8 \
+            https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
+
+      - name: Apply the PampGram patch
+        working-directory: telegram-ios
+        run: |
+          git apply --check ../pampgram/mod/phantom-gift/telegram-ios.patch
+          git apply ../pampgram/mod/phantom-gift/telegram-ios.patch
+          cp -r ../pampgram/mod/phantom-gift/PhantomGiftKit \
+            submodules/TelegramUI/Components/Gifts/PhantomGiftKit
+
+      - name: Write build configuration
+        working-directory: telegram-ios
+        env:
+          # Free, per-app credentials from https://my.telegram.org/apps — put your own in
+          # this repo's Settings → Secrets → Actions as TELEGRAM_API_ID / TELEGRAM_API_HASH
+          # if you want a build that can actually log in. Placeholder values below are
+          # enough to just verify the code compiles.
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '1' }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || '00000000000000000000000000000000' }}
+        run: |
+          cat > build-system/pampgram-ci-configuration.json <<EOF
+          {
+            "bundle_id": "org.pampgram.ci.Telegram",
+            "api_id": "${TELEGRAM_API_ID}",
+            "api_hash": "${TELEGRAM_API_HASH}",
+            "team_id": "",
+            "app_center_id": "0",
+            "is_internal_build": "true",
+            "is_appstore_build": "false",
+            "appstore_id": "0",
+            "app_specific_url_scheme": "tg",
+            "premium_iap_product_id": "",
+            "enable_siri": false,
+            "enable_icloud": false
+          }
+          EOF
+
+      - name: Cache Bazel build outputs
+        uses: actions/cache@v4
+        with:
+          path: ~/telegram-bazel-cache
+          # No Package.resolved/lockfile to hash here, so the key just tracks the patch —
+          # a cache miss only costs the normal cold-build time, never correctness.
+          key: telegram-bazel-cache-${{ hashFiles('pampgram/mod/phantom-gift/telegram-ios.patch') }}
+          restore-keys: |
+            telegram-bazel-cache-
+
+      # IMPORTANT: `Make.py build` always requires picking a real codesigning source
+      # (--gitCodesigningRepository / --codesigningInformationPath / --xcodeManagedCodesigning
+      # — argparse enforces exactly one, no "skip signing" option on that subcommand).
+      # --disableProvisioningProfiles only exists on `generateProject`, which just emits an
+      # .xcodeproj and (locally) opens it in Xcode.app — it does not compile anything itself.
+      # So this is a genuine two-step, CI-adapted flow: generate an unsigned project with
+      # --xcodeManagedCodesigning (the only one of the three that needs no pre-existing
+      # certs/secrets) + --disableProvisioningProfiles, then compile it with `xcodebuild`
+      # directly against the iOS Simulator SDK.
+      - name: Generate Xcode project (unsigned, simulator-only)
+        working-directory: telegram-ios
+        run: |
+          python3 build-system/Make/Make.py \
+            --overrideXcodeVersion \
+            --cacheDir="$HOME/telegram-bazel-cache" \
+            generateProject \
+            --configurationPath=build-system/pampgram-ci-configuration.json \
+            --xcodeManagedCodesigning \
+            --disableProvisioningProfiles \
+            --buildNumber=1
+
+      # `generateProject` ends by running `open Telegram/Telegram.xcodeproj`, which on a
+      # headless CI runner either fails or launches Xcode.app pointlessly in the background —
+      # neither matters, but make sure it doesn't hang the job waiting on a GUI.
+      - name: Close Xcode if generateProject opened it
+        if: always()
+        run: killall Xcode || true
+
+      # Uncertain step, flagged honestly: I couldn't verify the generated project's exact
+      # scheme name without macOS to run this on. `-list` prints the real scheme names into
+      # the log first — if "Telegram" below is wrong, this log tells you the right one for a
+      # one-line fix, instead of another blind guess.
+      - name: List schemes (diagnostic)
+        working-directory: telegram-ios
+        run: xcodebuild -list -project Telegram/Telegram.xcodeproj || true
+
+      - name: Build (simulator, unsigned)
+        working-directory: telegram-ios
+        run: |
+          xcodebuild build \
+            -project Telegram/Telegram.xcodeproj \
+            -scheme Telegram \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload built .app (simulator-only — not installable on a real iPhone)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-pampgram-simulator-build
+          path: |
+            telegram-ios/Telegram/Telegram.xcodeproj
+            /Users/runner/Library/Developer/Xcode/DerivedData/**/Build/Products/**/*.app
+          if-no-files-found: warn
+          retention-days: 7
