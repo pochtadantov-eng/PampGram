@@ -8,18 +8,32 @@ on:
 
 jobs:
   build:
-    # versions.json in Telegram-iOS currently asks for Xcode 26.2 / macOS 26. GitHub's hosted
-    # runners may not have exactly that yet — we pass --overrideXcodeVersion to attempt the
-    # build anyway, but a real version mismatch can still cause unrelated compile failures.
-    # If this runner label doesn't exist, replace it with whatever `macos-*` label is
-    # currently available in Settings → Actions → Runners.
-    runs-on: macos-15
+    # versions.json in Telegram-iOS asks for Xcode 26.2 / macOS 26. The first run landed on
+    # a runner with only Xcode 16.4 — --overrideXcodeVersion just skips the version *check*,
+    # it can't make an old Xcode understand newer project features (this repo's app icons use
+    # the Icon Composer .icon bundle format, Xcode 26+ only). Requesting macos-26 here; if
+    # that label doesn't exist yet, replace it with whatever `macos-*` label is currently
+    # listed in Settings → Actions → Runners — the "Select latest available Xcode" step below
+    # then picks the newest Xcode actually present on whichever image we land on, so it
+    # doesn't strictly depend on guessing the exact runner label right.
+    runs-on: macos-26
     timeout-minutes: 350 # stay under the 6h hosted-runner hard cap
     steps:
       - name: Check out PampGram (patch + PhantomGiftKit)
         uses: actions/checkout@v4
         with:
           path: pampgram
+
+      - name: Select latest available Xcode
+        run: |
+          ls /Applications | grep -i xcode || true
+          latest_xcode="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$latest_xcode" ]; then
+            echo "No /Applications/Xcode_*.app found — falling back to whatever xcode-select already points at."
+          else
+            sudo xcode-select -s "$latest_xcode"
+          fi
+          xcodebuild -version
 
       - name: Check out Telegram-iOS
         run: |
