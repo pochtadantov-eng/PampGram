@@ -44,12 +44,16 @@ jobs:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '1' }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || '00000000000000000000000000000000' }}
         run: |
+          # team_id must be non-empty even with --disableProvisioningProfiles: the
+          # xcode_provisioning_profile Bazel rule hard-fails otherwise ("team_id must be
+          # set"), regardless of whether it's a real registered Apple Team ID. This one
+          # isn't real — just 10 characters in the right shape.
           cat > build-system/pampgram-ci-configuration.json <<EOF
           {
             "bundle_id": "org.pampgram.ci.Telegram",
             "api_id": "${TELEGRAM_API_ID}",
             "api_hash": "${TELEGRAM_API_HASH}",
-            "team_id": "",
+            "team_id": "PMPGRM0001",
             "app_center_id": "0",
             "is_internal_build": "true",
             "is_appstore_build": "false",
