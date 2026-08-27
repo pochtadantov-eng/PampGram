@@ -117,6 +117,20 @@ jobs:
         if: always()
         run: killall Xcode || true
 
+      # Upstream bug, verified by reading build-system/Make/ProjectGeneration.py: the
+      # generateProject subcommand accepts --disableProvisioningProfiles and threads it all
+      # the way down to generate_xcodeproj()'s disable_provisioning_profiles parameter, but
+      # that parameter is never actually turned into the --//Telegram:disableProvisioningProfiles
+      # Bazel flag anywhere in that function (unlike disableExtensions/disableStripping, which
+      # both do get added). Only the `build`/`build_spm` subcommands' own invoke_build() /
+      # invoke_spm_build() add that flag — generateProject's separately-invoked bazel run never
+      # does, so the xcodeproj.bazelrc it writes is missing it, and xcodebuild later still goes
+      # looking for a real local provisioning profile. Appending the flag ourselves, since we
+      # know the correct name.
+      - name: Work around missing --disableProvisioningProfiles in generated project
+        working-directory: telegram-ios
+        run: echo 'build --//Telegram:disableProvisioningProfiles' >> xcodeproj.bazelrc
+
       # Uncertain step, flagged honestly: I couldn't verify the generated project's exact
       # scheme name without macOS to run this on. `-list` prints the real scheme names into
       # the log first — if "Telegram" below is wrong, this log tells you the right one for a
