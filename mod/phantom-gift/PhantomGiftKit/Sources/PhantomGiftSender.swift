@@ -12,7 +12,7 @@ public enum PhantomGiftSender {
     private static let giftEmoji = "🎁"
 
     public static func send(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift.Gift, senderName: String) -> Signal<Never, NoError> {
-        guard let url = PhantomGiftLink.urlString(for: PhantomGiftPayload(giftId: gift.id, senderName: senderName)) else {
+        guard let url = PhantomGiftLink.urlString(for: PhantomGiftPayload(gift: gift, senderName: senderName)) else {
             return .complete()
         }
 
