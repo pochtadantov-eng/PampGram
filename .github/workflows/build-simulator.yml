@@ -139,13 +139,20 @@ jobs:
         working-directory: telegram-ios
         run: xcodebuild -list -project Telegram/Telegram.xcodeproj || true
 
+      # Run #5 failed with "Building for device, but no provisioning_profile attribute was
+      # set" — the --disableProvisioningProfiles fix from the previous PR did correctly clear
+      # provisioning_profile, but the generic `-destination 'generic/platform=iOS Simulator'`
+      # wasn't reliably reaching this rules_xcodeproj/Bazel platform-transition setup, and it
+      # got analyzed as a device build anyway. `-sdk iphonesimulator` is the more direct,
+      # classic way to force the simulator SDK for a build-only (non-run) invocation — no
+      # destination matching involved.
       - name: Build (simulator, unsigned)
         working-directory: telegram-ios
         run: |
           xcodebuild build \
             -project Telegram/Telegram.xcodeproj \
             -scheme Telegram \
-            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphonesimulator \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
