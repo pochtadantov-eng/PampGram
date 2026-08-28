@@ -48,6 +48,36 @@ jobs:
           cp -r ../pampgram/mod/phantom-gift/PhantomGiftKit \
             submodules/TelegramUI/Components/Gifts/PhantomGiftKit
 
+      # Four runs in a row failed with "Building for device, but no provisioning_profile
+      # attribute was set" despite --disableProvisioningProfiles, --xcodeManagedCodesigning,
+      # and appending the flag to every xcodeproj.bazelrc I could find (there are at least
+      # three in play across this build — a root one, one nested inside the generated
+      # .xcodeproj, and one rules_xcodeproj writes fresh into a randomized temp dir on every
+      # single invocation, whose path can't be predicted or pre-patched). Rather than keep
+      # chasing which bazelrc a given sub-invocation reads, patch the actual source of the
+      # ambiguity directly: Telegram/BUILD's `ios_application(name = "Telegram", ...)` sets
+      # provisioning_profile via a select() keyed on that same disableProvisioningProfiles
+      # build_setting, which evidently isn't reliably reaching every analysis of this target.
+      # Hardcoding it to None removes the select (and the build_setting dependency) entirely,
+      # so the config-propagation question stops mattering. Simulator-only, CI-only — not
+      # something to ever do in a real signed build.
+      - name: Hardcode provisioning_profile = None for the Telegram target
+        working-directory: telegram-ios
+        run: |
+          python3 - <<'EOF'
+          path = "Telegram/BUILD"
+          with open(path) as f:
+              content = f.read()
+          old = "    provisioning_profile = select({\n        \":disableProvisioningProfilesSetting\": None,\n        \"//conditions:default\": \":Telegram_xcode_profile\" if telegram_use_xcode_managed_codesigning else \"@build_configuration//provisioning:Telegram.mobileprovision\",\n    }),"
+          count = content.count(old)
+          if count != 1:
+              raise SystemExit(f"expected exactly 1 match for the Telegram ios_application provisioning_profile block, found {count} — Telegram/BUILD must have changed upstream, needs a fresh look")
+          content = content.replace(old, "    provisioning_profile = None,  # PampGram CI: unsigned simulator build only")
+          with open(path, "w") as f:
+              f.write(content)
+          print("Patched provisioning_profile = None for //Telegram:Telegram")
+          EOF
+
       - name: Write build configuration
         working-directory: telegram-ios
         env:
