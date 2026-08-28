@@ -2,6 +2,7 @@ import UIKit
 import TelegramCore
 import AccountContext
 import SwiftSignalKit
+import PampGramCore
 
 // MARK: - Gift Fireworks Effect
 
@@ -225,7 +226,14 @@ final class VisualGiftTransferController: UIViewController {
 
     private func setupUI() {
         let giftLabel = UILabel()
-        giftLabel.text = gift.title ?? "Gift"
+        let giftTitle: String
+        switch gift {
+        case let .generic(g):
+            giftTitle = g.title ?? "Gift"
+        case let .unique(g):
+            giftTitle = g.title
+        }
+        giftLabel.text = giftTitle
         giftLabel.font = .systemFont(ofSize: 28, weight: .bold)
         giftLabel.textColor = .white
         giftLabel.textAlignment = .center
@@ -261,7 +269,7 @@ final class VisualGiftTransferController: UIViewController {
         closeButton.backgroundColor = .systemBlue
         closeButton.layer.cornerRadius = 8
         closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.addTarget(self, action: #selector(dismiss), for: .touchUpInside)
+        closeButton.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
         view.addSubview(closeButton)
 
         NSLayoutConstraint.activate([
@@ -287,7 +295,7 @@ final class VisualGiftTransferController: UIViewController {
         }
     }
 
-    @objc private func dismiss() {
+    @objc private func closeButtonTapped() {
         dismiss(animated: true)
     }
 }
@@ -332,36 +340,28 @@ public enum VisualGiftTransferManager {
         asCollectible: Bool = false,
         sourceViewController: UIViewController
     ) -> Signal<Never, NoError> {
-        return Signal { subscriber in
-            let disposable = PampGramPhantomGiftManager.send(
-                context: context,
-                peerId: peerId,
-                baseGift: baseGift,
-                starPrice: starPrice,
-                asCollectible: asCollectible
-            )
-            |> mapToSignal { result -> Signal<Never, NoError> in
-                switch result {
-                case .success(let sendResult):
-                    let starGift = sendResult.phantomGift.gift
-                    return self.transferGift(
-                        context: context,
-                        peerId: peerId,
-                        gift: starGift,
-                        starPrice: starPrice,
-                        isPhantom: true,
-                        sourceViewController: sourceViewController
-                    )
-                case .failure:
-                    subscriber.putCompletion()
-                    return .complete()
-                }
+        return PampGramPhantomGiftManager.send(
+            context: context,
+            peerId: peerId,
+            baseGift: baseGift,
+            starPrice: starPrice,
+            asCollectible: asCollectible
+        )
+        |> mapToSignal { result -> Signal<Never, NoError> in
+            switch result {
+            case .success(let sendResult):
+                let starGift = sendResult.phantomGift.gift
+                return self.transferGift(
+                    context: context,
+                    peerId: peerId,
+                    gift: starGift,
+                    starPrice: starPrice,
+                    isPhantom: true,
+                    sourceViewController: sourceViewController
+                )
+            case .failure:
+                return .complete()
             }
-            |> start(next: {}, error: { _ in }, completed: {
-                subscriber.putCompletion()
-            })
-
-            return disposable
         }
     }
 }
