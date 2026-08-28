@@ -300,22 +300,31 @@ index 429cf39c..92842eaa 100644
                      transition: transition,
                      component: AnyComponent(TabSelectorComponent(
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
-index 09315ffb..682139c7 100644
+index 09315ffb..a3aed400 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
-@@ -140,6 +140,7 @@ swift_library(
+@@ -140,6 +140,8 @@ swift_library(
          "//submodules/TelegramUI/Components/Settings/BoostLevelIconComponent",
          "//submodules/Components/MultilineTextComponent",
          "//submodules/TelegramUI/Components/Settings/PeerNameColorItem",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
          "//submodules/TelegramUI/Components/PlainButtonComponent",
          "//submodules/TelegramUI/Components/TextLoadingEffect",
          "//submodules/TelegramUI/Components/TextProcessingScreen",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
-index fd01930f..4960217d 100644
+index fd01930f..a0496a3c 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
-@@ -188,6 +188,7 @@ enum PeerInfoSettingsSection {
+@@ -113,6 +113,7 @@ import PeerMessagesMediaPlaylist
+ import EdgeEffect
+ import Pasteboard
+ import AccountPeerContextItem
++import PampGramCore
+ 
+ public enum PeerInfoAvatarEditingMode {
+     case generic
+@@ -188,6 +189,7 @@ enum PeerInfoSettingsSection {
      case premiumManagement
      case stars
      case ton
@@ -323,6 +332,56 @@ index fd01930f..4960217d 100644
  }
  
  enum PeerInfoReportType {
+@@ -284,7 +286,15 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+     let sourceMessageId: MessageId?
+     var canDeleteReaction = false
+     var dataDisposable: Disposable?
+-    
++
++    // PampGram: live fake Stars/TON balance, read by settingsItems(...) for the "Мои
++    // звёзды"/"Мои GRAM" rows on the Settings screen. Kept on the node itself (like
++    // dataDisposable above) rather than in PeerInfoScreenData, since threading two extra
++    // fields through that struct's many construction sites elsewhere in this file would be
++    // a far larger and riskier change for what is just a display override.
++    var pampGramSettings = PampGramSettings.defaultSettings
++    var pampGramSettingsDisposable: Disposable?
++
+     let activeActionDisposable = MetaDisposable()
+     let resolveUrlDisposable = MetaDisposable()
+     let toggleShouldChannelMessagesSignaturesDisposable = MetaDisposable()
+@@ -2654,9 +2664,22 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+                 }
+             })
+         }
++
++        // PampGram: keeps self.pampGramSettings current for settingsItems(...) below, and
++        // forces a relayout on change so the "Мои звёзды"/"Мои GRAM" rows pick up an edited
++        // fake balance without the user having to leave and re-enter Settings.
++        self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: context.account.postbox)
++        |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
++            guard let self else {
++                return
++            }
++            self.pampGramSettings = settings
++            self.requestLayout(animated: false)
++        })
+     }
+-    
++
+     deinit {
++        self.pampGramSettingsDisposable?.dispose()
+         self.dataDisposable?.dispose()
+         self.hiddenMediaDisposable?.dispose()
+         self.activeActionDisposable.dispose()
+@@ -5479,7 +5502,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+             insets.left += sectionInset
+             insets.right += sectionInset
+             
+-            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile)
++            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile)
+             
+             contentHeight += headerHeight
+             if !((self.isSettings || self.isMyProfile) && self.state.isEditing) {
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 index 806e652a..af17fef0 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
@@ -345,18 +404,19 @@ index 806e652a..af17fef0 100644
              guard let controller = self.controller, !controller.presentAccountFrozenInfoIfNeeded() else {
                  return
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
-index c5f58f4b..55f08f4e 100644
+index c5f58f4b..90e62b50 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
-@@ -12,6 +12,7 @@ import ItemListPeerItem
+@@ -12,6 +12,8 @@ import ItemListPeerItem
  import DeviceAccess
  import TelegramStringFormatting
  import PeerNameColorItem
 +import PampGramSettingsUI
++import PampGramCore
  
  enum SettingsSection: Int, CaseIterable {
      case edit
-@@ -21,6 +22,7 @@ enum SettingsSection: Int, CaseIterable {
+@@ -21,13 +23,14 @@ enum SettingsSection: Int, CaseIterable {
      case proxy
      case apps
      case shortcuts
@@ -364,7 +424,15 @@ index c5f58f4b..55f08f4e 100644
      case advanced
      case payment
      case extra
-@@ -221,6 +223,12 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+     case support
+ }
+ 
+-func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentationData: PresentationData, interaction: PeerInfoInteraction, isExpanded: Bool) -> [(AnyHashable, [PeerInfoScreenItem])] {
++func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentationData: PresentationData, interaction: PeerInfoInteraction, isExpanded: Bool, pampGramSettings: PampGramSettings) -> [(AnyHashable, [PeerInfoScreenItem])] {
+     guard let data = data else {
+         return []
+     }
+@@ -221,6 +224,12 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
          interaction.openSettings(.chatFolders)
      }))
      
@@ -377,3 +445,220 @@ index c5f58f4b..55f08f4e 100644
      let notificationsWarning: Bool
      if let settings = data.globalSettings {
          notificationsWarning = shouldDisplayNotificationsPermissionWarning(status: settings.notificationAuthorizationStatus, suppressed:  settings.notificationWarningSuppressed)
+@@ -256,38 +265,61 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+             interaction.openSettings(.premium)
+         }))
+     }
+-    if let starsState = data.starsState {
+-        if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
+-            let balanceText: NSAttributedString
+-            if abs(starsState.balance.value) > 0 {
+-                let formattedLabel = formatStarsAmountText(starsState.balance, dateTimeFormat: presentationData.dateTimeFormat)
+-                let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
+-                let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
+-                let labelColor = presentationData.theme.list.itemSecondaryTextColor
+-                balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
+-            } else {
+-                balanceText = NSAttributedString()
++    // PampGram: while the feature is on, these two rows always show the local fake
++    // balance instead of the account's real one — including when the real balance is 0,
++    // in which case stock Telegram would hide the "Мои GRAM" row entirely. Real balances
++    // (data.starsState/data.tonState) are read only to fall back to stock behaviour when
++    // the feature is off.
++    if pampGramSettings.phantomGiftsEnabled {
++        let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
++        let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
++        let labelColor = presentationData.theme.list.itemSecondaryTextColor
++
++        let starsFormattedLabel = formatStarsAmountText(StarsAmount(value: pampGramSettings.fakeStarsBalance, nanos: 0), dateTimeFormat: presentationData.dateTimeFormat)
++        let starsBalanceText = tonAmountAttributedString(starsFormattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
++        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .attributedText(starsBalanceText), text: presentationData.strings.Settings_Stars, icon: PresentationResourcesSettings.stars, action: {
++            interaction.openSettings(.stars)
++        }))
++
++        let tonFormattedLabel = formatTonAmountText(pampGramSettings.fakeTonBalanceNanos, dateTimeFormat: presentationData.dateTimeFormat)
++        let tonBalanceText = tonAmountAttributedString(tonFormattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
++        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(tonBalanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
++            interaction.openSettings(.ton)
++        }))
++    } else {
++        if let starsState = data.starsState {
++            if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
++                let balanceText: NSAttributedString
++                if abs(starsState.balance.value) > 0 {
++                    let formattedLabel = formatStarsAmountText(starsState.balance, dateTimeFormat: presentationData.dateTimeFormat)
++                    let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
++                    let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
++                    let labelColor = presentationData.theme.list.itemSecondaryTextColor
++                    balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
++                } else {
++                    balanceText = NSAttributedString()
++                }
++                items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .attributedText(balanceText), text: presentationData.strings.Settings_Stars, icon: PresentationResourcesSettings.stars, action: {
++                    interaction.openSettings(.stars)
++                }))
+             }
+-            items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .attributedText(balanceText), text: presentationData.strings.Settings_Stars, icon: PresentationResourcesSettings.stars, action: {
+-                interaction.openSettings(.stars)
+-            }))
+         }
+-    }
+-    if let tonState = data.tonState {
+-        if abs(tonState.balance.value) > 0 {
+-            let balanceText: NSAttributedString
++        if let tonState = data.tonState {
+             if abs(tonState.balance.value) > 0 {
+-                let formattedLabel = formatTonAmountText(tonState.balance.value, dateTimeFormat: presentationData.dateTimeFormat)
+-                let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
+-                let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
+-                let labelColor = presentationData.theme.list.itemSecondaryTextColor
+-                balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
+-            } else {
+-                balanceText = NSAttributedString()
++                let balanceText: NSAttributedString
++                if abs(tonState.balance.value) > 0 {
++                    let formattedLabel = formatTonAmountText(tonState.balance.value, dateTimeFormat: presentationData.dateTimeFormat)
++                    let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
++                    let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
++                    let labelColor = presentationData.theme.list.itemSecondaryTextColor
++                    balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
++                } else {
++                    balanceText = NSAttributedString()
++                }
++                items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
++                    interaction.openSettings(.ton)
++                }))
+             }
+-            items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
+-                interaction.openSettings(.ton)
+-            }))
+         }
+     }
+     if !isPremiumDisabled || context.isPremium {
+diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
+index 066e81e6..42abb362 100644
+--- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
++++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
+@@ -51,6 +51,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/Gifts/GiftAnimationComponent",
+         "//submodules/TelegramUI/Components/Premium/PremiumCoinComponent",
+         "//submodules/TelegramUI/Components/Premium/PremiumDiamondComponent",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
+index 87c58b5f..7a9be877 100644
+--- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
++++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
+@@ -25,6 +25,7 @@ import ItemListUI
+ import StarsWithdrawalScreen
+ import PremiumDiamondComponent
+ import StatisticsUI
++import PampGramCore
+ 
+ private let initialSubscriptionsDisplayedLimit: Int32 = 3
+ 
+@@ -137,7 +138,14 @@ final class StarsTransactionsScreenComponent: Component {
+         
+         private var stateDisposable: Disposable?
+         private var starsState: StarsContext.State?
+-        
++
++        // PampGram: while the feature is on, the balance shown on this screen (both the
++        // small top-right figure and the big centered one below) is the local fake
++        // balance, for both the Stars and the TON/GRAM variant of this screen — everything
++        // else here (transaction history, revenue stats, withdraw) stays real and untouched.
++        private var pampGramSettingsDisposable: Disposable?
++        private var pampGramSettings = PampGramSettings.defaultSettings
++
+         private var revenueStateDisposable: Disposable?
+         private var revenueState: StarsRevenueStats?
+         
+@@ -186,6 +194,7 @@ final class StarsTransactionsScreenComponent: Component {
+         
+         deinit {
+             self.stateDisposable?.dispose()
++            self.pampGramSettingsDisposable?.dispose()
+             self.revenueStateDisposable?.dispose()
+             self.subscriptionsStateDisposable?.dispose()
+         }
+@@ -374,12 +383,24 @@ final class StarsTransactionsScreenComponent: Component {
+                         return
+                     }
+                     self.revenueState = state.stats
+-                    
++
+                     if !self.isUpdating {
+                         self.state?.updated()
+                     }
+                 })
+-                
++
++                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
++                |> deliverOnMainQueue).start(next: { [weak self] settings in
++                    guard let self else {
++                        return
++                    }
++                    self.pampGramSettings = settings
++
++                    if !self.isUpdating {
++                        self.state?.updated()
++                    }
++                })
++
+                 if let subscriptionsContext = component.subscriptionsContext {
+                     self.subscriptionsStateDisposable = (subscriptionsContext.state
+                     |> deliverOnMainQueue).start(next: { [weak self] state in
+@@ -553,11 +574,20 @@ final class StarsTransactionsScreenComponent: Component {
+                 containerSize: CGSize(width: 120.0, height: 100.0)
+             )
+             
++            // PampGram: the local fake balance in place of the real one, on both the small
++            // top-right figure below and the big centered one further down.
++            let displayedBalance: StarsAmount
++            if self.pampGramSettings.phantomGiftsEnabled {
++                displayedBalance = component.starsContext.ton ? StarsAmount(value: self.pampGramSettings.fakeTonBalanceNanos, nanos: 0) : StarsAmount(value: self.pampGramSettings.fakeStarsBalance, nanos: 0)
++            } else {
++                displayedBalance = self.starsState?.balance ?? StarsAmount.zero
++            }
++
+             let formattedBalance: String
+             if component.starsContext.ton {
+-                formattedBalance = formatTonAmountText(self.starsState?.balance.value ?? 0, dateTimeFormat: environment.dateTimeFormat)
++                formattedBalance = formatTonAmountText(displayedBalance.value, dateTimeFormat: environment.dateTimeFormat)
+             } else {
+-                formattedBalance = formatStarsAmountText(self.starsState?.balance ?? StarsAmount.zero, dateTimeFormat: environment.dateTimeFormat)
++                formattedBalance = formatStarsAmountText(displayedBalance, dateTimeFormat: environment.dateTimeFormat)
+             }
+             let smallLabelFont = Font.regular(11.0)
+             let labelFont = Font.semibold(14.0)
+@@ -682,14 +712,17 @@ final class StarsTransactionsScreenComponent: Component {
+                                 theme: environment.theme,
+                                 dateTimeFormat: environment.dateTimeFormat,
+                                 title: environment.strings.Ton_AvailableBalance,
+-                                value: self.revenueState?.balances.availableBalance ?? CurrencyAmount(amount: .zero, currency: .ton),
++                                // PampGram: fake TON amount, but the real, live conversion rate
++                                // — the "~$" figure this produces auto-adjusts with the market
++                                // exactly like it would for a real balance.
++                                value: self.pampGramSettings.phantomGiftsEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.availableBalance ?? CurrencyAmount(amount: .zero, currency: .ton)),
+                                 rate: self.revenueState?.usdRate ?? 0.0
+                             ))),
+                             AnyComponentWithIdentity(id: 1, component: AnyComponent(StarsOverviewItemComponent(
+                                 theme: environment.theme,
+                                 dateTimeFormat: environment.dateTimeFormat,
+                                 title: environment.strings.Ton_LifetimeProceeds,
+-                                value: self.revenueState?.balances.overallRevenue ?? CurrencyAmount(amount: .zero, currency: .ton),
++                                value: self.pampGramSettings.phantomGiftsEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.overallRevenue ?? CurrencyAmount(amount: .zero, currency: .ton)),
+                                 rate: self.revenueState?.usdRate ?? 0.0
+                             )))
+                         ],
+@@ -754,7 +787,7 @@ final class StarsTransactionsScreenComponent: Component {
+                             theme: environment.theme,
+                             strings: environment.strings,
+                             dateTimeFormat: environment.dateTimeFormat,
+-                            count: self.starsState?.balance ?? StarsAmount.zero,
++                            count: displayedBalance,
+                             currency: component.starsContext.ton ? .ton : .stars,
+                             rate: nil,
+                             actionTitle: component.starsContext.ton ? environment.strings.Ton_WithdrawViaFragment : (withdrawAvailable ? environment.strings.Stars_Intro_BuyShort : environment.strings.Stars_Intro_Buy),
