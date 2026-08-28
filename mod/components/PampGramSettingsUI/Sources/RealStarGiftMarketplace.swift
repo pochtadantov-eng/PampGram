@@ -6,25 +6,25 @@ import Display
 
 // MARK: - Real Star Gift Marketplace Integration
 
-final class RealStarGiftMarketplaceController: UIViewController {
-    let context: AccountContext
-    let peerId: EnginePeer.Id
+public final class RealStarGiftMarketplaceController: UIViewController {
+    public let context: AccountContext
+    public let peerId: EnginePeer.Id
 
-    var onGiftSelected: ((StarGift) -> Void)?
-    var onDismiss: (() -> Void)?
+    public var onGiftSelected: ((StarGift) -> Void)?
+    public var onDismiss: (() -> Void)?
 
-    init(context: AccountContext, peerId: EnginePeer.Id) {
+    public init(context: AccountContext, peerId: EnginePeer.Id) {
         self.context = context
         self.peerId = peerId
         super.init(nibName: nil, bundle: nil)
         self.modalPresentationStyle = .fullScreen
     }
 
-    required init?(coder: NSCoder) {
+    required public init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func viewDidLoad() {
+    override public func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
         setupUI()
