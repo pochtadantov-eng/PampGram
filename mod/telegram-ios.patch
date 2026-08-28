@@ -30,7 +30,7 @@ index 1820be66..a6267acf 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-index 429cf39c..d5582cd6 100644
+index 429cf39c..35087c99 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 @@ -28,6 +28,9 @@ import GiftViewScreen
@@ -86,19 +86,22 @@ index 429cf39c..d5582cd6 100644
                                  return true
                              case .limited:
                                  if case let .generic(gift) = $0 {
-@@ -230,6 +238,11 @@ final class GiftOptionsScreenComponent: Component {
+@@ -230,6 +238,14 @@ final class GiftOptionsScreenComponent: Component {
          private var isUpdating: Bool = false
          
          private var starsStateDisposable: Disposable?
 +
-+        // PampGram: whether the "Подарок" tab is shown at all. Owned by the PampGram
-+        // settings screen, so it has to be observed rather than read once.
++        // PampGram: whether the "Подарок" tab is shown at all, and the local fake-Stars
++        // balance shown at the top of the screen while that tab is selected. Both owned by
++        // the PampGram settings screen, so they're observed live rather than read once —
++        // the balance has to update in place as gifts are sent from this same screen.
 +        private var pampGramPhantomGiftsEnabled = PampGramSettings.defaultSettings.phantomGiftsEnabled
++        private var pampGramFakeStarsBalance = PampGramSettings.defaultSettings.fakeStarsBalance
 +        private var pampGramSettingsDisposable: Disposable?
          private var starsState: StarsContext.State?
          
          private let optionsPromise = Promise<[StarsTopUpOption]?>(nil)
-@@ -280,6 +293,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -280,6 +296,7 @@ final class GiftOptionsScreenComponent: Component {
          deinit {
              self.starsStateDisposable?.dispose()
              self.auctionDisposable.dispose()
@@ -106,7 +109,7 @@ index 429cf39c..d5582cd6 100644
          }
  
          func scrollToTop() {
-@@ -291,15 +305,124 @@ final class GiftOptionsScreenComponent: Component {
+@@ -291,15 +308,124 @@ final class GiftOptionsScreenComponent: Component {
              self.updateScrolling(interactive: true, transition: self.nextScrollTransition ?? .immediate)
          }
          
@@ -232,18 +235,19 @@ index 429cf39c..d5582cd6 100644
              if let controller = environment.controller() as? GiftOptionsScreen {
                  let mainController: ViewController
                  if let parentController = controller.parentController() {
-@@ -1011,6 +1134,22 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1011,6 +1137,23 @@ final class GiftOptionsScreenComponent: Component {
              self.appliedStarsFilter = self.starsFilter
              
              if self.component == nil {
 +                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
-+                |> map { $0.phantomGiftsEnabled }
-+                |> distinctUntilChanged
-+                |> deliverOnMainQueue).start(next: { [weak self] enabled in
++                |> map { ($0.phantomGiftsEnabled, $0.fakeStarsBalance) }
++                |> distinctUntilChanged(isEqual: { $0 == $1 })
++                |> deliverOnMainQueue).start(next: { [weak self] enabled, fakeStarsBalance in
 +                    guard let self else {
 +                        return
 +                    }
 +                    self.pampGramPhantomGiftsEnabled = enabled
++                    self.pampGramFakeStarsBalance = fakeStarsBalance
 +                    if !enabled, case .phantom = self.starsFilter {
 +                        self.starsFilter = .all
 +                    }
@@ -255,7 +259,25 @@ index 429cf39c..d5582cd6 100644
                  self.starsStateDisposable = (component.starsContext.state
                  |> deliverOnMainQueue).start(next: { [weak self] state in
                      guard let self else {
-@@ -1646,7 +1785,17 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1219,7 +1362,16 @@ final class GiftOptionsScreenComponent: Component {
+                 containerSize: availableSize
+             )
+             
+-            let formattedBalance = formatStarsAmountText(self.starsState?.balance ?? StarsAmount.zero, dateTimeFormat: environment.dateTimeFormat)
++            // On the "Подарок" tab the balance shown up top is the local fake balance that
++            // tab actually spends from, not the account's real Stars balance — otherwise the
++            // number on screen wouldn't match what a purchase there is about to deduct.
++            let displayedBalance: StarsAmount
++            if case .phantom = self.starsFilter {
++                displayedBalance = StarsAmount(value: self.pampGramFakeStarsBalance, nanos: 0)
++            } else {
++                displayedBalance = self.starsState?.balance ?? StarsAmount.zero
++            }
++            let formattedBalance = formatStarsAmountText(displayedBalance, dateTimeFormat: environment.dateTimeFormat)
+             let smallLabelFont = Font.regular(11.0)
+             let labelFont = Font.semibold(14.0)
+             let balanceText = tonAmountAttributedString(formattedBalance, integralFont: labelFont, fractionalFont: smallLabelFont, color: theme.actionSheet.primaryTextColor, decimalSeparator: environment.dateTimeFormat.decimalSeparator)
+@@ -1646,7 +1798,17 @@ final class GiftOptionsScreenComponent: Component {
                          title: strings.Gift_Options_Gift_Filter_Collectibles
                      ))
                  }
