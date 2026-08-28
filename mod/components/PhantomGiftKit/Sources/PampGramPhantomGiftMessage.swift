@@ -5,11 +5,6 @@ import SwiftSignalKit
 import AccountContext
 
 public enum PampGramPhantomGiftMessage {
-    /// Stashed in the synthetic action's otherwise-unused `prepaidUpgradeHash` slot so
-    /// `ChatMessageGiftBubbleContentNode` can tell a phantom card from a real one and swap
-    /// the ribbon text to "Фантом". No real StarGift ever carries this exact value.
-    public static let ribbonMarker = "pampgram-phantom-gift-marker"
-
     /// Inserts a gift-card message into `peerId`'s local chat history — a real message the
     /// existing `ChatMessageGiftBubbleContentNode` will render exactly like a genuine one —
     /// but purely as a local Postbox transaction. `Namespaces.Message.Local` is the message
@@ -24,7 +19,6 @@ public enum PampGramPhantomGiftMessage {
             let actionType: TelegramMediaActionType
             switch gift {
             case .generic:
-                // The marker lives in `prepaidUpgradeHash` — a field only `.starGift` has.
                 actionType = .starGift(
                     gift: gift,
                     convertStars: starPrice,
@@ -42,7 +36,7 @@ public enum PampGramPhantomGiftMessage {
                     peerId: nil,
                     senderId: nil,
                     savedId: nil,
-                    prepaidUpgradeHash: ribbonMarker,
+                    prepaidUpgradeHash: nil,
                     giftMessageId: nil,
                     upgradeSeparate: false,
                     isAuctionAcquired: false,
@@ -51,9 +45,7 @@ public enum PampGramPhantomGiftMessage {
                 )
             case .unique:
                 // Collectible instances (Model/Backdrop/Symbol rows) only render for
-                // .starGiftUnique — .starGift silently drops a .unique gift value. This
-                // case has no spare field, so PampGramUniqueGiftGenerator tags the gift's
-                // own `slug` instead (checked in ChatMessageGiftBubbleContentNode).
+                // .starGiftUnique — .starGift silently drops a .unique gift value.
                 actionType = .starGiftUnique(
                     gift: gift,
                     isUpgrade: false,
