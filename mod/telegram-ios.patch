@@ -29,7 +29,7 @@ index 81bce800..60e5543c 100644
          "//submodules/TelegramUI/Components/Gifts/GiftItemComponent",
      ],
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
-index bf1b1cde..8666e214 100644
+index bf1b1cde..975b5eda 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageGiftBubbleContentNode/Sources/ChatMessageGiftBubbleContentNode.swift
 @@ -23,6 +23,7 @@ import ChatMessageBubbleContentNode
@@ -70,7 +70,7 @@ index bf1b1cde..8666e214 100644
                              }
                          case let .starGiftUnique(gift, isUpgrade, _, _, _, _, isRefunded, _, _, _, _, _, _, _, _, _, fromOffer, _, isCrafted):
                              if case let .unique(uniqueGift) = gift {
-@@ -762,6 +777,17 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
+@@ -762,6 +777,21 @@ public class ChatMessageGiftBubbleContentNode: ChatMessageBubbleContentNode {
                                          break
                                      }
                                  }
@@ -83,7 +83,11 @@ index bf1b1cde..8666e214 100644
 +                                if uniqueGift.slug.hasPrefix("pampgram-phantom-") {
 +                                    ribbonTitle = "Фантом"
 +                                    customRibbonColors = [UIColor(rgb: 0x8e44ec), UIColor(rgb: 0xb37bf5)]
-+                                    text = "Визуальный подарок — локально, ничего не покупалось и не передавалось по-настоящему."
++                                    // Appended, not substituted: the name and number line above is
++                                    // the whole point of a collectible card, and replacing it left
++                                    // the card unrecognisable. The ribbon and this line together are
++                                    // what keep it from passing as a real gift.
++                                    text += "\nВизуально, локально — ничего не куплено и никому не передано"
 +                                }
                              } else if isRefunded, case let .generic(gift) = gift {
                                  isStarGift = true
