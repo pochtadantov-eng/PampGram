@@ -106,7 +106,7 @@ index 1820be66..a6267acf 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-index 429cf39c..441cbd22 100644
+index 429cf39c..57a82827 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 @@ -28,6 +28,9 @@ import GiftViewScreen
@@ -182,7 +182,7 @@ index 429cf39c..441cbd22 100644
          }
  
          func scrollToTop() {
-@@ -291,15 +305,114 @@ final class GiftOptionsScreenComponent: Component {
+@@ -291,15 +305,126 @@ final class GiftOptionsScreenComponent: Component {
              self.updateScrolling(interactive: true, transition: self.nextScrollTransition ?? .immediate)
          }
          
@@ -247,21 +247,33 @@ index 429cf39c..441cbd22 100644
 +                                }
 +                                mainController.dismiss()
 +
++                                // Same two-line shape as the real "Gift Sent" toast
++                                // (Gift_View_Resale_Success_*), and the same title, which is
++                                // simply true here. The subtitle is where the two part company:
++                                // the real one names the recipient and says they were notified,
++                                // and that is the one sentence in this feature that asserts
++                                // something about somebody else — the one thing a screenshot
++                                // could be used to prove to them. The card's "Фантом" ribbon
++                                // explains itself; a cropped toast would not.
++                                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
++                                let toastTitle: String?
 +                                let text: String
 +                                switch result {
 +                                case let .success(sendResult):
-+                                    text = "Фантом-подарок «\(title)» отправлен визуально — локальный баланс: ⭐ \(sendResult.remainingBalance)."
++                                    toastTitle = presentationData.strings.Gift_View_Resale_Success_Title
++                                    text = "Фантом-подарок виден только вам · ⭐ \(sendResult.remainingBalance)"
 +                                case .failure:
++                                    toastTitle = nil
 +                                    text = "Не удалось отправить: недостаточно локальных Stars."
 +                                }
 +
 +                                let tooltipController = UndoOverlayController(
-+                                    presentationData: context.sharedContext.currentPresentationData.with { $0 },
++                                    presentationData: presentationData,
 +                                    content: .sticker(
 +                                        context: context,
 +                                        file: gift.file,
 +                                        loop: true,
-+                                        title: nil,
++                                        title: toastTitle,
 +                                        text: text,
 +                                        undoText: nil,
 +                                        customAction: nil
@@ -298,7 +310,7 @@ index 429cf39c..441cbd22 100644
              if let controller = environment.controller() as? GiftOptionsScreen {
                  let mainController: ViewController
                  if let parentController = controller.parentController() {
-@@ -1011,6 +1124,22 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1011,6 +1136,22 @@ final class GiftOptionsScreenComponent: Component {
              self.appliedStarsFilter = self.starsFilter
              
              if self.component == nil {
@@ -321,7 +333,7 @@ index 429cf39c..441cbd22 100644
                  self.starsStateDisposable = (component.starsContext.state
                  |> deliverOnMainQueue).start(next: { [weak self] state in
                      guard let self else {
-@@ -1646,7 +1775,18 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1646,7 +1787,18 @@ final class GiftOptionsScreenComponent: Component {
                          title: strings.Gift_Options_Gift_Filter_Collectibles
                      ))
                  }
