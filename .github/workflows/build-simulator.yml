@@ -146,6 +146,15 @@ jobs:
       # got analyzed as a device build anyway. `-sdk iphonesimulator` is the more direct,
       # classic way to force the simulator SDK for a build-only (non-run) invocation — no
       # destination matching involved.
+      # Run #7 (with -sdk iphonesimulator) failed the same way as run #5 did: "Building for
+      # device, but no provisioning_profile attribute was set." Neither -destination nor -sdk
+      # actually decide this — the log shows Xcode/rules_xcodeproj also runs a separate,
+      # parallel "Index Build" (for editor code-completion/navigation), whose own generated
+      # script phase ("Copy Bazel Outputs / Generate Bazel Dependencies (Index Build)", visible
+      # in the log) resolves to a device-flavored Bazel config independent of the SDK/
+      # destination we pass for the real build — and that side build's failure fails the whole
+      # xcodebuild invocation. COMPILER_INDEX_STORE_ENABLE=NO is the standard xcodebuild
+      # override to turn this parallel Index Build off.
       - name: Build (simulator, unsigned)
         working-directory: telegram-ios
         run: |
@@ -154,7 +163,8 @@ jobs:
             -scheme Telegram \
             -sdk iphonesimulator \
             -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Upload built .app (simulator-only — not installable on a real iPhone)
         if: always()
