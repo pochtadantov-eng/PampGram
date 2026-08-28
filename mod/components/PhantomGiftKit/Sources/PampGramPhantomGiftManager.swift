@@ -15,6 +15,14 @@ public enum PampGramPhantomGiftManager {
         public let remainingBalance: Int64
     }
 
+    /// What the balance-and-store transaction hands to the message-insert step. A named
+    /// type rather than a tuple: `Result`'s `success` takes exactly one associated value,
+    /// so a tuple there cannot be destructured in a `case let .success(a, b)` pattern.
+    private struct PendingSend {
+        let newBalance: Int64
+        let phantomGift: PampGramPhantomGift
+    }
+
     /// Full local send flow, in order: check the fake balance, optionally mint a random
     /// collectible instance of the base gift (best-effort — falls back to the plain generic
     /// gift if that fails or isn't requested), insert the local-only chat message, save the
@@ -39,7 +47,7 @@ public enum PampGramPhantomGiftManager {
 
         return resolvedGift
         |> mapToSignal { gift -> Signal<Result<SendResult, SendError>, NoError> in
-            return context.account.postbox.transaction { transaction -> Result<(Int64, PampGramPhantomGift), SendError> in
+            return context.account.postbox.transaction { transaction -> Result<PendingSend, SendError> in
                 let currentBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction)
                 guard currentBalance >= starPrice else {
                     return .failure(.insufficientBalance(have: currentBalance, need: starPrice))
@@ -56,13 +64,15 @@ public enum PampGramPhantomGiftManager {
                     localMessageId: nil
                 )
                 PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
-                return .success((newBalance, phantomGift))
+                return .success(PendingSend(newBalance: newBalance, phantomGift: phantomGift))
             }
             |> mapToSignal { result -> Signal<Result<SendResult, SendError>, NoError> in
                 switch result {
                 case let .failure(error):
                     return .single(.failure(error))
-                case let .success(newBalance, phantomGift):
+                case let .success(pending):
+                    let newBalance = pending.newBalance
+                    let phantomGift = pending.phantomGift
                     return PampGramPhantomGiftMessage.insertLocalGiftMessage(context: context, peerId: peerId, gift: phantomGift.gift, starPrice: starPrice)
                     |> map { messageId -> Result<SendResult, SendError> in
                         let finalGift: PampGramPhantomGift
