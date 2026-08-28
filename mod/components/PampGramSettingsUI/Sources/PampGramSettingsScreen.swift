@@ -11,38 +11,43 @@ import AccountContext
 import PromptUI
 import UndoUI
 import PampGramCore
+import PhantomGiftKit
 
 private final class PampGramSettingsArguments {
-    let openStarGiftMarketplace: () -> Void
+    let togglePhantomGifts: (Bool) -> Void
     let editStarsBalance: () -> Void
     let editTonBalance: () -> Void
     let resetBalances: () -> Void
+    let deleteAllPhantomGifts: () -> Void
 
     init(
-        openStarGiftMarketplace: @escaping () -> Void,
+        togglePhantomGifts: @escaping (Bool) -> Void,
         editStarsBalance: @escaping () -> Void,
         editTonBalance: @escaping () -> Void,
-        resetBalances: @escaping () -> Void
+        resetBalances: @escaping () -> Void,
+        deleteAllPhantomGifts: @escaping () -> Void
     ) {
-        self.openStarGiftMarketplace = openStarGiftMarketplace
+        self.togglePhantomGifts = togglePhantomGifts
         self.editStarsBalance = editStarsBalance
         self.editTonBalance = editTonBalance
         self.resetBalances = resetBalances
+        self.deleteAllPhantomGifts = deleteAllPhantomGifts
     }
 }
 
 private enum PampGramSettingsSection: Int32 {
     case about
-    case starGiftMarketplace
+    case phantomGifts
     case balances
+    case storage
 }
 
 private enum PampGramSettingsEntry: ItemListNodeEntry {
     case aboutText(String)
 
-    case starGiftMarketplaceHeader(String)
-    case openStarGiftMarketplace(String)
-    case starGiftMarketplaceFooter(String)
+    case phantomGiftsHeader(String)
+    case phantomGiftsToggle(String, Bool)
+    case phantomGiftsFooter(String)
 
     case balancesHeader(String)
     case starsBalance(String, String)
@@ -50,14 +55,21 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case resetBalances(String)
     case balancesFooter(String)
 
+    case storageHeader(String)
+    case phantomGiftsCount(String, String)
+    case deleteAllPhantomGifts(String, Bool)
+    case storageFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .aboutText:
             return PampGramSettingsSection.about.rawValue
-        case .starGiftMarketplaceHeader, .openStarGiftMarketplace, .starGiftMarketplaceFooter:
-            return PampGramSettingsSection.starGiftMarketplace.rawValue
+        case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter:
+            return PampGramSettingsSection.phantomGifts.rawValue
         case .balancesHeader, .starsBalance, .tonBalance, .resetBalances, .balancesFooter:
             return PampGramSettingsSection.balances.rawValue
+        case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
+            return PampGramSettingsSection.storage.rawValue
         }
     }
 
@@ -65,11 +77,11 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return 0
-        case .starGiftMarketplaceHeader:
+        case .phantomGiftsHeader:
             return 1
-        case .openStarGiftMarketplace:
+        case .phantomGiftsToggle:
             return 2
-        case .starGiftMarketplaceFooter:
+        case .phantomGiftsFooter:
             return 3
         case .balancesHeader:
             return 4
@@ -81,6 +93,14 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return 7
         case .balancesFooter:
             return 8
+        case .storageHeader:
+            return 9
+        case .phantomGiftsCount:
+            return 10
+        case .deleteAllPhantomGifts:
+            return 11
+        case .storageFooter:
+            return 12
         }
     }
 
@@ -93,13 +113,13 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         switch self {
         case let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .starGiftMarketplaceHeader(text), let .balancesHeader(text):
+        case let .phantomGiftsHeader(text), let .balancesHeader(text), let .storageHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .starGiftMarketplaceFooter(text), let .balancesFooter(text):
+        case let .phantomGiftsFooter(text), let .balancesFooter(text), let .storageFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .openStarGiftMarketplace(title):
-            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
-                arguments.openStarGiftMarketplace()
+        case let .phantomGiftsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.togglePhantomGifts(value)
             })
         case let .starsBalance(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
@@ -112,6 +132,12 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case let .resetBalances(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.resetBalances()
+            })
+        case let .phantomGiftsCount(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: false, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+        case let .deleteAllPhantomGifts(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.deleteAllPhantomGifts()
             })
         }
     }
@@ -187,20 +213,25 @@ private func parseFakeStars(_ text: String) -> Int64? {
     return Int64(normalized)
 }
 
-private func pampGramSettingsEntries(settings: PampGramSettings) -> [PampGramSettingsEntry] {
+private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCount: Int) -> [PampGramSettingsEntry] {
     var entries: [PampGramSettingsEntry] = []
 
-    entries.append(.aboutText("PampGram позволяет просматривать и отправлять подарки из маркетплейса Telegram. Вкладка показывает все доступные подарки со звёздами и позволяет покупать и отправлять их прямо из PampGram."))
+    entries.append(.aboutText("PampGram меняет только то, что видите вы на этом устройстве. Ничего из перечисленного ниже не отправляется в Telegram, не меняет состояние чужого аккаунта, не трогает настоящие Stars и не создаёт настоящие подарки."))
 
-    entries.append(.starGiftMarketplaceHeader("МАРКЕТПЛЕЙС ПОДАРКОВ"))
-    entries.append(.openStarGiftMarketplace("Вкладка подарков Telegram"))
-    entries.append(.starGiftMarketplaceFooter("Откройте вкладку с реальным маркетплейсом подарков Telegram. Все подарки покупаются за настоящие звёзды и отправляются как обычные подарки."))
+    entries.append(.phantomGiftsHeader("ФАНТОМ-ПОДАРКИ"))
+    entries.append(.phantomGiftsToggle("Вкладка «Фантом»", settings.phantomGiftsEnabled))
+    entries.append(.phantomGiftsFooter("Добавляет отдельную вкладку «Фантом» в экран отправки подарков. Подарок с неё появляется только в вашей истории чата и помечен ленточкой «Фантом»; собеседник его не получает и не видит."))
 
     entries.append(.balancesHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ"))
     entries.append(.starsBalance("Фантом-Stars", "\(settings.fakeStarsBalance)"))
     entries.append(.tonBalance("Фантом-TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
     entries.append(.resetBalances("Сбросить балансы"))
-    entries.append(.balancesFooter("Это счётчики самого мода для тестирования. Настоящий баланс Stars вашего аккаунта не изменяется."))
+    entries.append(.balancesFooter("Это счётчики самого мода. Настоящий баланс Stars и TON вашего аккаунта они не читают и не меняют — Telegram о них ничего не знает."))
+
+    entries.append(.storageHeader("ЛОКАЛЬНЫЕ ДАННЫЕ"))
+    entries.append(.phantomGiftsCount("Фантом-подарков на устройстве", "\(phantomGiftCount)"))
+    entries.append(.deleteAllPhantomGifts("Удалить все фантом-подарки", phantomGiftCount > 0))
+    entries.append(.storageFooter("Удаление уберёт и сами записи, и их сообщения из вашей истории чатов. Всё это хранится только на этом устройстве."))
 
     return entries
 }
@@ -210,9 +241,12 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
     var presentTooltipImpl: ((String) -> Void)?
 
     let arguments = PampGramSettingsArguments(
-        openStarGiftMarketplace: {
-            let controller = RealStarGiftMarketplaceController(context: context, peerId: context.account.peerId)
-            presentControllerImpl?(controller)
+        togglePhantomGifts: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.phantomGiftsEnabled = value
+                return settings
+            }).start()
         },
         editStarsBalance: {
             let _ = (context.account.postbox.transaction { transaction -> Int64 in
@@ -270,15 +304,36 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
                 return settings
             }).start()
             presentTooltipImpl?("Локальные балансы сброшены.")
+        },
+        deleteAllPhantomGifts: {
+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+            let theme = AlertControllerTheme(presentationData: presentationData)
+            let font = Font.regular(floor(theme.baseFontSize * 13.0 / 17.0))
+            presentControllerImpl?(textAlertController(
+                theme: theme,
+                title: NSAttributedString(string: "Удалить все фантом-подарки?", font: Font.semibold(theme.baseFontSize), textColor: theme.primaryColor, paragraphAlignment: .center),
+                text: NSAttributedString(string: "Записи и их сообщения исчезнут из вашей истории. Это действие нельзя отменить.", font: font, textColor: theme.primaryColor, paragraphAlignment: .center),
+                actions: [
+                    TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
+                    TextAlertAction(type: .destructiveAction, title: "Удалить", action: {
+                        let _ = (PampGramPhantomGiftManager.deleteAll(context: context)
+                        |> deliverOnMainQueue).start(completed: {
+                            presentTooltipImpl?("Все фантом-подарки удалены.")
+                        })
+                    }),
+                ],
+                actionLayout: .horizontal
+            ))
         }
     )
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        PampGramPhantomGiftStore.allGiftsSignal(context: context)
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, phantomGifts -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("PampGram"),
@@ -289,7 +344,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramSettingsEntries(settings: settings),
+            entries: pampGramSettingsEntries(settings: settings, phantomGiftCount: phantomGifts.count),
             style: .blocks,
             animateChanges: true
         )
