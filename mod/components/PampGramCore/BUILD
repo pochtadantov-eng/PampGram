@@ -1,8 +1,8 @@
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 
 swift_library(
-    name = "PhantomGiftKit",
-    module_name = "PhantomGiftKit",
+    name = "PampGramCore",
+    module_name = "PampGramCore",
     srcs = glob([
         "Sources/**/*.swift",
     ]),
@@ -12,8 +12,6 @@ swift_library(
     deps = [
         "//submodules/Postbox",
         "//submodules/SSignalKit/SwiftSignalKit",
-        "//submodules/TelegramCore",
-        "//submodules/AccountContext",
     ],
     visibility = [
         "//visibility:public",

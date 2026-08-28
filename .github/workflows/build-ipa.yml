@@ -30,13 +30,18 @@ jobs:
           git clone --recursive --shallow-submodules --depth 1 -j8 \
             https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
 
+      # mod/components/* are whole new Bazel packages, dropped in as-is under a single
+      # PampGram/ directory; mod/telegram-ios.patch only touches files that already exist
+      # upstream. Keeping the two apart means editing our own Swift never requires
+      # regenerating the patch.
       - name: Apply the PampGram patch
         working-directory: telegram-ios
         run: |
-          git apply --check ../pampgram/mod/phantom-gift/telegram-ios.patch
-          git apply ../pampgram/mod/phantom-gift/telegram-ios.patch
-          cp -r ../pampgram/mod/phantom-gift/PhantomGiftKit \
-            submodules/TelegramUI/Components/Gifts/PhantomGiftKit
+          git apply --check ../pampgram/mod/telegram-ios.patch
+          git apply ../pampgram/mod/telegram-ios.patch
+          mkdir -p submodules/TelegramUI/Components/PampGram
+          cp -R ../pampgram/mod/components/. submodules/TelegramUI/Components/PampGram/
+          ls -1 submodules/TelegramUI/Components/PampGram
 
       # Run 1 compiled the whole app fine, then died at the very last step:
       #   "Unable to find an identity on the system matching the ones in

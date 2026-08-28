@@ -82,6 +82,22 @@ public enum PampGramPhantomGiftManager {
         }
     }
 
+    /// Removes every Phantom Gift on this device, and the local-only chat messages they
+    /// created, in a single transaction. Same local-only guarantees as `delete`.
+    public static func deleteAll(context: AccountContext) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            let gifts = PampGramPhantomGiftStore.allGifts(transaction: transaction)
+            let messageIds = gifts.compactMap { $0.localMessageId }
+            for gift in gifts {
+                PampGramPhantomGiftStore.remove(transaction: transaction, id: gift.id)
+            }
+            if !messageIds.isEmpty {
+                transaction.deleteMessages(messageIds, forEachMedia: nil)
+            }
+        }
+        |> ignoreValues
+    }
+
     /// Removes a Phantom Gift: its local chat message (if it still exists — same "delete
     /// message" path used everywhere else, which already skips the server for
     /// `Namespaces.Message.Local`) and its store entry. Never touches the network.
