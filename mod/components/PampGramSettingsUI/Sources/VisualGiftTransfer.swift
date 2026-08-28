@@ -2,7 +2,7 @@ import UIKit
 import TelegramCore
 import AccountContext
 import SwiftSignalKit
-import PampGramCore
+import PhantomGiftKit
 
 // MARK: - Gift Fireworks Effect
 
@@ -347,7 +347,7 @@ public enum VisualGiftTransferManager {
             starPrice: starPrice,
             asCollectible: asCollectible
         )
-        |> mapToSignal { result -> Signal<Never, NoError> in
+        |> mapToSignal { (result: Result<PampGramPhantomGiftManager.SendResult, PampGramPhantomGiftManager.SendError>) -> Signal<Never, NoError> in
             switch result {
             case .success(let sendResult):
                 let starGift = sendResult.phantomGift.gift
