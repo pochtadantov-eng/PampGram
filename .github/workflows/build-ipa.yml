@@ -131,16 +131,60 @@ jobs:
       # shipped in build-system/fake-codesigning/profiles/ (Telegram.mobileprovision carries
       # application-identifier C67CF9S4VU.ph.telegra.Telegraph) — a mismatch fails codesigning.
       #
-      # api_id/api_hash: get your own free pair at https://my.telegram.org/apps and add them
-      # as repo secrets TELEGRAM_API_ID / TELEGRAM_API_HASH. The fallback below is Telegram's
-      # own public App Store pair, which is restricted to the official app — logging into a
-      # third-party build with it risks the account being limited or banned. Use your own.
+      # api_id/api_hash come from repo secrets TELEGRAM_API_ID / TELEGRAM_API_HASH (get a free
+      # pair at https://my.telegram.org/apps). The fallback is Telegram's own public App Store
+      # pair, which is restricted to the official app — logging into a third-party build with
+      # it risks the account being limited or banned.
+      #
+      # Hence the checks below. A secret whose name is misspelled does not error: the ||
+      # fallback quietly substitutes the public pair, the build succeeds, and the first sign
+      # that anything was wrong is a restricted account. That failure is worth catching in the
+      # first ten seconds of the job instead. The values themselves are never printed — only
+      # whether they arrived and whether they are the right shape.
       - name: Write build configuration
         working-directory: telegram-ios
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '8' }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || '7245de8e747a0d6fbe11f7cc14fcc0bb' }}
+          ALLOW_PUBLIC_API_KEYS: ${{ vars.ALLOW_PUBLIC_API_KEYS }}
         run: |
+          set -euo pipefail
+
+          if [ "$TELEGRAM_API_ID" = "8" ]; then
+            if [ "$ALLOW_PUBLIC_API_KEYS" = "true" ]; then
+              echo "WARNING: building with Telegram's public api_id 8, because the repository"
+              echo "variable ALLOW_PUBLIC_API_KEYS is set to true. Signing in to this build"
+              echo "risks the account being limited."
+            else
+              echo "FAIL: secret TELEGRAM_API_ID is not set, so the build would fall back to"
+              echo "Telegram's public api_id 8 and put the account at risk."
+              echo
+              echo "Add it under Settings -> Secrets and variables -> Actions -> Repository"
+              echo "secrets (NOT Environment secrets). The name must be exactly"
+              echo "TELEGRAM_API_ID, uppercase, with underscores."
+              echo
+              echo "To build with the public pair on purpose, set the repository VARIABLE"
+              echo "ALLOW_PUBLIC_API_KEYS to true."
+              exit 1
+            fi
+          else
+            case "$TELEGRAM_API_ID" in
+              *[!0-9]*|"")
+                echo "FAIL: TELEGRAM_API_ID must be digits only; got ${#TELEGRAM_API_ID} character(s)."
+                echo "Looks like the api_hash, or a stray space, ended up in this secret."
+                exit 1
+                ;;
+            esac
+            # An api_hash is exactly 32 lowercase hex characters. Anything else means the wrong
+            # field was copied — a truncated value here fails at login, not at build time.
+            if ! printf '%s' "$TELEGRAM_API_HASH" | grep -Eqi '^[0-9a-f]{32}$'; then
+              echo "FAIL: TELEGRAM_API_HASH is not 32 hex characters (got ${#TELEGRAM_API_HASH})."
+              echo "On my.telegram.org/apps it is the long string under the numeric App api_id."
+              exit 1
+            fi
+            echo "OK: using your own api_id (${#TELEGRAM_API_ID} digits) and api_hash (32 hex)."
+          fi
+
           cat > build-system/pampgram-configuration.json <<EOF
           {
             "bundle_id": "ph.telegra.Telegraph",
@@ -157,7 +201,9 @@ jobs:
             "enable_icloud": false
           }
           EOF
-          cat build-system/pampgram-configuration.json
+          # Deliberately not `cat`-ing the file: GitHub masks registered secrets in logs, but
+          # there is no reason to lean on that when the interesting part is the rest of it.
+          python3 -c "import json;d=json.load(open('build-system/pampgram-configuration.json'));d['api_id']='<set>';d['api_hash']='<set>';print(json.dumps(d,indent=2))"
 
       # Split restore/save instead of actions/cache, because actions/cache only writes the
       # cache when the job succeeds. Every run so far has failed, so nothing was ever saved
