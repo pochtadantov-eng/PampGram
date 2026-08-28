@@ -1,0 +1,114 @@
+name: Build IPA (device, fake-signed)
+
+# Manual only — this is a huge build (Telegram-iOS plus WebRTC/dav1d/libvpx/td from
+# source). Run it from the Actions tab when you actually want a new .ipa.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 350 # under the 6h hosted-runner cap
+    steps:
+      - name: Check out PampGram (patch + PhantomGiftKit)
+        uses: actions/checkout@v4
+        with:
+          path: pampgram
+
+      # versions.json pins Xcode 26.2; --overrideXcodeVersion skips the assertion, but the
+      # project genuinely needs Xcode 26+ (its app icons use the Icon Composer .icon bundle
+      # format). Pick the newest Xcode actually present rather than trusting the image label.
+      - name: Select latest available Xcode
+        run: |
+          ls /Applications | grep -i xcode || true
+          latest_xcode="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest_xcode" ]; then sudo xcode-select -s "$latest_xcode"; fi
+          xcodebuild -version
+
+      - name: Check out Telegram-iOS
+        run: |
+          git clone --recursive --shallow-submodules --depth 1 -j8 \
+            https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
+
+      - name: Apply the PampGram patch
+        working-directory: telegram-ios
+        run: |
+          git apply --check ../pampgram/mod/phantom-gift/telegram-ios.patch
+          git apply ../pampgram/mod/phantom-gift/telegram-ios.patch
+          cp -r ../pampgram/mod/phantom-gift/PhantomGiftKit \
+            submodules/TelegramUI/Components/Gifts/PhantomGiftKit
+
+      # The bundle_id and team_id MUST match what's baked into the fake provisioning profiles
+      # shipped in build-system/fake-codesigning/profiles/ (Telegram.mobileprovision carries
+      # application-identifier C67CF9S4VU.ph.telegra.Telegraph) — a mismatch fails codesigning.
+      #
+      # api_id/api_hash: get your own free pair at https://my.telegram.org/apps and add them
+      # as repo secrets TELEGRAM_API_ID / TELEGRAM_API_HASH. The fallback below is Telegram's
+      # own public App Store pair, which is restricted to the official app — logging into a
+      # third-party build with it risks the account being limited or banned. Use your own.
+      - name: Write build configuration
+        working-directory: telegram-ios
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '8' }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || '7245de8e747a0d6fbe11f7cc14fcc0bb' }}
+        run: |
+          cat > build-system/pampgram-configuration.json <<EOF
+          {
+            "bundle_id": "ph.telegra.Telegraph",
+            "api_id": "${TELEGRAM_API_ID}",
+            "api_hash": "${TELEGRAM_API_HASH}",
+            "team_id": "C67CF9S4VU",
+            "app_center_id": "0",
+            "is_internal_build": "false",
+            "is_appstore_build": "false",
+            "appstore_id": "686449807",
+            "app_specific_url_scheme": "tg",
+            "premium_iap_product_id": "org.telegram.telegramPremium.monthly",
+            "enable_siri": false,
+            "enable_icloud": false
+          }
+          EOF
+          cat build-system/pampgram-configuration.json
+
+      - name: Cache Bazel build outputs
+        uses: actions/cache@v4
+        with:
+          path: ~/telegram-bazel-cache
+          key: telegram-bazel-cache-${{ hashFiles('pampgram/mod/phantom-gift/telegram-ios.patch') }}
+          restore-keys: |
+            telegram-bazel-cache-
+
+      # A DEVICE build (release_arm64), signed with the self-signed cert + fake provisioning
+      # profiles the Telegram repo ships in build-system/fake-codesigning for exactly this
+      # purpose (README: "Copy build-system/fake-codesigning"). Make.py's ImportCertificates.py
+      # creates a temp keychain and imports certs/SelfSigned.p12 (empty password) itself.
+      #
+      # The resulting signature is NOT valid for installing on a real iPhone as-is. That's
+      # fine and expected: Sideloadly / AltStore / an on-device signer strip it and re-sign
+      # with YOUR Apple ID at install time. They only need a structurally valid device .ipa,
+      # which is what this produces.
+      - name: Build device IPA (fake-signed)
+        working-directory: telegram-ios
+        run: |
+          python3 build-system/Make/Make.py \
+            --overrideXcodeVersion \
+            --cacheDir="$HOME/telegram-bazel-cache" \
+            build \
+            --configurationPath=build-system/pampgram-configuration.json \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --buildNumber=1 \
+            --configuration=release_arm64 \
+            --outputBuildArtifactsPath="$GITHUB_WORKSPACE/output"
+
+      - name: Show what was produced
+        if: always()
+        run: ls -lh "$GITHUB_WORKSPACE/output" || echo "no output directory — the build did not reach packaging"
+
+      - name: Upload IPA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PampGram-ipa
+          path: output/Telegram.ipa
+          if-no-files-found: warn
+          retention-days: 14
