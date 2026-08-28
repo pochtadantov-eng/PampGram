@@ -4,7 +4,9 @@ import SwiftSignalKit
 import AccountContext
 
 public enum PampGramPhantomGiftManager {
-    public enum SendError {
+    /// Conforms to Error because it is carried in a `Result<SendResult, SendError>`, and
+    /// Result's failure type is constrained to Error.
+    public enum SendError: Error {
         case insufficientBalance(have: Int64, need: Int64)
     }
 

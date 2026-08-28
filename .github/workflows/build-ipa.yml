@@ -169,11 +169,16 @@ jobs:
           EOF
           cat build-system/pampgram-configuration.json
 
-      - name: Cache Bazel build outputs
-        uses: actions/cache@v4
+      # Split restore/save instead of actions/cache, because actions/cache only writes the
+      # cache when the job succeeds. Every run so far has failed, so nothing was ever saved
+      # and each attempt recompiled all ~6000 targets from scratch — roughly 37 minutes to
+      # reach our own module, which is the very last thing built. Saving on failure too means
+      # a retry only recompiles what actually changed.
+      - name: Restore Bazel cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/telegram-bazel-cache
-          key: telegram-bazel-cache-${{ hashFiles('pampgram/mod/phantom-gift/telegram-ios.patch') }}
+          key: telegram-bazel-cache-${{ github.run_id }}
           restore-keys: |
             telegram-bazel-cache-
 
@@ -198,6 +203,13 @@ jobs:
             --buildNumber=1 \
             --configuration=release_arm64 \
             --outputBuildArtifactsPath="$GITHUB_WORKSPACE/output"
+
+      - name: Save Bazel cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/telegram-bazel-cache
+          key: telegram-bazel-cache-${{ github.run_id }}
 
       - name: Show what was produced
         if: always()
