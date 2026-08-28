@@ -30,7 +30,7 @@ index 1820be66..a6267acf 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-index 429cf39c..92842eaa 100644
+index 429cf39c..a9c77a7c 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 @@ -28,6 +28,9 @@ import GiftViewScreen
@@ -86,7 +86,7 @@ index 429cf39c..92842eaa 100644
                                  return true
                              case .limited:
                                  if case let .generic(gift) = $0 {
-@@ -230,6 +238,14 @@ final class GiftOptionsScreenComponent: Component {
+@@ -230,6 +238,18 @@ final class GiftOptionsScreenComponent: Component {
          private var isUpdating: Bool = false
          
          private var starsStateDisposable: Disposable?
@@ -97,11 +97,15 @@ index 429cf39c..92842eaa 100644
 +        // the balance has to update in place as gifts are sent from this same screen.
 +        private var pampGramPhantomGiftsEnabled = PampGramSettings.defaultSettings.phantomGiftsEnabled
 +        private var pampGramFakeStarsBalance = PampGramSettings.defaultSettings.fakeStarsBalance
++        // Independent of pampGramPhantomGiftsEnabled above: that one controls whether the
++        // "Подарок" tab itself exists, this one controls only whether the balance shown at
++        // the top of the screen (on every tab) is the fake one or the real one.
++        private var pampGramFakeStarsDisplayEnabled = PampGramSettings.defaultSettings.fakeStarsDisplayEnabled
 +        private var pampGramSettingsDisposable: Disposable?
          private var starsState: StarsContext.State?
          
          private let optionsPromise = Promise<[StarsTopUpOption]?>(nil)
-@@ -280,6 +296,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -280,6 +300,7 @@ final class GiftOptionsScreenComponent: Component {
          deinit {
              self.starsStateDisposable?.dispose()
              self.auctionDisposable.dispose()
@@ -109,7 +113,7 @@ index 429cf39c..92842eaa 100644
          }
  
          func scrollToTop() {
-@@ -291,15 +308,124 @@ final class GiftOptionsScreenComponent: Component {
+@@ -291,15 +312,124 @@ final class GiftOptionsScreenComponent: Component {
              self.updateScrolling(interactive: true, transition: self.nextScrollTransition ?? .immediate)
          }
          
@@ -235,19 +239,20 @@ index 429cf39c..92842eaa 100644
              if let controller = environment.controller() as? GiftOptionsScreen {
                  let mainController: ViewController
                  if let parentController = controller.parentController() {
-@@ -1011,6 +1137,23 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1011,6 +1141,24 @@ final class GiftOptionsScreenComponent: Component {
              self.appliedStarsFilter = self.starsFilter
              
              if self.component == nil {
 +                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
-+                |> map { ($0.phantomGiftsEnabled, $0.fakeStarsBalance) }
++                |> map { ($0.phantomGiftsEnabled, $0.fakeStarsBalance, $0.fakeStarsDisplayEnabled) }
 +                |> distinctUntilChanged(isEqual: { $0 == $1 })
-+                |> deliverOnMainQueue).start(next: { [weak self] enabled, fakeStarsBalance in
++                |> deliverOnMainQueue).start(next: { [weak self] enabled, fakeStarsBalance, fakeStarsDisplayEnabled in
 +                    guard let self else {
 +                        return
 +                    }
 +                    self.pampGramPhantomGiftsEnabled = enabled
 +                    self.pampGramFakeStarsBalance = fakeStarsBalance
++                    self.pampGramFakeStarsDisplayEnabled = fakeStarsDisplayEnabled
 +                    if !enabled, case .phantom = self.starsFilter {
 +                        self.starsFilter = .all
 +                    }
@@ -259,19 +264,20 @@ index 429cf39c..92842eaa 100644
                  self.starsStateDisposable = (component.starsContext.state
                  |> deliverOnMainQueue).start(next: { [weak self] state in
                      guard let self else {
-@@ -1219,7 +1362,19 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1219,7 +1367,20 @@ final class GiftOptionsScreenComponent: Component {
                  containerSize: availableSize
              )
              
 -            let formattedBalance = formatStarsAmountText(self.starsState?.balance ?? StarsAmount.zero, dateTimeFormat: environment.dateTimeFormat)
-+            // While the PampGram tab is enabled, the balance shown up top is the local fake
-+            // balance on every tab ("Все"/"Мои"/"Коллекционные"/"Подарок") — not the
-+            // account's real Stars balance. It's purely a display swap: real purchases on
-+            // the other three tabs still charge real Stars through the normal flow below,
-+            // completely unaffected by what this label shows. Only a purchase actually made
-+            // from the "Подарок" tab (openPhantomGift) ever touches the fake balance itself.
++            // While the "Локальные звёзды" PampGram toggle is on, the balance shown up top
++            // is the local fake balance on every tab ("Все"/"Мои"/"Коллекционные"/"Подарок")
++            // — not the account's real Stars balance. It's purely a display swap: real
++            // purchases on the other three tabs still charge real Stars through the normal
++            // flow below, completely unaffected by what this label shows. Only a purchase
++            // actually made from the "Подарок" tab (openPhantomGift) ever touches the fake
++            // balance itself, and that tab's own existence is a separate toggle.
 +            let displayedBalance: StarsAmount
-+            if self.pampGramPhantomGiftsEnabled {
++            if self.pampGramFakeStarsDisplayEnabled {
 +                displayedBalance = StarsAmount(value: self.pampGramFakeStarsBalance, nanos: 0)
 +            } else {
 +                displayedBalance = self.starsState?.balance ?? StarsAmount.zero
@@ -280,7 +286,7 @@ index 429cf39c..92842eaa 100644
              let smallLabelFont = Font.regular(11.0)
              let labelFont = Font.semibold(14.0)
              let balanceText = tonAmountAttributedString(formattedBalance, integralFont: labelFont, fractionalFont: smallLabelFont, color: theme.actionSheet.primaryTextColor, decimalSeparator: environment.dateTimeFormat.decimalSeparator)
-@@ -1646,7 +1801,17 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1646,7 +1807,17 @@ final class GiftOptionsScreenComponent: Component {
                          title: strings.Gift_Options_Gift_Filter_Collectibles
                      ))
                  }
@@ -404,7 +410,7 @@ index 806e652a..af17fef0 100644
              guard let controller = self.controller, !controller.presentAccountFrozenInfoIfNeeded() else {
                  return
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
-index c5f58f4b..90e62b50 100644
+index c5f58f4b..a1b223d1 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 @@ -12,6 +12,8 @@ import ItemListPeerItem
@@ -445,69 +451,45 @@ index c5f58f4b..90e62b50 100644
      let notificationsWarning: Bool
      if let settings = data.globalSettings {
          notificationsWarning = shouldDisplayNotificationsPermissionWarning(status: settings.notificationAuthorizationStatus, suppressed:  settings.notificationWarningSuppressed)
-@@ -256,38 +265,61 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+@@ -256,7 +265,19 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
              interaction.openSettings(.premium)
          }))
      }
 -    if let starsState = data.starsState {
--        if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
--            let balanceText: NSAttributedString
--            if abs(starsState.balance.value) > 0 {
--                let formattedLabel = formatStarsAmountText(starsState.balance, dateTimeFormat: presentationData.dateTimeFormat)
--                let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
--                let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
--                let labelColor = presentationData.theme.list.itemSecondaryTextColor
--                balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
--            } else {
--                balanceText = NSAttributedString()
-+    // PampGram: while the feature is on, these two rows always show the local fake
-+    // balance instead of the account's real one — including when the real balance is 0,
-+    // in which case stock Telegram would hide the "Мои GRAM" row entirely. Real balances
-+    // (data.starsState/data.tonState) are read only to fall back to stock behaviour when
-+    // the feature is off.
-+    if pampGramSettings.phantomGiftsEnabled {
++    // PampGram: "Локальные звёзды" and "Локальные TON/GRAM" are independent toggles — each
++    // row falls back to stock behaviour (real balance, hidden when it's 0) on its own,
++    // regardless of what the other one is set to.
++    if pampGramSettings.fakeStarsDisplayEnabled {
 +        let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
 +        let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
 +        let labelColor = presentationData.theme.list.itemSecondaryTextColor
-+
 +        let starsFormattedLabel = formatStarsAmountText(StarsAmount(value: pampGramSettings.fakeStarsBalance, nanos: 0), dateTimeFormat: presentationData.dateTimeFormat)
 +        let starsBalanceText = tonAmountAttributedString(starsFormattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
 +        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .attributedText(starsBalanceText), text: presentationData.strings.Settings_Stars, icon: PresentationResourcesSettings.stars, action: {
 +            interaction.openSettings(.stars)
 +        }))
-+
++    } else if let starsState = data.starsState {
+         if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
+             let balanceText: NSAttributedString
+             if abs(starsState.balance.value) > 0 {
+@@ -273,18 +294,22 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+             }))
+         }
+     }
+-    if let tonState = data.tonState {
++    if pampGramSettings.fakeTonDisplayEnabled {
++        let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
++        let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
++        let labelColor = presentationData.theme.list.itemSecondaryTextColor
 +        let tonFormattedLabel = formatTonAmountText(pampGramSettings.fakeTonBalanceNanos, dateTimeFormat: presentationData.dateTimeFormat)
 +        let tonBalanceText = tonAmountAttributedString(tonFormattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
 +        items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(tonBalanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
 +            interaction.openSettings(.ton)
 +        }))
-+    } else {
-+        if let starsState = data.starsState {
-+            if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
-+                let balanceText: NSAttributedString
-+                if abs(starsState.balance.value) > 0 {
-+                    let formattedLabel = formatStarsAmountText(starsState.balance, dateTimeFormat: presentationData.dateTimeFormat)
-+                    let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
-+                    let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
-+                    let labelColor = presentationData.theme.list.itemSecondaryTextColor
-+                    balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
-+                } else {
-+                    balanceText = NSAttributedString()
-+                }
-+                items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .attributedText(balanceText), text: presentationData.strings.Settings_Stars, icon: PresentationResourcesSettings.stars, action: {
-+                    interaction.openSettings(.stars)
-+                }))
-             }
--            items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 102, label: .attributedText(balanceText), text: presentationData.strings.Settings_Stars, icon: PresentationResourcesSettings.stars, action: {
--                interaction.openSettings(.stars)
--            }))
-         }
--    }
--    if let tonState = data.tonState {
--        if abs(tonState.balance.value) > 0 {
++    } else if let tonState = data.tonState {
+         if abs(tonState.balance.value) > 0 {
 -            let balanceText: NSAttributedString
-+        if let tonState = data.tonState {
-             if abs(tonState.balance.value) > 0 {
+-            if abs(tonState.balance.value) > 0 {
 -                let formattedLabel = formatTonAmountText(tonState.balance.value, dateTimeFormat: presentationData.dateTimeFormat)
 -                let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
 -                let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
@@ -515,26 +497,15 @@ index c5f58f4b..90e62b50 100644
 -                balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
 -            } else {
 -                balanceText = NSAttributedString()
-+                let balanceText: NSAttributedString
-+                if abs(tonState.balance.value) > 0 {
-+                    let formattedLabel = formatTonAmountText(tonState.balance.value, dateTimeFormat: presentationData.dateTimeFormat)
-+                    let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
-+                    let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
-+                    let labelColor = presentationData.theme.list.itemSecondaryTextColor
-+                    balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
-+                } else {
-+                    balanceText = NSAttributedString()
-+                }
-+                items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
-+                    interaction.openSettings(.ton)
-+                }))
-             }
--            items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
--                interaction.openSettings(.ton)
--            }))
-         }
-     }
-     if !isPremiumDisabled || context.isPremium {
+-            }
++            let formattedLabel = formatTonAmountText(tonState.balance.value, dateTimeFormat: presentationData.dateTimeFormat)
++            let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
++            let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
++            let labelColor = presentationData.theme.list.itemSecondaryTextColor
++            let balanceText = tonAmountAttributedString(formattedLabel, integralFont: labelFont, fractionalFont: smallLabelFont, color: labelColor, decimalSeparator: presentationData.dateTimeFormat.decimalSeparator)
+             items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
+                 interaction.openSettings(.ton)
+             }))
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
 index 066e81e6..42abb362 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
@@ -548,7 +519,7 @@ index 066e81e6..42abb362 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-index 87c58b5f..7a9be877 100644
+index 87c58b5f..75f6326f 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 @@ -25,6 +25,7 @@ import ItemListUI
@@ -610,14 +581,17 @@ index 87c58b5f..7a9be877 100644
                  if let subscriptionsContext = component.subscriptionsContext {
                      self.subscriptionsStateDisposable = (subscriptionsContext.state
                      |> deliverOnMainQueue).start(next: { [weak self] state in
-@@ -553,11 +574,20 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -553,11 +574,23 @@ final class StarsTransactionsScreenComponent: Component {
                  containerSize: CGSize(width: 120.0, height: 100.0)
              )
              
 +            // PampGram: the local fake balance in place of the real one, on both the small
-+            // top-right figure below and the big centered one further down.
++            // top-right figure below and the big centered one further down. "Локальные
++            // звёзды" and "Локальные TON/GRAM" are independent toggles, so this screen
++            // checks whichever one matches the currency it's actually showing.
++            let pampGramFakeDisplayEnabled = component.starsContext.ton ? self.pampGramSettings.fakeTonDisplayEnabled : self.pampGramSettings.fakeStarsDisplayEnabled
 +            let displayedBalance: StarsAmount
-+            if self.pampGramSettings.phantomGiftsEnabled {
++            if pampGramFakeDisplayEnabled {
 +                displayedBalance = component.starsContext.ton ? StarsAmount(value: self.pampGramSettings.fakeTonBalanceNanos, nanos: 0) : StarsAmount(value: self.pampGramSettings.fakeStarsBalance, nanos: 0)
 +            } else {
 +                displayedBalance = self.starsState?.balance ?? StarsAmount.zero
@@ -633,7 +607,7 @@ index 87c58b5f..7a9be877 100644
              }
              let smallLabelFont = Font.regular(11.0)
              let labelFont = Font.semibold(14.0)
-@@ -682,14 +712,17 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -682,14 +715,17 @@ final class StarsTransactionsScreenComponent: Component {
                                  theme: environment.theme,
                                  dateTimeFormat: environment.dateTimeFormat,
                                  title: environment.strings.Ton_AvailableBalance,
@@ -641,7 +615,7 @@ index 87c58b5f..7a9be877 100644
 +                                // PampGram: fake TON amount, but the real, live conversion rate
 +                                // — the "~$" figure this produces auto-adjusts with the market
 +                                // exactly like it would for a real balance.
-+                                value: self.pampGramSettings.phantomGiftsEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.availableBalance ?? CurrencyAmount(amount: .zero, currency: .ton)),
++                                value: self.pampGramSettings.fakeTonDisplayEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.availableBalance ?? CurrencyAmount(amount: .zero, currency: .ton)),
                                  rate: self.revenueState?.usdRate ?? 0.0
                              ))),
                              AnyComponentWithIdentity(id: 1, component: AnyComponent(StarsOverviewItemComponent(
@@ -649,11 +623,11 @@ index 87c58b5f..7a9be877 100644
                                  dateTimeFormat: environment.dateTimeFormat,
                                  title: environment.strings.Ton_LifetimeProceeds,
 -                                value: self.revenueState?.balances.overallRevenue ?? CurrencyAmount(amount: .zero, currency: .ton),
-+                                value: self.pampGramSettings.phantomGiftsEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.overallRevenue ?? CurrencyAmount(amount: .zero, currency: .ton)),
++                                value: self.pampGramSettings.fakeTonDisplayEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.overallRevenue ?? CurrencyAmount(amount: .zero, currency: .ton)),
                                  rate: self.revenueState?.usdRate ?? 0.0
                              )))
                          ],
-@@ -754,7 +787,7 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -754,7 +790,7 @@ final class StarsTransactionsScreenComponent: Component {
                              theme: environment.theme,
                              strings: environment.strings,
                              dateTimeFormat: environment.dateTimeFormat,

@@ -18,6 +18,16 @@ public struct PampGramSettings: Codable, Equatable {
     /// The mod's own play-money TON counter, in nanotons, for symmetry with the Stars one.
     /// Display only — PampGram has no wallet and moves no crypto.
     public var fakeTonBalanceNanos: Int64
+    /// Whether `fakeStarsBalance` is what's *displayed* in place of the real Stars balance
+    /// (gift-sending screen, Settings row, the Stars balance screen). Independent of
+    /// `phantomGiftsEnabled`: the "Подарок" tab and its spending can stay on with this off,
+    /// or vice versa — this toggle only ever affects what a number on screen reads, never
+    /// what gets spent.
+    public var fakeStarsDisplayEnabled: Bool
+    /// Same as `fakeStarsDisplayEnabled`, but for `fakeTonBalanceNanos` in place of the real
+    /// TON/GRAM balance. Independent of the Stars one on purpose, so either currency can be
+    /// faked on its own.
+    public var fakeTonDisplayEnabled: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -26,14 +36,18 @@ public struct PampGramSettings: Codable, Equatable {
         return PampGramSettings(
             phantomGiftsEnabled: true,
             fakeStarsBalance: defaultFakeStarsBalance,
-            fakeTonBalanceNanos: defaultFakeTonBalanceNanos
+            fakeTonBalanceNanos: defaultFakeTonBalanceNanos,
+            fakeStarsDisplayEnabled: true,
+            fakeTonDisplayEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
+        self.fakeStarsDisplayEnabled = fakeStarsDisplayEnabled
+        self.fakeTonDisplayEnabled = fakeTonDisplayEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -45,6 +59,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.phantomGiftsEnabled = try container.decodeIfPresent(Bool.self, forKey: .phantomGiftsEnabled) ?? defaults.phantomGiftsEnabled
         self.fakeStarsBalance = try container.decodeIfPresent(Int64.self, forKey: .fakeStarsBalance) ?? defaults.fakeStarsBalance
         self.fakeTonBalanceNanos = try container.decodeIfPresent(Int64.self, forKey: .fakeTonBalanceNanos) ?? defaults.fakeTonBalanceNanos
+        self.fakeStarsDisplayEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeStarsDisplayEnabled) ?? defaults.fakeStarsDisplayEnabled
+        self.fakeTonDisplayEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeTonDisplayEnabled) ?? defaults.fakeTonDisplayEnabled
     }
 }
 

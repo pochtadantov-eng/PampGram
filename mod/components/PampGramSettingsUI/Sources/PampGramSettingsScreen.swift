@@ -15,6 +15,8 @@ import PhantomGiftKit
 
 private final class PampGramSettingsArguments {
     let togglePhantomGifts: (Bool) -> Void
+    let toggleFakeStarsDisplay: (Bool) -> Void
+    let toggleFakeTonDisplay: (Bool) -> Void
     let editStarsBalance: () -> Void
     let editTonBalance: () -> Void
     let resetBalances: () -> Void
@@ -22,12 +24,16 @@ private final class PampGramSettingsArguments {
 
     init(
         togglePhantomGifts: @escaping (Bool) -> Void,
+        toggleFakeStarsDisplay: @escaping (Bool) -> Void,
+        toggleFakeTonDisplay: @escaping (Bool) -> Void,
         editStarsBalance: @escaping () -> Void,
         editTonBalance: @escaping () -> Void,
         resetBalances: @escaping () -> Void,
         deleteAllPhantomGifts: @escaping () -> Void
     ) {
         self.togglePhantomGifts = togglePhantomGifts
+        self.toggleFakeStarsDisplay = toggleFakeStarsDisplay
+        self.toggleFakeTonDisplay = toggleFakeTonDisplay
         self.editStarsBalance = editStarsBalance
         self.editTonBalance = editTonBalance
         self.resetBalances = resetBalances
@@ -50,7 +56,9 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case phantomGiftsFooter(String)
 
     case balancesHeader(String)
+    case fakeStarsDisplayToggle(String, Bool)
     case starsBalance(String, String)
+    case fakeTonDisplayToggle(String, Bool)
     case tonBalance(String, String)
     case resetBalances(String)
     case balancesFooter(String)
@@ -66,7 +74,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.about.rawValue
         case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter:
             return PampGramSettingsSection.phantomGifts.rawValue
-        case .balancesHeader, .starsBalance, .tonBalance, .resetBalances, .balancesFooter:
+        case .balancesHeader, .fakeStarsDisplayToggle, .starsBalance, .fakeTonDisplayToggle, .tonBalance, .resetBalances, .balancesFooter:
             return PampGramSettingsSection.balances.rawValue
         case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
             return PampGramSettingsSection.storage.rawValue
@@ -85,22 +93,26 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return 3
         case .balancesHeader:
             return 4
-        case .starsBalance:
+        case .fakeStarsDisplayToggle:
             return 5
-        case .tonBalance:
+        case .starsBalance:
             return 6
-        case .resetBalances:
+        case .fakeTonDisplayToggle:
             return 7
-        case .balancesFooter:
+        case .tonBalance:
             return 8
-        case .storageHeader:
+        case .resetBalances:
             return 9
-        case .phantomGiftsCount:
+        case .balancesFooter:
             return 10
-        case .deleteAllPhantomGifts:
+        case .storageHeader:
             return 11
-        case .storageFooter:
+        case .phantomGiftsCount:
             return 12
+        case .deleteAllPhantomGifts:
+            return 13
+        case .storageFooter:
+            return 14
         }
     }
 
@@ -120,6 +132,14 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case let .phantomGiftsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.togglePhantomGifts(value)
+            })
+        case let .fakeStarsDisplayToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeStarsDisplay(value)
+            })
+        case let .fakeTonDisplayToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeTonDisplay(value)
             })
         case let .starsBalance(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
@@ -223,10 +243,12 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
     entries.append(.phantomGiftsFooter("Добавляет отдельную вкладку «Подарок» в экран отправки подарков с тем же живым каталогом, что и «Все». Подарок с неё появляется только в вашей истории чата и выглядит как обычный отправленный подарок; собеседник его не получает и не видит."))
 
     entries.append(.balancesHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ"))
+    entries.append(.fakeStarsDisplayToggle("Локальные звёзды", settings.fakeStarsDisplayEnabled))
     entries.append(.starsBalance("Фантом-Stars", "\(settings.fakeStarsBalance)"))
+    entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.tonBalance("Фантом-TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
     entries.append(.resetBalances("Сбросить балансы"))
-    entries.append(.balancesFooter("Это счётчики самого мода. Настоящий баланс Stars и TON вашего аккаунта они не читают и не меняют — Telegram о них ничего не знает."))
+    entries.append(.balancesFooter("Каждый переключатель независимо решает, показывается ли фейковый баланс этой валюты вместо настоящего — в списке настроек Telegram, на экранах «Мои звёзды»/«Мои GRAM» и в шапке отправки подарка. Выключение не сбрасывает число ниже — оно просто перестаёт показываться, пока переключатель снова не включат. Настоящий баланс Stars и TON вашего аккаунта эти счётчики не читают и не меняют — Telegram о них ничего не знает."))
 
     entries.append(.storageHeader("ЛОКАЛЬНЫЕ ДАННЫЕ"))
     entries.append(.phantomGiftsCount("Фантом-подарков на устройстве", "\(phantomGiftCount)"))
@@ -245,6 +267,20 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.phantomGiftsEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeStarsDisplay: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeStarsDisplayEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeTonDisplay: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeTonDisplayEnabled = value
                 return settings
             }).start()
         },
