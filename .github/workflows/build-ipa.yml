@@ -53,29 +53,65 @@ jobs:
       # the DeveloperCertificates entry embedded in the .mobileprovision files exactly, so
       # the signing material itself is self-consistent — it just can't be read as shipped.
       #
-      # Re-encrypt it with AES-256 (same key, same cert, only the container changes), then
-      # prove it actually yields an identity before spending another 40 minutes compiling.
+      # Re-encrypt it (same key, same cert, only the container changes), then prove it
+      # actually yields an identity before spending another 40 minutes compiling.
+      #
+      # Run 2 narrowed it further: re-encoding with -macalg sha256 got
+      # "SecKeychainItemImport: MAC verification failed during PKCS12 import". Apple's
+      # PKCS#12 reader is picky about which MAC and PBE algorithms it accepts, and the exact
+      # combination that works isn't documented anywhere. So rather than burn one CI run per
+      # guess, try the plausible encodings in order and keep the first that genuinely
+      # imports — each attempt costs about a second.
+      #
+      # The password must stay empty throughout: ImportCertificates.py hardcodes
+      # `security import ... -P ''`, so a p12 with any other password would fail there.
       - name: Re-encode the fake signing certificate, and verify it imports
         working-directory: telegram-ios/build-system/fake-codesigning/certs
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          openssl version
+
           # OpenSSL 3 needs -legacy to read RC2-40; LibreSSL (Apple's /usr/bin/openssl) has no
           # such flag but reads it natively — so try one, fall back to the other.
           openssl pkcs12 -legacy -in SelfSigned.p12 -nodes -passin pass: -out /tmp/sc.pem 2>/dev/null \
             || openssl pkcs12 -in SelfSigned.p12 -nodes -passin pass: -out /tmp/sc.pem
-          openssl pkcs12 -export -in /tmp/sc.pem -out SelfSigned.p12 -passout pass: \
-            -keypbe AES-256-CBC -certpbe AES-256-CBC -macalg sha256
-          rm -f /tmp/sc.pem
-          echo "--- re-encoded, checking it imports ---"
-          security create-keychain -p pampgram preflight.keychain
-          security unlock-keychain -p pampgram preflight.keychain
-          security import SelfSigned.p12 -k preflight.keychain -P '' -T /usr/bin/codesign -A
-          security find-identity -v preflight.keychain
-          if ! security find-identity -v preflight.keychain | grep -q 'Telegram FZ-LLC'; then
-            echo "FAIL: the certificate still does not import as a usable identity."
+          if [ ! -s /tmp/sc.pem ]; then
+            echo "FAIL: could not decrypt the shipped p12 at all."
             exit 1
           fi
-          security delete-keychain preflight.keychain
+
+          try_variant() {
+            desc="$1"; shift
+            rm -f /tmp/try.p12
+            if ! openssl pkcs12 -export -in /tmp/sc.pem -out /tmp/try.p12 -passout pass: "$@" 2>/dev/null; then
+              echo "  [$desc] openssl could not produce this encoding — skipping"
+              return 1
+            fi
+            security delete-keychain preflight.keychain 2>/dev/null || true
+            security create-keychain -p pampgram preflight.keychain
+            security unlock-keychain -p pampgram preflight.keychain
+            if security import /tmp/try.p12 -k preflight.keychain -P '' -T /usr/bin/codesign -A 2>&1 \
+               && security find-identity -v preflight.keychain | grep -q 'Telegram FZ-LLC'; then
+              echo "  [$desc] imported successfully — using this one"
+              cp /tmp/try.p12 SelfSigned.p12
+              security find-identity -v preflight.keychain
+              security delete-keychain preflight.keychain 2>/dev/null || true
+              return 0
+            fi
+            echo "  [$desc] did not import"
+            security delete-keychain preflight.keychain 2>/dev/null || true
+            return 1
+          }
+
+          echo "--- trying encodings until one imports ---"
+          try_variant "AES-256 + SHA-1 MAC" -keypbe AES-256-CBC -certpbe AES-256-CBC -macalg sha1 \
+            || try_variant "AES-256, default MAC" -keypbe AES-256-CBC -certpbe AES-256-CBC \
+            || try_variant "3DES + SHA-1 MAC" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
+            || try_variant "openssl defaults" \
+            || { echo "FAIL: none of the encodings produced an importable identity."; exit 1; }
+
+          rm -f /tmp/sc.pem /tmp/try.p12
+          echo "OK: signing identity is available."
           echo "OK: signing identity is available."
 
       # The bundle_id and team_id MUST match what's baked into the fake provisioning profiles
