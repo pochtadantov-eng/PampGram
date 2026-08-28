@@ -78,10 +78,16 @@ public enum PampGramPhantomGiftMessage {
             }
             let action = TelegramMediaAction(action: actionType)
 
+            // Postbox returns the assigned MessageId keyed by globallyUniqueId, and only for
+            // messages that actually carry one (MessageHistoryTable.addMessages) — with nil
+            // here the result map comes back empty and we'd never learn the id, so deleting
+            // the gift later could not also remove its chat message. Real locally-created
+            // messages set this too; it is a purely local dedup key.
+            let globallyUniqueId = Int64.random(in: Int64.min ... Int64.max)
             let storeMessage = StoreMessage(
                 id: .Partial(peerId, Namespaces.Message.Local),
                 customStableId: nil,
-                globallyUniqueId: nil,
+                globallyUniqueId: globallyUniqueId,
                 groupingKey: nil,
                 threadId: nil,
                 timestamp: Int32(Date().timeIntervalSince1970),
@@ -97,7 +103,7 @@ public enum PampGramPhantomGiftMessage {
             )
 
             let insertedIds = transaction.addMessages([storeMessage], location: .Random)
-            return insertedIds.values.first
+            return insertedIds[globallyUniqueId]
         }
     }
 }
