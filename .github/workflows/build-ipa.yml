@@ -64,6 +64,15 @@ jobs:
       # ambiguity, where OpenSSL and Apple's Security framework derive the MAC key
       # differently, so Apple computes a different MAC and calls the file corrupt.
       #
+      # Run 4 confirmed that: with a password, the 3DES + SHA-1 MAC container reported
+      # "1 identity imported." Apple accepts AES-256 containers less reliably here (that
+      # variant returned "Unknown format in import"), so 3DES is tried first.
+      #
+      # Run 4 also exposed a bug in this check itself: it used `security find-identity -v`,
+      # and -v lists only identities that pass trust evaluation. A self-signed certificate
+      # never does, so the check rejected the very container that had just imported fine.
+      # Drop -v and list all identities instead.
+      #
       # Giving the container a real password sidesteps the ambiguity entirely. Since
       # ImportCertificates.py hardcodes `security import ... -P ''`, patch it to use the
       # same password. (A password on a .cer is simply ignored, so the other call sites in
@@ -96,10 +105,10 @@ jobs:
             security create-keychain -p preflight preflight.keychain
             security unlock-keychain -p preflight preflight.keychain
             if security import /tmp/try.p12 -k preflight.keychain -P "$PASS" -T /usr/bin/codesign -A 2>&1 \
-               && security find-identity -v preflight.keychain | grep -q 'Telegram FZ-LLC'; then
+               && security find-identity preflight.keychain | grep -q 'Telegram FZ-LLC'; then
               echo "  [$desc] imported successfully — using this one"
               cp /tmp/try.p12 "$P12"
-              security find-identity -v preflight.keychain
+              security find-identity preflight.keychain
               security delete-keychain preflight.keychain 2>/dev/null || true
               return 0
             fi
@@ -109,8 +118,8 @@ jobs:
           }
 
           echo "--- trying encodings until one imports ---"
-          try_variant "AES-256 + SHA-1 MAC" -keypbe AES-256-CBC -certpbe AES-256-CBC -macalg sha1 \
-            || try_variant "3DES + SHA-1 MAC" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
+          try_variant "3DES + SHA-1 MAC" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
+            || try_variant "AES-256 + SHA-1 MAC" -keypbe AES-256-CBC -certpbe AES-256-CBC -macalg sha1 \
             || try_variant "openssl defaults" \
             || { echo "FAIL: none of the encodings produced an importable identity."; exit 1; }
           rm -f /tmp/sc.pem /tmp/try.p12
