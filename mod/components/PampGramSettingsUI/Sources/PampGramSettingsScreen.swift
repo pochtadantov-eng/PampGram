@@ -218,9 +218,9 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
 
     entries.append(.aboutText("PampGram меняет только то, что видите вы на этом устройстве. Ничего из перечисленного ниже не отправляется в Telegram, не меняет состояние чужого аккаунта, не трогает настоящие Stars и не создаёт настоящие подарки."))
 
-    entries.append(.phantomGiftsHeader("ФАНТОМ-ПОДАРКИ"))
-    entries.append(.phantomGiftsToggle("Вкладка «Фантом»", settings.phantomGiftsEnabled))
-    entries.append(.phantomGiftsFooter("Добавляет отдельную вкладку «Фантом» в экран отправки подарков. Подарок с неё появляется только в вашей истории чата и помечен ленточкой «Фантом»; собеседник его не получает и не видит."))
+    entries.append(.phantomGiftsHeader("ЛОКАЛЬНЫЕ ПОДАРКИ"))
+    entries.append(.phantomGiftsToggle("Вкладка «Подарок»", settings.phantomGiftsEnabled))
+    entries.append(.phantomGiftsFooter("Добавляет отдельную вкладку «Подарок» в экран отправки подарков с тем же живым каталогом, что и «Все». Подарок с неё появляется только в вашей истории чата и выглядит как обычный отправленный подарок; собеседник его не получает и не видит."))
 
     entries.append(.balancesHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ"))
     entries.append(.starsBalance("Фантом-Stars", "\(settings.fakeStarsBalance)"))
