@@ -168,21 +168,40 @@ jobs:
               exit 1
             fi
           else
-            case "$TELEGRAM_API_ID" in
-              *[!0-9]*|"")
-                echo "FAIL: TELEGRAM_API_ID must be digits only; got ${#TELEGRAM_API_ID} character(s)."
-                echo "Looks like the api_hash, or a stray space, ended up in this secret."
-                exit 1
-                ;;
-            esac
-            # An api_hash is exactly 32 lowercase hex characters. Anything else means the wrong
-            # field was copied — a truncated value here fails at login, not at build time.
-            if ! printf '%s' "$TELEGRAM_API_HASH" | grep -Eqi '^[0-9a-f]{32}$'; then
-              echo "FAIL: TELEGRAM_API_HASH is not 32 hex characters (got ${#TELEGRAM_API_HASH})."
-              echo "On my.telegram.org/apps it is the long string under the numeric App api_id."
+            # Whitespace is stripped rather than rejected: a value pasted on a phone very
+            # often picks up a trailing space or newline, and Telegram would reject the pair
+            # at login with nothing to explain why.
+            API_ID="$(printf '%s' "$TELEGRAM_API_ID" | tr -d '[:space:]')"
+            API_HASH="$(printf '%s' "$TELEGRAM_API_HASH" | tr -d '[:space:]')"
+
+            if [[ ! "$API_ID" =~ ^[0-9]+$ ]]; then
+              echo "FAIL: TELEGRAM_API_ID must be digits only; got ${#API_ID} character(s)."
+              echo "Looks like the api_hash ended up in this secret."
               exit 1
             fi
-            echo "OK: using your own api_id (${#TELEGRAM_API_ID} digits) and api_hash (32 hex)."
+
+            # An api_hash is exactly 32 hex characters. A bash regex rather than a piped
+            # grep: this ran once as `printf | grep -Eqi` under `set -o pipefail` and reported
+            # "is not 32 hex characters (got 32)" — self-contradictory, and useless for
+            # working out what was actually wrong with the value.
+            if [[ ! "$API_HASH" =~ ^[0-9a-fA-F]{32}$ ]]; then
+              echo "FAIL: TELEGRAM_API_HASH is not a valid api_hash."
+              echo "  length after trimming spaces: ${#API_HASH} (expected 32)"
+              # Shape only: every hex character becomes 'x', anything else is shown as-is.
+              # Whatever shows through is by definition NOT part of a valid api_hash, and it
+              # is the one thing that makes a bad paste diagnosable.
+              echo "  shape (hex shown as x): $(printf '%s' "$API_HASH" | sed 's/[0-9a-fA-F]/x/g')"
+              echo
+              echo "It is 32 characters, digits and the letters a-f only, e.g."
+              echo "  a1b2c3d4e5f67890abcdef1234567890"
+              echo "On my.telegram.org/apps it is the long string under the numeric App api_id."
+              echo "If a letter outside a-f shows above, the wrong field was copied."
+              exit 1
+            fi
+
+            TELEGRAM_API_ID="$API_ID"
+            TELEGRAM_API_HASH="$API_HASH"
+            echo "OK: using your own api_id (${#API_ID} digits) and api_hash (32 hex)."
           fi
 
           cat > build-system/pampgram-configuration.json <<EOF
