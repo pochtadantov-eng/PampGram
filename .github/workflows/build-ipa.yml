@@ -38,6 +38,46 @@ jobs:
           cp -r ../pampgram/mod/phantom-gift/PhantomGiftKit \
             submodules/TelegramUI/Components/Gifts/PhantomGiftKit
 
+      # Run 1 compiled the whole app fine, then died at the very last step:
+      #   "Unable to find an identity on the system matching the ones in
+      #    .../provisioning/Widget.mobileprovision"
+      #
+      # The shipped certs/SelfSigned.p12 is encrypted with pbeWithSHA1And40BitRC2-CBC —
+      # 40-bit RC2, which modern crypto stacks refuse outright (OpenSSL 3 errors with
+      # "unsupported: RC2-40-CBC"). ImportCertificates.py calls `security import` with
+      # check_result=False, so the failed import is swallowed silently and the build only
+      # falls over ~40 minutes later, at signing, with no hint of the real cause.
+      #
+      # Verified this is the *only* problem: the SHA-1 fingerprint of the cert inside
+      # SelfSigned.p12 (D3:45:DE:EE:63:A1:D7:16:F2:23:25:8E:9C:2E:F3:EB:FB:DC:C0:11) matches
+      # the DeveloperCertificates entry embedded in the .mobileprovision files exactly, so
+      # the signing material itself is self-consistent — it just can't be read as shipped.
+      #
+      # Re-encrypt it with AES-256 (same key, same cert, only the container changes), then
+      # prove it actually yields an identity before spending another 40 minutes compiling.
+      - name: Re-encode the fake signing certificate, and verify it imports
+        working-directory: telegram-ios/build-system/fake-codesigning/certs
+        run: |
+          set -euo pipefail
+          # OpenSSL 3 needs -legacy to read RC2-40; LibreSSL (Apple's /usr/bin/openssl) has no
+          # such flag but reads it natively — so try one, fall back to the other.
+          openssl pkcs12 -legacy -in SelfSigned.p12 -nodes -passin pass: -out /tmp/sc.pem 2>/dev/null \
+            || openssl pkcs12 -in SelfSigned.p12 -nodes -passin pass: -out /tmp/sc.pem
+          openssl pkcs12 -export -in /tmp/sc.pem -out SelfSigned.p12 -passout pass: \
+            -keypbe AES-256-CBC -certpbe AES-256-CBC -macalg sha256
+          rm -f /tmp/sc.pem
+          echo "--- re-encoded, checking it imports ---"
+          security create-keychain -p pampgram preflight.keychain
+          security unlock-keychain -p pampgram preflight.keychain
+          security import SelfSigned.p12 -k preflight.keychain -P '' -T /usr/bin/codesign -A
+          security find-identity -v preflight.keychain
+          if ! security find-identity -v preflight.keychain | grep -q 'Telegram FZ-LLC'; then
+            echo "FAIL: the certificate still does not import as a usable identity."
+            exit 1
+          fi
+          security delete-keychain preflight.keychain
+          echo "OK: signing identity is available."
+
       # The bundle_id and team_id MUST match what's baked into the fake provisioning profiles
       # shipped in build-system/fake-codesigning/profiles/ (Telegram.mobileprovision carries
       # application-identifier C67CF9S4VU.ph.telegra.Telegraph) — a mismatch fails codesigning.
