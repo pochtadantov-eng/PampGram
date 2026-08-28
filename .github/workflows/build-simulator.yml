@@ -127,9 +127,21 @@ jobs:
       # does, so the xcodeproj.bazelrc it writes is missing it, and xcodebuild later still goes
       # looking for a real local provisioning profile. Appending the flag ourselves, since we
       # know the correct name.
+      # Runs #8 and #9 (COMPILER_INDEX_STORE_ENABLE=NO) still failed with the *exact* same
+      # "Building for device" error, unchanged down to the Bazel config hash (c357481) — proof
+      # the appended line was never actually being read by the failing invocation. The build
+      # logs show a SECOND xcodeproj.bazelrc nested at
+      # Telegram/Telegram.xcodeproj/rules_xcodeproj/bazel/xcodeproj.bazelrc ("Found applicable
+      # config definition ... in file .../Telegram.xcodeproj/rules_xcodeproj/bazel/
+      # xcodeproj.bazelrc") — a copy made at generateProject time that the embedded
+      # "Generate Bazel Dependencies" script phases read at actual xcodebuild time, not the
+      # root-level file I'd been appending to. Appending to both now.
       - name: Work around missing --disableProvisioningProfiles in generated project
         working-directory: telegram-ios
-        run: echo 'build --//Telegram:disableProvisioningProfiles' >> xcodeproj.bazelrc
+        run: |
+          echo 'build --//Telegram:disableProvisioningProfiles' >> xcodeproj.bazelrc
+          find Telegram/Telegram.xcodeproj -name 'xcodeproj.bazelrc' -print
+          find Telegram/Telegram.xcodeproj -name 'xcodeproj.bazelrc' -exec sh -c 'echo "build --//Telegram:disableProvisioningProfiles" >> "$1"' _ {} \;
 
       # Uncertain step, flagged honestly: I couldn't verify the generated project's exact
       # scheme name without macOS to run this on. `-list` prints the real scheme names into
