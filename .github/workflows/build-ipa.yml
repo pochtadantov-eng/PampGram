@@ -56,25 +56,30 @@ jobs:
       # Re-encrypt it (same key, same cert, only the container changes), then prove it
       # actually yields an identity before spending another 40 minutes compiling.
       #
-      # Run 2 narrowed it further: re-encoding with -macalg sha256 got
-      # "SecKeychainItemImport: MAC verification failed during PKCS12 import". Apple's
-      # PKCS#12 reader is picky about which MAC and PBE algorithms it accepts, and the exact
-      # combination that works isn't documented anywhere. So rather than burn one CI run per
-      # guess, try the plausible encodings in order and keep the first that genuinely
-      # imports — each attempt costs about a second.
+      # Runs 2 and 3 pinned down the rest. Run 2 failed on -macalg sha256 with
+      # "SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong
+      # password?)". Run 3 then tried four different PBE/MAC combinations and every single
+      # one failed *identically* — which rules the algorithms out: the one thing they all
+      # shared was the empty password. That is the long-standing PKCS#12 empty-password
+      # ambiguity, where OpenSSL and Apple's Security framework derive the MAC key
+      # differently, so Apple computes a different MAC and calls the file corrupt.
       #
-      # The password must stay empty throughout: ImportCertificates.py hardcodes
-      # `security import ... -P ''`, so a p12 with any other password would fail there.
+      # Giving the container a real password sidesteps the ambiguity entirely. Since
+      # ImportCertificates.py hardcodes `security import ... -P ''`, patch it to use the
+      # same password. (A password on a .cer is simply ignored, so the other call sites in
+      # that script are unaffected.)
       - name: Re-encode the fake signing certificate, and verify it imports
-        working-directory: telegram-ios/build-system/fake-codesigning/certs
+        working-directory: telegram-ios
         run: |
           set -uo pipefail
           openssl version
+          P12=build-system/fake-codesigning/certs/SelfSigned.p12
+          PASS=pampgram
 
-          # OpenSSL 3 needs -legacy to read RC2-40; LibreSSL (Apple's /usr/bin/openssl) has no
-          # such flag but reads it natively — so try one, fall back to the other.
-          openssl pkcs12 -legacy -in SelfSigned.p12 -nodes -passin pass: -out /tmp/sc.pem 2>/dev/null \
-            || openssl pkcs12 -in SelfSigned.p12 -nodes -passin pass: -out /tmp/sc.pem
+          # OpenSSL 3 needs -legacy to read the shipped RC2-40 container; LibreSSL (Apple's
+          # /usr/bin/openssl) has no such flag but reads it natively — try one, fall back.
+          openssl pkcs12 -legacy -in "$P12" -nodes -passin pass: -out /tmp/sc.pem 2>/dev/null \
+            || openssl pkcs12 -in "$P12" -nodes -passin pass: -out /tmp/sc.pem
           if [ ! -s /tmp/sc.pem ]; then
             echo "FAIL: could not decrypt the shipped p12 at all."
             exit 1
@@ -83,17 +88,17 @@ jobs:
           try_variant() {
             desc="$1"; shift
             rm -f /tmp/try.p12
-            if ! openssl pkcs12 -export -in /tmp/sc.pem -out /tmp/try.p12 -passout pass: "$@" 2>/dev/null; then
+            if ! openssl pkcs12 -export -in /tmp/sc.pem -out /tmp/try.p12 -passout "pass:$PASS" "$@" 2>/dev/null; then
               echo "  [$desc] openssl could not produce this encoding — skipping"
               return 1
             fi
             security delete-keychain preflight.keychain 2>/dev/null || true
-            security create-keychain -p pampgram preflight.keychain
-            security unlock-keychain -p pampgram preflight.keychain
-            if security import /tmp/try.p12 -k preflight.keychain -P '' -T /usr/bin/codesign -A 2>&1 \
+            security create-keychain -p preflight preflight.keychain
+            security unlock-keychain -p preflight preflight.keychain
+            if security import /tmp/try.p12 -k preflight.keychain -P "$PASS" -T /usr/bin/codesign -A 2>&1 \
                && security find-identity -v preflight.keychain | grep -q 'Telegram FZ-LLC'; then
               echo "  [$desc] imported successfully — using this one"
-              cp /tmp/try.p12 SelfSigned.p12
+              cp /tmp/try.p12 "$P12"
               security find-identity -v preflight.keychain
               security delete-keychain preflight.keychain 2>/dev/null || true
               return 0
@@ -105,13 +110,22 @@ jobs:
 
           echo "--- trying encodings until one imports ---"
           try_variant "AES-256 + SHA-1 MAC" -keypbe AES-256-CBC -certpbe AES-256-CBC -macalg sha1 \
-            || try_variant "AES-256, default MAC" -keypbe AES-256-CBC -certpbe AES-256-CBC \
             || try_variant "3DES + SHA-1 MAC" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
             || try_variant "openssl defaults" \
             || { echo "FAIL: none of the encodings produced an importable identity."; exit 1; }
-
           rm -f /tmp/sc.pem /tmp/try.p12
-          echo "OK: signing identity is available."
+
+          python3 - <<'PYEOF'
+          import re
+          path = "build-system/Make/ImportCertificates.py"
+          src = open(path).read()
+          patched, n = re.subn(r"('-P',\s*\n\s*)''", r"\1'pampgram'", src)
+          if n == 0:
+              raise SystemExit("FAIL: could not find the -P '' arguments to patch")
+          open(path, "w").write(patched)
+          print(f"Patched {n} occurrence(s) of -P '' in ImportCertificates.py")
+          PYEOF
+
           echo "OK: signing identity is available."
 
       # The bundle_id and team_id MUST match what's baked into the fake provisioning profiles
