@@ -142,8 +142,9 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
     return entries
 }
 
-/// The "Удалённые сообщения" section: the anti-delete feature's master toggle, its per-chat
-/// exclusion list, and a link into its capture history.
+/// The "Чаты" section (hub row title — the screen itself still deals with anti-delete
+/// messages specifically): the anti-delete feature's master toggle, its per-chat exclusion
+/// list, and a link into its capture history.
 public func pampGramMessagesSettingsController(context: AccountContext) -> ViewController {
     var presentTooltipImpl: ((String) -> Void)?
     var pushControllerImpl: ((ViewController) -> Void)?
@@ -189,7 +190,7 @@ public func pampGramMessagesSettingsController(context: AccountContext) -> ViewC
     |> map { presentationData, settings, history -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
-            title: .text("Удалённые сообщения"),
+            title: .text("Чаты"),
             leftNavigationButton: nil,
             rightNavigationButton: nil,
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),

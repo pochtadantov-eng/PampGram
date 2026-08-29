@@ -209,7 +209,7 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     entries.append(.giftsRow(2, "Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.giftsRow(3, "От него", settings.fromHimGiftsEnabled))
 
-    entries.append(.messagesHeader("УДАЛЁННЫЕ СООБЩЕНИЯ"))
+    entries.append(.messagesHeader("ЧАТЫ"))
     entries.append(.messagesRow(0, "Удалённые сообщения", settings.antiDeleteMessagesEnabled))
     entries.append(.messagesRow(1, "Изменить визуально", settings.visualEditEnabled))
 
