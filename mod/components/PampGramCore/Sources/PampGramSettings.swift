@@ -149,6 +149,13 @@ public struct PampGramSettings: Codable, Equatable {
     public var chatLockEnabled: Bool
     public var chatLockPin: String
     public var lockedChatPeerIds: [PeerId]
+    /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
+    /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
+    /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
+    /// on. In kopecks (1/100 ruble), same reasoning as `fakeTonBalanceNanos` being in
+    /// nanotons: keeps arithmetic exact without floating point.
+    public var localRublesBalanceKopecks: Int64
+    public var localRublesPurchaseEnabled: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -175,11 +182,13 @@ public struct PampGramSettings: Codable, Equatable {
             fakeLocationLongitude: 0,
             chatLockEnabled: false,
             chatLockPin: "",
-            lockedChatPeerIds: []
+            lockedChatPeerIds: [],
+            localRublesBalanceKopecks: 0,
+            localRublesPurchaseEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId]) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -201,6 +210,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.chatLockEnabled = chatLockEnabled
         self.chatLockPin = chatLockPin
         self.lockedChatPeerIds = lockedChatPeerIds
+        self.localRublesBalanceKopecks = localRublesBalanceKopecks
+        self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -230,6 +241,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.chatLockEnabled = try container.decodeIfPresent(Bool.self, forKey: .chatLockEnabled) ?? defaults.chatLockEnabled
         self.chatLockPin = try container.decodeIfPresent(String.self, forKey: .chatLockPin) ?? defaults.chatLockPin
         self.lockedChatPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .lockedChatPeerIds) ?? defaults.lockedChatPeerIds
+        self.localRublesBalanceKopecks = try container.decodeIfPresent(Int64.self, forKey: .localRublesBalanceKopecks) ?? defaults.localRublesBalanceKopecks
+        self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
     }
 }
 

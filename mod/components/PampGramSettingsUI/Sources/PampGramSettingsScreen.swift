@@ -22,6 +22,8 @@ private final class PampGramSettingsArguments {
     let toggleFromHimGifts: (Bool) -> Void
     let resetBalances: () -> Void
     let deleteAllPhantomGifts: () -> Void
+    let toggleLocalRublesPurchase: (Bool) -> Void
+    let topUpLocalRubles: () -> Void
 
     init(
         togglePhantomGifts: @escaping (Bool) -> Void,
@@ -31,7 +33,9 @@ private final class PampGramSettingsArguments {
         editTonBalance: @escaping () -> Void,
         toggleFromHimGifts: @escaping (Bool) -> Void,
         resetBalances: @escaping () -> Void,
-        deleteAllPhantomGifts: @escaping () -> Void
+        deleteAllPhantomGifts: @escaping () -> Void,
+        toggleLocalRublesPurchase: @escaping (Bool) -> Void,
+        topUpLocalRubles: @escaping () -> Void
     ) {
         self.togglePhantomGifts = togglePhantomGifts
         self.toggleFakeStarsDisplay = toggleFakeStarsDisplay
@@ -41,6 +45,8 @@ private final class PampGramSettingsArguments {
         self.toggleFromHimGifts = toggleFromHimGifts
         self.resetBalances = resetBalances
         self.deleteAllPhantomGifts = deleteAllPhantomGifts
+        self.toggleLocalRublesPurchase = toggleLocalRublesPurchase
+        self.topUpLocalRubles = topUpLocalRubles
     }
 }
 
@@ -49,6 +55,7 @@ private enum PampGramSettingsSection: Int32 {
     case phantomGifts
     case starsBalance
     case tonBalance
+    case localRubles
     case fromHimGifts
     case resetBalances
     case storage
@@ -71,6 +78,11 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case tonBalance(String, String)
     case tonBalanceFooter(String)
 
+    case localRublesHeader(String)
+    case localRublesPurchaseToggle(String, Bool)
+    case localRublesBalance(String, String)
+    case localRublesFooter(String)
+
     case fromHimGiftsToggle(String, Bool)
     case fromHimGiftsFooter(String)
 
@@ -92,6 +104,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.starsBalance.rawValue
         case .tonBalanceHeader, .fakeTonDisplayToggle, .tonBalance, .tonBalanceFooter:
             return PampGramSettingsSection.tonBalance.rawValue
+        case .localRublesHeader, .localRublesPurchaseToggle, .localRublesBalance, .localRublesFooter:
+            return PampGramSettingsSection.localRubles.rawValue
         case .fromHimGiftsToggle, .fromHimGiftsFooter:
             return PampGramSettingsSection.fromHimGifts.rawValue
         case .resetBalances, .resetBalancesFooter:
@@ -131,18 +145,26 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return 12
         case .tonBalanceFooter:
             return 13
-        case .resetBalances:
+        case .localRublesHeader:
             return 14
-        case .resetBalancesFooter:
+        case .localRublesPurchaseToggle:
             return 15
-        case .storageHeader:
+        case .localRublesBalance:
             return 16
-        case .phantomGiftsCount:
+        case .localRublesFooter:
             return 17
-        case .deleteAllPhantomGifts:
+        case .resetBalances:
             return 18
-        case .storageFooter:
+        case .resetBalancesFooter:
             return 19
+        case .storageHeader:
+            return 20
+        case .phantomGiftsCount:
+            return 21
+        case .deleteAllPhantomGifts:
+            return 22
+        case .storageFooter:
+            return 23
         }
     }
 
@@ -155,10 +177,18 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         switch self {
         case let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .storageHeader(text):
+        case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .storageHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .fromHimGiftsFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
+        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case let .localRublesPurchaseToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleLocalRublesPurchase(value)
+            })
+        case let .localRublesBalance(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.topUpLocalRubles()
+            })
         case let .phantomGiftsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.togglePhantomGifts(value)
@@ -267,6 +297,51 @@ private func parseFakeStars(_ text: String) -> Int64? {
     return Int64(normalized)
 }
 
+/// Formats kopecks as "102,99 ₽" — Russian comma-decimal, matching how the real "Купить
+/// звёзды" sheet PampGram's fake one imitates shows its own prices.
+func formatRubles(kopecks: Int64) -> String {
+    let sign = kopecks < 0 ? "-" : ""
+    let magnitude = kopecks.magnitude
+    let whole = magnitude / 100
+    let fraction = magnitude % 100
+    return "\(sign)\(whole),\(fraction < 10 ? "0" : "")\(fraction) ₽"
+}
+
+/// Parses a top-up amount typed as whole or fractional rubles ("500" or "199,99") into
+/// kopecks. Returns nil for anything that isn't a plain non-negative amount.
+private func parseRublesTopUp(_ text: String) -> Int64? {
+    let normalized = text.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: ",", with: ".")
+    guard !normalized.isEmpty else {
+        return nil
+    }
+    let parts = normalized.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+    guard let wholePart = parts.first else {
+        return nil
+    }
+    let wholeString = wholePart.isEmpty ? "0" : String(wholePart)
+    guard wholeString.allSatisfy({ $0.isNumber }), let whole = Int64(wholeString) else {
+        return nil
+    }
+    var fraction: Int64 = 0
+    if parts.count == 2 {
+        var fractionString = String(parts[1])
+        guard fractionString.allSatisfy({ $0.isNumber }), fractionString.count <= 2 else {
+            return nil
+        }
+        while fractionString.count < 2 {
+            fractionString.append("0")
+        }
+        guard let value = Int64(fractionString) else {
+            return nil
+        }
+        fraction = value
+    }
+    guard whole <= (Int64.max - fraction) / 100 else {
+        return nil
+    }
+    return whole * 100 + fraction
+}
+
 private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCount: Int) -> [PampGramSettingsEntry] {
     var entries: [PampGramSettingsEntry] = []
 
@@ -288,6 +363,11 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.tonBalance("Фантом-TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
     entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM, независимо от звёзд."))
+
+    entries.append(.localRublesHeader("ЛОКАЛЬНЫЕ РУБЛИ"))
+    entries.append(.localRublesPurchaseToggle("Покупка звёзд за рубли", settings.localRublesPurchaseEnabled))
+    entries.append(.localRublesBalance("Баланс карты", formatRubles(kopecks: settings.localRublesBalanceKopecks)))
+    entries.append(.localRublesFooter("Пока включено, кнопка «Пополнить» на экране звёзд открывает не настоящую оплату Apple, а покупку за эту локальную карту — списывает отсюда и зачисляет в «Фантом-Stars» выше."))
 
     entries.append(.resetBalances("Сбросить балансы"))
     entries.append(.resetBalancesFooter("Возвращает оба счётчика к значениям по умолчанию."))
@@ -383,6 +463,33 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                 settings.fromHimGiftsEnabled = value
                 return settings
             }).start()
+        },
+        toggleLocalRublesPurchase: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.localRublesPurchaseEnabled = value
+                return settings
+            }).start()
+        },
+        topUpLocalRubles: {
+            presentControllerImpl?(promptController(
+                context: context,
+                text: "Пополнить карту",
+                subtitle: "Сумма в рублях, добавится к текущему балансу карты.",
+                value: "",
+                placeholder: "500",
+                characterLimit: 12,
+                apply: { value in
+                    guard let value, let addedKopecks = parseRublesTopUp(value), addedKopecks > 0 else {
+                        return
+                    }
+                    let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                        var settings = settings
+                        settings.localRublesBalanceKopecks += addedKopecks
+                        return settings
+                    }).start()
+                }
+            ))
         },
         resetBalances: {
             presentControllerImpl?(textAlertController(

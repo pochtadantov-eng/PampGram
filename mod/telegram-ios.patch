@@ -1746,15 +1746,16 @@ index bc8f9043..dc453cad 100644
                  rawString = presentationData.strings.StarsBalance_YourBalance(balanceString).string
              } else {
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
-index 066e81e6..a8a4aae3 100644
+index 066e81e6..d7f615bf 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
-@@ -51,6 +51,8 @@ swift_library(
+@@ -51,6 +51,9 @@ swift_library(
          "//submodules/TelegramUI/Components/Gifts/GiftAnimationComponent",
          "//submodules/TelegramUI/Components/Premium/PremiumCoinComponent",
          "//submodules/TelegramUI/Components/Premium/PremiumDiamondComponent",
 +        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
      ],
      visibility = [
          "//visibility:public",
@@ -1941,18 +1942,19 @@ index 04768a76..fa75dce2 100644
              self.environment = environment
              
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-index 87c58b5f..ada9917e 100644
+index 87c58b5f..78a3939e 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-@@ -25,6 +25,7 @@ import ItemListUI
+@@ -25,6 +25,8 @@ import ItemListUI
  import StarsWithdrawalScreen
  import PremiumDiamondComponent
  import StatisticsUI
 +import PampGramCore
++import PampGramSettingsUI
  
  private let initialSubscriptionsDisplayedLimit: Int32 = 3
  
-@@ -137,7 +138,14 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -137,7 +139,14 @@ final class StarsTransactionsScreenComponent: Component {
          
          private var stateDisposable: Disposable?
          private var starsState: StarsContext.State?
@@ -1968,7 +1970,7 @@ index 87c58b5f..ada9917e 100644
          private var revenueStateDisposable: Disposable?
          private var revenueState: StarsRevenueStats?
          
-@@ -186,6 +194,7 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -186,6 +195,7 @@ final class StarsTransactionsScreenComponent: Component {
          
          deinit {
              self.stateDisposable?.dispose()
@@ -1976,7 +1978,7 @@ index 87c58b5f..ada9917e 100644
              self.revenueStateDisposable?.dispose()
              self.subscriptionsStateDisposable?.dispose()
          }
-@@ -374,12 +383,24 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -374,12 +384,24 @@ final class StarsTransactionsScreenComponent: Component {
                          return
                      }
                      self.revenueState = state.stats
@@ -2003,7 +2005,7 @@ index 87c58b5f..ada9917e 100644
                  if let subscriptionsContext = component.subscriptionsContext {
                      self.subscriptionsStateDisposable = (subscriptionsContext.state
                      |> deliverOnMainQueue).start(next: { [weak self] state in
-@@ -553,11 +574,23 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -553,11 +575,23 @@ final class StarsTransactionsScreenComponent: Component {
                  containerSize: CGSize(width: 120.0, height: 100.0)
              )
              
@@ -2029,7 +2031,7 @@ index 87c58b5f..ada9917e 100644
              }
              let smallLabelFont = Font.regular(11.0)
              let labelFont = Font.semibold(14.0)
-@@ -682,14 +715,17 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -682,14 +716,17 @@ final class StarsTransactionsScreenComponent: Component {
                                  theme: environment.theme,
                                  dateTimeFormat: environment.dateTimeFormat,
                                  title: environment.strings.Ton_AvailableBalance,
@@ -2049,7 +2051,7 @@ index 87c58b5f..ada9917e 100644
                                  rate: self.revenueState?.usdRate ?? 0.0
                              )))
                          ],
-@@ -754,7 +790,7 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -754,7 +791,7 @@ final class StarsTransactionsScreenComponent: Component {
                              theme: environment.theme,
                              strings: environment.strings,
                              dateTimeFormat: environment.dateTimeFormat,
@@ -2058,7 +2060,7 @@ index 87c58b5f..ada9917e 100644
                              currency: component.starsContext.ton ? .ton : .stars,
                              rate: nil,
                              actionTitle: component.starsContext.ton ? environment.strings.Ton_WithdrawViaFragment : (withdrawAvailable ? environment.strings.Stars_Intro_BuyShort : environment.strings.Stars_Intro_Buy),
-@@ -1084,12 +1120,14 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1084,12 +1121,14 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: allTransactionsContext,
                          isAccount: true,
@@ -2074,7 +2076,7 @@ index 87c58b5f..ada9917e 100644
                  panelItems.append(StarsTransactionsPanelContainerComponent.Item(
                      id: "incoming",
                      title: environment.strings.Stars_Intro_Incoming,
-@@ -1097,12 +1135,14 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1097,12 +1136,14 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: incomingTransactionsContext,
                          isAccount: true,
@@ -2090,7 +2092,7 @@ index 87c58b5f..ada9917e 100644
                  panelItems.append(StarsTransactionsPanelContainerComponent.Item(
                      id: "outgoing",
                      title: environment.strings.Stars_Intro_Outgoing,
-@@ -1110,6 +1150,8 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1110,6 +1151,8 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: outgoingTransactionsContext,
                          isAccount: true,
@@ -2099,6 +2101,84 @@ index 87c58b5f..ada9917e 100644
                          action: { transaction in
                              component.openTransaction(transaction)
                          }
+@@ -1324,35 +1367,56 @@ public final class StarsTransactionsScreen: ViewControllerComponentContainer {
+             guard let self else {
+                 return
+             }
+-            let _ = (self.options.get()
++            let presentPurchaseToast: (Int64) -> Void = { [weak self] stars in
++                guard let self else {
++                    return
++                }
++                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
++                let resultController = UndoOverlayController(
++                    presentationData: presentationData,
++                    content: .universal(
++                        animation: "StarsBuy",
++                        scale: 0.066,
++                        colors: [:],
++                        title: presentationData.strings.Stars_Intro_PurchasedTitle,
++                        text: presentationData.strings.Stars_Intro_PurchasedText(presentationData.strings.Stars_Intro_PurchasedText_Stars(Int32(clamping: stars))).string,
++                        customUndoText: nil,
++                        timeout: nil
++                    ),
++                    elevatedLayout: false,
++                    action: { _ in return true})
++                self.present(resultController, in: .window(.root))
++            }
++
++            // "Локальные рубли" (Дополнительно → Подарки): when on, "Пополнить" opens
++            // PampGram's own fake purchase screen instead of the real Apple IAP one — its own
++            // completion already deducts the fake ruble card and credits `fakeStarsBalance`
++            // directly, so all that's left here is the same toast a real purchase shows, never
++            // `self.starsContext.add(...)` (that would touch the REAL balance).
++            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox)
+             |> take(1)
+-            |> deliverOnMainQueue).start(next: { [weak self] options in
++            |> deliverOnMainQueue).start(next: { [weak self] settings in
+                 guard let self else {
+                     return
+                 }
+-                let controller = context.sharedContext.makeStarsPurchaseScreen(context: context, starsContext: starsContext, options: options, purpose: .generic, targetPeerId: nil, customTheme: nil, completion: { [weak self] stars in
++                if settings.localRublesPurchaseEnabled {
++                    let controller = pampGramStarsPurchaseController(context: context, completion: presentPurchaseToast)
++                    self.push(controller)
++                    return
++                }
++
++                let _ = (self.options.get()
++                |> take(1)
++                |> deliverOnMainQueue).start(next: { [weak self] options in
+                     guard let self else {
+                         return
+                     }
+-                    self.starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
+-                    
+-                    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+-                    let resultController = UndoOverlayController(
+-                        presentationData: presentationData,
+-                        content: .universal(
+-                            animation: "StarsBuy",
+-                            scale: 0.066,
+-                            colors: [:],
+-                            title: presentationData.strings.Stars_Intro_PurchasedTitle, 
+-                            text: presentationData.strings.Stars_Intro_PurchasedText(presentationData.strings.Stars_Intro_PurchasedText_Stars(Int32(clamping: stars))).string,
+-                            customUndoText: nil,
+-                            timeout: nil
+-                        ),
+-                        elevatedLayout: false,
+-                        action: { _ in return true})
+-                    self.present(resultController, in: .window(.root))
++                    let controller = context.sharedContext.makeStarsPurchaseScreen(context: context, starsContext: starsContext, options: options, purpose: .generic, targetPeerId: nil, customTheme: nil, completion: { stars in
++                        self.starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
++                        presentPurchaseToast(stars)
++                    })
++                    self.push(controller)
+                 })
+-                self.push(controller)
+             })
+         }
+         
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 index 07cef5bb..36829662 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
