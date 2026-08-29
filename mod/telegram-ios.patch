@@ -11,11 +11,214 @@ index 37397476..1c77c0ad 100644
      func makePremiumPrivacyControllerController(context: AccountContext, subject: PremiumPrivacySubject, peerId: EnginePeer.Id) -> ViewController
      func makePremiumBoostLevelsController(context: AccountContext, peerId: EnginePeer.Id, subject: BoostSubject, boostStatus: ChannelBoostStatus, myBoostStatus: MyBoostStatus, forceDark: Bool, openStats: (() -> Void)?) -> ViewController
      func makeStickerPackScreen(context: AccountContext, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)?, mainStickerPack: StickerPackReference, stickerPacks: [StickerPackReference], loadedStickerPacks: [LoadedStickerPack], actionTitle: String?, isEditing: Bool, expandIfNeeded: Bool, parentNavigationController: NavigationController?, sendSticker: ((FileMediaReference, UIView?, CGRect?) -> Bool)?, actionPerformed: (([StickerPackScreenActionResult]) -> Void)?) -> ViewController
+diff --git a/submodules/TelegramCore/BUILD b/submodules/TelegramCore/BUILD
+index 53c9a721..3cca62e2 100644
+--- a/submodules/TelegramCore/BUILD
++++ b/submodules/TelegramCore/BUILD
+@@ -25,7 +25,8 @@ swift_library(
+         "//submodules/Emoji",
+         "//submodules/TelegramCore/FlatBuffers",
+         "//submodules/TelegramCore/FlatSerialization",
+-        "//submodules/MurMurHash32"
++        "//submodules/MurMurHash32",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramCore/Sources/Account/AccountManager.swift b/submodules/TelegramCore/Sources/Account/AccountManager.swift
+index 3f2b4794..13a3d5cb 100644
+--- a/submodules/TelegramCore/Sources/Account/AccountManager.swift
++++ b/submodules/TelegramCore/Sources/Account/AccountManager.swift
+@@ -3,6 +3,7 @@ import Postbox
+ import SwiftSignalKit
+ import TelegramApi
+ import MtProtoKit
++import PampGramCore
+ 
+ private enum AccountKind {
+     case authorized
+@@ -138,6 +139,7 @@ private var declaredEncodables: Void = {
+     declareEncodable(SourceReferenceMessageAttribute.self, f: { SourceReferenceMessageAttribute(decoder: $0) })
+     declareEncodable(SourceAuthorInfoMessageAttribute.self, f: { SourceAuthorInfoMessageAttribute(decoder: $0) })
+     declareEncodable(EditedMessageAttribute.self, f: { EditedMessageAttribute(decoder: $0) })
++    declareEncodable(PampGramDeletedByRemoteAttribute.self, f: { PampGramDeletedByRemoteAttribute(decoder: $0) })
+     declareEncodable(ReplyMarkupMessageAttribute.self, f: { ReplyMarkupMessageAttribute(decoder: $0) })
+     declareEncodable(OutgoingChatContextResultMessageAttribute.self, f: { OutgoingChatContextResultMessageAttribute(decoder: $0) })
+     declareEncodable(HttpReferenceMediaResource.self, f: { HttpReferenceMediaResource(decoder: $0) })
+diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift b/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift
+new file mode 100644
+index 00000000..21d735b4
+--- /dev/null
++++ b/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift
+@@ -0,0 +1,117 @@
++import Foundation
++import Postbox
++import PampGramCore
++
++/// Captures messages the other side deleted, before Postbox removes them, so they stay
++/// visible (dimmed, red trash badge — see the patch to `ChatMessageBubbleItemNode.swift`) in
++/// the chat instead of vanishing. Called from `replayFinalState` in
++/// `AccountStateManagementUtils.swift`, right before the real
++/// `deleteMessages`/`deleteMessagesWithGlobalIds` call that would otherwise be the only thing
++/// that ever touches these ids.
++///
++/// Lives in `TelegramCore` itself (rather than a separate mod module) on purpose: it needs
++/// `TelegramMediaAction`/`TextEntitiesMessageAttribute`/`Namespaces`, all TelegramCore types,
++/// and `PampGramCore` — which it does depend on — must never depend back on `TelegramCore`,
++/// so the reusable record/attribute/store types it calls into live there instead of here.
++enum PampGramDeletedMessageCapture {
++    /// `messageIds` must already be resolved to peer-scoped `MessageId`s — for the "global id"
++    /// deletion path (regular private chats and basic groups), resolve with
++    /// `transaction.messageIdsForGlobalIds(_:)` before calling this.
++    static func captureBeforeDelete(transaction: Transaction, accountPeerId: PeerId, messageIds: [MessageId]) {
++        guard PampGramCore.settings(transaction: transaction).antiDeleteMessagesEnabled else {
++            return
++        }
++        let now = Int32(Date().timeIntervalSince1970)
++        for id in messageIds {
++            // Never resurrect PampGram's own local-only rows (phantom gifts, earlier
++            // resurrections) — they're not real deletions, and re-capturing an already-local
++            // message would just duplicate it forever.
++            if id.namespace == Namespaces.Message.Local {
++                continue
++            }
++            guard let message = transaction.getMessage(id) else {
++                continue
++            }
++            // Only messages the *other* side sent — a message this account's own user deleted
++            // (on this device or another) is a real, intentional delete and is left alone.
++            guard let author = message.author, author.id != accountPeerId else {
++                continue
++            }
++            // Service messages (join/leave, calls, real gift actions, etc.) aren't content the
++            // user typed or sent — nothing meaningful to resurrect.
++            if message.media.contains(where: { $0 is TelegramMediaAction }) {
++                continue
++            }
++
++            var attributes: [MessageAttribute] = message.attributes.filter { $0 is TextEntitiesMessageAttribute }
++            attributes.append(PampGramDeletedByRemoteAttribute(deletedAt: now))
++
++            let globallyUniqueId = Int64.random(in: Int64.min ... Int64.max)
++            let storeMessage = StoreMessage(
++                id: .Partial(id.peerId, Namespaces.Message.Local),
++                customStableId: nil,
++                globallyUniqueId: globallyUniqueId,
++                groupingKey: message.groupingKey,
++                threadId: message.threadId,
++                timestamp: message.timestamp,
++                flags: StoreMessageFlags(message.flags),
++                tags: message.tags,
++                globalTags: message.globalTags,
++                localTags: message.localTags,
++                forwardInfo: message.forwardInfo.map(StoreMessageForwardInfo.init),
++                authorId: author.id,
++                text: message.text,
++                attributes: attributes,
++                media: message.media
++            )
++            let insertedIds = transaction.addMessages([storeMessage], location: .Random)
++            guard let localMessageId = insertedIds[globallyUniqueId] else {
++                continue
++            }
++
++            var textPreview = message.text
++            if textPreview.isEmpty, let firstMedia = message.media.first {
++                textPreview = self.mediaPreview(firstMedia)
++            }
++            if textPreview.count > 120 {
++                textPreview = String(textPreview.prefix(120))
++            }
++
++            PampGramDeletedMessageStore.add(transaction: transaction, message: PampGramDeletedMessage(
++                id: Int64.random(in: 1...Int64.max),
++                peerId: id.peerId,
++                authorId: author.id,
++                originalTimestamp: message.timestamp,
++                deletedAt: now,
++                textPreview: textPreview,
++                localMessageId: localMessageId
++            ))
++        }
++    }
++
++    private static func mediaPreview(_ media: Media) -> String {
++        switch media {
++        case is TelegramMediaImage:
++            return "Фото"
++        case let file as TelegramMediaFile:
++            if file.isVideo {
++                return "Видео"
++            } else if file.isVoice {
++                return "Голосовое сообщение"
++            } else if file.isSticker {
++                return "Стикер"
++            } else if file.isAnimated {
++                return "GIF"
++            }
++            return file.fileName ?? "Файл"
++        case is TelegramMediaContact:
++            return "Контакт"
++        case is TelegramMediaMap:
++            return "Геолокация"
++        case is TelegramMediaPoll:
++            return "Опрос"
++        default:
++            return "Сообщение"
++        }
++    }
++}
+diff --git a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
+index 58db6c71..095f7870 100644
+--- a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
++++ b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
+@@ -4440,6 +4440,11 @@ func replayFinalState(
+                     }
+                 }
+             case let .DeleteMessagesWithGlobalIds(ids):
++                // PampGram: this is the "common box" delete path — bare global ids with no
++                // peer attached, used for a normal private chat or basic group's "delete for
++                // everyone". Resolved to real MessageIds first so the capture (which needs to
++                // read the still-present row) can run before it's actually gone.
++                PampGramDeletedMessageCapture.captureBeforeDelete(transaction: transaction, accountPeerId: accountPeerId, messageIds: transaction.messageIdsForGlobalIds(ids))
+                 var resourceIds: [MediaResourceId] = []
+                 transaction.deleteMessagesWithGlobalIds(ids, forEachMedia: { media in
+                     addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
+@@ -4449,6 +4454,9 @@ func replayFinalState(
+                 }
+                 deletedMessageIds.append(contentsOf: ids.map { .global($0) })
+             case let .DeleteMessages(ids):
++                // PampGram: this path (peer-scoped ids already attached) covers channels and
++                // supergroups — the other half of the anti-delete capture.
++                PampGramDeletedMessageCapture.captureBeforeDelete(transaction: transaction, accountPeerId: accountPeerId, messageIds: ids)
+                 _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: ids, manualAddMessageThreadStatsDifference: { id, add, remove in
+                     addMessageThreadStatsDifference(threadKey: id, remove: remove, addedMessagePeer: nil, addedMessageId: nil, isOutgoing: false)
+                 })
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
+index 1ddd9b86..5e5fecbc 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
+@@ -98,6 +98,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/Chat/ChatMessageSuggestedPostInfoNode",
+         "//submodules/TelegramUI/Components/PremiumAlertController",
+         "//submodules/TelegramUI/Components/Chat/ChatMessageRichDataBubbleContentNode",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-index 2dcfc95e..4d5ad691 100644
+index 2dcfc95e..564443bd 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-@@ -152,7 +152,12 @@ private func contentNodeMessagesAndClassesForItem(_ item: ChatMessageItem) -> ([
+@@ -8,6 +8,7 @@ import TelegramCore
+ import TelegramPresentationData
+ import TelegramUIPreferences
+ import TextFormat
++import PampGramCore
+ import AccountContext
+ import TemporaryCachedPeerDataManager
+ import LocalizedPeerData
+@@ -152,7 +153,12 @@ private func contentNodeMessagesAndClassesForItem(_ item: ChatMessageItem) -> ([
          if let updatingMedia = itemAttributes.updatingMedia, messageMedia.isEmpty, case let .update(media) = updatingMedia.media {
              messageMedia.append(media.media)
          }
@@ -29,6 +232,72 @@ index 2dcfc95e..4d5ad691 100644
          var isFile = false
          inner: for media in messageMedia {
              if let media = media as? TelegramMediaPaidContent {
+@@ -694,7 +700,14 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+     private var clippingNode: ChatMessageBubbleClippingNode
+     
+     private var suggestedPostInfoNode: ChatMessageSuggestedPostInfoNode?
+-    
++
++    // PampGram: marks a resurrected copy of a message the other side deleted (see
++    // PampGramDeletedByRemoteAttribute) — a dim overlay across the whole bubble plus a small
++    // red trash-can badge in its corner, both created lazily and only while the current
++    // message actually carries the attribute.
++    private var pampGramDeletedOverlayNode: ASDisplayNode?
++    private var pampGramDeletedTrashIconNode: ASImageNode?
++
+     override public var extractedBackgroundNode: ASDisplayNode? {
+         return self.shadowNode
+     }
+@@ -3981,7 +3994,48 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+         
+         let previousBackgroundFrame = strongSelf.backgroundNode.backgroundFrame
+         strongSelf.backgroundNode.backgroundFrame = backgroundFrame
+-        
++
++        // PampGram: dim the whole bubble and drop a small red trash-can badge in its corner
++        // for a resurrected copy of a message the other side deleted. Approximated with a
++        // fixed corner radius rather than the bubble's real per-corner mask (tailed / merged
++        // / extracted all differ) — close enough for a status decoration, and it avoids
++        // duplicating that selection logic here.
++        if item.content.firstMessage.attributes.contains(where: { $0 is PampGramDeletedByRemoteAttribute }) {
++            let overlayNode: ASDisplayNode
++            if let current = strongSelf.pampGramDeletedOverlayNode {
++                overlayNode = current
++            } else {
++                overlayNode = ASDisplayNode()
++                overlayNode.isUserInteractionEnabled = false
++                overlayNode.backgroundColor = UIColor.black.withAlphaComponent(0.22)
++                overlayNode.cornerRadius = 16.0
++                strongSelf.pampGramDeletedOverlayNode = overlayNode
++                strongSelf.insertSubnode(overlayNode, aboveSubnode: strongSelf.backgroundWallpaperNode)
++            }
++            overlayNode.frame = backgroundFrame
++
++            let iconNode: ASImageNode
++            if let current = strongSelf.pampGramDeletedTrashIconNode {
++                iconNode = current
++            } else {
++                iconNode = ASImageNode()
++                iconNode.displaysAsynchronously = false
++                iconNode.isUserInteractionEnabled = false
++                if let baseImage = UIImage(systemName: "trash.fill") {
++                    iconNode.image = baseImage.withTintColor(.systemRed, renderingMode: .alwaysOriginal)
++                }
++                strongSelf.pampGramDeletedTrashIconNode = iconNode
++                strongSelf.addSubnode(iconNode)
++            }
++            let iconSize = CGSize(width: 14.0, height: 14.0)
++            iconNode.frame = CGRect(origin: CGPoint(x: backgroundFrame.maxX - iconSize.width - 6.0, y: backgroundFrame.minY + 6.0), size: iconSize)
++        } else if let overlayNode = strongSelf.pampGramDeletedOverlayNode {
++            overlayNode.removeFromSupernode()
++            strongSelf.pampGramDeletedOverlayNode = nil
++            strongSelf.pampGramDeletedTrashIconNode?.removeFromSupernode()
++            strongSelf.pampGramDeletedTrashIconNode = nil
++        }
++
+         if let (suggestedPostInfoSize, suggestedPostInfoApply) = suggestedPostInfoNodeLayout {
+             let suggestedPostInfoNode = suggestedPostInfoApply()
+             if suggestedPostInfoNode !== strongSelf.suggestedPostInfoNode {
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
 index 1820be66..4590ccc6 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD

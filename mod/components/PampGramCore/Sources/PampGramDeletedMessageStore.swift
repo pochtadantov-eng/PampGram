@@ -1,17 +1,15 @@
 import Foundation
 import Postbox
-import TelegramCore
 import SwiftSignalKit
-import AccountContext
-import PampGramCore
 
 private struct PampGramDeletedMessageList: Codable {
     var messages: [PampGramDeletedMessage]
 }
 
 /// Persistent, entirely local storage for the anti-delete feature's captured messages.
-/// Backed by Postbox's own `PreferencesEntry` mechanism, same as `PampGramPhantomGiftStore` —
-/// survives app restarts for free, never touches `account.network`.
+/// Backed by Postbox's own `PreferencesEntry` mechanism under the mod's reserved key range,
+/// same as `PampGramCore`'s settings and `PhantomGiftKit`'s gift list — survives app restarts
+/// for free, never touches `account.network`.
 public enum PampGramDeletedMessageStore {
     public static func all(transaction: Transaction) -> [PampGramDeletedMessage] {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.deletedMessages)?.get(PampGramDeletedMessageList.self)?.messages ?? []
@@ -33,6 +31,7 @@ public enum PampGramDeletedMessageStore {
         })
     }
 
+    @discardableResult
     public static func removeAll(transaction: Transaction) -> [PampGramDeletedMessage] {
         let existing = self.all(transaction: transaction)
         transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.deletedMessages, { _ in
@@ -42,8 +41,8 @@ public enum PampGramDeletedMessageStore {
     }
 
     /// Live list of every captured message on this device, newest-deleted first.
-    public static func allSignal(context: AccountContext) -> Signal<[PampGramDeletedMessage], NoError> {
-        return context.account.postbox.preferencesView(keys: [PampGramPreferencesKeys.deletedMessages])
+    public static func allSignal(postbox: Postbox) -> Signal<[PampGramDeletedMessage], NoError> {
+        return postbox.preferencesView(keys: [PampGramPreferencesKeys.deletedMessages])
         |> map { view -> [PampGramDeletedMessage] in
             let messages = view.values[PampGramPreferencesKeys.deletedMessages]?.get(PampGramDeletedMessageList.self)?.messages ?? []
             return messages.sorted(by: { $0.deletedAt > $1.deletedAt })
