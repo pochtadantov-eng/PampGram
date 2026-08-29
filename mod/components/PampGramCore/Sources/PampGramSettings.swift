@@ -28,6 +28,10 @@ public struct PampGramSettings: Codable, Equatable {
     /// TON/GRAM balance. Independent of the Stars one on purpose, so either currency can be
     /// faked on its own.
     public var fakeTonDisplayEnabled: Bool
+    /// Whether a message deleted by the other side is kept, visibly marked, in this chat's
+    /// history instead of vanishing. Purely local: it never tells Telegram, or the person who
+    /// deleted it, that a copy was kept.
+    public var antiDeleteMessagesEnabled: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -38,16 +42,18 @@ public struct PampGramSettings: Codable, Equatable {
             fakeStarsBalance: defaultFakeStarsBalance,
             fakeTonBalanceNanos: defaultFakeTonBalanceNanos,
             fakeStarsDisplayEnabled: true,
-            fakeTonDisplayEnabled: true
+            fakeTonDisplayEnabled: true,
+            antiDeleteMessagesEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
         self.fakeStarsDisplayEnabled = fakeStarsDisplayEnabled
         self.fakeTonDisplayEnabled = fakeTonDisplayEnabled
+        self.antiDeleteMessagesEnabled = antiDeleteMessagesEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -61,6 +67,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.fakeTonBalanceNanos = try container.decodeIfPresent(Int64.self, forKey: .fakeTonBalanceNanos) ?? defaults.fakeTonBalanceNanos
         self.fakeStarsDisplayEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeStarsDisplayEnabled) ?? defaults.fakeStarsDisplayEnabled
         self.fakeTonDisplayEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeTonDisplayEnabled) ?? defaults.fakeTonDisplayEnabled
+        self.antiDeleteMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .antiDeleteMessagesEnabled) ?? defaults.antiDeleteMessagesEnabled
     }
 }
 
@@ -77,6 +84,7 @@ public enum PampGramPreferencesKeys {
 
     public static let settings = key(900_000)
     public static let phantomGifts = key(900_100)
+    public static let deletedMessages = key(900_200)
 }
 
 public enum PampGramCore {
