@@ -29,10 +29,8 @@ public enum PampGramSubscriptionAPI {
     /// — the admin token (stored locally, see above) is what the server actually checks.
     public static let adminAccountId: Int64 = 8557314630
 
-    /// Filled in after deploying `server/pampgram-subs-worker/` (see its README) — the
-    /// placeholder below never resolves, so until it's replaced every call here safely no-ops
-    /// to the "standard" default instead of hitting a real address.
-    private static let baseURL = "https://pampgram-subs.YOUR-SUBDOMAIN.workers.dev"
+    /// The deployed `server/pampgram-subs-worker/` instance (see its README).
+    private static let baseURL = "https://pampgram-subs.pampgram-pochtadantov.workers.dev"
 
     private struct StatusResponse: Decodable {
         let tier: String
