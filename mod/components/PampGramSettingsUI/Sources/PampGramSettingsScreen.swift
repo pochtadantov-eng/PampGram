@@ -19,6 +19,7 @@ private final class PampGramSettingsArguments {
     let toggleFakeTonDisplay: (Bool) -> Void
     let editStarsBalance: () -> Void
     let editTonBalance: () -> Void
+    let toggleFromHimGifts: (Bool) -> Void
     let resetBalances: () -> Void
     let deleteAllPhantomGifts: () -> Void
 
@@ -28,6 +29,7 @@ private final class PampGramSettingsArguments {
         toggleFakeTonDisplay: @escaping (Bool) -> Void,
         editStarsBalance: @escaping () -> Void,
         editTonBalance: @escaping () -> Void,
+        toggleFromHimGifts: @escaping (Bool) -> Void,
         resetBalances: @escaping () -> Void,
         deleteAllPhantomGifts: @escaping () -> Void
     ) {
@@ -36,6 +38,7 @@ private final class PampGramSettingsArguments {
         self.toggleFakeTonDisplay = toggleFakeTonDisplay
         self.editStarsBalance = editStarsBalance
         self.editTonBalance = editTonBalance
+        self.toggleFromHimGifts = toggleFromHimGifts
         self.resetBalances = resetBalances
         self.deleteAllPhantomGifts = deleteAllPhantomGifts
     }
@@ -46,6 +49,7 @@ private enum PampGramSettingsSection: Int32 {
     case phantomGifts
     case starsBalance
     case tonBalance
+    case fromHimGifts
     case resetBalances
     case storage
 }
@@ -67,6 +71,9 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case tonBalance(String, String)
     case tonBalanceFooter(String)
 
+    case fromHimGiftsToggle(String, Bool)
+    case fromHimGiftsFooter(String)
+
     case resetBalances(String)
     case resetBalancesFooter(String)
 
@@ -85,6 +92,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.starsBalance.rawValue
         case .tonBalanceHeader, .fakeTonDisplayToggle, .tonBalance, .tonBalanceFooter:
             return PampGramSettingsSection.tonBalance.rawValue
+        case .fromHimGiftsToggle, .fromHimGiftsFooter:
+            return PampGramSettingsSection.fromHimGifts.rawValue
         case .resetBalances, .resetBalancesFooter:
             return PampGramSettingsSection.resetBalances.rawValue
         case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
@@ -118,18 +127,22 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return 10
         case .tonBalanceFooter:
             return 11
-        case .resetBalances:
+        case .fromHimGiftsToggle:
             return 12
-        case .resetBalancesFooter:
+        case .fromHimGiftsFooter:
             return 13
-        case .storageHeader:
+        case .resetBalances:
             return 14
-        case .phantomGiftsCount:
+        case .resetBalancesFooter:
             return 15
-        case .deleteAllPhantomGifts:
+        case .storageHeader:
             return 16
-        case .storageFooter:
+        case .phantomGiftsCount:
             return 17
+        case .deleteAllPhantomGifts:
+            return 18
+        case .storageFooter:
+            return 19
         }
     }
 
@@ -144,7 +157,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .storageHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
+        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .fromHimGiftsFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .phantomGiftsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -165,6 +178,10 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case let .tonBalance(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editTonBalance()
+            })
+        case let .fromHimGiftsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFromHimGifts(value)
             })
         case let .resetBalances(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -256,7 +273,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
     entries.append(.aboutText("Меняет только то, что видите вы на этом устройстве."))
 
     entries.append(.phantomGiftsHeader("ЛОКАЛЬНЫЕ ПОДАРКИ"))
-    entries.append(.phantomGiftsToggle("Вкладка «Подарок»", settings.phantomGiftsEnabled))
+    entries.append(.phantomGiftsToggle("Вкладка «Подарок ему»", settings.phantomGiftsEnabled))
     entries.append(.phantomGiftsFooter("Тот же настоящий маркет, но покупка из вкладки визуальная, без списания настоящих Stars/TON."))
 
     entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ ЗВЁЗДЫ"))
@@ -268,6 +285,9 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.tonBalance("Фантом-TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
     entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM, независимо от звёзд."))
+
+    entries.append(.fromHimGiftsToggle("От него", settings.fromHimGiftsEnabled))
+    entries.append(.fromHimGiftsFooter("Добавляет вкладку «Подарок мне» — тот же маркет, но подарок выглядит подаренным вам собеседником."))
 
     entries.append(.resetBalances("Сбросить балансы"))
     entries.append(.resetBalancesFooter("Возвращает оба счётчика к значениям по умолчанию."))
@@ -357,6 +377,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                 ))
             })
         },
+        toggleFromHimGifts: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fromHimGiftsEnabled = value
+                return settings
+            }).start()
+        },
         resetBalances: {
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
@@ -367,13 +394,14 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
             presentTooltipImpl?("Локальные балансы сброшены.")
         },
         deleteAllPhantomGifts: {
-            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-            let theme = AlertControllerTheme(presentationData: presentationData)
-            let font = Font.regular(floor(theme.baseFontSize * 13.0 / 17.0))
+            // The old low-level `theme:`-based textAlertController built the legacy iOS-style
+            // alert instead of the app's own centered, "glass"-themed one — the same
+            // context-based overload used everywhere else in the mod (GiftSetupScreen.swift,
+            // GiftViewBuyGift.swift) so this dialog looks and behaves like the rest of the app.
             presentControllerImpl?(textAlertController(
-                theme: theme,
-                title: NSAttributedString(string: "Удалить все фантом-подарки?", font: Font.semibold(theme.baseFontSize), textColor: theme.primaryColor, paragraphAlignment: .center),
-                text: NSAttributedString(string: "Записи и их сообщения исчезнут из вашей истории. Это действие нельзя отменить.", font: font, textColor: theme.primaryColor, paragraphAlignment: .center),
+                context: context,
+                title: "Удалить все фантом-подарки?",
+                text: "Записи и их сообщения исчезнут из вашей истории. Это действие нельзя отменить.",
                 actions: [
                     TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
                     TextAlertAction(type: .destructiveAction, title: "Удалить", action: {

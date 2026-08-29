@@ -206,12 +206,14 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     entries.append(.iconFooter("Иконка меняется сразу на домашнем экране. Часть иконок и PRO пока недоступны."))
 
     entries.append(.giftsHeader("ПОДАРКИ"))
-    entries.append(.giftsRow(0, "Вкладка «Подарок»", settings.phantomGiftsEnabled))
+    entries.append(.giftsRow(0, "Вкладка «Подарок ему»", settings.phantomGiftsEnabled))
     entries.append(.giftsRow(1, "Локальные звёзды", settings.fakeStarsDisplayEnabled))
     entries.append(.giftsRow(2, "Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
+    entries.append(.giftsRow(3, "От него", settings.fromHimGiftsEnabled))
 
     entries.append(.messagesHeader("УДАЛЁННЫЕ СООБЩЕНИЯ"))
     entries.append(.messagesRow(0, "Восстановление удалённых сообщений", settings.antiDeleteMessagesEnabled))
+    entries.append(.messagesRow(1, "Изменить визуально", settings.visualEditEnabled))
 
     entries.append(.ghostHeader("GHOST"))
     entries.append(.ghostRow(0, "Нечиталка", settings.ghostReaderEnabled))

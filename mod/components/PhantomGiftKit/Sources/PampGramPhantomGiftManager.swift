@@ -123,6 +123,72 @@ public enum PampGramPhantomGiftManager {
         }
     }
 
+    /// "Подарок мне": local-only stand-in for *receiving* a unique gift — records it and
+    /// inserts the local-only chat message with `insertLocalUniqueGiftMessageFromPeer`, so it
+    /// reads as `peerId` having sent it to this account. Unlike `buyUniqueGift`, no balance is
+    /// touched: nobody spent anything in this direction, real or fake. `price` is kept only
+    /// for the phantom-gift record (the "Фантом-подарков на устройстве" list) — informational,
+    /// never deducted.
+    public static func receiveUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<PampGramPhantomGift, NoError> {
+        return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
+            let phantomGift = PampGramPhantomGift(
+                id: Int64.random(in: 1...Int64.max),
+                peerId: peerId,
+                gift: .unique(uniqueGift),
+                price: price,
+                date: Int32(Date().timeIntervalSince1970),
+                localMessageId: nil
+            )
+            PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+            return phantomGift
+        }
+        |> mapToSignal { phantomGift -> Signal<PampGramPhantomGift, NoError> in
+            return PampGramPhantomGiftMessage.insertLocalUniqueGiftMessageFromPeer(context: context, peerId: peerId, uniqueGift: uniqueGift)
+            |> mapToSignal { messageId -> Signal<PampGramPhantomGift, NoError> in
+                guard let messageId else {
+                    return .single(phantomGift)
+                }
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId)
+                return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
+                    PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
+                    PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
+                    return finalGift
+                }
+            }
+        }
+    }
+
+    /// Same as `receiveUniqueGift`, for the plain (non-unique) gift catalog — "Подарок мне"'s
+    /// other entry point, mirroring `sendGenericGift`.
+    public static func receiveGenericGift(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift.Gift, text: String? = nil, entities: [MessageTextEntity]? = nil) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
+            let phantomGift = PampGramPhantomGift(
+                id: Int64.random(in: 1...Int64.max),
+                peerId: peerId,
+                gift: .generic(gift),
+                price: CurrencyAmount(amount: StarsAmount(value: gift.price, nanos: 0), currency: .stars),
+                date: Int32(Date().timeIntervalSince1970),
+                localMessageId: nil
+            )
+            PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+            return phantomGift
+        }
+        |> mapToSignal { phantomGift -> Signal<Never, NoError> in
+            return PampGramPhantomGiftMessage.insertLocalGenericGiftMessageFromPeer(context: context, peerId: peerId, gift: gift, text: text, entities: entities)
+            |> mapToSignal { messageId -> Signal<Never, NoError> in
+                guard let messageId else {
+                    return .complete()
+                }
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId)
+                return context.account.postbox.transaction { transaction in
+                    PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
+                    PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
+                }
+                |> ignoreValues
+            }
+        }
+    }
+
     /// Removes every Phantom Gift on this device, and the local-only chat messages they
     /// created, in a single transaction. Same local-only guarantees as `delete`.
     public static func deleteAll(context: AccountContext) -> Signal<Never, NoError> {

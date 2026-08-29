@@ -229,7 +229,9 @@ private func pampGramHubEntries(settings: PampGramSettings) -> [PampGramHubEntry
         settings.phantomGiftsEnabled,
         settings.fakeStarsDisplayEnabled,
         settings.fakeTonDisplayEnabled,
+        settings.fromHimGiftsEnabled,
         settings.antiDeleteMessagesEnabled,
+        settings.visualEditEnabled,
         settings.ghostReaderEnabled,
         settings.onlineMaskEnabled
     ]

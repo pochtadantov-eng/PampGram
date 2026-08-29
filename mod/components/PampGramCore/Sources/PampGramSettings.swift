@@ -54,6 +54,11 @@ public struct PampGramSettings: Codable, Equatable {
     /// untouched; the bubble carries a small pencil badge (`PampGramVisualEditAttribute`) so
     /// it stays distinguishable from what they actually sent.
     public var visualEditEnabled: Bool
+    /// "От него": shows a 5th tab ("Подарок мне") next to the "Подарок ему" tab in the real
+    /// gift-sending screen — the same real market, but a purchase from it inserts the
+    /// message as if the *other* side bought and sent the gift, not this account. Nothing is
+    /// deducted from any local balance: nobody "spent" anything in this direction.
+    public var fromHimGiftsEnabled: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -69,11 +74,12 @@ public struct PampGramSettings: Codable, Equatable {
             ghostReaderEnabled: false,
             onlineMaskEnabled: false,
             antiDeleteExcludedPeerIds: [],
-            visualEditEnabled: false
+            visualEditEnabled: false,
+            fromHimGiftsEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -84,6 +90,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.onlineMaskEnabled = onlineMaskEnabled
         self.antiDeleteExcludedPeerIds = antiDeleteExcludedPeerIds
         self.visualEditEnabled = visualEditEnabled
+        self.fromHimGiftsEnabled = fromHimGiftsEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -102,6 +109,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.onlineMaskEnabled = try container.decodeIfPresent(Bool.self, forKey: .onlineMaskEnabled) ?? defaults.onlineMaskEnabled
         self.antiDeleteExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .antiDeleteExcludedPeerIds) ?? defaults.antiDeleteExcludedPeerIds
         self.visualEditEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditEnabled) ?? defaults.visualEditEnabled
+        self.fromHimGiftsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fromHimGiftsEnabled) ?? defaults.fromHimGiftsEnabled
     }
 }
 
