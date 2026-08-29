@@ -57,7 +57,7 @@ public enum PampGramUnbanScope {
 }
 
 /// One row of the admin panel's "Разбанить" list — a banned account and why.
-public struct PampGramBannedUser: Codable {
+public struct PampGramBannedUser: Codable, Equatable {
     public let id: String
     public let full: String?
     public let sections: [String: String]

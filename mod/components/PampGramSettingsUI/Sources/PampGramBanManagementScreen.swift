@@ -54,6 +54,21 @@ private enum PampGramBanManagementEntry: ItemListNodeEntry {
         }
     }
 
+    static func ==(lhs: PampGramBanManagementEntry, rhs: PampGramBanManagementEntry) -> Bool {
+        switch (lhs, rhs) {
+        case let (.searchAction(lhsTitle), .searchAction(rhsTitle)):
+            return lhsTitle == rhsTitle
+        case let (.listHeader(lhsText), .listHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.userRow(lhsIndex, lhsUser), .userRow(rhsIndex, rhsUser)):
+            return lhsIndex == rhsIndex && lhsUser == rhsUser
+        case let (.emptyText(lhsText), .emptyText(rhsText)):
+            return lhsText == rhsText
+        default:
+            return false
+        }
+    }
+
     static func <(lhs: PampGramBanManagementEntry, rhs: PampGramBanManagementEntry) -> Bool {
         return lhs.stableId < rhs.stableId
     }
