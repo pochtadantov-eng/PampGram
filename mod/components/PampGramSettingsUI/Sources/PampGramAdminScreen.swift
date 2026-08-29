@@ -15,10 +15,16 @@ import PampGramCore
 private final class PampGramAdminArguments {
     let setAdminToken: () -> Void
     let grantSubscription: () -> Void
+    let banFull: () -> Void
+    let banSection: () -> Void
+    let openBannedList: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
+        self.banFull = banFull
+        self.banSection = banSection
+        self.openBannedList = openBannedList
     }
 }
 
@@ -26,6 +32,7 @@ private enum PampGramAdminSection: Int32 {
     case about
     case token
     case grant
+    case ban
 }
 
 private enum PampGramAdminEntry: ItemListNodeEntry {
@@ -38,6 +45,12 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     case grantAction(String, Bool)
     case grantFooter(String)
 
+    case banHeader(String)
+    case banFullAction(String, Bool)
+    case banSectionAction(String, Bool)
+    case unbanAction(String, Bool)
+    case banFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .aboutText:
@@ -46,6 +59,8 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return PampGramAdminSection.token.rawValue
         case .grantAction, .grantFooter:
             return PampGramAdminSection.grant.rawValue
+        case .banHeader, .banFullAction, .banSectionAction, .unbanAction, .banFooter:
+            return PampGramAdminSection.ban.rawValue
         }
     }
 
@@ -63,6 +78,16 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 4
         case .grantFooter:
             return 5
+        case .banHeader:
+            return 6
+        case .banFullAction:
+            return 7
+        case .banSectionAction:
+            return 8
+        case .unbanAction:
+            return 9
+        case .banFooter:
+            return 10
         }
     }
 
@@ -80,6 +105,16 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.grantFooter(lhsText), .grantFooter(rhsText)):
             return lhsText == rhsText
+        case let (.banHeader(lhsText), .banHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.banFullAction(lhsTitle, lhsEnabled), .banFullAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.banSectionAction(lhsTitle, lhsEnabled), .banSectionAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.unbanAction(lhsTitle, lhsEnabled), .unbanAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.banFooter(lhsText), .banFooter(rhsText)):
+            return lhsText == rhsText
         default:
             return false
         }
@@ -92,9 +127,9 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdminArguments
         switch self {
-        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text):
+        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .banFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .tokenHeader(text):
+        case let .tokenHeader(text), let .banHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .tokenRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
@@ -103,6 +138,18 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let .grantAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.grantSubscription()
+            })
+        case let .banFullAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.banFull()
+            })
+        case let .banSectionAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.banSection()
+            })
+        case let .unbanAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.openBannedList()
             })
         }
     }
@@ -114,8 +161,85 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
 /// why a subscription needs a server at all, and `server/pampgram-subs-worker/` for that
 /// server itself.
 public func pampGramAdminController(context: AccountContext) -> ViewController {
+    var pushControllerImpl: ((ViewController) -> Void)?
     var presentControllerImpl: ((ViewController) -> Void)?
     var presentTooltipImpl: ((String) -> Void)?
+
+    // Same username-or-numeric-ID resolve as grantSubscription below, kept as its own copy
+    // rather than shared: the two flows diverge right after (tier choice vs. ban reason), and
+    // this is small enough that factoring it out would cost more in indirection than it saves.
+    let resolveUserForBan: (String, @escaping (Int64, String) -> Void) -> Void = { rawValue, completion in
+        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            return
+        }
+        if value.hasPrefix("@") {
+            value.removeFirst()
+        }
+        if let userId = Int64(value) {
+            completion(userId, "ID \(userId)")
+        } else {
+            let _ = (context.engine.peers.resolvePeerByName(name: value, referrer: nil)
+            |> deliverOnMainQueue).start(next: { result in
+                guard case let .result(peer) = result else {
+                    return
+                }
+                guard let peer else {
+                    presentTooltipImpl?("Пользователь «\(value)» не найден.")
+                    return
+                }
+                completion(peer.id.id._internalGetInt64Value(), peer.compactDisplayTitle)
+            })
+        }
+    }
+
+    let promptBanReason: (Int64, String, PampGramBanSection?, String) -> Void = { userId, displayName, section, adminToken in
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        presentControllerImpl?(promptController(
+            context: context,
+            text: "Причина бана",
+            subtitle: section == nil ? "Полная блокировка для \(displayName)" : "Блокировка раздела «\(section!.displayName)» для \(displayName)",
+            value: "",
+            placeholder: "например, Мошенничество",
+            characterLimit: 200,
+            apply: { value in
+                guard let reason = value?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else {
+                    return
+                }
+                let confirmSheet = ActionSheetController(presentationData: presentationData)
+                confirmSheet.setItemGroups([
+                    ActionSheetItemGroup(items: [
+                        ActionSheetTextItem(title: (section == nil ? "Забанить \(displayName) полностью?" : "Забанить \(displayName) в разделе «\(section!.displayName)»?") + "\nПричина: \(reason)"),
+                        ActionSheetButtonItem(title: "Запустить", color: .destructive, action: { [weak confirmSheet] in
+                            confirmSheet?.dismissAnimated()
+                            PampGramSubscriptionAPI.banUser(userId: userId, section: section, reason: reason, adminToken: adminToken) { ok in
+                                presentTooltipImpl?(ok ? "\(displayName) забанен." : "Не получилось — проверь токен и сервер.")
+                            }
+                        })
+                    ]),
+                    ActionSheetItemGroup(items: [
+                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak confirmSheet] in
+                            confirmSheet?.dismissAnimated()
+                        })
+                    ])
+                ])
+                presentControllerImpl?(confirmSheet)
+            }
+        ))
+    }
+
+    let requireAdminToken: (@escaping (String) -> Void) -> Void = { onToken in
+        let _ = (context.account.postbox.transaction { transaction -> String? in
+            return PampGramSubscriptionAPI.adminToken(transaction: transaction)
+        }
+        |> deliverOnMainQueue).start(next: { adminToken in
+            guard let adminToken else {
+                presentTooltipImpl?("Сначала задай админ-токен — пункт выше.")
+                return
+            }
+            onToken(adminToken)
+        })
+    }
 
     let showTierChoice: (Int64, String, String) -> Void = { userId, displayName, adminToken in
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
@@ -218,6 +342,66 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                     }
                 ))
             })
+        },
+        banFull: {
+            requireAdminToken { adminToken in
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Кого забанить полностью?",
+                    subtitle: "Юзернейм (без @) или числовой ID аккаунта",
+                    value: "",
+                    placeholder: "username или id",
+                    characterLimit: 64,
+                    apply: { value in
+                        guard let value else {
+                            return
+                        }
+                        resolveUserForBan(value) { userId, displayName in
+                            promptBanReason(userId, displayName, nil, adminToken)
+                        }
+                    }
+                ))
+            }
+        },
+        banSection: {
+            requireAdminToken { adminToken in
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Кому забанить раздел?",
+                    subtitle: "Юзернейм (без @) или числовой ID аккаунта",
+                    value: "",
+                    placeholder: "username или id",
+                    characterLimit: 64,
+                    apply: { value in
+                        guard let value else {
+                            return
+                        }
+                        resolveUserForBan(value) { userId, displayName in
+                            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+                            let sectionSheet = ActionSheetController(presentationData: presentationData)
+                            var sectionButtons: [ActionSheetItem] = [ActionSheetTextItem(title: "Какой раздел забанить для \(displayName)?")]
+                            for section in PampGramBanSection.allCases {
+                                sectionButtons.append(ActionSheetButtonItem(title: section.displayName, color: .accent, action: { [weak sectionSheet] in
+                                    sectionSheet?.dismissAnimated()
+                                    promptBanReason(userId, displayName, section, adminToken)
+                                }))
+                            }
+                            sectionSheet.setItemGroups([
+                                ActionSheetItemGroup(items: sectionButtons),
+                                ActionSheetItemGroup(items: [
+                                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sectionSheet] in
+                                        sectionSheet?.dismissAnimated()
+                                    })
+                                ])
+                            ])
+                            presentControllerImpl?(sectionSheet)
+                        }
+                    }
+                ))
+            }
+        },
+        openBannedList: {
+            pushControllerImpl?(pampGramBannedUsersController(context: context))
         }
     )
 
@@ -241,7 +425,12 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .tokenRow("Админ-токен", adminToken == nil ? "Не задан" : "Задан"),
             .tokenFooter("Секрет для авторизации на сервере — задаётся один раз, хранится только на этом устройстве."),
             .grantAction("Выдать подписку", adminToken != nil),
-            .grantFooter("Меняет тариф человека на всех его устройствах — это единственная функция PampGram, которая обращается к серверу, а не хранит всё локально.")
+            .grantFooter("Меняет тариф человека на всех его устройствах — это единственная функция PampGram, которая обращается к серверу, а не хранит всё локально."),
+            .banHeader("ДОСТУП"),
+            .banFullAction("Забанить полностью", adminToken != nil),
+            .banSectionAction("Забанить раздел", adminToken != nil),
+            .unbanAction("Разбанить", adminToken != nil),
+            .banFooter("Забаненный видит вместо раздела (или всего PampGram, если бан полный) закрытый замок и причину, которую ты укажешь.")
         ]
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
@@ -253,6 +442,9 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
     }
 
     let controller = ItemListController(context: context, state: signal)
+    pushControllerImpl = { [weak controller] c in
+        controller?.push(c)
+    }
     presentControllerImpl = { [weak controller] c in
         controller?.present(c, in: .window(.root))
     }

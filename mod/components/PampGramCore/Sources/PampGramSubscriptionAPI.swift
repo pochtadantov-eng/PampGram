@@ -12,6 +12,57 @@ public enum PampGramSubscriptionTier: String, Codable {
     case pro
 }
 
+/// The PampGram hub sections an admin can ban independently of a full-account ban. Raw values
+/// are the server's own section keys — see `server/pampgram-subs-worker/src/index.js`.
+public enum PampGramBanSection: String, Codable, CaseIterable {
+    case gifts
+    case messages
+    case ghost
+
+    public var displayName: String {
+        switch self {
+        case .gifts:
+            return "Подарки"
+        case .messages:
+            return "Сообщения"
+        case .ghost:
+            return "Ghost"
+        }
+    }
+}
+
+/// One account's ban state as the server sees it: an optional full-account reason, plus
+/// independent per-section reasons that still apply even without a full ban.
+public struct PampGramBanStatus: Codable, Equatable {
+    public var full: String?
+    public var sections: [String: String]
+
+    public static let none = PampGramBanStatus(full: nil, sections: [:])
+
+    public init(full: String?, sections: [String: String]) {
+        self.full = full
+        self.sections = sections
+    }
+
+    public func reason(for section: PampGramBanSection) -> String? {
+        return self.sections[section.rawValue]
+    }
+}
+
+/// What an unban call should lift — mirrors the server's own three `/unban` scopes exactly.
+public enum PampGramUnbanScope {
+    case full
+    case section(PampGramBanSection)
+    case all
+}
+
+/// One row of the admin panel's "Разбанить" list — a banned account and why.
+public struct PampGramBannedUser: Codable {
+    public let id: String
+    public let full: String?
+    public let sections: [String: String]
+}
+
 /// The admin's proof-of-identity token, stored ONLY in this device's own local Postbox —
 /// never hardcoded in source, never committed to the repo. It has to match the server's own
 /// `ADMIN_TOKEN` secret (`wrangler secret put ADMIN_TOKEN`) for a grant to be accepted; the
@@ -86,6 +137,132 @@ public enum PampGramSubscriptionAPI {
             let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
             DispatchQueue.main.async {
                 completion(ok)
+            }
+        }.resume()
+    }
+
+    private struct BanRequestBody: Encodable {
+        let id: Int64
+        let token: String
+        let scope: String
+        let section: String?
+        let reason: String
+    }
+
+    private struct UnbanRequestBody: Encodable {
+        let id: Int64
+        let token: String
+        let scope: String
+        let section: String?
+    }
+
+    private struct BannedListRequestBody: Encodable {
+        let token: String
+    }
+
+    private struct BannedListResponse: Decodable {
+        let users: [PampGramBannedUser]
+    }
+
+    /// Live-ish read of `userId`'s ban state. Same never-fails-outward contract as
+    /// `fetchTier`: any network or decode problem resolves to `.none` (not banned) rather than
+    /// erroring the screen that asked — a banned section only ever locks because the server
+    /// said so, never because a request happened to fail.
+    public static func fetchBanStatus(userId: Int64) -> Signal<PampGramBanStatus, NoError> {
+        return Signal { subscriber in
+            guard let url = URL(string: "\(baseURL)/ban-status?id=\(userId)") else {
+                subscriber.putNext(.none)
+                subscriber.putCompletion()
+                return EmptyDisposable
+            }
+            let task = URLSession.shared.dataTask(with: url) { data, _, _ in
+                var status = PampGramBanStatus.none
+                if let data, let decoded = try? JSONDecoder().decode(PampGramBanStatus.self, from: data) {
+                    status = decoded
+                }
+                subscriber.putNext(status)
+                subscriber.putCompletion()
+            }
+            task.resume()
+            return ActionDisposable {
+                task.cancel()
+            }
+        }
+    }
+
+    /// Admin-only: bans `userId` either everywhere (`section: nil`) or in one hub section.
+    public static func banUser(userId: Int64, section: PampGramBanSection?, reason: String, adminToken: String, completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: "\(baseURL)/ban") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(BanRequestBody(id: userId, token: adminToken, scope: section == nil ? "full" : "section", section: section?.rawValue, reason: reason))
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    /// Admin-only: lifts a ban. `.full` clears only the full-account ban (any section bans
+    /// stay); `.section` clears only that one section; `.all` clears everything at once —
+    /// three distinct server scopes, not two, since "the account is fully banned" and "this
+    /// account also happens to carry section reasons from before" are independent facts.
+    public static func unbanUser(userId: Int64, scope: PampGramUnbanScope, adminToken: String, completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: "\(baseURL)/unban") else {
+            completion(false)
+            return
+        }
+        let scopeString: String
+        let sectionString: String?
+        switch scope {
+        case .full:
+            scopeString = "full"
+            sectionString = nil
+        case let .section(section):
+            scopeString = "section"
+            sectionString = section.rawValue
+        case .all:
+            scopeString = "all"
+            sectionString = nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(UnbanRequestBody(id: userId, token: adminToken, scope: scopeString, section: sectionString))
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    /// Admin-only: every currently-banned account, for the admin panel's "Разбанить" list.
+    public static func fetchBannedList(adminToken: String, completion: @escaping ([PampGramBannedUser]) -> Void) {
+        guard let url = URL(string: "\(baseURL)/banned-list") else {
+            completion([])
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(BannedListRequestBody(token: adminToken))
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            var users: [PampGramBannedUser] = []
+            if let data, let decoded = try? JSONDecoder().decode(BannedListResponse.self, from: data) {
+                users = decoded.users
+            }
+            DispatchQueue.main.async {
+                completion(users)
             }
         }.resume()
     }

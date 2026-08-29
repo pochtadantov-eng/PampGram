@@ -283,13 +283,19 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
 
     let arguments = PampGramHubArguments(
         openGifts: {
-            pushControllerImpl?(pampGramGiftsSettingsController(context: context))
+            pampGramGateSection(context: context, section: .gifts) {
+                pushControllerImpl?(pampGramGiftsSettingsController(context: context))
+            }
         },
         openMessages: {
-            pushControllerImpl?(pampGramMessagesSettingsController(context: context))
+            pampGramGateSection(context: context, section: .messages) {
+                pushControllerImpl?(pampGramMessagesSettingsController(context: context))
+            }
         },
         openGhost: {
-            pushControllerImpl?(pampGramGhostSettingsController(context: context))
+            pampGramGateSection(context: context, section: .ghost) {
+                pushControllerImpl?(pampGramGhostSettingsController(context: context))
+            }
         },
         openPlaceholder: { title in
             pushControllerImpl?(pampGramPlaceholderController(context: context, title: title))
@@ -366,6 +372,15 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
     )
 
     let isAdmin = context.account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId
+
+    // A full ban blocks the hub itself, not just its sections — checked once per open rather
+    // than on every redraw, same one-shot pattern as pampGramGateSection.
+    let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
+    |> deliverOnMainQueue).start(next: { status in
+        if let reason = status.full {
+            pampGramPresentBannedScreen(context: context, reason: reason)
+        }
+    })
 
     let signal = combineLatest(
         context.sharedContext.presentationData,

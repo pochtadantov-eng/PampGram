@@ -242,13 +242,19 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
             })
         },
         openGifts: {
-            pushControllerImpl?(pampGramGiftsSettingsController(context: context))
+            pampGramGateSection(context: context, section: .gifts) {
+                pushControllerImpl?(pampGramGiftsSettingsController(context: context))
+            }
         },
         openMessages: {
-            pushControllerImpl?(pampGramMessagesSettingsController(context: context))
+            pampGramGateSection(context: context, section: .messages) {
+                pushControllerImpl?(pampGramMessagesSettingsController(context: context))
+            }
         },
         openGhost: {
-            pushControllerImpl?(pampGramGhostSettingsController(context: context))
+            pampGramGateSection(context: context, section: .ghost) {
+                pushControllerImpl?(pampGramGhostSettingsController(context: context))
+            }
         }
     )
 
