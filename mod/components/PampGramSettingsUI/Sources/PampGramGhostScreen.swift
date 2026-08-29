@@ -1,10 +1,12 @@
 import Foundation
 import Display
 import SwiftSignalKit
+import TelegramCore
 import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import UndoUI
 import PampGramCore
 
 private final class PampGramGhostArguments {
@@ -88,7 +90,7 @@ private func pampGramGhostEntries(settings: PampGramSettings) -> [PampGramGhostE
     entries.append(.ghostReaderFooter("Пока включено, собеседники не видят: что вы прочитали их сообщение (галочки «прочитано» не проставляются), что вы «в сети» или когда вы были последний раз, что вы печатаете, и что вы записываете голосовое/кружок или отправляете файл. Сами вы при этом продолжаете пользоваться приложением как обычно — непрочитанные у вас лично сбрасываются, история читается — просто об этом никто, кроме вас, не узнаёт. Действует на всех пользователей сразу; выбор конкретных людей для исключения появится позже."))
 
     entries.append(.onlineMaskToggle("Маскировка онлайна", settings.onlineMaskEnabled))
-    entries.append(.onlineMaskFooter("Пока включено, все видят вас «в сети» — приложение перестаёт отправлять статус «не в сети» при сворачивании. Честно предупреждаем о технической границе: iOS не даёт приложениям работать в фоне бесконечно — статус держится, пока система реально даёт приложению время (открыто, недавно свёрнуто, входящие уведомления и т. п.), а не буквально 24/7 при полностью закрытом и не трогаемом днями приложении."))
+    entries.append(.onlineMaskFooter("Пока включено, все видят вас «в сети» — приложение перестаёт отправлять статус «не в сети» при сворачивании. Честно предупреждаем о технической границе: iOS не даёт приложениям работать в фоне бесконечно — статус держится, пока система реально даёт приложению время (открыто, недавно свёрнуто, входящие уведомления и т. п.), а не буквально 24/7 при полностью закрытом и не трогаемом днями приложении.\n\nПри включении настройка приватности Telegram «Последний визит и онлайн» (Настройки → Конфиденциальность) автоматически переключается на «Все» — без этого статус «в сети» скрыт для всех настройкой приватности, и маскировка была бы не видна никому. При выключении маскировки эта настройка приватности НЕ откатывается обратно автоматически — при желании поменяйте её сами."))
 
     return entries
 }
@@ -99,6 +101,8 @@ private func pampGramGhostEntries(settings: PampGramSettings) -> [PampGramGhostE
 /// or stores anyone else's data, it only withholds or overrides this account's own outgoing
 /// status signals.
 public func pampGramGhostSettingsController(context: AccountContext) -> ViewController {
+    var presentTooltipImpl: ((String) -> Void)?
+
     let arguments = PampGramGhostArguments(
         toggleGhostReader: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
@@ -119,6 +123,17 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
                 }
                 return settings
             }).start()
+
+            if value {
+                // The mask only works end to end if the "Last Seen & Online" privacy rule
+                // actually lets people see the status we're now broadcasting — with it
+                // restricted (e.g. "Nobody"), Telegram's own privacy engine hides the online
+                // status server-side regardless of what we send, and the mask would do
+                // nothing visible. Switching it to "Everybody" is what makes the toggle's own
+                // promise true, exactly like turning on the mask should.
+                let _ = context.engine.privacy.updateSelectiveAccountPrivacySettings(type: .presence, settings: .enableEveryone(disableFor: [:])).start()
+                presentTooltipImpl?("Настройка приватности «Последний визит и онлайн» переключена на «Все» — иначе маскировку никто не увидит.")
+            }
         }
     )
 
@@ -145,5 +160,13 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
         return (controllerState, (listState, arguments))
     }
 
-    return ItemListController(context: context, state: signal)
+    let controller = ItemListController(context: context, state: signal)
+    presentTooltipImpl = { [weak controller] text in
+        guard let controller else {
+            return
+        }
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        controller.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
+    }
+    return controller
 }
