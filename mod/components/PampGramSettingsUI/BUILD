@@ -24,6 +24,7 @@ swift_library(
         "//submodules/UndoUI",
         "//submodules/TelegramUI/Components/PampGram/PampGramCore",
         "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
+        "//submodules/AppBundle",
     ],
     visibility = [
         "//visibility:public",

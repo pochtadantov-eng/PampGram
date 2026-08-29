@@ -22,7 +22,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
     case privacy
     case appearance
     case advanced
-    case status(Bool)
+    case status(Int, Int)
     case team
 
     var section: ItemListSectionId {
@@ -158,7 +158,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                     arguments.openPlaceholder("Дополнительно")
                 }
             )
-        case let .status(allActive):
+        case let .status(activeCount, totalCount):
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
@@ -166,8 +166,8 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 title: "Статус",
                 titleFont: .bold,
                 label: "",
-                additionalDetailLabel: allActive ? "Все функции активны" : "Часть функций отключена",
-                additionalDetailLabelColor: allActive ? .constructive : .generic,
+                additionalDetailLabel: "\(activeCount) из \(totalCount) функций активны",
+                additionalDetailLabelColor: activeCount == totalCount ? .constructive : .generic,
                 sectionId: self.section,
                 style: .blocks,
                 action: {
@@ -225,10 +225,15 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
 }
 
 private func pampGramHubEntries(settings: PampGramSettings) -> [PampGramHubEntry] {
-    // "Ghost" counts as active only when exactly one of its two mutually-exclusive presence
-    // modes is on — both off is a legitimate default, not a "something's disabled" state, so
-    // it doesn't drag the overall indicator down the way an off balance-display toggle does.
-    let allActive = settings.phantomGiftsEnabled && settings.fakeStarsDisplayEnabled && settings.fakeTonDisplayEnabled && settings.antiDeleteMessagesEnabled
+    let toggles = [
+        settings.phantomGiftsEnabled,
+        settings.fakeStarsDisplayEnabled,
+        settings.fakeTonDisplayEnabled,
+        settings.antiDeleteMessagesEnabled,
+        settings.ghostReaderEnabled,
+        settings.onlineMaskEnabled
+    ]
+    let activeCount = toggles.filter { $0 }.count
     return [
         .hero,
         .gifts,
@@ -236,7 +241,7 @@ private func pampGramHubEntries(settings: PampGramSettings) -> [PampGramHubEntry
         .privacy,
         .appearance,
         .advanced,
-        .status(allActive),
+        .status(activeCount, toggles.count),
         .team
     ]
 }
