@@ -48,6 +48,12 @@ public struct PampGramSettings: Codable, Equatable {
     /// being kept and shown like every other chat's deletions are. Checked by
     /// `PampGramDeletedMessageCapture.captureBeforeDelete` per message's `peerId`.
     public var antiDeleteExcludedPeerIds: [PeerId]
+    /// "Изменить визуально": lets the long-press menu on a message from the other side offer
+    /// "PampGram" → "Изменить визуально", rewriting that message's text as stored in this
+    /// device's own Postbox. Purely local — the edit is never sent, and the sender's copy is
+    /// untouched; the bubble carries a small pencil badge (`PampGramVisualEditAttribute`) so
+    /// it stays distinguishable from what they actually sent.
+    public var visualEditEnabled: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -62,11 +68,12 @@ public struct PampGramSettings: Codable, Equatable {
             antiDeleteMessagesEnabled: true,
             ghostReaderEnabled: false,
             onlineMaskEnabled: false,
-            antiDeleteExcludedPeerIds: []
+            antiDeleteExcludedPeerIds: [],
+            visualEditEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId]) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -76,6 +83,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.ghostReaderEnabled = ghostReaderEnabled
         self.onlineMaskEnabled = onlineMaskEnabled
         self.antiDeleteExcludedPeerIds = antiDeleteExcludedPeerIds
+        self.visualEditEnabled = visualEditEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -93,6 +101,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.ghostReaderEnabled = try container.decodeIfPresent(Bool.self, forKey: .ghostReaderEnabled) ?? defaults.ghostReaderEnabled
         self.onlineMaskEnabled = try container.decodeIfPresent(Bool.self, forKey: .onlineMaskEnabled) ?? defaults.onlineMaskEnabled
         self.antiDeleteExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .antiDeleteExcludedPeerIds) ?? defaults.antiDeleteExcludedPeerIds
+        self.visualEditEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditEnabled) ?? defaults.visualEditEnabled
     }
 }
 

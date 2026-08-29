@@ -26,7 +26,7 @@ index 53c9a721..3cca62e2 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramCore/Sources/Account/AccountManager.swift b/submodules/TelegramCore/Sources/Account/AccountManager.swift
-index 3f2b4794..13a3d5cb 100644
+index 3f2b4794..9b478212 100644
 --- a/submodules/TelegramCore/Sources/Account/AccountManager.swift
 +++ b/submodules/TelegramCore/Sources/Account/AccountManager.swift
 @@ -3,6 +3,7 @@ import Postbox
@@ -37,11 +37,12 @@ index 3f2b4794..13a3d5cb 100644
  
  private enum AccountKind {
      case authorized
-@@ -138,6 +139,7 @@ private var declaredEncodables: Void = {
+@@ -138,6 +139,8 @@ private var declaredEncodables: Void = {
      declareEncodable(SourceReferenceMessageAttribute.self, f: { SourceReferenceMessageAttribute(decoder: $0) })
      declareEncodable(SourceAuthorInfoMessageAttribute.self, f: { SourceAuthorInfoMessageAttribute(decoder: $0) })
      declareEncodable(EditedMessageAttribute.self, f: { EditedMessageAttribute(decoder: $0) })
 +    declareEncodable(PampGramDeletedByRemoteAttribute.self, f: { PampGramDeletedByRemoteAttribute(decoder: $0) })
++    declareEncodable(PampGramVisualEditAttribute.self, f: { PampGramVisualEditAttribute(decoder: $0) })
      declareEncodable(ReplyMarkupMessageAttribute.self, f: { ReplyMarkupMessageAttribute(decoder: $0) })
      declareEncodable(OutgoingChatContextResultMessageAttribute.self, f: { OutgoingChatContextResultMessageAttribute(decoder: $0) })
      declareEncodable(HttpReferenceMediaResource.self, f: { HttpReferenceMediaResource(decoder: $0) })
@@ -269,14 +270,15 @@ index 66242579..43c0800e 100644
          return inputSecretChat(postbox: postbox, peerId: peerId)
          |> mapToSignal { inputPeer -> Signal<PeerReadState, PeerReadStateValidationError> in
 diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
-index 5da8c15e..077f3fbb 100644
+index 5da8c15e..88cdc4b0 100644
 --- a/submodules/TelegramUI/BUILD
 +++ b/submodules/TelegramUI/BUILD
-@@ -49,6 +49,7 @@ swift_library(
+@@ -49,6 +49,8 @@ swift_library(
          "-warnings-as-errors",
      ],
      deps = [
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
          "//third-party/recaptcha:RecaptchaEnterprise",
          "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
          "//submodules/SSignalKit/SSignalKit:SSignalKit",
@@ -293,7 +295,7 @@ index 1ddd9b86..5e5fecbc 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-index 2dcfc95e..564443bd 100644
+index 2dcfc95e..daac3537 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 @@ -8,6 +8,7 @@ import TelegramCore
@@ -318,7 +320,7 @@ index 2dcfc95e..564443bd 100644
          var isFile = false
          inner: for media in messageMedia {
              if let media = media as? TelegramMediaPaidContent {
-@@ -694,7 +700,14 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+@@ -694,7 +700,20 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
      private var clippingNode: ChatMessageBubbleClippingNode
      
      private var suggestedPostInfoNode: ChatMessageSuggestedPostInfoNode?
@@ -331,10 +333,16 @@ index 2dcfc95e..564443bd 100644
 +    private var pampGramDeletedOverlayNode: ASDisplayNode?
 +    private var pampGramDeletedTrashIconNode: ASImageNode?
 +
++    // PampGram: marks a message whose text was changed locally via "Изменить визуально" (see
++    // PampGramVisualEditAttribute) — a small pencil badge in the opposite corner from the
++    // deleted-message trash badge, so an edit only this device made never looks like what the
++    // other side actually sent.
++    private var pampGramVisualEditIconNode: ASImageNode?
++
      override public var extractedBackgroundNode: ASDisplayNode? {
          return self.shadowNode
      }
-@@ -3981,7 +3994,48 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+@@ -3981,7 +4000,71 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
          
          let previousBackgroundFrame = strongSelf.backgroundNode.backgroundFrame
          strongSelf.backgroundNode.backgroundFrame = backgroundFrame
@@ -379,6 +387,29 @@ index 2dcfc95e..564443bd 100644
 +            strongSelf.pampGramDeletedOverlayNode = nil
 +            strongSelf.pampGramDeletedTrashIconNode?.removeFromSupernode()
 +            strongSelf.pampGramDeletedTrashIconNode = nil
++        }
++
++        // PampGram: small pencil badge, opposite corner from the deleted-message trash badge,
++        // for a message whose text was rewritten locally via "Изменить визуально".
++        if item.content.firstMessage.attributes.contains(where: { $0 is PampGramVisualEditAttribute }) {
++            let iconNode: ASImageNode
++            if let current = strongSelf.pampGramVisualEditIconNode {
++                iconNode = current
++            } else {
++                iconNode = ASImageNode()
++                iconNode.displaysAsynchronously = false
++                iconNode.isUserInteractionEnabled = false
++                if let baseImage = UIImage(systemName: "pencil") {
++                    iconNode.image = baseImage.withTintColor(UIColor(rgb: 0x8e44ec), renderingMode: .alwaysOriginal)
++                }
++                strongSelf.pampGramVisualEditIconNode = iconNode
++                strongSelf.addSubnode(iconNode)
++            }
++            let iconSize = CGSize(width: 14.0, height: 14.0)
++            iconNode.frame = CGRect(origin: CGPoint(x: backgroundFrame.minX + 6.0, y: backgroundFrame.maxY - iconSize.height - 6.0), size: iconSize)
++        } else if let iconNode = strongSelf.pampGramVisualEditIconNode {
++            iconNode.removeFromSupernode()
++            strongSelf.pampGramVisualEditIconNode = nil
 +        }
 +
          if let (suggestedPostInfoSize, suggestedPostInfoApply) = suggestedPostInfoNodeLayout {
@@ -1659,6 +1690,72 @@ index 87c58b5f..75f6326f 100644
                              currency: component.starsContext.ton ? .ton : .stars,
                              rate: nil,
                              actionTitle: component.starsContext.ton ? environment.strings.Ton_WithdrawViaFragment : (withdrawAvailable ? environment.strings.Stars_Intro_BuyShort : environment.strings.Stars_Intro_Buy),
+diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+index 07cef5bb..bc3000ac 100644
+--- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
++++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+@@ -38,7 +38,9 @@ import ChatMessageItemView
+ import ChatMessageBubbleItemNode
+ import AdsInfoScreen
+ import AdsReportScreen
+- 
++import PampGramCore
++import PampGramSettingsUI
++
+ private struct MessageContextMenuData {
+     let starStatus: Bool?
+     let canReply: Bool
+@@ -491,7 +493,50 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+     )
+ }
+ 
++// PampGram: adds a "PampGram" → "Изменить визуально" entry to a single message's long-press
++// menu when the "Изменить визуально" toggle (Удалённые сообщения screen) is on and the
++// message is a non-service message from the other side. Kept as a thin wrapper around the
++// stock menu builder below (renamed …Real, same pattern as Ghost mode's read-state wrapper in
++// SynchronizePeerReadState.swift) so this ~4000-line function stays untouched.
+ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil) -> Signal<ContextController.Items, NoError> {
++    let baseItems = contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: chatPresentationInterfaceState, context: context, messages: messages, controllerInteraction: controllerInteraction, selectAll: selectAll, interfaceInteraction: interfaceInteraction, readStats: readStats, messageNode: messageNode)
++
++    guard messages.count == 1, let message = messages.first, let author = message.author, author.id != context.account.peerId, !message.media.contains(where: { $0 is TelegramMediaAction }) else {
++        return baseItems
++    }
++
++    return combineLatest(baseItems, PampGramCore.settingsSignal(postbox: context.account.postbox))
++    |> map { items, settings -> ContextController.Items in
++        guard settings.visualEditEnabled, case let .list(list) = items.content else {
++            return items
++        }
++        var items = items
++        var newList = list
++        newList.append(.separator)
++        newList.append(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
++            return pampGramSettingsIcon(size: 24.0)
++        }, iconSource: nil, action: { c, _ in
++            var subItems: [ContextMenuItem] = []
++            subItems.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Common_Back, textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Back"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, iconPosition: .left, action: { c, _ in
++                c?.popItems()
++            })))
++            subItems.append(.separator)
++            subItems.append(.action(ContextMenuActionItem(text: "Изменить визуально", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "pencil"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
++            })))
++            c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
++        })))
++        items.content = .list(newList)
++        return items
++    }
++}
++
++private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil) -> Signal<ContextController.Items, NoError> {
+     guard let interfaceInteraction = interfaceInteraction, let controllerInteraction = controllerInteraction else {
+         return .single(ContextController.Items(content: .list([])))
+     }
 diff --git a/submodules/TelegramUI/Sources/SharedAccountContext.swift b/submodules/TelegramUI/Sources/SharedAccountContext.swift
 index 5637c9e3..5df39e62 100644
 --- a/submodules/TelegramUI/Sources/SharedAccountContext.swift

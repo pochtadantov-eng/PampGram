@@ -14,12 +14,14 @@ import PampGramCore
 private final class PampGramMessagesArguments {
     let toggleAntiDelete: (Bool) -> Void
     let openExclusions: () -> Void
+    let toggleVisualEdit: (Bool) -> Void
     let openHistory: () -> Void
     let clearHistory: () -> Void
 
-    init(toggleAntiDelete: @escaping (Bool) -> Void, openExclusions: @escaping () -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void) {
+    init(toggleAntiDelete: @escaping (Bool) -> Void, openExclusions: @escaping () -> Void, toggleVisualEdit: @escaping (Bool) -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void) {
         self.toggleAntiDelete = toggleAntiDelete
         self.openExclusions = openExclusions
+        self.toggleVisualEdit = toggleVisualEdit
         self.openHistory = openHistory
         self.clearHistory = clearHistory
     }
@@ -28,6 +30,7 @@ private final class PampGramMessagesArguments {
 private enum PampGramMessagesSection: Int32 {
     case about
     case antiDelete
+    case visualEdit
     case history
 }
 
@@ -37,6 +40,9 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
     case antiDeleteToggle(String, Bool)
     case exclusionsRow(String, String)
     case antiDeleteFooter(String)
+
+    case visualEditToggle(String, Bool)
+    case visualEditFooter(String)
 
     case historyHeader(String)
     case historyList(String, String)
@@ -49,6 +55,8 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return PampGramMessagesSection.about.rawValue
         case .antiDeleteToggle, .exclusionsRow, .antiDeleteFooter:
             return PampGramMessagesSection.antiDelete.rawValue
+        case .visualEditToggle, .visualEditFooter:
+            return PampGramMessagesSection.visualEdit.rawValue
         case .historyHeader, .historyList, .clearHistory, .historyFooter:
             return PampGramMessagesSection.history.rawValue
         }
@@ -64,14 +72,18 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return 2
         case .antiDeleteFooter:
             return 3
-        case .historyHeader:
+        case .visualEditToggle:
             return 4
-        case .historyList:
+        case .visualEditFooter:
             return 5
-        case .clearHistory:
+        case .historyHeader:
             return 6
-        case .historyFooter:
+        case .historyList:
             return 7
+        case .clearHistory:
+            return 8
+        case .historyFooter:
+            return 9
         }
     }
 
@@ -82,7 +94,7 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramMessagesArguments
         switch self {
-        case let .aboutText(text), let .antiDeleteFooter(text), let .historyFooter(text):
+        case let .aboutText(text), let .antiDeleteFooter(text), let .visualEditFooter(text), let .historyFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .historyHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
@@ -93,6 +105,10 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
         case let .exclusionsRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openExclusions()
+            })
+        case let .visualEditToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleVisualEdit(value)
             })
         case let .historyList(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
@@ -114,6 +130,9 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
     entries.append(.antiDeleteToggle("Восстановление удалённых сообщений", settings.antiDeleteMessagesEnabled))
     entries.append(.exclusionsRow("Исключения", "\(settings.antiDeleteExcludedPeerIds.count)"))
     entries.append(.antiDeleteFooter("Удалённое собеседником сообщение остаётся в чате затемнённым, с иконкой корзины. В исключённых чатах — как обычно."))
+
+    entries.append(.visualEditToggle("Изменить визуально", settings.visualEditEnabled))
+    entries.append(.visualEditFooter("Добавляет в меню сообщения собеседника (зажать → PampGram) кнопку «Изменить визуально» — меняет текст только у вас."))
 
     entries.append(.historyHeader("ИСТОРИЯ"))
     entries.append(.historyList("Восстановленные сообщения", "\(historyCount)"))
@@ -139,6 +158,13 @@ public func pampGramMessagesSettingsController(context: AccountContext) -> ViewC
         },
         openExclusions: {
             pushControllerImpl?(pampGramMessagesExclusionsController(context: context))
+        },
+        toggleVisualEdit: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.visualEditEnabled = value
+                return settings
+            }).start()
         },
         openHistory: {
             pushControllerImpl?(pampGramMessagesHistoryController(context: context))
