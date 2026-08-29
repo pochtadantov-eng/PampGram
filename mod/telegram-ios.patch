@@ -1778,7 +1778,7 @@ index 87c58b5f..75f6326f 100644
                              rate: nil,
                              actionTitle: component.starsContext.ton ? environment.strings.Ton_WithdrawViaFragment : (withdrawAvailable ? environment.strings.Stars_Intro_BuyShort : environment.strings.Stars_Intro_Buy),
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5bb..bc3000ac 100644
+index 07cef5bb..fe74eab3 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -1792,7 +1792,7 @@ index 07cef5bb..bc3000ac 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,50 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,74 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -1826,11 +1826,35 @@ index 07cef5bb..bc3000ac 100644
 +                c?.popItems()
 +            })))
 +            subItems.append(.separator)
-+            subItems.append(.action(ContextMenuActionItem(text: "Изменить визуально", textColor: .primary, icon: { theme in
++            subItems.append(.action(ContextMenuActionItem(text: "Изменить текст", textColor: .primary, icon: { theme in
 +                return generateTintedImage(image: UIImage(systemName: "pencil"), color: theme.actionSheet.primaryTextColor)
 +            }, iconSource: nil, action: { _, f in
 +                f(.dismissWithoutContent)
 +                controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
++            })))
++            subItems.append(.action(ContextMenuActionItem(text: "Отправить фото", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "photo"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
++            })))
++            subItems.append(.action(ContextMenuActionItem(text: "Отправить голосовое", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "waveform"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
++            })))
++            subItems.append(.action(ContextMenuActionItem(text: "Отправить файл", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "doc"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
++            })))
++            subItems.append(.action(ContextMenuActionItem(text: "Показать звонок", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "phone.arrow.down.left"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
 +            })))
 +            c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
 +        })))
