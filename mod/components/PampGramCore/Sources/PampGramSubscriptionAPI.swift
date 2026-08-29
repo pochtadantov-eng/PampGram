@@ -61,6 +61,15 @@ public struct PampGramBannedUser: Codable {
     public let id: String
     public let full: String?
     public let sections: [String: String]
+
+    // A `public struct`'s synthesized memberwise initializer is only `internal` unless one
+    // is written explicitly — without this, other modules (the admin panel's UI) can decode
+    // this type from JSON but can't construct one directly themselves.
+    public init(id: String, full: String?, sections: [String: String]) {
+        self.id = id
+        self.full = full
+        self.sections = sections
+    }
 }
 
 /// The admin's proof-of-identity token, stored ONLY in this device's own local Postbox —
