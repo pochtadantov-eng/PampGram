@@ -1956,3 +1956,69 @@ index 97de6187..5ca2f8f8 100644
                  account.shouldKeepBackgroundDownloadConnections.set(.single(false))
              }
              
+diff --git a/Telegram/BUILD b/Telegram/BUILD
+index 9ad13cf3..1d1f54a3 100644
+--- a/Telegram/BUILD
++++ b/Telegram/BUILD
+@@ -629,7 +629,7 @@ plist_fragment(
+     template =
+     """
+     <key>CFBundleDisplayName</key>
+-    <string>Telegram</string>
++    <string>PampGram</string>
+     """
+ )
+ 
+@@ -1568,11 +1568,11 @@ plist_fragment(
+     <key>CFBundleDevelopmentRegion</key>
+     <string>en</string>
+     <key>CFBundleDisplayName</key>
+-    <string>Telegram</string>
++    <string>PampGram</string>
+     <key>CFBundleIdentifier</key>
+     <string>{telegram_bundle_id}</string>
+     <key>CFBundleName</key>
+-    <string>Telegram</string>
++    <string>PampGram</string>
+     <key>CFBundlePackageType</key>
+     <string>APPL</string>
+     <key>CFBundleSignature</key>
+diff --git a/Telegram/Telegram-iOS/Telegram.icon/Assets/Plane.svg b/Telegram/Telegram-iOS/Telegram.icon/Assets/Plane.svg
+index e475bcfd..84ae6cc6 100644
+--- a/Telegram/Telegram-iOS/Telegram.icon/Assets/Plane.svg
++++ b/Telegram/Telegram-iOS/Telegram.icon/Assets/Plane.svg
+@@ -2,6 +2,8 @@
+ <svg width="1024px" height="1024px" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+     <title>Plane</title>
+     <g id="Plane" stroke="none" fill="none" fill-rule="nonzero">
+-        <path d="M287.315632,507.666819 C406.984718,455.528898 486.782853,421.15639 526.710034,404.549294 C640.710251,357.13266 664.39852,348.895883 679.838202,348.621 C683.234017,348.56408 690.826804,349.405665 695.745092,353.396516 C699.897998,356.766313 701.040629,361.31843 701.587414,364.513367 C702.1342,367.708304 702.815079,374.986453 702.273832,380.673387 C696.09612,445.583141 669.36526,603.101997 655.766116,675.802034 C650.011808,706.564145 638.681397,716.878524 627.712247,717.887922 C603.873746,720.081578 585.77187,702.133777 562.683116,686.998808 C526.553773,663.315568 506.142993,648.572678 471.073211,625.462211 C430.544009,598.754068 456.817404,584.074808 479.914878,560.08479 C485.959597,553.806488 590.992581,458.270869 593.025497,449.604291 C593.279747,448.520391 593.515704,444.480123 591.115452,442.346714 C588.715199,440.213304 585.172634,440.942847 582.61622,441.52306 C578.99258,442.345492 521.275488,480.49435 409.464943,555.969631 C393.082138,567.219329 378.243103,572.700559 364.947836,572.413323 C350.290871,572.096667 322.096751,564.126052 301.137321,557.312967 C275.429726,548.956441 254.997841,544.538286 256.777,530.34632 C257.703696,522.954266 267.883239,515.394432 287.315632,507.666819 Z" id="Path-3" fill="#FFFFFF"></path>
++        <g transform="translate(354.400,768.000) scale(0.320000,-0.320000)">
++            <path d="M105 0V1600H489Q691 1600 780.5 1518.5Q870 1437 877 1250Q880 1151 880.0 1068.5Q880 986 877 894Q870 707 780.0 625.0Q690 543 489 543H362V0ZM362 771H489Q555 771 586.0 798.5Q617 826 620 881Q623 939 624.0 1003.5Q625 1068 624.0 1134.5Q623 1201 620 1262Q617 1318 586.0 1345.5Q555 1373 489 1373H362Z" fill="#FFFFFF"/>
++        </g>
+     </g>
+-</svg>
+\ No newline at end of file
++</svg>
+diff --git a/Telegram/Telegram-iOS/Telegram.icon/icon.json b/Telegram/Telegram-iOS/Telegram.icon/icon.json
+index b1143f63..75de7f6d 100644
+--- a/Telegram/Telegram-iOS/Telegram.icon/icon.json
++++ b/Telegram/Telegram-iOS/Telegram.icon/icon.json
+@@ -51,15 +51,15 @@
+             {
+               "value" : {
+                 "linear-gradient" : [
+-                  "display-p3:0.21569,0.68627,0.89020,1.00000",
+-                  "srgb:0.11373,0.57647,0.82353,1.00000"
++                  "srgb:0.54510,0.36078,0.96471,1.00000",
++                  "srgb:0.35686,0.12941,0.71373,1.00000"
+                 ]
+               }
+             },
+             {
+               "appearance" : "dark",
+               "value" : {
+-                "automatic-gradient" : "srgb:0.00000,0.47843,1.00000,1.00000"
++                "automatic-gradient" : "srgb:0.54510,0.36078,0.96471,1.00000"
+               }
+             }
+           ],
