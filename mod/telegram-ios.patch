@@ -19076,3 +19076,577 @@ index ee9ea2d9..6c47c8bc 100644
                          if let animationFile {
                              let resultController = UndoOverlayController(
                                  presentationData: presentationData,
+diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
+index 5da8c15e..c8bd1d42 100644
+--- a/submodules/TelegramUI/BUILD
++++ b/submodules/TelegramUI/BUILD
+@@ -188,6 +188,7 @@ swift_library(
+         "//submodules/RaiseToListen:RaiseToListen",
+         "//submodules/OpusBinding:OpusBinding",
+         "//third-party/opus:opus",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+         "//submodules/ShareItems:ShareItems",
+         "//submodules/ShareItems/Impl:ShareItemsImpl",
+         "//submodules/SettingsUI:SettingsUI",
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
+index 2e4d308a..5a99b742 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
+@@ -42,6 +42,7 @@ import RaiseToListen
+ import UrlHandling
+ import AvatarNode
+ import AppBundle
++import PampGramCore
+ import LocalizedPeerData
+ import PhoneNumberFormat
+ import SettingsUI
+@@ -350,53 +351,82 @@ extension ChatControllerImpl {
+                             strongSelf.audioRecorder.set(.single(nil))
+                             strongSelf.recorderDataDisposable.set(nil)
+                         } else {
+-                            let randomId = Int64.random(in: Int64.min ... Int64.max)
+-                            
+-                            let resource = LocalFileMediaResource(fileId: randomId)
+-                            strongSelf.context.engine.resources.storeResourceData(id: EngineMediaResource.Id(resource.id), data: data.compressedData)
+-                            
+-                            let waveformBuffer: Data? = data.waveform
+-                            
+-                            let correlationId = Int64.random(in: 0 ..< Int64.max)
+-                            var usedCorrelationId = false
+-                            
+-                            var shouldAnimateMessageTransition = strongSelf.chatDisplayNode.shouldAnimateMessageTransition
+-                            if strongSelf.chatLocation.threadId == nil, let channel = strongSelf.presentationInterfaceState.renderedPeer?.peer as? TelegramChannel, channel.isMonoForum, let linkedMonoforumId = channel.linkedMonoforumId, let mainChannel = strongSelf.presentationInterfaceState.renderedPeer?.peers[linkedMonoforumId] as? TelegramChannel, mainChannel.hasPermission(.manageDirect) {
+-                                shouldAnimateMessageTransition = false
+-                            }
+-                            
+-                            if shouldAnimateMessageTransition, let textInputPanelNode = strongSelf.chatDisplayNode.textInputPanelNode, let micButton = textInputPanelNode.micButton {
+-                                usedCorrelationId = true
+-                                strongSelf.chatDisplayNode.messageTransitionNode.add(correlationId: correlationId, source: .audioMicInput(ChatMessageTransitionNodeImpl.Source.AudioMicInput(micButton: micButton)), initiated: {
+-                                    guard let strongSelf = self else {
+-                                        return
+-                                    }
+-                                    strongSelf.audioRecorder.set(.single(nil))
++                            let originalCompressedData = data.compressedData
++                            let duration = data.duration
++                            let waveform = data.waveform
++
++                            // "Изменить голос": offline, one-shot pitch/tempo shift of the
++                            // finished recording, run off the main thread so a longer voice
++                            // message can't cause a send-button hitch. Falls back to the
++                            // untouched recording if the feature is off or the shift fails.
++                            let pampGramProcessedData: Signal<Data, NoError> = PampGramCore.settingsSignal(postbox: strongSelf.context.account.postbox)
++                            |> take(1)
++                            |> mapToSignal { settings -> Signal<Data, NoError> in
++                                guard settings.voiceChangerMessagesEnabled else {
++                                    return .single(originalCompressedData)
++                                }
++                                return (Signal<Data, NoError> { subscriber in
++                                    let result = PampGramVoiceChanger.apply(to: originalCompressedData, preset: settings.voicePreset) ?? originalCompressedData
++                                    subscriber.putNext(result)
++                                    subscriber.putCompletion()
++                                    return EmptyDisposable
+                                 })
+-                            } else {
+-                                strongSelf.audioRecorder.set(.single(nil))
++                                |> runOn(Queue.concurrentDefaultQueue())
+                             }
+-                            
+-                            strongSelf.chatDisplayNode.setupSendActionOnViewUpdate({
+-                                if let strongSelf = self {
+-                                    strongSelf.chatDisplayNode.collapseInput()
+-                                    
+-                                    strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
+-                                        $0.updatedInterfaceState { $0.withUpdatedReplyMessageSubject(nil).withUpdatedSendMessageEffect(nil).withUpdatedPostSuggestionState(nil) }
++                            |> deliverOnMainQueue
++
++                            strongSelf.recorderDataDisposable.set((pampGramProcessedData).startStrict(next: { [weak strongSelf] finalCompressedData in
++                                guard let strongSelf = strongSelf else {
++                                    return
++                                }
++                                let randomId = Int64.random(in: Int64.min ... Int64.max)
++
++                                let resource = LocalFileMediaResource(fileId: randomId)
++                                strongSelf.context.engine.resources.storeResourceData(id: EngineMediaResource.Id(resource.id), data: finalCompressedData)
++
++                                let waveformBuffer: Data? = waveform
++
++                                let correlationId = Int64.random(in: 0 ..< Int64.max)
++                                var usedCorrelationId = false
++
++                                var shouldAnimateMessageTransition = strongSelf.chatDisplayNode.shouldAnimateMessageTransition
++                                if strongSelf.chatLocation.threadId == nil, let channel = strongSelf.presentationInterfaceState.renderedPeer?.peer as? TelegramChannel, channel.isMonoForum, let linkedMonoforumId = channel.linkedMonoforumId, let mainChannel = strongSelf.presentationInterfaceState.renderedPeer?.peers[linkedMonoforumId] as? TelegramChannel, mainChannel.hasPermission(.manageDirect) {
++                                    shouldAnimateMessageTransition = false
++                                }
++
++                                if shouldAnimateMessageTransition, let textInputPanelNode = strongSelf.chatDisplayNode.textInputPanelNode, let micButton = textInputPanelNode.micButton {
++                                    usedCorrelationId = true
++                                    strongSelf.chatDisplayNode.messageTransitionNode.add(correlationId: correlationId, source: .audioMicInput(ChatMessageTransitionNodeImpl.Source.AudioMicInput(micButton: micButton)), initiated: {
++                                        guard let strongSelf = self else {
++                                            return
++                                        }
++                                        strongSelf.audioRecorder.set(.single(nil))
+                                     })
++                                } else {
++                                    strongSelf.audioRecorder.set(.single(nil))
+                                 }
+-                            }, usedCorrelationId ? correlationId : nil)
+-                            
+-                            var attributes: [EngineMessage.Attribute] = []
+-                            if viewOnce {
+-                                attributes.append(AutoremoveTimeoutMessageAttribute(timeout: viewOnceTimeout, countdownBeginTime: nil))
+-                            }
+-                            
+-                            strongSelf.sendMessages([.message(text: "", attributes: attributes, inlineStickers: [:], mediaReference: .standalone(media: TelegramMediaFile(fileId: EngineMedia.Id(namespace: Namespaces.Media.LocalFile, id: randomId), partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: "audio/ogg", size: Int64(data.compressedData.count), attributes: [.Audio(isVoice: true, duration: Int(data.duration), title: nil, performer: nil, waveform: waveformBuffer)], alternativeRepresentations: [])), threadId: strongSelf.chatLocation.threadId, replyToMessageId: strongSelf.presentationInterfaceState.interfaceState.replyMessageSubject?.subjectModel, replyToStoryId: nil, localGroupingKey: nil, correlationId: correlationId, bubbleUpEmojiOrStickersets: [])])
+-                            
+-                            strongSelf.recorderFeedback?.tap()
+-                            strongSelf.recorderFeedback = nil
+-                            strongSelf.recorderDataDisposable.set(nil)
++
++                                strongSelf.chatDisplayNode.setupSendActionOnViewUpdate({
++                                    if let strongSelf = self {
++                                        strongSelf.chatDisplayNode.collapseInput()
++
++                                        strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
++                                            $0.updatedInterfaceState { $0.withUpdatedReplyMessageSubject(nil).withUpdatedSendMessageEffect(nil).withUpdatedPostSuggestionState(nil) }
++                                        })
++                                    }
++                                }, usedCorrelationId ? correlationId : nil)
++
++                                var attributes: [EngineMessage.Attribute] = []
++                                if viewOnce {
++                                    attributes.append(AutoremoveTimeoutMessageAttribute(timeout: viewOnceTimeout, countdownBeginTime: nil))
++                                }
++
++                                strongSelf.sendMessages([.message(text: "", attributes: attributes, inlineStickers: [:], mediaReference: .standalone(media: TelegramMediaFile(fileId: EngineMedia.Id(namespace: Namespaces.Media.LocalFile, id: randomId), partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: "audio/ogg", size: Int64(finalCompressedData.count), attributes: [.Audio(isVoice: true, duration: Int(duration), title: nil, performer: nil, waveform: waveformBuffer)], alternativeRepresentations: [])), threadId: strongSelf.chatLocation.threadId, replyToMessageId: strongSelf.presentationInterfaceState.interfaceState.replyMessageSubject?.subjectModel, replyToStoryId: nil, localGroupingKey: nil, correlationId: correlationId, bubbleUpEmojiOrStickersets: [])])
++
++                                strongSelf.recorderFeedback?.tap()
++                                strongSelf.recorderFeedback = nil
++                                strongSelf.recorderDataDisposable.set(nil)
++                            }))
+                         }
+                     }
+                 }))
+diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
+new file mode 100644
+index 00000000..78daddd4
+--- /dev/null
++++ b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
+@@ -0,0 +1,198 @@
++import Foundation
++import AVFoundation
++import OpusBinding
++import PampGramCore
++
++/// "Изменить голос": pitch-shifts a just-recorded voice message before it's attached to the
++/// outgoing message — entirely offline, entirely local. Never touches live call audio (that
++/// would mean patching real-time WebRTC internals, a completely different and much riskier
++/// thing) — this only ever runs once, against a finished recording, well off any real-time
++/// path. On any failure at any step, the caller gets `nil` back and is expected to fall back
++/// to sending the original, unmodified recording — a voice message that sounds like the
++/// user's real voice is always safe; a corrupted one sent by mistake would not be.
++public enum PampGramVoiceChanger {
++    /// PCM convention `TGOggOpusWriter`/`OggOpusReader` actually use, confirmed against
++    /// `ManagedAudioRecorder.swift`'s own packet math (`16000/1000 * millisecondsPerPacket`,
++    /// 60ms packets): 16kHz, mono, 16-bit signed PCM, 1920-byte (960-sample) frames.
++    private static let sampleRate: Double = 16000
++    private static let frameByteCount = 1920
++
++    /// `compressedData` is a complete Ogg/Opus file, exactly the form voice messages are
++    /// held in before upload (see `ChatControllerMediaRecording.swift`). Returns a new,
++    /// re-encoded Ogg/Opus file with the preset's pitch/rate applied, or `nil` if any step
++    /// failed.
++    public static func apply(to compressedData: Data, preset: PampGramVoicePreset) -> Data? {
++        guard let pcm = self.decode(compressedData) else {
++            return nil
++        }
++        guard let shifted = self.pitchShift(pcm: pcm, pitchCents: preset.pitchCents, rate: preset.rate), !shifted.isEmpty else {
++            return nil
++        }
++        return self.encode(pcm: shifted)
++    }
++
++    private static func decode(_ compressedData: Data) -> [Int16]? {
++        let sourceFile = EngineTempBox.shared.tempFile(fileName: "pampgram_voice_in.ogg")
++        defer {
++            EngineTempBox.shared.dispose(sourceFile)
++        }
++        do {
++            try compressedData.write(to: URL(fileURLWithPath: sourceFile.path))
++        } catch {
++            return nil
++        }
++
++        guard let reader = OggOpusReader(path: sourceFile.path) else {
++            return nil
++        }
++
++        var samples: [Int16] = []
++        let bufSize = 65536
++        var buffer = [UInt8](repeating: 0, count: bufSize)
++        while true {
++            let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer -> Int32 in
++                return reader.read(rawBuffer.baseAddress, bufSize: Int32(bufSize))
++            }
++            if bytesRead <= 0 {
++                break
++            }
++            let sampleCount = Int(bytesRead) / 2
++            buffer.withUnsafeBytes { rawBuffer in
++                let int16Pointer = rawBuffer.baseAddress!.assumingMemoryBound(to: Int16.self)
++                samples.append(contentsOf: UnsafeBufferPointer(start: int16Pointer, count: sampleCount))
++            }
++        }
++        return samples.isEmpty ? nil : samples
++    }
++
++    private static func encode(pcm: [Int16]) -> Data? {
++        let dataItem = TGDataItem(data: Data())
++        let writer = TGOggOpusWriter()
++        guard writer.begin(with: dataItem) else {
++            return nil
++        }
++
++        var samples = pcm
++        let samplesPerFrame = self.frameByteCount / 2
++        var offset = 0
++        var wroteAnyFrame = false
++        while offset < samples.count {
++            let remaining = samples.count - offset
++            let thisFrameSamples = min(samplesPerFrame, remaining)
++            var frameBytes = [UInt8](repeating: 0, count: thisFrameSamples * 2)
++            samples.withUnsafeBufferPointer { samplesPointer in
++                frameBytes.withUnsafeMutableBytes { framePointer in
++                    let source = UnsafeRawPointer(samplesPointer.baseAddress!.advanced(by: offset))
++                    framePointer.copyMemory(from: UnsafeRawBufferPointer(start: source, count: thisFrameSamples * 2))
++                }
++            }
++            let ok = frameBytes.withUnsafeMutableBytes { framePointer -> Bool in
++                return writer.writeFrame(framePointer.baseAddress?.assumingMemoryBound(to: UInt8.self), frameByteCount: UInt(frameBytes.count))
++            }
++            if !ok {
++                return nil
++            }
++            wroteAnyFrame = true
++            offset += thisFrameSamples
++        }
++        // Opus is a streaming format — the encoder needs an explicit "no more data" frame to
++        // flush its final packet, the same call `ManagedAudioRecorder.swift`'s own trim path
++        // uses (`writeFrame(nil, frameByteCount: 0)`).
++        _ = writer.writeFrame(nil, frameByteCount: 0)
++        guard wroteAnyFrame else {
++            return nil
++        }
++
++        return dataItem.data()
++    }
++
++    /// Offline `AVAudioEngine` manual-rendering pitch shift — never touches a real-time audio
++    /// thread, runs synchronously against a static in-memory buffer.
++    private static func pitchShift(pcm: [Int16], pitchCents: Float, rate: Float) -> [Int16]? {
++        guard !pcm.isEmpty, let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: self.sampleRate, channels: 1, interleaved: false) else {
++            return nil
++        }
++        guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(pcm.count)) else {
++            return nil
++        }
++        inputBuffer.frameLength = AVAudioFrameCount(pcm.count)
++        guard let inputChannel = inputBuffer.floatChannelData?[0] else {
++            return nil
++        }
++        for i in 0 ..< pcm.count {
++            inputChannel[i] = Float(pcm[i]) / 32768.0
++        }
++
++        let engine = AVAudioEngine()
++        let player = AVAudioPlayerNode()
++        let pitchUnit = AVAudioUnitTimePitch()
++        pitchUnit.pitch = pitchCents
++        pitchUnit.rate = rate
++
++        engine.attach(player)
++        engine.attach(pitchUnit)
++        engine.connect(player, to: pitchUnit, format: format)
++        engine.connect(pitchUnit, to: engine.mainMixerNode, format: format)
++
++        do {
++            try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4096)
++        } catch {
++            return nil
++        }
++        do {
++            try engine.start()
++        } catch {
++            return nil
++        }
++
++        player.scheduleBuffer(inputBuffer, completionHandler: nil)
++        player.play()
++
++        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: engine.manualRenderingMaximumFrameCount) else {
++            engine.stop()
++            return nil
++        }
++
++        var outputSamples: [Int16] = []
++        // Slower rates lengthen the audio; give generous headroom, and cap the loop so a
++        // rendering issue can never hang instead of just failing.
++        let maxOutputFrames = Int(Double(pcm.count) / Double(rate) * 1.5) + 8192
++        var renderedFrames = 0
++        renderLoop: while renderedFrames < maxOutputFrames {
++            outputBuffer.frameLength = 0
++            let status: AVAudioEngineManualRenderingStatus
++            do {
++                status = try engine.renderOffline(engine.manualRenderingMaximumFrameCount, to: outputBuffer)
++            } catch {
++                break renderLoop
++            }
++            switch status {
++            case .success:
++                let length = Int(outputBuffer.frameLength)
++                if length == 0 {
++                    break renderLoop
++                }
++                if let outputChannel = outputBuffer.floatChannelData?[0] {
++                    for i in 0 ..< length {
++                        let sample = max(-1.0, min(1.0, outputChannel[i]))
++                        outputSamples.append(Int16(sample * 32767.0))
++                    }
++                }
++                renderedFrames += length
++            case .insufficientDataFromInputNode:
++                break renderLoop
++            case .cannotDoInCurrentContext:
++                continue renderLoop
++            case .error:
++                engine.stop()
++                return nil
++            @unknown default:
++                engine.stop()
++                return nil
++            }
++        }
++
++        engine.stop()
++        return outputSamples
++    }
++}
+diff --git a/submodules/TelegramCore/Sources/Network/FetchV2.swift b/submodules/TelegramCore/Sources/Network/FetchV2.swift
+index 1075a48e..480e949c 100644
+--- a/submodules/TelegramCore/Sources/Network/FetchV2.swift
++++ b/submodules/TelegramCore/Sources/Network/FetchV2.swift
+@@ -4,6 +4,7 @@ import SwiftSignalKit
+ import MtProtoKit
+ import RangeSet
+ import TelegramApi
++import PampGramCore
+ 
+ private let possiblePartLengths: [Int64] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576]
+ 
+@@ -328,9 +329,16 @@ private final class FetchImpl {
+         private let defaultPartSize: Int64
+         private let cdnPartSize: Int64
+         private var state: State?
+-        
++
+         private let loggingIdentifier: String
+-        
++
++        // "Ускорение скачивания": resolved once, before the fetch state machine starts,
++        // from PampGramSettings.downloadSpeedMode — never re-read mid-fetch, so every
++        // FetchingState this instance ever constructs agrees on the same value. Stays
++        // within MultiplexedRequestManager's own per-target ceiling (~12), so "Турбо" only
++        // ever uses headroom the connection pool already allows, never more.
++        private let maxPendingParts: Int
++
+         init(
+             queue: Queue,
+             accountPeerId: PeerId,
+@@ -346,11 +354,12 @@ private final class FetchImpl {
+             decryptedSize: Int64?,
+             continueInBackground: Bool,
+             useMainConnection: Bool,
++            maxPendingParts: Int,
+             onNext: @escaping (MediaResourceDataFetchResult) -> Void,
+             onError: @escaping (MediaResourceDataFetchError) -> Void
+         ) {
+             self.queue = queue
+-            
++
+             self.accountPeerId = accountPeerId
+             self.postbox = postbox
+             self.network = network
+@@ -363,10 +372,11 @@ private final class FetchImpl {
+             self.decryptedSize = decryptedSize
+             self.continueInBackground = continueInBackground
+             self.useMainConnection = useMainConnection
+-            
++            self.maxPendingParts = maxPendingParts
++
+             self.onNext = onNext
+             self.onError = onError
+-            
++
+             self.consumerId = Int64.random(in: Int64.min ... Int64.max)
+             
+             self.knownSize = size
+@@ -440,7 +450,7 @@ private final class FetchImpl {
+                     maxPartSize: 1 * 1024 * 1024,
+                     partAlignment: 4 * 1024,
+                     partDivision: 1 * 1024 * 1024,
+-                    maxPendingParts: 6,
++                    maxPendingParts: self.maxPendingParts,
+                     decryptionState: decryptionState
+                 ))
+             }
+@@ -696,7 +706,7 @@ private final class FetchImpl {
+                             maxPartSize: self.cdnPartSize * 2,
+                             partAlignment: self.cdnPartSize,
+                             partDivision: 1 * 1024 * 1024,
+-                            maxPendingParts: 6,
++                            maxPendingParts: self.maxPendingParts,
+                             decryptionState: nil
+                         ))
+                         self.update()
+@@ -745,7 +755,7 @@ private final class FetchImpl {
+                                 maxPartSize: self.defaultPartSize,
+                                 partAlignment: 4 * 1024,
+                                 partDivision: 1 * 1024 * 1024,
+-                                maxPendingParts: 6,
++                                maxPendingParts: self.maxPendingParts,
+                                 decryptionState: nil
+                             ))
+                             
+@@ -935,7 +945,7 @@ private final class FetchImpl {
+                             maxPartSize: self.cdnPartSize * 2,
+                             partAlignment: self.cdnPartSize,
+                             partDivision: 1 * 1024 * 1024,
+-                            maxPendingParts: 6,
++                            maxPendingParts: self.maxPendingParts,
+                             decryptionState: nil
+                         ))
+                     case let .cdnRefresh(cdnData, refreshToken):
+@@ -1103,6 +1113,7 @@ private final class FetchImpl {
+         decryptedSize: Int64?,
+         continueInBackground: Bool,
+         useMainConnection: Bool,
++        maxPendingParts: Int,
+         onNext: @escaping (MediaResourceDataFetchResult) -> Void,
+         onError: @escaping (MediaResourceDataFetchError) -> Void
+     ) {
+@@ -1124,6 +1135,7 @@ private final class FetchImpl {
+                 decryptedSize: decryptedSize,
+                 continueInBackground: continueInBackground,
+                 useMainConnection: useMainConnection,
++                maxPendingParts: maxPendingParts,
+                 onNext: onNext,
+                 onError: onError
+             )
+@@ -1146,28 +1158,48 @@ func multipartFetchV2(
+     continueInBackground: Bool,
+     useMainConnection: Bool
+ ) -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError> {
+-    return Signal { subscriber in
+-        let impl = FetchImpl(
+-            accountPeerId: accountPeerId,
+-            postbox: postbox,
+-            network: network,
+-            mediaReferenceRevalidationContext: mediaReferenceRevalidationContext,
+-            resource: resource,
+-            datacenterId: datacenterId,
+-            size: size,
+-            intervals: intervals,
+-            parameters: parameters,
+-            encryptionKey: encryptionKey,
+-            decryptedSize: decryptedSize,
+-            continueInBackground: continueInBackground,
+-            useMainConnection: useMainConnection,
+-            onNext: subscriber.putNext,
+-            onError: subscriber.putError
+-        )
+-        
+-        return ActionDisposable {
+-            withExtendedLifetime(impl, {
+-            })
++    // "Ускорение скачивания": resolved once per fetch, off PampGram's own local settings
++    // (a cheap Postbox preferences view, not a full transaction) — never more than
++    // MultiplexedRequestManager's own existing per-target ceiling (~12 in-flight parts).
++    let pampGramMaxPendingParts = PampGramCore.settingsSignal(postbox: postbox)
++    |> take(1)
++    |> map { settings -> Int in
++        switch settings.downloadSpeedMode {
++        case .standard:
++            return 6
++        case .fast:
++            return 9
++        case .turbo:
++            return 12
++        }
++    }
++
++    return pampGramMaxPendingParts
++    |> mapToSignalPromotingError { maxPendingParts -> Signal<MediaResourceDataFetchResult, MediaResourceDataFetchError> in
++        return Signal { subscriber in
++            let impl = FetchImpl(
++                accountPeerId: accountPeerId,
++                postbox: postbox,
++                network: network,
++                mediaReferenceRevalidationContext: mediaReferenceRevalidationContext,
++                resource: resource,
++                datacenterId: datacenterId,
++                size: size,
++                intervals: intervals,
++                parameters: parameters,
++                encryptionKey: encryptionKey,
++                decryptedSize: decryptedSize,
++                continueInBackground: continueInBackground,
++                useMainConnection: useMainConnection,
++                maxPendingParts: maxPendingParts,
++                onNext: subscriber.putNext,
++                onError: subscriber.putError
++            )
++
++            return ActionDisposable {
++                withExtendedLifetime(impl, {
++                })
++            }
+         }
+     }
+ }
+diff --git a/submodules/TelegramCore/Sources/Network/MultipartUpload.swift b/submodules/TelegramCore/Sources/Network/MultipartUpload.swift
+index b761375c..34aab950 100644
+--- a/submodules/TelegramCore/Sources/Network/MultipartUpload.swift
++++ b/submodules/TelegramCore/Sources/Network/MultipartUpload.swift
+@@ -5,6 +5,7 @@ import SwiftSignalKit
+ import MtProtoKit
+ import CryptoUtils
+ import ManagedFile
++import PampGramCore
+ 
+ private typealias SignalKitTimer = SwiftSignalKit.Timer
+ 
+@@ -417,9 +418,22 @@ func multipartUpload(network: Network, postbox: Postbox, source: MultipartUpload
+             return .download(download)
+         }
+     }
+-    
+-    return uploadInterface
+-    |> mapToSignalPromotingError { uploadInterface -> Signal<MultipartUploadResult, MultipartUploadError> in
++
++    // "Ускорение загрузки": a single choke point every upload above this function already
++    // passes through, so the PampGram speed mode only ever OR's the same
++    // useLargerParts/increaseParallelParts flags Telegram's own history-import already opts
++    // into — never a stronger claim than that proven combination, and a complete no-op when
++    // the mode is left at its default "Стандарт".
++    let pampGramUploadSpeed = PampGramCore.settingsSignal(postbox: postbox)
++    |> take(1)
++    |> map { settings -> PampGramSpeedMode in
++        return settings.uploadSpeedMode
++    }
++
++    return combineLatest(uploadInterface, pampGramUploadSpeed)
++    |> mapToSignalPromotingError { uploadInterface, pampGramSpeedMode -> Signal<MultipartUploadResult, MultipartUploadError> in
++        let useLargerParts = useLargerParts || pampGramSpeedMode != .standard
++        let increaseParallelParts = increaseParallelParts || pampGramSpeedMode == .turbo
+         return Signal { subscriber in
+             var encryptionKey: SecretFileEncryptionKey?
+             if encrypt {

@@ -2,6 +2,71 @@ import Foundation
 import Postbox
 import SwiftSignalKit
 
+/// One of the 5 fixed presets "Изменить голос" offers — each just a pitch (in cents) and
+/// playback-rate pair fed to `AVAudioUnitTimePitch`. Deliberately simple, honestly-named
+/// pitch/tempo changes rather than a claim of true voice conversion (a robot-style ring
+/// modulator or a real vocoder is a different, much bigger feature).
+public enum PampGramVoicePreset: String, Codable, CaseIterable {
+    case male
+    case female
+    case child
+    case robot
+    case giant
+
+    public var displayName: String {
+        switch self {
+        case .male: return "Мужской"
+        case .female: return "Женский"
+        case .child: return "Ребёнок"
+        case .robot: return "Робот"
+        case .giant: return "Великан"
+        }
+    }
+
+    /// Cents to feed `AVAudioUnitTimePitch.pitch` (±2400 is the unit's own range).
+    public var pitchCents: Float {
+        switch self {
+        case .male: return -500
+        case .female: return 500
+        case .child: return 750
+        case .robot: return -150
+        case .giant: return -950
+        }
+    }
+
+    /// Playback-rate multiplier for the same unit — a small tempo shift alongside the pitch
+    /// one reads as a more distinct "voice" than pitch alone.
+    public var rate: Float {
+        switch self {
+        case .male: return 0.97
+        case .female: return 1.04
+        case .child: return 1.12
+        case .robot: return 0.92
+        case .giant: return 0.85
+        }
+    }
+}
+
+/// A profile for "Ускорение загрузки"/"Ускорение скачивания" — how aggressively PampGram
+/// asks Telegram's own upload/download machinery to parallelize file transfers. Never
+/// invents bandwidth that isn't there and never exceeds what the app's real code already
+/// uses elsewhere (`increaseParallelParts`/`useLargerParts` is the exact profile Telegram's
+/// own history-import already opts into) — this only decides how often that existing lever
+/// gets pulled.
+public enum PampGramSpeedMode: String, Codable, CaseIterable {
+    case standard
+    case fast
+    case turbo
+
+    public var displayName: String {
+        switch self {
+        case .standard: return "Стандарт"
+        case .fast: return "Быстрый"
+        case .turbo: return "Турбо"
+        }
+    }
+}
+
 /// Every PampGram feature is a *local* one: it changes what this device shows its own
 /// owner, and nothing else. Nothing in this module — or in anything that reads it — sends
 /// data to Telegram, alters another account's state, touches real Stars or real Gifts, or
@@ -59,6 +124,17 @@ public struct PampGramSettings: Codable, Equatable {
     /// message as if the *other* side bought and sent the gift, not this account. Nothing is
     /// deducted from any local balance: nobody "spent" anything in this direction.
     public var fromHimGiftsEnabled: Bool
+    /// "Изменить голос" (Дополнительно): pitch-shifts an outgoing voice message, offline,
+    /// after recording finishes and before it's attached to the message — never touches
+    /// live call audio (see `voicePreset` for which of the 5 presets is applied).
+    public var voiceChangerMessagesEnabled: Bool
+    public var voicePreset: PampGramVoicePreset
+    /// "Ускорение загрузки"/"Ускорение скачивания" (Дополнительно): how many parts Telegram's
+    /// own upload/download code is allowed to run in parallel, and how large each part is —
+    /// tuning existing, already-used parameters, never a claim of more bandwidth than the
+    /// connection actually has.
+    public var uploadSpeedMode: PampGramSpeedMode
+    public var downloadSpeedMode: PampGramSpeedMode
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -75,11 +151,15 @@ public struct PampGramSettings: Codable, Equatable {
             onlineMaskEnabled: false,
             antiDeleteExcludedPeerIds: [],
             visualEditEnabled: false,
-            fromHimGiftsEnabled: false
+            fromHimGiftsEnabled: false,
+            voiceChangerMessagesEnabled: false,
+            voicePreset: .male,
+            uploadSpeedMode: .standard,
+            downloadSpeedMode: .standard
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -91,6 +171,10 @@ public struct PampGramSettings: Codable, Equatable {
         self.antiDeleteExcludedPeerIds = antiDeleteExcludedPeerIds
         self.visualEditEnabled = visualEditEnabled
         self.fromHimGiftsEnabled = fromHimGiftsEnabled
+        self.voiceChangerMessagesEnabled = voiceChangerMessagesEnabled
+        self.voicePreset = voicePreset
+        self.uploadSpeedMode = uploadSpeedMode
+        self.downloadSpeedMode = downloadSpeedMode
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -110,6 +194,10 @@ public struct PampGramSettings: Codable, Equatable {
         self.antiDeleteExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .antiDeleteExcludedPeerIds) ?? defaults.antiDeleteExcludedPeerIds
         self.visualEditEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditEnabled) ?? defaults.visualEditEnabled
         self.fromHimGiftsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fromHimGiftsEnabled) ?? defaults.fromHimGiftsEnabled
+        self.voiceChangerMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .voiceChangerMessagesEnabled) ?? defaults.voiceChangerMessagesEnabled
+        self.voicePreset = try container.decodeIfPresent(PampGramVoicePreset.self, forKey: .voicePreset) ?? defaults.voicePreset
+        self.uploadSpeedMode = try container.decodeIfPresent(PampGramSpeedMode.self, forKey: .uploadSpeedMode) ?? defaults.uploadSpeedMode
+        self.downloadSpeedMode = try container.decodeIfPresent(PampGramSpeedMode.self, forKey: .downloadSpeedMode) ?? defaults.downloadSpeedMode
     }
 }
 

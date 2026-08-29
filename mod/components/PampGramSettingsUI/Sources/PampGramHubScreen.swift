@@ -159,7 +159,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 sectionId: self.section,
                 style: .blocks,
                 action: {
-                    arguments.openPlaceholder("Дополнительно")
+                    arguments.openAdditional()
                 }
             )
         case .admin:
@@ -217,16 +217,18 @@ private final class PampGramHubArguments {
     let openMessages: () -> Void
     let openGhost: () -> Void
     let openPlaceholder: (String) -> Void
+    let openAdditional: () -> Void
     let openAdmin: () -> Void
     let openStatus: () -> Void
     let openAbout: () -> Void
     let openSupport: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
         self.openPlaceholder = openPlaceholder
+        self.openAdditional = openAdditional
         self.openAdmin = openAdmin
         self.openStatus = openStatus
         self.openAbout = openAbout
@@ -299,6 +301,9 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         },
         openPlaceholder: { title in
             pushControllerImpl?(pampGramPlaceholderController(context: context, title: title))
+        },
+        openAdditional: {
+            pushControllerImpl?(pampGramAdditionalSettingsController(context: context))
         },
         openAdmin: {
             pushControllerImpl?(pampGramAdminController(context: context))
