@@ -26,7 +26,7 @@ index 53c9a721..3cca62e2 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramCore/Sources/Account/AccountManager.swift b/submodules/TelegramCore/Sources/Account/AccountManager.swift
-index 3f2b4794..9b478212 100644
+index 3f2b4794..13a3d5cb 100644
 --- a/submodules/TelegramCore/Sources/Account/AccountManager.swift
 +++ b/submodules/TelegramCore/Sources/Account/AccountManager.swift
 @@ -3,6 +3,7 @@ import Postbox
@@ -37,12 +37,11 @@ index 3f2b4794..9b478212 100644
  
  private enum AccountKind {
      case authorized
-@@ -138,6 +139,8 @@ private var declaredEncodables: Void = {
+@@ -138,6 +139,7 @@ private var declaredEncodables: Void = {
      declareEncodable(SourceReferenceMessageAttribute.self, f: { SourceReferenceMessageAttribute(decoder: $0) })
      declareEncodable(SourceAuthorInfoMessageAttribute.self, f: { SourceAuthorInfoMessageAttribute(decoder: $0) })
      declareEncodable(EditedMessageAttribute.self, f: { EditedMessageAttribute(decoder: $0) })
 +    declareEncodable(PampGramDeletedByRemoteAttribute.self, f: { PampGramDeletedByRemoteAttribute(decoder: $0) })
-+    declareEncodable(PampGramVisualEditAttribute.self, f: { PampGramVisualEditAttribute(decoder: $0) })
      declareEncodable(ReplyMarkupMessageAttribute.self, f: { ReplyMarkupMessageAttribute(decoder: $0) })
      declareEncodable(OutgoingChatContextResultMessageAttribute.self, f: { OutgoingChatContextResultMessageAttribute(decoder: $0) })
      declareEncodable(HttpReferenceMediaResource.self, f: { HttpReferenceMediaResource(decoder: $0) })
@@ -295,7 +294,7 @@ index 1ddd9b86..5e5fecbc 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-index 2dcfc95e..daac3537 100644
+index 2dcfc95e..564443bd 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 @@ -8,6 +8,7 @@ import TelegramCore
@@ -320,7 +319,7 @@ index 2dcfc95e..daac3537 100644
          var isFile = false
          inner: for media in messageMedia {
              if let media = media as? TelegramMediaPaidContent {
-@@ -694,7 +700,20 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+@@ -694,7 +700,14 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
      private var clippingNode: ChatMessageBubbleClippingNode
      
      private var suggestedPostInfoNode: ChatMessageSuggestedPostInfoNode?
@@ -333,16 +332,10 @@ index 2dcfc95e..daac3537 100644
 +    private var pampGramDeletedOverlayNode: ASDisplayNode?
 +    private var pampGramDeletedTrashIconNode: ASImageNode?
 +
-+    // PampGram: marks a message whose text was changed locally via "Изменить визуально" (see
-+    // PampGramVisualEditAttribute) — a small pencil badge in the opposite corner from the
-+    // deleted-message trash badge, so an edit only this device made never looks like what the
-+    // other side actually sent.
-+    private var pampGramVisualEditIconNode: ASImageNode?
-+
      override public var extractedBackgroundNode: ASDisplayNode? {
          return self.shadowNode
      }
-@@ -3981,7 +4000,71 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+@@ -3981,7 +3994,48 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
          
          let previousBackgroundFrame = strongSelf.backgroundNode.backgroundFrame
          strongSelf.backgroundNode.backgroundFrame = backgroundFrame
@@ -387,29 +380,6 @@ index 2dcfc95e..daac3537 100644
 +            strongSelf.pampGramDeletedOverlayNode = nil
 +            strongSelf.pampGramDeletedTrashIconNode?.removeFromSupernode()
 +            strongSelf.pampGramDeletedTrashIconNode = nil
-+        }
-+
-+        // PampGram: small pencil badge, opposite corner from the deleted-message trash badge,
-+        // for a message whose text was rewritten locally via "Изменить визуально".
-+        if item.content.firstMessage.attributes.contains(where: { $0 is PampGramVisualEditAttribute }) {
-+            let iconNode: ASImageNode
-+            if let current = strongSelf.pampGramVisualEditIconNode {
-+                iconNode = current
-+            } else {
-+                iconNode = ASImageNode()
-+                iconNode.displaysAsynchronously = false
-+                iconNode.isUserInteractionEnabled = false
-+                if let baseImage = UIImage(systemName: "pencil") {
-+                    iconNode.image = baseImage.withTintColor(UIColor(rgb: 0x8e44ec), renderingMode: .alwaysOriginal)
-+                }
-+                strongSelf.pampGramVisualEditIconNode = iconNode
-+                strongSelf.addSubnode(iconNode)
-+            }
-+            let iconSize = CGSize(width: 14.0, height: 14.0)
-+            iconNode.frame = CGRect(origin: CGPoint(x: backgroundFrame.minX + 6.0, y: backgroundFrame.maxY - iconSize.height - 6.0), size: iconSize)
-+        } else if let iconNode = strongSelf.pampGramVisualEditIconNode {
-+            iconNode.removeFromSupernode()
-+            strongSelf.pampGramVisualEditIconNode = nil
 +        }
 +
          if let (suggestedPostInfoSize, suggestedPostInfoApply) = suggestedPostInfoNodeLayout {

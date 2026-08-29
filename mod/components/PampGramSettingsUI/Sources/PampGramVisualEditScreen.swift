@@ -13,7 +13,6 @@ import PampGramCore
 private enum PampGramVisualEditEntry: ItemListNodeEntry {
     case aboutText(String)
     case textInput(String)
-    case footerText(String)
 
     var section: ItemListSectionId {
         return 0
@@ -25,8 +24,6 @@ private enum PampGramVisualEditEntry: ItemListNodeEntry {
             return 0
         case .textInput:
             return 1
-        case .footerText:
-            return 2
         }
     }
 
@@ -35,8 +32,6 @@ private enum PampGramVisualEditEntry: ItemListNodeEntry {
         case let (.aboutText(lhsText), .aboutText(rhsText)):
             return lhsText == rhsText
         case let (.textInput(lhsText), .textInput(rhsText)):
-            return lhsText == rhsText
-        case let (.footerText(lhsText), .footerText(rhsText)):
             return lhsText == rhsText
         default:
             return false
@@ -50,7 +45,7 @@ private enum PampGramVisualEditEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! (String) -> Void
         switch self {
-        case let .aboutText(text), let .footerText(text):
+        case let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .textInput(text):
             return ItemListMultilineInputItem(presentationData: presentationData, systemStyle: .glass, text: text, placeholder: "Текст сообщения", maxLength: nil, sectionId: self.section, style: .blocks, capitalization: true, autocorrection: true, textUpdated: { text in
@@ -63,9 +58,7 @@ private enum PampGramVisualEditEntry: ItemListNodeEntry {
 /// Reached from a message's long-press menu ("PampGram" → "Изменить визуально") when the
 /// "Изменить визуально" toggle is on. Rewrites the message's text as stored in this device's
 /// own Postbox via `Transaction.updateMessage` — nothing is sent, the sender's own copy is
-/// untouched, and a `PampGramVisualEditAttribute` marks the bubble with a small pencil badge
-/// (see the patch to `ChatMessageBubbleItemNode.swift`) so it stays distinguishable from what
-/// they actually sent, per the mod's own rule against indistinguishable fakes.
+/// untouched.
 public func pampGramVisualEditController(context: AccountContext, messageId: MessageId, currentText: String) -> ViewController {
     let textValue = Atomic<String>(value: currentText)
     let textPromise = ValuePromise<String>(currentText, ignoreRepeated: false)
@@ -89,7 +82,7 @@ public func pampGramVisualEditController(context: AccountContext, messageId: Mes
                     forwardInfo: message.forwardInfo.map(StoreMessageForwardInfo.init),
                     authorId: message.author?.id,
                     text: newText,
-                    attributes: message.attributes.filter { !($0 is PampGramVisualEditAttribute) && !($0 is TextEntitiesMessageAttribute) } + [PampGramVisualEditAttribute(editedAt: Int32(Date().timeIntervalSince1970))],
+                    attributes: message.attributes.filter { !($0 is TextEntitiesMessageAttribute) },
                     media: message.media
                 )
                 return .update(updatedMessage)
@@ -118,8 +111,7 @@ public func pampGramVisualEditController(context: AccountContext, messageId: Mes
         )
         let entries: [PampGramVisualEditEntry] = [
             .aboutText("Меняет текст только на этом устройстве — собеседник и сервер ничего не получают."),
-            .textInput(text),
-            .footerText("Изменённое сообщение помечается маленьким значком в углу пузыря.")
+            .textInput(text)
         ]
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
