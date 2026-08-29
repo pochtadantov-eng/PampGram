@@ -194,6 +194,85 @@ index 58db6c71..095f7870 100644
                  _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: ids, manualAddMessageThreadStatsDifference: { id, add, remove in
                      addMessageThreadStatsDifference(threadKey: id, remove: remove, addedMessagePeer: nil, addedMessageId: nil, isOutgoing: false)
                  })
+diff --git a/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift b/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift
+index 7acc37a1..13df9490 100644
+--- a/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift
++++ b/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift
+@@ -3,6 +3,7 @@ import Postbox
+ import SwiftSignalKit
+ import TelegramApi
+ import MtProtoKit
++import PampGramCore
+ 
+ 
+ public struct PeerActivitySpace: Hashable {
+@@ -143,6 +144,15 @@ private func actionFromActivity(_ activity: PeerInputActivity?) -> Api.SendMessa
+ 
+ private func requestActivity(postbox: Postbox, network: Network, accountPeerId: PeerId, peerId: PeerId, threadId: Int64?, activity: PeerInputActivity?) -> Signal<Void, NoError> {
+     return postbox.transaction { transaction -> Signal<Void, NoError> in
++        // PampGram: "Нечиталка" — this one function is the single outgoing choke point for
++        // every kind of activity ping this account sends (typing, choosing a sticker,
++        // recording voice/video, upload progress for photos/files/videos — see
++        // `actionFromActivity` below), for both cloud and secret chats. Skipping it here
++        // covers all of them in one place; nothing about composing/recording/sending locally
++        // is affected, only the outgoing notice to the other side.
++        if PampGramCore.settings(transaction: transaction).ghostReaderEnabled {
++            return .complete()
++        }
+         if let peer = transaction.getPeer(peerId) {
+             if peerId == accountPeerId {
+                 return .complete()
+diff --git a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
+index 66242579..43c0800e 100644
+--- a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
++++ b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
+@@ -2,6 +2,7 @@ import Foundation
+ import Postbox
+ import TelegramApi
+ import SwiftSignalKit
++import PampGramCore
+ 
+ 
+ private enum PeerReadStateMarker: Equatable {
+@@ -227,6 +228,26 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
+ }
+ 
+ private func pushPeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, readState: PeerReadState) -> Signal<PeerReadState, PeerReadStateValidationError> {
++    // PampGram: "Нечиталка" — every path below (private chat, secret chat, channel) funnels
++    // through this one function to tell the server "read up to here", which is what drives
++    // the other side's read-receipt checkmarks. Skipping it here leaves Postbox's own local
++    // read state (badges, this device's own "read" UI) completely untouched — only the
++    // outgoing sync toward the server is withheld, for every peer kind at once.
++    let pampGramGhostReaderEnabled = postbox.transaction { transaction -> Bool in
++        return PampGramCore.settings(transaction: transaction).ghostReaderEnabled
++    }
++    |> castError(PeerReadStateValidationError.self)
++
++    return pampGramGhostReaderEnabled
++    |> mapToSignal { ghostReaderEnabled -> Signal<PeerReadState, PeerReadStateValidationError> in
++        if ghostReaderEnabled {
++            return .single(readState)
++        }
++        return pushPeerReadStateReal(network: network, postbox: postbox, stateManager: stateManager, peerId: peerId, readState: readState)
++    }
++}
++
++private func pushPeerReadStateReal(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, readState: PeerReadState) -> Signal<PeerReadState, PeerReadStateValidationError> {
+     if peerId.namespace == Namespaces.Peer.SecretChat {
+         return inputSecretChat(postbox: postbox, peerId: peerId)
+         |> mapToSignal { inputPeer -> Signal<PeerReadState, PeerReadStateValidationError> in
+diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
+index 5da8c15e..077f3fbb 100644
+--- a/submodules/TelegramUI/BUILD
++++ b/submodules/TelegramUI/BUILD
+@@ -49,6 +49,7 @@ swift_library(
+         "-warnings-as-errors",
+     ],
+     deps = [
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+         "//third-party/recaptcha:RecaptchaEnterprise",
+         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+         "//submodules/SSignalKit/SSignalKit:SSignalKit",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
 index 1ddd9b86..5e5fecbc 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
@@ -1586,3 +1665,69 @@ index 5637c9e3..5df39e62 100644
          return controller
      }
      
+diff --git a/submodules/TelegramUI/Sources/SharedWakeupManager.swift b/submodules/TelegramUI/Sources/SharedWakeupManager.swift
+index 97de6187..5ca2f8f8 100644
+--- a/submodules/TelegramUI/Sources/SharedWakeupManager.swift
++++ b/submodules/TelegramUI/Sources/SharedWakeupManager.swift
+@@ -9,6 +9,7 @@ import AccountContext
+ import UniversalMediaPlayer
+ import TelegramAudio
+ import TelegramPresentationData
++import PampGramCore
+ 
+ private struct AccountTasks {
+     let stateSynchronization: Bool
+@@ -1147,7 +1148,27 @@ public final class SharedWakeupManager {
+                     account.shouldBeServiceTaskMaster.set(.single(.never))
+                 }
+                 account.shouldExplicitelyKeepWorkerConnections.set(.single(tasks.backgroundAudio || tasks.backgroundLocation || tasks.importantTasks.pendingStoryCount != 0 || tasks.importantTasks.pendingMessageCount != 0))
+-                account.shouldKeepOnlinePresence.set(.single(primary && self.inForeground))
++                // PampGram Ghost: "Маскировка онлайна" keeps presence on for the primary
++                // account regardless of foreground state (best-effort — still bounded by
++                // whatever background window iOS actually grants); "Нечиталка" forces it
++                // off unconditionally. Neither can be on at the same time (the settings
++                // screen keeps them mutually exclusive), so this is never ambiguous. Set as
++                // a live signal, not a snapshot value, so toggling either setting takes
++                // effect immediately without waiting for the next foreground/background
++                // transition to re-run this function.
++                let pampGramInForegroundNow = self.inForeground
++                account.shouldKeepOnlinePresence.set(
++                    PampGramCore.settingsSignal(postbox: account.postbox)
++                    |> map { settings -> Bool in
++                        if settings.onlineMaskEnabled {
++                            return primary
++                        } else if settings.ghostReaderEnabled {
++                            return false
++                        } else {
++                            return primary && pampGramInForegroundNow
++                        }
++                    }
++                )
+                 account.shouldKeepBackgroundDownloadConnections.set(.single(tasks.backgroundDownloads))
+             }
+             
+@@ -1188,13 +1209,22 @@ public final class SharedWakeupManager {
+                 }
+             }
+             
+-            for (account, _, _) in self.accountsAndTasks {
++            for (account, primary, _) in self.accountsAndTasks {
+                 let accountId = account.id
+                 account.postbox.setCanBeginTransactions(enableBeginTransactions, afterTransactionIfRunning: {
+                     checkCompletionState(accountId)
+                 })
+                 account.shouldBeServiceTaskMaster.set(.single(.never))
+-                account.shouldKeepOnlinePresence.set(.single(false))
++                // PampGram Ghost: same "Маскировка онлайна" override as the active branch
++                // above — even once the app is fully inactive, keep trying to look online
++                // for the primary account if the mask is on. "Нечиталка" needs no separate
++                // handling here: presence is already forced off in this branch regardless.
++                account.shouldKeepOnlinePresence.set(
++                    PampGramCore.settingsSignal(postbox: account.postbox)
++                    |> map { settings -> Bool in
++                        return settings.onlineMaskEnabled && primary
++                    }
++                )
+                 account.shouldKeepBackgroundDownloadConnections.set(.single(false))
+             }
+             
