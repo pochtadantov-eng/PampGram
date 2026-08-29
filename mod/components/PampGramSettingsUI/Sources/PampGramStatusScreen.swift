@@ -203,7 +203,7 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
         let isSelected = icon.name == (currentIconName ?? icons.first(where: { $0.isDefault })?.name)
         entries.append(.icon(Int32(index), icon, isSelected))
     }
-    entries.append(.iconFooter("Применённая иконка сразу видна на домашнем экране и в библиотеке приложений — выйди из PampGram, чтобы увидеть её. Часть иконок и подписка PRO пока недоступны — это в разработке."))
+    entries.append(.iconFooter("Иконка меняется сразу на домашнем экране. Часть иконок и PRO пока недоступны."))
 
     entries.append(.giftsHeader("ПОДАРКИ"))
     entries.append(.giftsRow(0, "Вкладка «Подарок»", settings.phantomGiftsEnabled))

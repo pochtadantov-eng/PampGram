@@ -100,15 +100,15 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
 private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: Int) -> [PampGramMessagesEntry] {
     var entries: [PampGramMessagesEntry] = []
 
-    entries.append(.aboutText("Всё здесь работает только на этом устройстве: ни удалённое сообщение, ни факт его сохранения нигде не сообщаются — ни собеседнику, ни серверам Telegram."))
+    entries.append(.aboutText("Работает только на этом устройстве, никому не сообщается."))
 
     entries.append(.antiDeleteToggle("Восстановление удалённых сообщений", settings.antiDeleteMessagesEnabled))
-    entries.append(.antiDeleteFooter("Если собеседник удаляет отправленное вам сообщение («удалить у всех»), оно не пропадает из переписки: остаётся в чате затемнённым, с красной иконкой корзины рядом с текстом — как пометка «удалено». Хранится, пока вы не удалите его сами (обычным жестом, как любое другое сообщение) или не удалите приложение. Работает только для сообщений от собеседника — то, что удалили вы сами, восстановлению не подлежит."))
+    entries.append(.antiDeleteFooter("Удалённое собеседником сообщение остаётся в чате затемнённым, с иконкой корзины."))
 
     entries.append(.historyHeader("ИСТОРИЯ"))
     entries.append(.historyList("Восстановленные сообщения", "\(historyCount)"))
     entries.append(.clearHistory("Очистить всю историю", historyCount > 0))
-    entries.append(.historyFooter("Очистка уберёт все восстановленные сообщения из переписок на этом устройстве. Это действие нельзя отменить."))
+    entries.append(.historyFooter("Уберёт восстановленные сообщения из чатов. Отменить нельзя."))
 
     return entries
 }

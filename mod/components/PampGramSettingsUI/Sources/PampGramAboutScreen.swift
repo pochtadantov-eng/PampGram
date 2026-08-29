@@ -84,7 +84,7 @@ public func pampGramAboutController(context: AccountContext) -> ViewController {
         let entries: [PampGramAboutEntry] = [
             .hero,
             .aboutHeader("ЧТО ЭТО"),
-            .aboutText("PampGram — мод для Telegram-iOS: визуальные и локальные функции поверх настоящего клиента. Ничего из перечисленного ниже не отправляется на сервер и не видно другим людям, кроме того, что явно описано как видимое (Ghost, «Подарок»)."),
+            .aboutText("Мод для Telegram-iOS: визуальные и локальные функции поверх настоящего клиента."),
             .changelogHeader("ЧТО В ЭТОЙ ВЕРСИИ"),
             .changelogText(pampGramChangelogText)
         ]

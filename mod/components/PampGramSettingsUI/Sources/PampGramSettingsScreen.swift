@@ -253,29 +253,29 @@ private func parseFakeStars(_ text: String) -> Int64? {
 private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCount: Int) -> [PampGramSettingsEntry] {
     var entries: [PampGramSettingsEntry] = []
 
-    entries.append(.aboutText("PampGram меняет только то, что видите вы на этом устройстве. Ничего из перечисленного ниже не отправляется в Telegram, не меняет состояние чужого аккаунта, не трогает настоящие Stars и не создаёт настоящие подарки."))
+    entries.append(.aboutText("Меняет только то, что видите вы на этом устройстве."))
 
     entries.append(.phantomGiftsHeader("ЛОКАЛЬНЫЕ ПОДАРКИ"))
     entries.append(.phantomGiftsToggle("Вкладка «Подарок»", settings.phantomGiftsEnabled))
-    entries.append(.phantomGiftsFooter("Пока включено, при отправке подарка появляется 4-я вкладка «Подарок» — тот же настоящий маркет Telegram, что и во вкладке «Все» (те же обычные и коллекционные подарки, те же настоящие предложения других пользователей). Отличие только в покупке: любая покупка, начатая из вкладки «Подарок», проходит визуально — диалог и анимация настоящие, но списывается локальный баланс, а не настоящие Stars или TON, лот никто не покупает по-настоящему и остаётся в маркете, собеседник ничего не получает и не видит. Вкладки «Все», «Мои» и «Коллекционные» всегда работают как в оригинальном Telegram."))
+    entries.append(.phantomGiftsFooter("Тот же настоящий маркет, но покупка из вкладки визуальная, без списания настоящих Stars/TON."))
 
     entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ ЗВЁЗДЫ"))
     entries.append(.fakeStarsDisplayToggle("Локальные звёзды", settings.fakeStarsDisplayEnabled))
     entries.append(.starsBalance("Фантом-Stars", "\(settings.fakeStarsBalance)"))
-    entries.append(.starsBalanceFooter("Решает, показывается ли этот фейковый баланс вместо настоящего — в списке настроек Telegram, на экране «Мои звёзды» и в шапке отправки подарка. Выключение не сбрасывает число ниже — оно просто перестаёт показываться, пока переключатель снова не включат. Настоящий баланс Stars вашего аккаунта этот счётчик не читает и не меняет — Telegram о нём ничего не знает."))
+    entries.append(.starsBalanceFooter("Показывает этот баланс вместо настоящего — в настройках и шапке подарка."))
 
     entries.append(.tonBalanceHeader("ЛОКАЛЬНЫЕ TON/GRAM"))
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.tonBalance("Фантом-TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
-    entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM — независимо от переключателя звёзд выше: показывается на экране «Мои GRAM» и в шапке отправки подарка. Настоящий баланс TON вашего аккаунта этот счётчик не читает и не меняет."))
+    entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM, независимо от звёзд."))
 
     entries.append(.resetBalances("Сбросить балансы"))
-    entries.append(.resetBalancesFooter("Возвращает оба счётчика — Фантом-Stars и Фантом-TON — к значениям по умолчанию."))
+    entries.append(.resetBalancesFooter("Возвращает оба счётчика к значениям по умолчанию."))
 
     entries.append(.storageHeader("ЛОКАЛЬНЫЕ ДАННЫЕ"))
     entries.append(.phantomGiftsCount("Фантом-подарков на устройстве", "\(phantomGiftCount)"))
     entries.append(.deleteAllPhantomGifts("Удалить все фантом-подарки", phantomGiftCount > 0))
-    entries.append(.storageFooter("Удаление уберёт и сами записи, и их сообщения из вашей истории чатов. Всё это хранится только на этом устройстве."))
+    entries.append(.storageFooter("Уберёт записи и их сообщения из истории."))
 
     return entries
 }
