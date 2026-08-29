@@ -18657,3 +18657,277 @@ index b1143f63..143b2a01 100644
                }
              }
            ],
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
+index ef6fe4b4..9409b119 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
+@@ -61,6 +61,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/EmojiTextAttachmentView",
+         "//submodules/TelegramUI/Components/PeerInfo/CollectionTabItemComponent",
+         "//submodules/TelegramUI/Components/EdgeEffect",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
+index e1c98a1a..b94501ec 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
+@@ -26,6 +26,7 @@ import UndoUI
+ import LottieComponent
+ import ButtonComponent
+ import ContextUI
++import PhantomGiftKit
+ 
+ final class GiftsListView: UIView {
+     private let context: AccountContext
+@@ -143,14 +144,41 @@ final class GiftsListView: UIView {
+         
+         super.init(frame: .zero)
+                                         
++        // PampGram: this account's own Phantom Gifts (self-gifts sent or received "into"
++        // this profile) are merged into the default ("All", date-sorted) view of the grid,
++        // right alongside the real ones — nothing here calls `ProfileGiftsContext` or
++        // touches the network; see `PeerInfoGiftsPaneNode` for how pin/hide/sell on one of
++        // these entries (recognized by `reference == nil`) stay local-only too.
++        let pampGramProfileGifts: Signal<[ProfileGiftsContext.State.StarGift], NoError>
++        if peerId == context.account.peerId {
++            pampGramProfileGifts = PampGramPhantomGiftStore.profileGiftsSignal(context: context)
++            |> map { gifts in gifts.map { $0.asProfileGift } }
++        } else {
++            pampGramProfileGifts = .single([])
++        }
++
+         self.dataDisposable = combineLatest(
+             queue: Queue.mainQueue(),
+             profileGifts.state,
+-            self.reorderedReferencesPromise.get()
+-        ).startStrict(next: { [weak self] state, reorderedReferences in
++            self.reorderedReferencesPromise.get(),
++            pampGramProfileGifts
++        ).startStrict(next: { [weak self] realState, reorderedReferences, pampGramFakeGifts in
+             guard let self else {
+                 return
+             }
++            var state = realState
++            if state.filter == .All, !pampGramFakeGifts.isEmpty {
++                let merged = (pampGramFakeGifts + state.gifts).sorted { lhs, rhs in
++                    if lhs.pinnedToTop != rhs.pinnedToTop {
++                        return lhs.pinnedToTop
++                    }
++                    return lhs.date > rhs.date
++                }
++                state.gifts = merged
++                state.filteredGifts = merged
++                state.count = (state.count ?? 0) + Int32(pampGramFakeGifts.count)
++            }
++
+             let isFirstTime = self.starsProducts == nil
+             let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+             self.statusPromise.set(.single(PeerInfoStatusData(text: presentationData.strings.SharedMedia_GiftCount(state.count ?? 0), isActivity: true, key: .gifts)))
+@@ -251,7 +279,54 @@ final class GiftsListView: UIView {
+     deinit {
+         self.dataDisposable?.dispose()
+     }
+-        
++
++    // PampGram: the local-only stand-in for tapping a real gift card into GiftViewScreen —
++    // same three actions (Pin, Hide/Show, Sell) the long-press menu offers for a Phantom
++    // Gift, reached instead from a plain tap, entirely local (never calls
++    // `ProfileGiftsContext` or the network).
++    private func pampGramPresentPhantomGiftActions(product: ProfileGiftsContext.State.StarGift, presentationData: PresentationData) {
++        let context = self.context
++        let title: String
++        switch product.gift {
++        case let .generic(gift):
++            title = gift.title ?? "Gift"
++        case let .unique(gift):
++            title = gift.title
++        }
++        let sheet = ActionSheetController(presentationData: presentationData)
++        var items: [ActionSheetItem] = [ActionSheetTextItem(title: title)]
++
++        items.append(ActionSheetButtonItem(title: product.pinnedToTop ? presentationData.strings.PeerInfo_Gifts_Context_Unpin : presentationData.strings.PeerInfo_Gifts_Context_Pin, color: .accent, action: { [weak sheet, weak self] in
++            sheet?.dismissAnimated()
++            let _ = PampGramPhantomGiftManager.setPinnedToTop(context: context, matching: product, pinnedToTop: !product.pinnedToTop).start()
++            self?.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: !product.pinnedToTop ? presentationData.strings.PeerInfo_Gifts_ToastPinned_Text : presentationData.strings.PeerInfo_Gifts_ToastUnpinned_Text, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
++        }))
++
++        items.append(ActionSheetButtonItem(title: product.savedToProfile ? presentationData.strings.PeerInfo_Gifts_Context_Hide : presentationData.strings.PeerInfo_Gifts_Context_Show, color: .accent, action: { [weak sheet, weak self] in
++            sheet?.dismissAnimated()
++            let added = !product.savedToProfile
++            let _ = PampGramPhantomGiftManager.setSavedToProfile(context: context, matching: product, savedToProfile: added).start()
++            let text = added ? presentationData.strings.Gift_Displayed_NewText : presentationData.strings.Gift_Hidden_NewText
++            self?.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
++        }))
++
++        items.append(ActionSheetButtonItem(title: presentationData.strings.Gift_Convert_Convert, color: .destructive, action: { [weak sheet, weak self] in
++            sheet?.dismissAnimated()
++            let _ = PampGramPhantomGiftManager.sell(context: context, matching: product).start()
++            self?.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: presentationData.strings.Gift_Convert_Success_Title, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
++        }))
++
++        sheet.setItemGroups([
++            ActionSheetItemGroup(items: items),
++            ActionSheetItemGroup(items: [
++                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
++                    sheet?.dismissAnimated()
++                })
++            ])
++        ])
++        self.parentController?.present(sheet, in: .window(.root))
++    }
++
+     func item(at point: CGPoint) -> (AnyHashable, ComponentView<Empty>)? {
+         for (id, visibleItem) in self.starsItems {
+             if let view = visibleItem.1.view, view.frame.contains(point), let reference = visibleItem.0, self.isCollection || self.pinnedReferences.contains(reference) {
+@@ -591,10 +666,18 @@ final class GiftsListView: UIView {
+                                             self.reorderedReferences = reorderedReferences
+                                         }
+                                     }
++                                } else if product.reference == nil {
++                                    // PampGram: this card is one of this device's own Phantom
++                                    // Gifts — GiftViewScreen is built entirely around real,
++                                    // server-tracked gifts (transfer/export/upgrade, all real
++                                    // network actions), so it's never opened for one of these;
++                                    // the same Pin/Hide/Sell actions the long-press menu offers
++                                    // are just as reachable from here instead.
++                                    self.pampGramPresentPhantomGiftActions(product: product, presentationData: presentationData)
+                                 } else {
+                                     let allSubjects: [GiftViewScreen.Subject] = (self.starsProducts ?? []).map { .profileGift(self.peerId, $0) }
+                                     let index = self.starsProducts?.firstIndex(where: { $0 == product }) ?? 0
+-                                    
++
+                                     var dismissImpl: (() -> Void)?
+                                     let controller = GiftViewScreen(
+                                         context: self.context,
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
+index ee9ea2d9..6c47c8bc 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
+@@ -36,6 +36,7 @@ import TextFormat
+ import PromptUI
+ import CollectionTabItemComponent
+ import EdgeEffect
++import PhantomGiftKit
+ 
+ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScrollViewDelegate {
+     public enum GiftCollection: Equatable {
+@@ -1102,17 +1103,42 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+                             return
+                         }
+                         let pinnedToTop = !gift.pinnedToTop
++
++                        // PampGram: this card is one of this device's own Phantom Gifts
++                        // (`reference == nil`, never a real, server-backed gift) — flip the
++                        // local flag only, never the real, network-backed
++                        // `profileGifts.updateStarGiftPinnedToTop` below.
++                        if gift.reference == nil {
++                            let _ = PampGramPhantomGiftManager.setPinnedToTop(context: self.context, matching: gift, pinnedToTop: pinnedToTop).start()
++
++                            let toastTitle: String?
++                            let toastText: String
++                            if !pinnedToTop {
++                                toastTitle = nil
++                                toastText = strings.PeerInfo_Gifts_ToastUnpinned_Text
++                            } else {
++                                var title = ""
++                                if case let .unique(uniqueGift) = gift.gift {
++                                    title = "\(uniqueGift.title) #\(formatCollectibleNumber(uniqueGift.number, dateTimeFormat: presentationData.dateTimeFormat))"
++                                }
++                                toastTitle = strings.PeerInfo_Gifts_ToastPinned_TitleNew(title).string
++                                toastText = strings.PeerInfo_Gifts_ToastPinned_Text
++                            }
++                            self.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .universal(animation: !pinnedToTop ? "anim_toastunpin" : "anim_toastpin", scale: 0.06, colors: [:], title: toastTitle, text: toastText, customUndoText: nil, timeout: 5), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
++                            return
++                        }
++
+                         guard let reference = gift.reference else {
+                             return
+                         }
+-                        
++
+                         if pinnedToTop && self.giftsListView.pinnedReferences.count >= self.giftsListView.maxPinnedCount {
+                             self.displayUnpinScreen(gift: gift)
+                             return
+                         }
+-                        
++
+                         profileGifts.updateStarGiftPinnedToTop(reference: reference, pinnedToTop: pinnedToTop)
+-                        
++
+                         let toastTitle: String?
+                         let toastText: String
+                         if !pinnedToTop {
+@@ -1282,30 +1308,50 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+                     guard let self else {
+                         return
+                     }
+-                    if let reference = gift.reference {
+-                        let added = !gift.savedToProfile
+-                        profileGifts.updateStarGiftAddedToProfile(reference: reference, added: added)
+-                        
+-                        var animationFile: TelegramMediaFile?
+-                        switch gift.gift {
+-                        case let .generic(gift):
+-                            animationFile = gift.file
+-                        case let .unique(gift):
+-                            for attribute in gift.attributes {
+-                                if case let .model(_, file, _, _) = attribute {
+-                                    animationFile = file
+-                                    break
+-                                }
++
++                    var animationFile: TelegramMediaFile?
++                    switch gift.gift {
++                    case let .generic(gift):
++                        animationFile = gift.file
++                    case let .unique(gift):
++                        for attribute in gift.attributes {
++                            if case let .model(_, file, _, _) = attribute {
++                                animationFile = file
++                                break
+                             }
+                         }
+-                                                
+-                        let text: String
+-                        if self.peerId.namespace == Namespaces.Peer.CloudChannel {
+-                            text = added ? presentationData.strings.Gift_Displayed_ChannelText : presentationData.strings.Gift_Hidden_ChannelText
+-                        } else {
+-                            text = added ? presentationData.strings.Gift_Displayed_NewText : presentationData.strings.Gift_Hidden_NewText
++                    }
++
++                    let added = !gift.savedToProfile
++                    let text: String
++                    if self.peerId.namespace == Namespaces.Peer.CloudChannel {
++                        text = added ? presentationData.strings.Gift_Displayed_ChannelText : presentationData.strings.Gift_Hidden_ChannelText
++                    } else {
++                        text = added ? presentationData.strings.Gift_Displayed_NewText : presentationData.strings.Gift_Hidden_NewText
++                    }
++
++                    // PampGram: this card is one of this device's own Phantom Gifts
++                    // (`reference == nil`) — flip the local flag only, never the real,
++                    // network-backed `profileGifts.updateStarGiftAddedToProfile` below.
++                    if gift.reference == nil {
++                        let _ = PampGramPhantomGiftManager.setSavedToProfile(context: self.context, matching: gift, savedToProfile: added).start()
++                        if let animationFile {
++                            let resultController = UndoOverlayController(
++                                presentationData: presentationData,
++                                content: .sticker(context: context, file: animationFile, loop: false, title: nil, text: text, undoText: nil, customAction: nil),
++                                elevatedLayout: true,
++                                action: { _ in
++                                    return true
++                                }
++                            )
++                            self.parentController?.present(resultController, in: .window(.root))
+                         }
+-                        
++                        return
++                    }
++
++                    if let reference = gift.reference {
++                        profileGifts.updateStarGiftAddedToProfile(reference: reference, added: added)
++
+                         if let animationFile {
+                             let resultController = UndoOverlayController(
+                                 presentationData: presentationData,

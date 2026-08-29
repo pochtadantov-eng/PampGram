@@ -220,22 +220,40 @@ public enum PampGramPhantomGiftManager {
         |> ignoreValues
     }
 
+    /// Finds the Phantom Gift a `ProfileGiftsContext.State.StarGift` from the profile grid
+    /// was built from. The grid item itself never carries the Phantom Gift's `id` (it's a
+    /// `reference: nil` value built fresh by `PampGramPhantomGift.asProfileGift` every time
+    /// the grid re-renders — that's deliberate: `reference == nil` is the signal every real,
+    /// network-backed consumer of this type checks before acting, so nothing here piggybacks
+    /// an id onto one of its fields and risks a real screen misreading it as real data).
+    /// Matched on this account's own gifts by exact `gift`+`date`, which a Phantom Gift never
+    /// shares with another one (each gets its own `Date()` at creation).
+    private static func findPhantomGift(transaction: Transaction, selfPeerId: EnginePeer.Id, matching gift: ProfileGiftsContext.State.StarGift) -> PampGramPhantomGift? {
+        return PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.peerId == selfPeerId && $0.gift == gift.gift && $0.date == gift.date })
+    }
+
     /// "Закрепить" in the profile gifts grid, for a Phantom Gift — a pure local flag flip,
     /// same as the real `ProfileGiftsContext.updateStarGiftPinnedToTop`'s optimistic-update
     /// half, but without also firing the real network call that method always sends
     /// alongside it (there's no server-side pin to make for a gift that was never real).
-    public static func setPinnedToTop(context: AccountContext, id: Int64, pinnedToTop: Bool) -> Signal<Never, NoError> {
+    public static func setPinnedToTop(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift, pinnedToTop: Bool) -> Signal<Never, NoError> {
         return context.account.postbox.transaction { transaction -> Void in
-            PampGramPhantomGiftStore.update(transaction: transaction, id: id, { $0.withPinnedToTop(pinnedToTop) })
+            guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
+                return
+            }
+            PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withPinnedToTop(pinnedToTop) })
         }
         |> ignoreValues
     }
 
     /// "Показать на странице" / "Скрыть с страницы" — same local-only flag flip as
     /// `setPinnedToTop`, standing in for `ProfileGiftsContext.updateStarGiftAddedToProfile`.
-    public static func setSavedToProfile(context: AccountContext, id: Int64, savedToProfile: Bool) -> Signal<Never, NoError> {
+    public static func setSavedToProfile(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift, savedToProfile: Bool) -> Signal<Never, NoError> {
         return context.account.postbox.transaction { transaction -> Void in
-            PampGramPhantomGiftStore.update(transaction: transaction, id: id, { $0.withSavedToProfile(savedToProfile) })
+            guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
+                return
+            }
+            PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withSavedToProfile(savedToProfile) })
         }
         |> ignoreValues
     }
@@ -246,20 +264,20 @@ public enum PampGramPhantomGiftManager {
     /// `delete` would, but the record itself — and the debit it originally produced in the
     /// transaction history — is kept, and the sale becomes its own credit entry there,
     /// exactly like a real "sold for Stars" transaction would.
-    public static func sell(context: AccountContext, id: Int64) -> Signal<Never, NoError> {
+    public static func sell(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift) -> Signal<Never, NoError> {
         return context.account.postbox.transaction { transaction -> Void in
-            guard let gift = PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.id == id }) else {
+            guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
                 return
             }
-            switch gift.price.currency {
+            switch match.price.currency {
             case .stars:
-                let newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + gift.price.amount.value
+                let newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + match.price.amount.value
                 PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: newBalance)
             case .ton:
-                let newBalance = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) + gift.price.amount.value
+                let newBalance = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) + match.price.amount.value
                 PampGramPhantomGiftStore.setFakeTonBalanceNanos(transaction: transaction, nanos: newBalance)
             }
-            PampGramPhantomGiftStore.update(transaction: transaction, id: id, { $0.withSold(date: Int32(Date().timeIntervalSince1970)) })
+            PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withSold(date: Int32(Date().timeIntervalSince1970)) })
         }
         |> ignoreValues
     }

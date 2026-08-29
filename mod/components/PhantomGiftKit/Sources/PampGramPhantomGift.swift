@@ -96,4 +96,37 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     public func withSold(date: Int32) -> PampGramPhantomGift {
         return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: false, soldDate: date)
     }
+
+    /// The real profile gifts grid's own item type, built straight from this Phantom Gift —
+    /// `reference: nil` is what marks it as non-real everywhere it's consumed (a real gift
+    /// always carries a server `StarGiftReference`); the grid (`GiftsListView`) and its
+    /// pin/hide/sell handlers (`PeerInfoGiftsPaneNode`) both check for that before ever
+    /// calling a real, network-backed `ProfileGiftsContext` method.
+    public var asProfileGift: ProfileGiftsContext.State.StarGift {
+        return ProfileGiftsContext.State.StarGift(
+            gift: self.gift,
+            reference: nil,
+            fromPeer: nil,
+            date: self.date,
+            text: nil,
+            entities: nil,
+            nameHidden: false,
+            savedToProfile: true,
+            pinnedToTop: self.pinnedToTop,
+            convertStars: self.price.currency == .stars ? self.price.amount.value : nil,
+            canUpgrade: false,
+            canExportDate: nil,
+            upgradeStars: nil,
+            transferStars: nil,
+            canTransferDate: nil,
+            canResaleDate: nil,
+            collectionIds: nil,
+            prepaidUpgradeHash: nil,
+            upgradeSeparate: false,
+            dropOriginalDetailsStars: nil,
+            number: self.number,
+            isRefunded: false,
+            canCraftAt: nil
+        )
+    }
 }
