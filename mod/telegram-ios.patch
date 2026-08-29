@@ -233,7 +233,7 @@ index 7e874b3f..28817174 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
-index 0db09aed..2855e502 100644
+index 0db09aed..4773f4bb 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 @@ -39,6 +39,8 @@ import GlassBarButtonComponent
@@ -279,7 +279,7 @@ index 0db09aed..2855e502 100644
              let source: BotPaymentInvoiceSource
              switch component.subject {
              case let .premium(product):
-@@ -513,36 +521,52 @@ private final class GiftSetupScreenComponent: Component {
+@@ -513,36 +521,60 @@ private final class GiftSetupScreenComponent: Component {
                  }
                  perUserLimit = starGift.perUserLimit?.total
                  giftFile = starGift.file
@@ -318,11 +318,19 @@ index 0db09aed..2855e502 100644
 +                // `next:` handler never touches `result`), so any placeholder satisfies it.
 +                let signal: Signal<SendBotPaymentResult, SendBotPaymentFormError>
 +                if component.pampGramFakePurchaseAllowed, let pampGramStarGift {
-+                    signal = PampGramPhantomGiftManager.sendGenericGift(context: context, peerId: peerId, gift: pampGramStarGift, starPrice: finalPrice, text: textInputText.string.isEmpty ? nil : textInputText.string, entities: entities.isEmpty ? nil : entities, nameHidden: self.hideName)
-+                    |> map { _ -> SendBotPaymentResult in
-+                        return .done(receiptMessageId: nil, subscriptionPeerId: nil, uniqueStarGift: nil)
++                    // `sendGenericGift` returns `Signal<Never, NoError>` — it only ever
++                    // completes, so it can't be `map`-ed into a `SendBotPaymentResult` (the
++                    // compiler correctly rejects that as dead code: a `Never` is never
++                    // produced to map). Wrapped by hand instead: run it for its side effect,
++                    // then synthesize the one placeholder value the `next:` handler below
++                    // needs to fire (it never reads the value itself).
++                    let fakeSendSignal = PampGramPhantomGiftManager.sendGenericGift(context: context, peerId: peerId, gift: pampGramStarGift, starPrice: finalPrice, text: textInputText.string.isEmpty ? nil : textInputText.string, entities: entities.isEmpty ? nil : entities, nameHidden: self.hideName)
++                    signal = Signal<SendBotPaymentResult, SendBotPaymentFormError> { subscriber in
++                        return fakeSendSignal.start(completed: {
++                            subscriber.putNext(.done(receiptMessageId: nil, subscriptionPeerId: nil, uniqueStarGift: nil))
++                            subscriber.putCompletion()
++                        })
 +                    }
-+                    |> castError(SendBotPaymentFormError.self)
 +                } else {
 +                    signal = BotCheckoutController.InputData.fetch(context: component.context, source: source)
 +                    |> `catch` { error -> Signal<BotCheckoutController.InputData, SendBotPaymentFormError> in
@@ -351,7 +359,7 @@ index 0db09aed..2855e502 100644
                      guard let self, let controller = self.environment?.controller(), let navigationController = controller.navigationController as? NavigationController else {
                          return
                      }
-@@ -663,7 +687,30 @@ private final class GiftSetupScreenComponent: Component {
+@@ -663,7 +695,30 @@ private final class GiftSetupScreenComponent: Component {
                  })
              }
              
@@ -383,7 +391,7 @@ index 0db09aed..2855e502 100644
                  let _ = (self.optionsPromise.get()
                  |> filter { $0 != nil }
                  |> take(1)
-@@ -684,7 +731,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -684,7 +739,7 @@ private final class GiftSetupScreenComponent: Component {
                              }
                              self.inProgress = true
                              self.state?.updated()
@@ -392,7 +400,7 @@ index 0db09aed..2855e502 100644
                              starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
                              let _ = (starsContext.onUpdate
                              |> deliverOnMainQueue).start(next: {
-@@ -1481,7 +1528,8 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1481,7 +1536,8 @@ private final class GiftSetupScreenComponent: Component {
                                          let storeController = component.context.sharedContext.makeGiftStoreController(
                                              context: component.context,
                                              peerId: component.peerId,
@@ -402,7 +410,7 @@ index 0db09aed..2855e502 100644
                                          )
                                          controller.push(storeController)
                                      }
-@@ -2111,15 +2159,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
+@@ -2111,15 +2167,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
          peerId: EnginePeer.Id,
          subject: Subject,
          auctionAcquiredGifts: Signal<[GiftAuctionAcquiredGift], NoError>? = nil,
