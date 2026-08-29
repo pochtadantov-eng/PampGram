@@ -12,13 +12,13 @@ import AppBundle
 import PampGramCore
 
 private final class PampGramStatusArguments {
-    let selectIcon: (PresentationAppIcon) -> Void
+    let openIconPicker: () -> Void
     let openGifts: () -> Void
     let openMessages: () -> Void
     let openGhost: () -> Void
 
-    init(selectIcon: @escaping (PresentationAppIcon) -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void) {
-        self.selectIcon = selectIcon
+    init(openIconPicker: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void) {
+        self.openIconPicker = openIconPicker
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
@@ -27,8 +27,9 @@ private final class PampGramStatusArguments {
 
 /// Turns a raw alternate-icon codename (e.g. "BlueClassicIcon", "New2") into something
 /// readable without inventing style descriptions we can't verify — just the real name with
-/// word breaks inserted before each capital.
-private func pampGramIconDisplayName(_ icon: PresentationAppIcon) -> String {
+/// word breaks inserted before each capital. Not private: PampGramIconPickerScreen.swift's
+/// grid cells and confirm dialog use it too.
+func pampGramIconDisplayName(_ icon: PresentationAppIcon) -> String {
     if icon.isDefault {
         return "Стандартная"
     }
@@ -50,7 +51,7 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
     case badge(Bool)
 
     case iconHeader(String)
-    case icon(Int32, PresentationAppIcon, Bool)
+    case iconSummary(PresentationAppIcon)
     case iconFooter(String)
 
     case giftsHeader(String)
@@ -66,7 +67,7 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         switch self {
         case .badge:
             return 0
-        case .iconHeader, .icon, .iconFooter:
+        case .iconHeader, .iconSummary, .iconFooter:
             return 1
         case .giftsHeader, .giftsRow:
             return 2
@@ -83,8 +84,8 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
             return 0
         case .iconHeader:
             return 1
-        case let .icon(index, _, _):
-            return 100 + index
+        case .iconSummary:
+            return 100
         case .iconFooter:
             return 199
         case .giftsHeader:
@@ -128,21 +129,18 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .iconFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .icon(_, icon, isSelected):
+        case let .iconSummary(icon):
             let previewImage = UIImage(named: icon.imageName, in: getAppBundle(), compatibleWith: nil)
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
                 icon: previewImage,
-                title: pampGramIconDisplayName(icon),
-                label: "",
-                additionalDetailLabel: isSelected ? "Выбрано" : nil,
-                additionalDetailLabelColor: .constructive,
+                title: "Иконка приложения",
+                label: pampGramIconDisplayName(icon),
                 sectionId: self.section,
                 style: .blocks,
-                disclosureStyle: .none,
                 action: {
-                    arguments.selectIcon(icon)
+                    arguments.openIconPicker()
                 }
             )
         case let .giftsRow(_, title, isOn):
@@ -200,11 +198,10 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     entries.append(.badge(isPro))
 
     entries.append(.iconHeader("ИКОНКА ПРИЛОЖЕНИЯ"))
-    for (index, icon) in icons.enumerated() {
-        let isSelected = icon.name == (currentIconName ?? icons.first(where: { $0.isDefault })?.name)
-        entries.append(.icon(Int32(index), icon, isSelected))
+    if let selectedIcon = icons.first(where: { $0.name == currentIconName }) ?? icons.first(where: { $0.isDefault }) ?? icons.first {
+        entries.append(.iconSummary(selectedIcon))
     }
-    entries.append(.iconFooter("Иконка меняется сразу на домашнем экране. Часть иконок и PRO пока недоступны."))
+    entries.append(.iconFooter("Иконка меняется сразу на домашнем экране."))
 
     entries.append(.giftsHeader("ПОДАРКИ"))
     entries.append(.giftsRow(0, "Вкладка «Подарок ему»", settings.phantomGiftsEnabled))
@@ -231,26 +228,18 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
 /// home-screen icon), plus a grouped, tap-to-open read-out of every PampGram toggle.
 public func pampGramStatusController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
-    var presentControllerImpl: ((ViewController) -> Void)?
-    let currentIconName = ValuePromise<String?>(context.sharedContext.applicationBindings.getAlternateIconName())
+    var currentIconNameValue = context.sharedContext.applicationBindings.getAlternateIconName()
+    let currentIconName = ValuePromise<String?>(currentIconNameValue)
+
+    var appIcons = context.sharedContext.applicationBindings.getAvailableAlternateIcons()
+    appIcons = appIcons.filter { !$0.isPremium }
 
     let arguments = PampGramStatusArguments(
-        selectIcon: { icon in
-            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-            presentControllerImpl?(textAlertController(
-                context: context,
-                title: "Сменить иконку?",
-                text: "«\(pampGramIconDisplayName(icon))» станет иконкой приложения на домашнем экране.",
-                actions: [
-                    TextAlertAction(type: .genericAction, title: presentationData.strings.Common_Cancel, action: {}),
-                    TextAlertAction(type: .defaultAction, title: "Сменить", action: {
-                        currentIconName.set(icon.name)
-                        context.sharedContext.applicationBindings.requestSetAlternateIconName(icon.isDefault ? nil : icon.name, { _ in
-                        })
-                    }),
-                ],
-                actionLayout: .horizontal
-            ))
+        openIconPicker: {
+            pampGramPresentIconPicker(context: context, icons: appIcons, currentIconName: currentIconNameValue, onSelect: { icon in
+                currentIconNameValue = icon.name
+                currentIconName.set(icon.name)
+            })
         },
         openGifts: {
             pushControllerImpl?(pampGramGiftsSettingsController(context: context))
@@ -262,9 +251,6 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
             pushControllerImpl?(pampGramGhostSettingsController(context: context))
         }
     )
-
-    var appIcons = context.sharedContext.applicationBindings.getAvailableAlternateIcons()
-    appIcons = appIcons.filter { !$0.isPremium }
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
@@ -295,9 +281,6 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
     let controller = ItemListController(context: context, state: signal)
     pushControllerImpl = { [weak controller] c in
         controller?.push(c)
-    }
-    presentControllerImpl = { [weak controller] c in
-        controller?.present(c, in: .window(.root))
     }
     return controller
 }
