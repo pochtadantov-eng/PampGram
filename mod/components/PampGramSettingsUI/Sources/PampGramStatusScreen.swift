@@ -72,6 +72,8 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
         entries.append(.row(1, "Локальные звёзды", settings.fakeStarsDisplayEnabled))
         entries.append(.row(2, "Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
         entries.append(.row(3, "Восстановление удалённых сообщений", settings.antiDeleteMessagesEnabled))
+        entries.append(.row(4, "Ghost: Нечиталка", settings.ghostReaderEnabled))
+        entries.append(.row(5, "Ghost: Маскировка онлайна", settings.onlineMaskEnabled))
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
             entries: entries,

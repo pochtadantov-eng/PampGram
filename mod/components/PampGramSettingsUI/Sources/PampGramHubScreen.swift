@@ -115,15 +115,15 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
-                icon: generatePampGramSectionIcon(systemName: "lock.fill", backgroundColor: UIColor(rgb: 0x34c759)),
-                title: "Приватность",
+                icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x34c759)),
+                title: "Ghost",
                 titleFont: .bold,
                 label: "",
                 additionalDetailLabel: "Скрытые функции и защита",
                 sectionId: self.section,
                 style: .blocks,
                 action: {
-                    arguments.openPlaceholder("Приватность")
+                    arguments.openGhost()
                 }
             )
         case .appearance:
@@ -192,18 +192,23 @@ private enum PampGramHubEntry: ItemListNodeEntry {
 private final class PampGramHubArguments {
     let openGifts: () -> Void
     let openMessages: () -> Void
+    let openGhost: () -> Void
     let openPlaceholder: (String) -> Void
     let openStatus: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openStatus: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openStatus: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
+        self.openGhost = openGhost
         self.openPlaceholder = openPlaceholder
         self.openStatus = openStatus
     }
 }
 
 private func pampGramHubEntries(settings: PampGramSettings) -> [PampGramHubEntry] {
+    // "Ghost" counts as active only when exactly one of its two mutually-exclusive presence
+    // modes is on — both off is a legitimate default, not a "something's disabled" state, so
+    // it doesn't drag the overall indicator down the way an off balance-display toggle does.
     let allActive = settings.phantomGiftsEnabled && settings.fakeStarsDisplayEnabled && settings.fakeTonDisplayEnabled && settings.antiDeleteMessagesEnabled
     return [
         .hero,
@@ -229,6 +234,9 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         },
         openMessages: {
             pushControllerImpl?(pampGramMessagesSettingsController(context: context))
+        },
+        openGhost: {
+            pushControllerImpl?(pampGramGhostSettingsController(context: context))
         },
         openPlaceholder: { title in
             pushControllerImpl?(pampGramPlaceholderController(context: context, title: title))

@@ -32,6 +32,17 @@ public struct PampGramSettings: Codable, Equatable {
     /// history instead of vanishing. Purely local: it never tells Telegram, or the person who
     /// deleted it, that a copy was kept.
     public var antiDeleteMessagesEnabled: Bool
+    /// "Нечиталка" (Ghost section): suppresses every outgoing activity signal this account
+    /// would otherwise send to the people it talks to — read receipts, online/last-seen,
+    /// typing, and recording/uploading indicators — while the local UI keeps working exactly
+    /// as normal (messages still show as read locally, badges still clear). Mutually
+    /// exclusive with `onlineMaskEnabled`: enabling one turns the other off, since "never
+    /// online" and "always online" can't both be true.
+    public var ghostReaderEnabled: Bool
+    /// "Маскировка онлайна" (Ghost section): the opposite of `ghostReaderEnabled`'s presence
+    /// half — keeps broadcasting "online" as persistently as the OS lets the app run, instead
+    /// of going offline when backgrounded. Mutually exclusive with `ghostReaderEnabled`.
+    public var onlineMaskEnabled: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -43,17 +54,21 @@ public struct PampGramSettings: Codable, Equatable {
             fakeTonBalanceNanos: defaultFakeTonBalanceNanos,
             fakeStarsDisplayEnabled: true,
             fakeTonDisplayEnabled: true,
-            antiDeleteMessagesEnabled: true
+            antiDeleteMessagesEnabled: true,
+            ghostReaderEnabled: false,
+            onlineMaskEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
         self.fakeStarsDisplayEnabled = fakeStarsDisplayEnabled
         self.fakeTonDisplayEnabled = fakeTonDisplayEnabled
         self.antiDeleteMessagesEnabled = antiDeleteMessagesEnabled
+        self.ghostReaderEnabled = ghostReaderEnabled
+        self.onlineMaskEnabled = onlineMaskEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -68,6 +83,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.fakeStarsDisplayEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeStarsDisplayEnabled) ?? defaults.fakeStarsDisplayEnabled
         self.fakeTonDisplayEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeTonDisplayEnabled) ?? defaults.fakeTonDisplayEnabled
         self.antiDeleteMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .antiDeleteMessagesEnabled) ?? defaults.antiDeleteMessagesEnabled
+        self.ghostReaderEnabled = try container.decodeIfPresent(Bool.self, forKey: .ghostReaderEnabled) ?? defaults.ghostReaderEnabled
+        self.onlineMaskEnabled = try container.decodeIfPresent(Bool.self, forKey: .onlineMaskEnabled) ?? defaults.onlineMaskEnabled
     }
 }
 
