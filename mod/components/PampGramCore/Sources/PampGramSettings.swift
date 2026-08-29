@@ -135,6 +135,20 @@ public struct PampGramSettings: Codable, Equatable {
     /// connection actually has.
     public var uploadSpeedMode: PampGramSpeedMode
     public var downloadSpeedMode: PampGramSpeedMode
+    /// "Фейковая геолокация" (Дополнительно): when sending a one-time location pin, substitute
+    /// this coordinate for the real GPS one. Only affects a plain location share — live
+    /// (continuously-updating) location sharing is untouched, since faking a moving position
+    /// safely would mean patching the GPS-consuming layer itself, not just one send call.
+    public var fakeLocationEnabled: Bool
+    public var fakeLocationLatitude: Double
+    public var fakeLocationLongitude: Double
+    /// "Блокировка чатов" (Дополнительно): a single local PIN gating specific chats, checked
+    /// once at `navigateToChatControllerImpl` before the real chat ever opens — not Telegram's
+    /// own Secret Chats or app passcode, just an extra local step before this device shows one
+    /// of the chats in `lockedChatPeerIds`.
+    public var chatLockEnabled: Bool
+    public var chatLockPin: String
+    public var lockedChatPeerIds: [PeerId]
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -155,11 +169,17 @@ public struct PampGramSettings: Codable, Equatable {
             voiceChangerMessagesEnabled: false,
             voicePreset: .male,
             uploadSpeedMode: .standard,
-            downloadSpeedMode: .standard
+            downloadSpeedMode: .standard,
+            fakeLocationEnabled: false,
+            fakeLocationLatitude: 0,
+            fakeLocationLongitude: 0,
+            chatLockEnabled: false,
+            chatLockPin: "",
+            lockedChatPeerIds: []
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId]) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -175,6 +195,12 @@ public struct PampGramSettings: Codable, Equatable {
         self.voicePreset = voicePreset
         self.uploadSpeedMode = uploadSpeedMode
         self.downloadSpeedMode = downloadSpeedMode
+        self.fakeLocationEnabled = fakeLocationEnabled
+        self.fakeLocationLatitude = fakeLocationLatitude
+        self.fakeLocationLongitude = fakeLocationLongitude
+        self.chatLockEnabled = chatLockEnabled
+        self.chatLockPin = chatLockPin
+        self.lockedChatPeerIds = lockedChatPeerIds
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -198,6 +224,12 @@ public struct PampGramSettings: Codable, Equatable {
         self.voicePreset = try container.decodeIfPresent(PampGramVoicePreset.self, forKey: .voicePreset) ?? defaults.voicePreset
         self.uploadSpeedMode = try container.decodeIfPresent(PampGramSpeedMode.self, forKey: .uploadSpeedMode) ?? defaults.uploadSpeedMode
         self.downloadSpeedMode = try container.decodeIfPresent(PampGramSpeedMode.self, forKey: .downloadSpeedMode) ?? defaults.downloadSpeedMode
+        self.fakeLocationEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeLocationEnabled) ?? defaults.fakeLocationEnabled
+        self.fakeLocationLatitude = try container.decodeIfPresent(Double.self, forKey: .fakeLocationLatitude) ?? defaults.fakeLocationLatitude
+        self.fakeLocationLongitude = try container.decodeIfPresent(Double.self, forKey: .fakeLocationLongitude) ?? defaults.fakeLocationLongitude
+        self.chatLockEnabled = try container.decodeIfPresent(Bool.self, forKey: .chatLockEnabled) ?? defaults.chatLockEnabled
+        self.chatLockPin = try container.decodeIfPresent(String.self, forKey: .chatLockPin) ?? defaults.chatLockPin
+        self.lockedChatPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .lockedChatPeerIds) ?? defaults.lockedChatPeerIds
     }
 }
 

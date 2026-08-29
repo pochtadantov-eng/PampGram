@@ -14,12 +14,18 @@ private final class PampGramAdditionalArguments {
     let openVoicePreset: () -> Void
     let openUploadSpeed: () -> Void
     let openDownloadSpeed: () -> Void
+    let openFakeLocation: () -> Void
+    let openChatLock: () -> Void
+    let openCallOverrides: () -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
         self.openDownloadSpeed = openDownloadSpeed
+        self.openFakeLocation = openFakeLocation
+        self.openChatLock = openChatLock
+        self.openCallOverrides = openCallOverrides
     }
 }
 
@@ -27,6 +33,7 @@ private enum PampGramAdditionalSection: Int32 {
     case about
     case voice
     case speed
+    case extras
 }
 
 private enum PampGramAdditionalEntry: ItemListNodeEntry {
@@ -42,6 +49,12 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case downloadSpeedRow(String, String)
     case speedFooter(String)
 
+    case extrasHeader(String)
+    case fakeLocationRow(String, String)
+    case chatLockRow(String, String)
+    case callOverridesRow(String)
+    case extrasFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .aboutText:
@@ -50,6 +63,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .extrasFooter:
+            return PampGramAdditionalSection.extras.rawValue
         }
     }
 
@@ -73,6 +88,16 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 7
         case .speedFooter:
             return 8
+        case .extrasHeader:
+            return 9
+        case .fakeLocationRow:
+            return 10
+        case .chatLockRow:
+            return 11
+        case .callOverridesRow:
+            return 12
+        case .extrasFooter:
+            return 13
         }
     }
 
@@ -83,9 +108,9 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .extrasFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .extrasHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .voiceToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -102,6 +127,18 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         case let .downloadSpeedRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openDownloadSpeed()
+            })
+        case let .fakeLocationRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openFakeLocation()
+            })
+        case let .chatLockRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openChatLock()
+            })
+        case let .callOverridesRow(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
+                arguments.openCallOverrides()
             })
         }
     }
@@ -121,6 +158,12 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.uploadSpeedRow("Ускорение загрузки", settings.uploadSpeedMode.displayName))
     entries.append(.downloadSpeedRow("Ускорение скачивания", settings.downloadSpeedMode.displayName))
     entries.append(.speedFooter("Меняет, насколько параллельно Telegram передаёт части файлов. «Турбо» задействует потолок, уже используемый самим приложением для переноса истории — реальная скорость всё равно зависит от сети и сервера."))
+
+    entries.append(.extrasHeader("ЕЩЁ"))
+    entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
+    entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
+    entries.append(.callOverridesRow("Звонки"))
+    entries.append(.extrasFooter("Всё работает только на этом устройстве."))
 
     return entries
 }
@@ -175,6 +218,7 @@ private func pampGramPresentVoicePresetPicker(context: AccountContext, presentCo
 /// Telegram's own upload/download code).
 public func pampGramAdditionalSettingsController(context: AccountContext) -> ViewController {
     var presentControllerImpl: ((ViewController) -> Void)?
+    var pushControllerImpl: ((ViewController) -> Void)?
 
     let arguments = PampGramAdditionalArguments(
         toggleVoiceChanger: { value in
@@ -216,6 +260,15 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                     }).start()
                 })
             })
+        },
+        openFakeLocation: {
+            pushControllerImpl?(pampGramFakeLocationController(context: context))
+        },
+        openChatLock: {
+            pushControllerImpl?(pampGramChatLockController(context: context))
+        },
+        openCallOverrides: {
+            pushControllerImpl?(pampGramCallOverridesController(context: context))
         }
     )
 
@@ -243,6 +296,9 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
     }
 
     let controller = ItemListController(context: context, state: signal)
+    pushControllerImpl = { [weak controller] c in
+        controller?.push(c)
+    }
     presentControllerImpl = { [weak controller] c in
         controller?.present(c, in: .window(.root))
     }
