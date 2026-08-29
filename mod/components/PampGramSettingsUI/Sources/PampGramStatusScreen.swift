@@ -210,7 +210,7 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     entries.append(.giftsRow(3, "От него", settings.fromHimGiftsEnabled))
 
     entries.append(.messagesHeader("УДАЛЁННЫЕ СООБЩЕНИЯ"))
-    entries.append(.messagesRow(0, "Восстановление удалённых сообщений", settings.antiDeleteMessagesEnabled))
+    entries.append(.messagesRow(0, "Удалённые сообщения", settings.antiDeleteMessagesEnabled))
     entries.append(.messagesRow(1, "Изменить визуально", settings.visualEditEnabled))
 
     entries.append(.ghostHeader("GHOST"))

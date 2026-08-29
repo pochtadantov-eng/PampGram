@@ -127,7 +127,7 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
 
     entries.append(.aboutText("Работает только на этом устройстве, никому не сообщается."))
 
-    entries.append(.antiDeleteToggle("Восстановление удалённых сообщений", settings.antiDeleteMessagesEnabled))
+    entries.append(.antiDeleteToggle("Удалённые сообщения", settings.antiDeleteMessagesEnabled))
     entries.append(.exclusionsRow("Исключения", "\(settings.antiDeleteExcludedPeerIds.count)"))
     entries.append(.antiDeleteFooter("Удалённое собеседником сообщение остаётся в чате затемнённым, с иконкой корзины. В исключённых чатах — как обычно."))
 
