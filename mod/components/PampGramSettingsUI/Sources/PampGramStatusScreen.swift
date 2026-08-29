@@ -231,13 +231,26 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
 /// home-screen icon), plus a grouped, tap-to-open read-out of every PampGram toggle.
 public func pampGramStatusController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
+    var presentControllerImpl: ((ViewController) -> Void)?
     let currentIconName = ValuePromise<String?>(context.sharedContext.applicationBindings.getAlternateIconName())
 
     let arguments = PampGramStatusArguments(
         selectIcon: { icon in
-            currentIconName.set(icon.name)
-            context.sharedContext.applicationBindings.requestSetAlternateIconName(icon.isDefault ? nil : icon.name, { _ in
-            })
+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+            presentControllerImpl?(textAlertController(
+                context: context,
+                title: "Сменить иконку?",
+                text: "«\(pampGramIconDisplayName(icon))» станет иконкой приложения на домашнем экране.",
+                actions: [
+                    TextAlertAction(type: .genericAction, title: presentationData.strings.Common_Cancel, action: {}),
+                    TextAlertAction(type: .defaultAction, title: "Сменить", action: {
+                        currentIconName.set(icon.name)
+                        context.sharedContext.applicationBindings.requestSetAlternateIconName(icon.isDefault ? nil : icon.name, { _ in
+                        })
+                    }),
+                ],
+                actionLayout: .horizontal
+            ))
         },
         openGifts: {
             pushControllerImpl?(pampGramGiftsSettingsController(context: context))
@@ -282,6 +295,9 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
     let controller = ItemListController(context: context, state: signal)
     pushControllerImpl = { [weak controller] c in
         controller?.push(c)
+    }
+    presentControllerImpl = { [weak controller] c in
+        controller?.present(c, in: .window(.root))
     }
     return controller
 }
