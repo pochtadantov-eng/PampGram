@@ -130,7 +130,7 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         case let .iconFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .iconSummary(icon):
-            let previewImage = UIImage(named: icon.imageName, in: getAppBundle(), compatibleWith: nil)
+            let previewImage = UIImage(named: icon.imageName, in: getAppBundle(), compatibleWith: nil).flatMap { generatePampGramIconPreview($0) }
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,

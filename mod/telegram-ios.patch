@@ -250,7 +250,7 @@ index 7acc37a1..13df9490 100644
              if peerId == accountPeerId {
                  return .complete()
 diff --git a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
-index 66242579..43c0800e 100644
+index 66242579..ba77c350 100644
 --- a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
 +++ b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
 @@ -2,6 +2,7 @@ import Foundation
@@ -261,7 +261,7 @@ index 66242579..43c0800e 100644
  
  
  private enum PeerReadStateMarker: Equatable {
-@@ -227,6 +228,26 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
+@@ -227,6 +228,33 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
  }
  
  private func pushPeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, readState: PeerReadState) -> Signal<PeerReadState, PeerReadStateValidationError> {
@@ -270,9 +270,16 @@ index 66242579..43c0800e 100644
 +    // the other side's read-receipt checkmarks. Skipping it here leaves Postbox's own local
 +    // read state (badges, this device's own "read" UI) completely untouched — only the
 +    // outgoing sync toward the server is withheld, for every peer kind at once.
-+    let pampGramGhostReaderEnabled = postbox.transaction { transaction -> Bool in
-+        return PampGramCore.settings(transaction: transaction).ghostReaderEnabled
-+    }
++    //
++    // Reads the setting through the same live, already-maintained `preferencesView` signal
++    // every other PampGram settings read uses, sampled once — never a fresh
++    // `postbox.transaction`, since this runs on every single read-state push (i.e. every
++    // chat read, for every chat, all the time) and queuing a full transaction here on top of
++    // whatever `pushPeerReadStateReal` itself needs was adding a real, constant tax on
++    // Postbox's single transaction queue that every other screen also waits behind.
++    let pampGramGhostReaderEnabled = PampGramCore.settingsSignal(postbox: postbox)
++    |> take(1)
++    |> map { $0.ghostReaderEnabled }
 +    |> castError(PeerReadStateValidationError.self)
 +
 +    return pampGramGhostReaderEnabled
@@ -288,19 +295,6 @@ index 66242579..43c0800e 100644
      if peerId.namespace == Namespaces.Peer.SecretChat {
          return inputSecretChat(postbox: postbox, peerId: peerId)
          |> mapToSignal { inputPeer -> Signal<PeerReadState, PeerReadStateValidationError> in
-diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
-index 5da8c15e..88cdc4b0 100644
---- a/submodules/TelegramUI/BUILD
-+++ b/submodules/TelegramUI/BUILD
-@@ -49,6 +49,8 @@ swift_library(
-         "-warnings-as-errors",
-     ],
-     deps = [
-+        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
-+        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
-         "//third-party/recaptcha:RecaptchaEnterprise",
-         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
-         "//submodules/SSignalKit/SSignalKit:SSignalKit",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
 index 1ddd9b86..5e5fecbc 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
@@ -314,7 +308,7 @@ index 1ddd9b86..5e5fecbc 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-index 2dcfc95e..564443bd 100644
+index 2dcfc95e..901f287a 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 @@ -8,6 +8,7 @@ import TelegramCore
@@ -339,7 +333,7 @@ index 2dcfc95e..564443bd 100644
          var isFile = false
          inner: for media in messageMedia {
              if let media = media as? TelegramMediaPaidContent {
-@@ -694,7 +700,14 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+@@ -694,7 +700,15 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
      private var clippingNode: ChatMessageBubbleClippingNode
      
      private var suggestedPostInfoNode: ChatMessageSuggestedPostInfoNode?
@@ -350,12 +344,13 @@ index 2dcfc95e..564443bd 100644
 +    // red trash-can badge in its corner, both created lazily and only while the current
 +    // message actually carries the attribute.
 +    private var pampGramDeletedOverlayNode: ASDisplayNode?
++    private var pampGramDeletedTrashBadgeNode: ASDisplayNode?
 +    private var pampGramDeletedTrashIconNode: ASImageNode?
 +
      override public var extractedBackgroundNode: ASDisplayNode? {
          return self.shadowNode
      }
-@@ -3981,7 +3994,48 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+@@ -3981,7 +3995,70 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
          
          let previousBackgroundFrame = strongSelf.backgroundNode.backgroundFrame
          strongSelf.backgroundNode.backgroundFrame = backgroundFrame
@@ -380,6 +375,26 @@ index 2dcfc95e..564443bd 100644
 +            }
 +            overlayNode.frame = backgroundFrame
 +
++            // A real filled-red circle behind the icon, not just a red tint on the icon
++            // itself — sitting just past the bubble's trailing edge (a small gap after the
++            // message, never overlapping its content), roughly level with the timestamp at
++            // the bottom of the bubble rather than the top corner.
++            let badgeNode: ASDisplayNode
++            if let current = strongSelf.pampGramDeletedTrashBadgeNode {
++                badgeNode = current
++            } else {
++                badgeNode = ASDisplayNode()
++                badgeNode.isUserInteractionEnabled = false
++                badgeNode.backgroundColor = .systemRed
++                strongSelf.pampGramDeletedTrashBadgeNode = badgeNode
++                strongSelf.addSubnode(badgeNode)
++            }
++            let badgeSize = CGSize(width: 20.0, height: 20.0)
++            badgeNode.cornerRadius = badgeSize.width / 2.0
++            let badgeGap: CGFloat = 6.0
++            let badgeFrame = CGRect(origin: CGPoint(x: backgroundFrame.maxX + badgeGap, y: backgroundFrame.maxY - badgeSize.height - 4.0), size: badgeSize)
++            badgeNode.frame = badgeFrame
++
 +            let iconNode: ASImageNode
 +            if let current = strongSelf.pampGramDeletedTrashIconNode {
 +                iconNode = current
@@ -388,16 +403,18 @@ index 2dcfc95e..564443bd 100644
 +                iconNode.displaysAsynchronously = false
 +                iconNode.isUserInteractionEnabled = false
 +                if let baseImage = UIImage(systemName: "trash.fill") {
-+                    iconNode.image = baseImage.withTintColor(.systemRed, renderingMode: .alwaysOriginal)
++                    iconNode.image = baseImage.withTintColor(.white, renderingMode: .alwaysOriginal)
 +                }
 +                strongSelf.pampGramDeletedTrashIconNode = iconNode
 +                strongSelf.addSubnode(iconNode)
 +            }
-+            let iconSize = CGSize(width: 14.0, height: 14.0)
-+            iconNode.frame = CGRect(origin: CGPoint(x: backgroundFrame.maxX - iconSize.width - 6.0, y: backgroundFrame.minY + 6.0), size: iconSize)
++            let iconSize = CGSize(width: 11.0, height: 11.0)
++            iconNode.frame = CGRect(x: badgeFrame.midX - iconSize.width / 2.0, y: badgeFrame.midY - iconSize.height / 2.0, width: iconSize.width, height: iconSize.height)
 +        } else if let overlayNode = strongSelf.pampGramDeletedOverlayNode {
 +            overlayNode.removeFromSupernode()
 +            strongSelf.pampGramDeletedOverlayNode = nil
++            strongSelf.pampGramDeletedTrashBadgeNode?.removeFromSupernode()
++            strongSelf.pampGramDeletedTrashBadgeNode = nil
 +            strongSelf.pampGramDeletedTrashIconNode?.removeFromSupernode()
 +            strongSelf.pampGramDeletedTrashIconNode = nil
 +        }
@@ -1648,14 +1665,15 @@ index bc8f9043..dc453cad 100644
                  rawString = presentationData.strings.StarsBalance_YourBalance(balanceString).string
              } else {
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
-index 066e81e6..5ad78b53 100644
+index 066e81e6..a8a4aae3 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
-@@ -51,6 +51,7 @@ swift_library(
+@@ -51,6 +51,8 @@ swift_library(
          "//submodules/TelegramUI/Components/Gifts/GiftAnimationComponent",
          "//submodules/TelegramUI/Components/Premium/PremiumCoinComponent",
          "//submodules/TelegramUI/Components/Premium/PremiumDiamondComponent",
 +        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
      ],
      visibility = [
          "//visibility:public",
@@ -1842,10 +1860,124 @@ index 04768a76..fa75dce2 100644
              self.environment = environment
              
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-index 87c58b5f..d199638d 100644
+index 87c58b5f..ada9917e 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-@@ -1084,12 +1084,14 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -25,6 +25,7 @@ import ItemListUI
+ import StarsWithdrawalScreen
+ import PremiumDiamondComponent
+ import StatisticsUI
++import PampGramCore
+ 
+ private let initialSubscriptionsDisplayedLimit: Int32 = 3
+ 
+@@ -137,7 +138,14 @@ final class StarsTransactionsScreenComponent: Component {
+         
+         private var stateDisposable: Disposable?
+         private var starsState: StarsContext.State?
+-        
++
++        // PampGram: while the feature is on, the balance shown on this screen (both the
++        // small top-right figure and the big centered one below) is the local fake
++        // balance, for both the Stars and the TON/GRAM variant of this screen — everything
++        // else here (transaction history, revenue stats, withdraw) stays real and untouched.
++        private var pampGramSettingsDisposable: Disposable?
++        private var pampGramSettings = PampGramSettings.defaultSettings
++
+         private var revenueStateDisposable: Disposable?
+         private var revenueState: StarsRevenueStats?
+         
+@@ -186,6 +194,7 @@ final class StarsTransactionsScreenComponent: Component {
+         
+         deinit {
+             self.stateDisposable?.dispose()
++            self.pampGramSettingsDisposable?.dispose()
+             self.revenueStateDisposable?.dispose()
+             self.subscriptionsStateDisposable?.dispose()
+         }
+@@ -374,12 +383,24 @@ final class StarsTransactionsScreenComponent: Component {
+                         return
+                     }
+                     self.revenueState = state.stats
+-                    
++
+                     if !self.isUpdating {
+                         self.state?.updated()
+                     }
+                 })
+-                
++
++                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
++                |> deliverOnMainQueue).start(next: { [weak self] settings in
++                    guard let self else {
++                        return
++                    }
++                    self.pampGramSettings = settings
++
++                    if !self.isUpdating {
++                        self.state?.updated()
++                    }
++                })
++
+                 if let subscriptionsContext = component.subscriptionsContext {
+                     self.subscriptionsStateDisposable = (subscriptionsContext.state
+                     |> deliverOnMainQueue).start(next: { [weak self] state in
+@@ -553,11 +574,23 @@ final class StarsTransactionsScreenComponent: Component {
+                 containerSize: CGSize(width: 120.0, height: 100.0)
+             )
+             
++            // PampGram: the local fake balance in place of the real one, on both the small
++            // top-right figure below and the big centered one further down. "Локальные
++            // звёзды" and "Локальные TON/GRAM" are independent toggles, so this screen
++            // checks whichever one matches the currency it's actually showing.
++            let pampGramFakeDisplayEnabled = component.starsContext.ton ? self.pampGramSettings.fakeTonDisplayEnabled : self.pampGramSettings.fakeStarsDisplayEnabled
++            let displayedBalance: StarsAmount
++            if pampGramFakeDisplayEnabled {
++                displayedBalance = component.starsContext.ton ? StarsAmount(value: self.pampGramSettings.fakeTonBalanceNanos, nanos: 0) : StarsAmount(value: self.pampGramSettings.fakeStarsBalance, nanos: 0)
++            } else {
++                displayedBalance = self.starsState?.balance ?? StarsAmount.zero
++            }
++
+             let formattedBalance: String
+             if component.starsContext.ton {
+-                formattedBalance = formatTonAmountText(self.starsState?.balance.value ?? 0, dateTimeFormat: environment.dateTimeFormat)
++                formattedBalance = formatTonAmountText(displayedBalance.value, dateTimeFormat: environment.dateTimeFormat)
+             } else {
+-                formattedBalance = formatStarsAmountText(self.starsState?.balance ?? StarsAmount.zero, dateTimeFormat: environment.dateTimeFormat)
++                formattedBalance = formatStarsAmountText(displayedBalance, dateTimeFormat: environment.dateTimeFormat)
+             }
+             let smallLabelFont = Font.regular(11.0)
+             let labelFont = Font.semibold(14.0)
+@@ -682,14 +715,17 @@ final class StarsTransactionsScreenComponent: Component {
+                                 theme: environment.theme,
+                                 dateTimeFormat: environment.dateTimeFormat,
+                                 title: environment.strings.Ton_AvailableBalance,
+-                                value: self.revenueState?.balances.availableBalance ?? CurrencyAmount(amount: .zero, currency: .ton),
++                                // PampGram: fake TON amount, but the real, live conversion rate
++                                // — the "~$" figure this produces auto-adjusts with the market
++                                // exactly like it would for a real balance.
++                                value: self.pampGramSettings.fakeTonDisplayEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.availableBalance ?? CurrencyAmount(amount: .zero, currency: .ton)),
+                                 rate: self.revenueState?.usdRate ?? 0.0
+                             ))),
+                             AnyComponentWithIdentity(id: 1, component: AnyComponent(StarsOverviewItemComponent(
+                                 theme: environment.theme,
+                                 dateTimeFormat: environment.dateTimeFormat,
+                                 title: environment.strings.Ton_LifetimeProceeds,
+-                                value: self.revenueState?.balances.overallRevenue ?? CurrencyAmount(amount: .zero, currency: .ton),
++                                value: self.pampGramSettings.fakeTonDisplayEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.overallRevenue ?? CurrencyAmount(amount: .zero, currency: .ton)),
+                                 rate: self.revenueState?.usdRate ?? 0.0
+                             )))
+                         ],
+@@ -754,7 +790,7 @@ final class StarsTransactionsScreenComponent: Component {
+                             theme: environment.theme,
+                             strings: environment.strings,
+                             dateTimeFormat: environment.dateTimeFormat,
+-                            count: self.starsState?.balance ?? StarsAmount.zero,
++                            count: displayedBalance,
+                             currency: component.starsContext.ton ? .ton : .stars,
+                             rate: nil,
+                             actionTitle: component.starsContext.ton ? environment.strings.Ton_WithdrawViaFragment : (withdrawAvailable ? environment.strings.Stars_Intro_BuyShort : environment.strings.Stars_Intro_Buy),
+@@ -1084,12 +1120,14 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: allTransactionsContext,
                          isAccount: true,
@@ -1861,7 +1993,7 @@ index 87c58b5f..d199638d 100644
                  panelItems.append(StarsTransactionsPanelContainerComponent.Item(
                      id: "incoming",
                      title: environment.strings.Stars_Intro_Incoming,
-@@ -1097,12 +1099,14 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1097,12 +1135,14 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: incomingTransactionsContext,
                          isAccount: true,
@@ -1877,7 +2009,7 @@ index 87c58b5f..d199638d 100644
                  panelItems.append(StarsTransactionsPanelContainerComponent.Item(
                      id: "outgoing",
                      title: environment.strings.Stars_Intro_Outgoing,
-@@ -1110,6 +1114,8 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1110,6 +1150,8 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: outgoingTransactionsContext,
                          isAccount: true,

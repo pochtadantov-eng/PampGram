@@ -187,11 +187,28 @@ private final class PampGramIconPickerViewController: UIViewController, UICollec
         alert.addAction(UIAlertAction(title: "Отмена", style: .cancel, handler: nil))
         alert.addAction(UIAlertAction(title: "Сменить", style: .default, handler: { [weak self] _ in
             guard let self else { return }
-            self.currentIconName = icon.name
-            self.context.sharedContext.applicationBindings.requestSetAlternateIconName(icon.isDefault ? nil : icon.name, { _ in
+            // Wait for iOS's own result instead of assuming success — `setAlternateIconName`
+            // can and does fail (icon name not declared in the built app's Info.plist, no
+            // alternate-icons support on this build, etc.), and applying the UI change
+            // regardless made a real failure look like nothing happened at all.
+            self.context.sharedContext.applicationBindings.requestSetAlternateIconName(icon.isDefault ? nil : icon.name, { [weak self] success in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    if success {
+                        self.currentIconName = icon.name
+                        self.onSelect(icon)
+                        self.collectionView.reloadData()
+                    } else {
+                        let failureAlert = UIAlertController(
+                            title: "Не получилось сменить иконку",
+                            message: "iOS отказала в смене иконки на «\(pampGramIconDisplayName(icon))». Возможно, эта сборка не поддерживает смену иконок на этом устройстве.",
+                            preferredStyle: .alert
+                        )
+                        failureAlert.addAction(UIAlertAction(title: "Понятно", style: .default, handler: nil))
+                        self.present(failureAlert, animated: true, completion: nil)
+                    }
+                }
             })
-            self.onSelect(icon)
-            self.collectionView.reloadData()
         }))
         self.present(alert, animated: true, completion: nil)
     }

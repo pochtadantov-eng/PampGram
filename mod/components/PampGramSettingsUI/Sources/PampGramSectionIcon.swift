@@ -30,3 +30,23 @@ public func generatePampGramSectionIcon(systemName: String, backgroundColor: UIC
         }
     })
 }
+
+/// Same 30×30 rounded-square frame as `generatePampGramSectionIcon`, but with a full-bleed
+/// preview image (an app icon thumbnail) filling it edge to edge instead of a solid color +
+/// glyph — for a row whose "icon" is itself a picture, like the app-icon summary row, so it
+/// matches every other Settings row's icon size and corner rounding instead of dropping the
+/// image in at its own native (much larger, unrounded) resolution.
+public func generatePampGramIconPreview(_ image: UIImage) -> UIImage? {
+    return generateImage(CGSize(width: 30.0, height: 30.0), rotatedContext: { size, context in
+        let bounds = CGRect(origin: CGPoint(), size: size)
+        context.clear(bounds)
+
+        context.saveGState()
+        context.addPath(UIBezierPath(roundedRect: bounds, cornerRadius: 8.0).cgPath)
+        context.clip()
+        UIGraphicsPushContext(context)
+        image.draw(in: bounds)
+        UIGraphicsPopContext()
+        context.restoreGState()
+    })
+}

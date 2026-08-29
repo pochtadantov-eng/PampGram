@@ -128,17 +128,22 @@ public func pampGramPresentBannedScreen(context: AccountContext, reason: String)
     presentingController.present(PampGramBannedViewController(reason: reason), animated: true, completion: nil)
 }
 
-/// Checks this account's ban status for `section` before running `openReal`; if the admin has
-/// banned the whole account or just this section, shows the lock screen instead. Shared by
-/// every navigation point that can reach a gated section — the hub's own rows and "Статус"'s
-/// mirror of the same rows both call this rather than pushing straight through.
+/// Opens `openReal` immediately — never waits on the network — and checks this account's ban
+/// status for `section` in parallel; if the admin has banned the whole account or just this
+/// section, the lock screen is presented right on top a moment later. The overwhelmingly
+/// common case (not banned) used to pay for a round trip to the ban-status endpoint before the
+/// section would even open, which on a slow or flaky connection reads as the whole tap having
+/// done nothing — this way navigation is instant and only the rare banned case pays for the
+/// check, exactly like the hub's own full-ban check already works. Shared by every navigation
+/// point that can reach a gated section — the hub's own rows and "Статус"'s mirror of the same
+/// rows both call this rather than pushing straight through.
 public func pampGramGateSection(context: AccountContext, section: PampGramBanSection, openReal: @escaping () -> Void) {
+    openReal()
+
     let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
     |> deliverOnMainQueue).start(next: { status in
         if let reason = status.full ?? status.reason(for: section) {
             pampGramPresentBannedScreen(context: context, reason: reason)
-        } else {
-            openReal()
         }
     })
 }
