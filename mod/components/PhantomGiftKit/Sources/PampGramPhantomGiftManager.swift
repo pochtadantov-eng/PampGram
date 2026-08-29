@@ -79,6 +79,50 @@ public enum PampGramPhantomGiftManager {
         }
     }
 
+    /// Same as `buyUniqueGift`, for the "Подарок" tab's other real entry point: sending a
+    /// fresh (non-unique) gift straight from the catalog (see GiftSetupScreen.swift), rather
+    /// than buying a specific numbered instance off the resale market. Always Stars-priced —
+    /// the plain gift catalog has no TON listings. Callers are expected to have already
+    /// confirmed the fake balance covers `starPrice`, same as `buyUniqueGift`.
+    ///
+    /// Unlike `buyUniqueGift`, a self-purchase here still inserts a chat message: the real
+    /// send flow (GiftSetupScreen.swift) treats "gift to self" and "gift to someone else" as
+    /// the same case — both navigate to a chat (Saved Messages for self) and expect the
+    /// gift card to already be there, unlike the resale-market flow's self-purchase, which
+    /// shows a plain toast with no chat involved at all.
+    public static func sendGenericGift(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift.Gift, starPrice: Int64, text: String? = nil, entities: [MessageTextEntity]? = nil, nameHidden: Bool = false) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> PendingBuy in
+            let newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) - starPrice
+            PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: newBalance)
+
+            let phantomGift = PampGramPhantomGift(
+                id: Int64.random(in: 1...Int64.max),
+                peerId: peerId,
+                gift: .generic(gift),
+                price: CurrencyAmount(amount: StarsAmount(value: starPrice, nanos: 0), currency: .stars),
+                date: Int32(Date().timeIntervalSince1970),
+                localMessageId: nil
+            )
+            PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+            return PendingBuy(newBalance: newBalance, phantomGift: phantomGift)
+        }
+        |> mapToSignal { pending -> Signal<Never, NoError> in
+            let phantomGift = pending.phantomGift
+            return PampGramPhantomGiftMessage.insertLocalGenericGiftMessage(context: context, peerId: peerId, gift: gift, text: text, entities: entities, nameHidden: nameHidden)
+            |> mapToSignal { messageId -> Signal<Never, NoError> in
+                guard let messageId else {
+                    return .complete()
+                }
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId)
+                return context.account.postbox.transaction { transaction in
+                    PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
+                    PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
+                }
+                |> ignoreValues
+            }
+        }
+    }
+
     /// Removes every Phantom Gift on this device, and the local-only chat messages they
     /// created, in a single transaction. Same local-only guarantees as `delete`.
     public static func deleteAll(context: AccountContext) -> Signal<Never, NoError> {

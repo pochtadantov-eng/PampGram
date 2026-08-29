@@ -22,28 +22,64 @@ public enum PampGramPhantomGiftMessage {
     /// purchase's bubble doesn't restate the price either — the buy confirmation and the
     /// success toast already showed it.
     public static func insertLocalUniqueGiftMessage(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift) -> Signal<EngineMessage.Id?, NoError> {
+        return self.insert(context: context, peerId: peerId, actionType: .starGiftUnique(
+            gift: .unique(uniqueGift),
+            isUpgrade: false,
+            isTransferred: false,
+            savedToProfile: true,
+            canExportDate: nil,
+            transferStars: nil,
+            isRefunded: false,
+            isPrepaidUpgrade: false,
+            peerId: nil,
+            senderId: nil,
+            savedId: nil,
+            resaleAmount: nil,
+            canTransferDate: nil,
+            canResaleDate: nil,
+            dropOriginalDetailsStars: nil,
+            assigned: true,
+            fromOffer: false,
+            canCraftAt: nil,
+            isCrafted: false
+        ))
+    }
+
+    /// Same as `insertLocalUniqueGiftMessage`, for the plain (non-unique) gift catalog —
+    /// the "Подарок" tab's send-a-fresh-gift path (see GiftSetupScreen.swift), as opposed to
+    /// buying a specific numbered instance off the resale market. `gift` is the real
+    /// `StarGift.Gift` from the real catalog, so `convertStars` (the "или обменять на N
+    /// звёзд" line) comes from Telegram's own real catalog value, not the price paid — a
+    /// gift's convert value is usually lower than its price, exactly like a real purchase.
+    public static func insertLocalGenericGiftMessage(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift.Gift, text: String?, entities: [MessageTextEntity]?, nameHidden: Bool) -> Signal<EngineMessage.Id?, NoError> {
+        return self.insert(context: context, peerId: peerId, actionType: .starGift(
+            gift: .generic(gift),
+            convertStars: gift.convertStars,
+            text: text,
+            entities: entities,
+            nameHidden: nameHidden,
+            savedToProfile: true,
+            converted: false,
+            upgraded: false,
+            canUpgrade: false,
+            upgradeStars: nil,
+            isRefunded: false,
+            isPrepaidUpgrade: false,
+            upgradeMessageId: nil,
+            peerId: nil,
+            senderId: nil,
+            savedId: nil,
+            prepaidUpgradeHash: nil,
+            giftMessageId: nil,
+            upgradeSeparate: false,
+            isAuctionAcquired: false,
+            toPeerId: nil,
+            number: nil
+        ))
+    }
+
+    private static func insert(context: AccountContext, peerId: EnginePeer.Id, actionType: TelegramMediaActionType) -> Signal<EngineMessage.Id?, NoError> {
         return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
-            let actionType: TelegramMediaActionType = .starGiftUnique(
-                gift: .unique(uniqueGift),
-                isUpgrade: false,
-                isTransferred: false,
-                savedToProfile: true,
-                canExportDate: nil,
-                transferStars: nil,
-                isRefunded: false,
-                isPrepaidUpgrade: false,
-                peerId: nil,
-                senderId: nil,
-                savedId: nil,
-                resaleAmount: nil,
-                canTransferDate: nil,
-                canResaleDate: nil,
-                dropOriginalDetailsStars: nil,
-                assigned: true,
-                fromOffer: false,
-                canCraftAt: nil,
-                isCrafted: false
-            )
             let action = TelegramMediaAction(action: actionType)
 
             // Postbox returns the assigned MessageId keyed by globallyUniqueId, and only for
