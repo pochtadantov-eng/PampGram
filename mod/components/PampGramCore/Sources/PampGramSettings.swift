@@ -127,6 +127,7 @@ public enum PampGramPreferencesKeys {
     public static let settings = key(900_000)
     public static let phantomGifts = key(900_100)
     public static let deletedMessages = key(900_200)
+    public static let adminToken = key(900_300)
 }
 
 public enum PampGramCore {

@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import Display
 import SwiftSignalKit
+import Postbox
 import TelegramCore
 import TelegramPresentationData
 import ItemListUI
@@ -222,12 +223,12 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     return entries
 }
 
-/// "Статус": PampGram's own hub row for both the account's real Telegram Premium tier
-/// (shown as PRO/STANDARD — no PampGram subscription exists yet, so this just reflects real
-/// Premium rather than inventing a tier of our own) and the app-icon picker (wired to
-/// Telegram's own real `applicationBindings.requestSetAlternateIconName`, so picking one
-/// genuinely changes the home-screen icon), plus a grouped, tap-to-open read-out of every
-/// PampGram toggle.
+/// "Статус": PampGram's own hub row for both this account's PampGram subscription tier
+/// (PRO/STANDARD — granted by the admin panel, see `PampGramSubscriptionAPI.swift`; this is
+/// the one screen in the mod that reads from PampGram's own server instead of only local
+/// state) and the app-icon picker (wired to Telegram's own real
+/// `applicationBindings.requestSetAlternateIconName`, so picking one genuinely changes the
+/// home-screen icon), plus a grouped, tap-to-open read-out of every PampGram toggle.
 public func pampGramStatusController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
     let currentIconName = ValuePromise<String?>(context.sharedContext.applicationBindings.getAlternateIconName())
@@ -255,11 +256,11 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox),
-        context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId)),
+        PampGramSubscriptionAPI.fetchTier(userId: context.account.peerId.id._internalGetInt64Value()),
         currentIconName.get()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings, peer, currentIconName -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, subscriptionTier, currentIconName -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Статус"),
@@ -268,7 +269,7 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),
             animateChanges: false
         )
-        let isPro = peer?.isPremium ?? false
+        let isPro = subscriptionTier == .pro
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
             entries: pampGramStatusEntries(isPro: isPro, icons: appIcons, currentIconName: currentIconName, settings: settings),

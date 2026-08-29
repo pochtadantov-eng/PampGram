@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import Display
 import SwiftSignalKit
+import Postbox
 import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
@@ -22,6 +23,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
     case privacy
     case appearance
     case advanced
+    case admin
     case status(Int, Int)
     case team
 
@@ -29,7 +31,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return PampGramHubSection.hero.rawValue
-        case .gifts, .messages, .privacy, .appearance, .advanced:
+        case .gifts, .messages, .privacy, .appearance, .advanced, .admin:
             return PampGramHubSection.sections.rawValue
         case .status:
             return PampGramHubSection.status.rawValue
@@ -52,10 +54,12 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return 4
         case .advanced:
             return 5
-        case .status:
+        case .admin:
             return 6
-        case .team:
+        case .status:
             return 7
+        case .team:
+            return 8
         }
     }
 
@@ -158,6 +162,21 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                     arguments.openPlaceholder("Дополнительно")
                 }
             )
+        case .admin:
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "lock.shield.fill", backgroundColor: UIColor(rgb: 0xff3b30)),
+                title: "Админ-панель",
+                titleFont: .bold,
+                label: "",
+                additionalDetailLabel: "Управление подписками",
+                sectionId: self.section,
+                style: .blocks,
+                action: {
+                    arguments.openAdmin()
+                }
+            )
         case let .status(activeCount, totalCount):
             return ItemListDisclosureItem(
                 presentationData: presentationData,
@@ -198,15 +217,17 @@ private final class PampGramHubArguments {
     let openMessages: () -> Void
     let openGhost: () -> Void
     let openPlaceholder: (String) -> Void
+    let openAdmin: () -> Void
     let openStatus: () -> Void
     let openAbout: () -> Void
     let openSupport: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
         self.openPlaceholder = openPlaceholder
+        self.openAdmin = openAdmin
         self.openStatus = openStatus
         self.openAbout = openAbout
         self.openSupport = openSupport
@@ -224,7 +245,7 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
     return "https://t.me/\(pampGramSupportUsername)?text=\(encoded)"
 }
 
-private func pampGramHubEntries(settings: PampGramSettings) -> [PampGramHubEntry] {
+private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [PampGramHubEntry] {
     let toggles = [
         settings.phantomGiftsEnabled,
         settings.fakeStarsDisplayEnabled,
@@ -236,16 +257,20 @@ private func pampGramHubEntries(settings: PampGramSettings) -> [PampGramHubEntry
         settings.onlineMaskEnabled
     ]
     let activeCount = toggles.filter { $0 }.count
-    return [
+    var entries: [PampGramHubEntry] = [
         .hero,
         .gifts,
         .messages,
         .privacy,
         .appearance,
-        .advanced,
-        .status(activeCount, toggles.count),
-        .team
+        .advanced
     ]
+    if isAdmin {
+        entries.append(.admin)
+    }
+    entries.append(.status(activeCount, toggles.count))
+    entries.append(.team)
+    return entries
 }
 
 /// The PampGram root screen: a hub of sections rather than one long list, so unrelated
@@ -268,6 +293,9 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         },
         openPlaceholder: { title in
             pushControllerImpl?(pampGramPlaceholderController(context: context, title: title))
+        },
+        openAdmin: {
+            pushControllerImpl?(pampGramAdminController(context: context))
         },
         openStatus: {
             pushControllerImpl?(pampGramStatusController(context: context))
@@ -337,6 +365,8 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         }
     )
 
+    let isAdmin = context.account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId
+
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox)
@@ -353,7 +383,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramHubEntries(settings: settings),
+            entries: pampGramHubEntries(settings: settings, isAdmin: isAdmin),
             style: .blocks,
             animateChanges: true
         )
