@@ -46,6 +46,19 @@ public enum PampGramPhantomGiftStore {
         })
     }
 
+    /// Rewrites one gift in place (matched by `id`) — used for the profile-grid actions
+    /// (pin/hide) that only flip a flag on an existing record rather than replacing it.
+    /// A no-op if `id` isn't found.
+    public static func update(transaction: Transaction, id: Int64, _ f: (PampGramPhantomGift) -> PampGramPhantomGift) {
+        transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.phantomGifts, { entry in
+            var list = entry?.get(PampGramPhantomGiftList.self) ?? PampGramPhantomGiftList(gifts: [])
+            if let index = list.gifts.firstIndex(where: { $0.id == id }) {
+                list.gifts[index] = f(list.gifts[index])
+            }
+            return PreferencesEntry(list)
+        })
+    }
+
     public static func fakeStarsBalance(transaction: Transaction) -> Int64 {
         return PampGramCore.settings(transaction: transaction).fakeStarsBalance
     }
@@ -83,6 +96,25 @@ public enum PampGramPhantomGiftStore {
         |> map { view -> [PampGramPhantomGift] in
             let gifts = view.values[PampGramPreferencesKeys.phantomGifts]?.get(PampGramPhantomGiftList.self)?.gifts ?? []
             return gifts.sorted(by: { $0.date > $1.date })
+        }
+    }
+
+    /// Live list of Phantom Gifts that belong in this account's own profile gifts grid:
+    /// gifts sent/received with `peerId == context.account.peerId` (a self-gift) that
+    /// haven't been hidden or sold. Pinned first, then newest first — same ordering the
+    /// real profile gifts grid uses.
+    public static func profileGiftsSignal(context: AccountContext) -> Signal<[PampGramPhantomGift], NoError> {
+        let selfPeerId = context.account.peerId
+        return self.allGiftsSignal(context: context)
+        |> map { gifts -> [PampGramPhantomGift] in
+            return gifts
+                .filter { $0.peerId == selfPeerId && $0.savedToProfile }
+                .sorted { lhs, rhs in
+                    if lhs.pinnedToTop != rhs.pinnedToTop {
+                        return lhs.pinnedToTop
+                    }
+                    return lhs.date > rhs.date
+                }
         }
     }
 }

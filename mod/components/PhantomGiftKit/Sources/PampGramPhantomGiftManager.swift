@@ -137,7 +137,8 @@ public enum PampGramPhantomGiftManager {
                 gift: .unique(uniqueGift),
                 price: price,
                 date: Int32(Date().timeIntervalSince1970),
-                localMessageId: nil
+                localMessageId: nil,
+                isReceived: true
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
             return phantomGift
@@ -148,7 +149,7 @@ public enum PampGramPhantomGiftManager {
                 guard let messageId else {
                     return .single(phantomGift)
                 }
-                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId)
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, isReceived: true)
                 return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
                     PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
                     PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
@@ -168,7 +169,8 @@ public enum PampGramPhantomGiftManager {
                 gift: .generic(gift),
                 price: CurrencyAmount(amount: StarsAmount(value: gift.price, nanos: 0), currency: .stars),
                 date: Int32(Date().timeIntervalSince1970),
-                localMessageId: nil
+                localMessageId: nil,
+                isReceived: true
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
             return phantomGift
@@ -179,7 +181,7 @@ public enum PampGramPhantomGiftManager {
                 guard let messageId else {
                     return .complete()
                 }
-                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId)
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, isReceived: true)
                 return context.account.postbox.transaction { transaction in
                     PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
                     PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
@@ -214,6 +216,50 @@ public enum PampGramPhantomGiftManager {
             if let messageId = gift.localMessageId {
                 transaction.deleteMessages([messageId], forEachMedia: nil)
             }
+        }
+        |> ignoreValues
+    }
+
+    /// "Закрепить" in the profile gifts grid, for a Phantom Gift — a pure local flag flip,
+    /// same as the real `ProfileGiftsContext.updateStarGiftPinnedToTop`'s optimistic-update
+    /// half, but without also firing the real network call that method always sends
+    /// alongside it (there's no server-side pin to make for a gift that was never real).
+    public static func setPinnedToTop(context: AccountContext, id: Int64, pinnedToTop: Bool) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            PampGramPhantomGiftStore.update(transaction: transaction, id: id, { $0.withPinnedToTop(pinnedToTop) })
+        }
+        |> ignoreValues
+    }
+
+    /// "Показать на странице" / "Скрыть с страницы" — same local-only flag flip as
+    /// `setPinnedToTop`, standing in for `ProfileGiftsContext.updateStarGiftAddedToProfile`.
+    public static func setSavedToProfile(context: AccountContext, id: Int64, savedToProfile: Bool) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            PampGramPhantomGiftStore.update(transaction: transaction, id: id, { $0.withSavedToProfile(savedToProfile) })
+        }
+        |> ignoreValues
+    }
+
+    /// "Продать" — local stand-in for `convertStarGift`. Credits the fake balance with what
+    /// the gift was originally worth (its `price`, in whichever currency it was paid in) and
+    /// marks it sold: it disappears from the grid via `savedToProfile = false`, same as
+    /// `delete` would, but the record itself — and the debit it originally produced in the
+    /// transaction history — is kept, and the sale becomes its own credit entry there,
+    /// exactly like a real "sold for Stars" transaction would.
+    public static func sell(context: AccountContext, id: Int64) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            guard let gift = PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.id == id }) else {
+                return
+            }
+            switch gift.price.currency {
+            case .stars:
+                let newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + gift.price.amount.value
+                PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: newBalance)
+            case .ton:
+                let newBalance = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) + gift.price.amount.value
+                PampGramPhantomGiftStore.setFakeTonBalanceNanos(transaction: transaction, nanos: newBalance)
+            }
+            PampGramPhantomGiftStore.update(transaction: transaction, id: id, { $0.withSold(date: Int32(Date().timeIntervalSince1970)) })
         }
         |> ignoreValues
     }

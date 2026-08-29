@@ -1648,135 +1648,244 @@ index bc8f9043..dc453cad 100644
                  rawString = presentationData.strings.StarsBalance_YourBalance(balanceString).string
              } else {
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
-index 066e81e6..42abb362 100644
+index 066e81e6..5ad78b53 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
 @@ -51,6 +51,7 @@ swift_library(
          "//submodules/TelegramUI/Components/Gifts/GiftAnimationComponent",
          "//submodules/TelegramUI/Components/Premium/PremiumCoinComponent",
          "//submodules/TelegramUI/Components/Premium/PremiumDiamondComponent",
-+        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
      ],
      visibility = [
          "//visibility:public",
-diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-index 87c58b5f..75f6326f 100644
---- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-+++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-@@ -25,6 +25,7 @@ import ItemListUI
- import StarsWithdrawalScreen
- import PremiumDiamondComponent
- import StatisticsUI
-+import PampGramCore
- 
- private let initialSubscriptionsDisplayedLimit: Int32 = 3
- 
-@@ -137,7 +138,14 @@ final class StarsTransactionsScreenComponent: Component {
-         
-         private var stateDisposable: Disposable?
-         private var starsState: StarsContext.State?
--        
-+
-+        // PampGram: while the feature is on, the balance shown on this screen (both the
-+        // small top-right figure and the big centered one below) is the local fake
-+        // balance, for both the Stars and the TON/GRAM variant of this screen — everything
-+        // else here (transaction history, revenue stats, withdraw) stays real and untouched.
-+        private var pampGramSettingsDisposable: Disposable?
-+        private var pampGramSettings = PampGramSettings.defaultSettings
-+
-         private var revenueStateDisposable: Disposable?
-         private var revenueState: StarsRevenueStats?
-         
-@@ -186,6 +194,7 @@ final class StarsTransactionsScreenComponent: Component {
-         
-         deinit {
-             self.stateDisposable?.dispose()
-+            self.pampGramSettingsDisposable?.dispose()
-             self.revenueStateDisposable?.dispose()
-             self.subscriptionsStateDisposable?.dispose()
-         }
-@@ -374,12 +383,24 @@ final class StarsTransactionsScreenComponent: Component {
-                         return
-                     }
-                     self.revenueState = state.stats
--                    
-+
-                     if !self.isUpdating {
-                         self.state?.updated()
-                     }
-                 })
+diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsStatisticsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsStatisticsScreen.swift
+index ed818d67..5c343d6d 100644
+--- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsStatisticsScreen.swift
++++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsStatisticsScreen.swift
+@@ -699,12 +699,14 @@ final class StarsStatisticsScreenComponent: Component {
+                         context: component.context,
+                         transactionsContext: allTransactionsContext,
+                         isAccount: false,
++                        pampGramTon: false,
++                        pampGramMode: .all,
+                         action: { transaction in
+                             component.openTransaction(transaction)
+                         }
+                     ))
+                 ))
 -                
 +
-+                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
-+                |> deliverOnMainQueue).start(next: { [weak self] settings in
-+                    guard let self else {
-+                        return
-+                    }
-+                    self.pampGramSettings = settings
+                 panelItems.append(StarsTransactionsPanelContainerComponent.Item(
+                     id: "incoming",
+                     title: environment.strings.Stars_Intro_Incoming,
+@@ -712,12 +714,14 @@ final class StarsStatisticsScreenComponent: Component {
+                         context: component.context,
+                         transactionsContext: incomingTransactionsContext,
+                         isAccount: false,
++                        pampGramTon: false,
++                        pampGramMode: .incoming,
+                         action: { transaction in
+                             component.openTransaction(transaction)
+                         }
+                     ))
+                 ))
+-                
 +
-+                    if !self.isUpdating {
-+                        self.state?.updated()
-+                    }
+                 panelItems.append(StarsTransactionsPanelContainerComponent.Item(
+                     id: "outgoing",
+                     title: environment.strings.Stars_Intro_Outgoing,
+@@ -725,6 +729,8 @@ final class StarsStatisticsScreenComponent: Component {
+                         context: component.context,
+                         transactionsContext: outgoingTransactionsContext,
+                         isAccount: false,
++                        pampGramTon: false,
++                        pampGramMode: .outgoing,
+                         action: { transaction in
+                             component.openTransaction(transaction)
+                         }
+diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsListPanelComponent.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsListPanelComponent.swift
+index 04768a76..fa75dce2 100644
+--- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsListPanelComponent.swift
++++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsListPanelComponent.swift
+@@ -18,6 +18,7 @@ import PhotoResources
+ import StarsAvatarComponent
+ import GiftAnimationComponent
+ import TelegramStringFormatting
++import PhantomGiftKit
+ 
+ private extension StarsContext.State.Transaction {
+     var extendedId: String {
+@@ -36,19 +37,28 @@ final class StarsTransactionsListPanelComponent: Component {
+     let transactionsContext: StarsTransactionsContext
+     let isAccount: Bool
+     let action: (StarsContext.State.Transaction) -> Void
++    // PampGram: which real Stars/TON transaction feed this panel mirrors, so its own
++    // Phantom Gift entries can be filtered to match — same currency, same all/incoming/
++    // outgoing segment as `transactionsContext` already is scoped to.
++    let pampGramTon: Bool
++    let pampGramMode: StarsTransactionsContext.Mode
+ 
+     init(
+         context: AccountContext,
+         transactionsContext: StarsTransactionsContext,
+         isAccount: Bool,
++        pampGramTon: Bool,
++        pampGramMode: StarsTransactionsContext.Mode,
+         action: @escaping (StarsContext.State.Transaction) -> Void
+     ) {
+         self.context = context
+         self.transactionsContext = transactionsContext
+         self.isAccount = isAccount
++        self.pampGramTon = pampGramTon
++        self.pampGramMode = pampGramMode
+         self.action = action
+     }
+-    
++
+     static func ==(lhs: StarsTransactionsListPanelComponent, rhs: StarsTransactionsListPanelComponent) -> Bool {
+         if lhs.context !== rhs.context {
+             return false
+@@ -56,6 +66,9 @@ final class StarsTransactionsListPanelComponent: Component {
+         if lhs.isAccount != rhs.isAccount {
+             return false
+         }
++        if lhs.pampGramTon != rhs.pampGramTon {
++            return false
++        }
+         return true
+     }
+     
+@@ -131,6 +144,31 @@ final class StarsTransactionsListPanelComponent: Component {
+         private var items: [StarsContext.State.Transaction] = []
+         private var itemsDisposable: Disposable?
+         private var currentLoadMoreId: String?
++
++        // PampGram: the real feed and this device's Phantom Gift entries are tracked
++        // separately and merged into `items` whenever either changes — never sent through
++        // `component.transactionsContext` itself, so the real feed's own reload/pagination
++        // logic above is untouched.
++        private var pampGramRealItems: [StarsContext.State.Transaction] = []
++        private var pampGramFakeItems: [StarsContext.State.Transaction] = []
++        private var pampGramFakeItemsDisposable: Disposable?
++
++        private func pampGramRefreshItems(state: EmptyComponentState?) {
++            var existingIds = Set<String>()
++            var merged: [StarsContext.State.Transaction] = []
++            for transaction in (self.pampGramFakeItems + self.pampGramRealItems).sorted(by: { $0.date > $1.date }) {
++                let id = transaction.extendedId
++                if !existingIds.contains(id) {
++                    existingIds.insert(id)
++                    merged.append(transaction)
++                }
++            }
++            let wasEmpty = self.items.isEmpty
++            self.items = merged
++            if !self.isUpdating {
++                state?.updated(transition: wasEmpty ? .immediate : .easeInOut(duration: 0.2))
++            }
++        }
+         
+         override init(frame: CGRect) {
+             self.scrollView = ScrollViewImpl()
+@@ -163,6 +201,7 @@ final class StarsTransactionsListPanelComponent: Component {
+         
+         deinit {
+             self.itemsDisposable?.dispose()
++            self.pampGramFakeItemsDisposable?.dispose()
+         }
+         
+         func scrollToTop() -> Bool {
+@@ -606,9 +645,6 @@ final class StarsTransactionsListPanelComponent: Component {
+                     guard let self else {
+                         return
+                     }
+-                    let wasEmpty = self.items.isEmpty
+-                    let hadLocalTransactions = self.items.contains(where: { $0.flags.contains(.isLocal) })
+-                    
+                     var existingIds = Set<String>()
+                     var filteredItems: [StarsContext.State.Transaction] = []
+                     for transaction in status.transactions {
+@@ -618,17 +654,29 @@ final class StarsTransactionsListPanelComponent: Component {
+                             filteredItems.append(transaction)
+                         }
+                     }
+-                    
+-                    self.items = filteredItems
++
++                    self.pampGramRealItems = filteredItems
+                     if !status.isLoading {
+                         self.currentLoadMoreId = nil
+                     }
+-                    if !self.isUpdating {
+-                        state?.updated(transition: wasEmpty || hadLocalTransactions ? .immediate : .easeInOut(duration: 0.2))
++                    self.pampGramRefreshItems(state: state)
 +                })
-+
-                 if let subscriptionsContext = component.subscriptionsContext {
-                     self.subscriptionsStateDisposable = (subscriptionsContext.state
-                     |> deliverOnMainQueue).start(next: { [weak self] state in
-@@ -553,11 +574,23 @@ final class StarsTransactionsScreenComponent: Component {
-                 containerSize: CGSize(width: 120.0, height: 100.0)
-             )
-             
-+            // PampGram: the local fake balance in place of the real one, on both the small
-+            // top-right figure below and the big centered one further down. "Локальные
-+            // звёзды" and "Локальные TON/GRAM" are independent toggles, so this screen
-+            // checks whichever one matches the currency it's actually showing.
-+            let pampGramFakeDisplayEnabled = component.starsContext.ton ? self.pampGramSettings.fakeTonDisplayEnabled : self.pampGramSettings.fakeStarsDisplayEnabled
-+            let displayedBalance: StarsAmount
-+            if pampGramFakeDisplayEnabled {
-+                displayedBalance = component.starsContext.ton ? StarsAmount(value: self.pampGramSettings.fakeTonBalanceNanos, nanos: 0) : StarsAmount(value: self.pampGramSettings.fakeStarsBalance, nanos: 0)
-+            } else {
-+                displayedBalance = self.starsState?.balance ?? StarsAmount.zero
 +            }
 +
-             let formattedBalance: String
-             if component.starsContext.ton {
--                formattedBalance = formatTonAmountText(self.starsState?.balance.value ?? 0, dateTimeFormat: environment.dateTimeFormat)
-+                formattedBalance = formatTonAmountText(displayedBalance.value, dateTimeFormat: environment.dateTimeFormat)
-             } else {
--                formattedBalance = formatStarsAmountText(self.starsState?.balance ?? StarsAmount.zero, dateTimeFormat: environment.dateTimeFormat)
-+                formattedBalance = formatStarsAmountText(displayedBalance, dateTimeFormat: environment.dateTimeFormat)
++            // PampGram: Phantom Gifts are always this account's own, so they only ever
++            // belong on this account's own Stars/TON wallet screen — never on a channel's
++            // or bot's separate revenue-transactions screen (`isAccount == false`).
++            if self.pampGramFakeItemsDisposable == nil, component.isAccount {
++                self.pampGramFakeItemsDisposable = (PampGramPhantomGiftStore.fakeTransactionsSignal(context: component.context, ton: component.pampGramTon, mode: component.pampGramMode)
++                |> deliverOnMainQueue).start(next: { [weak self, weak state] fakeItems in
++                    guard let self else {
++                        return
+                     }
++                    self.pampGramFakeItems = fakeItems
++                    self.pampGramRefreshItems(state: state)
+                 })
              }
-             let smallLabelFont = Font.regular(11.0)
-             let labelFont = Font.semibold(14.0)
-@@ -682,14 +715,17 @@ final class StarsTransactionsScreenComponent: Component {
-                                 theme: environment.theme,
-                                 dateTimeFormat: environment.dateTimeFormat,
-                                 title: environment.strings.Ton_AvailableBalance,
--                                value: self.revenueState?.balances.availableBalance ?? CurrencyAmount(amount: .zero, currency: .ton),
-+                                // PampGram: fake TON amount, but the real, live conversion rate
-+                                // — the "~$" figure this produces auto-adjusts with the market
-+                                // exactly like it would for a real balance.
-+                                value: self.pampGramSettings.fakeTonDisplayEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.availableBalance ?? CurrencyAmount(amount: .zero, currency: .ton)),
-                                 rate: self.revenueState?.usdRate ?? 0.0
-                             ))),
-                             AnyComponentWithIdentity(id: 1, component: AnyComponent(StarsOverviewItemComponent(
-                                 theme: environment.theme,
-                                 dateTimeFormat: environment.dateTimeFormat,
-                                 title: environment.strings.Ton_LifetimeProceeds,
--                                value: self.revenueState?.balances.overallRevenue ?? CurrencyAmount(amount: .zero, currency: .ton),
-+                                value: self.pampGramSettings.fakeTonDisplayEnabled ? CurrencyAmount(amount: displayedBalance, currency: .ton) : (self.revenueState?.balances.overallRevenue ?? CurrencyAmount(amount: .zero, currency: .ton)),
-                                 rate: self.revenueState?.usdRate ?? 0.0
-                             )))
-                         ],
-@@ -754,7 +790,7 @@ final class StarsTransactionsScreenComponent: Component {
-                             theme: environment.theme,
-                             strings: environment.strings,
-                             dateTimeFormat: environment.dateTimeFormat,
--                            count: self.starsState?.balance ?? StarsAmount.zero,
-+                            count: displayedBalance,
-                             currency: component.starsContext.ton ? .ton : .stars,
-                             rate: nil,
-                             actionTitle: component.starsContext.ton ? environment.strings.Ton_WithdrawViaFragment : (withdrawAvailable ? environment.strings.Stars_Intro_BuyShort : environment.strings.Stars_Intro_Buy),
+-            
++
+             let environment = environment[StarsTransactionsPanelEnvironment.self].value
+             self.environment = environment
+             
+diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
+index 87c58b5f..d199638d 100644
+--- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
++++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
+@@ -1084,12 +1084,14 @@ final class StarsTransactionsScreenComponent: Component {
+                         context: component.context,
+                         transactionsContext: allTransactionsContext,
+                         isAccount: true,
++                        pampGramTon: component.starsContext.ton,
++                        pampGramMode: .all,
+                         action: { transaction in
+                             component.openTransaction(transaction)
+                         }
+                     ))
+                 ))
+-                
++
+                 panelItems.append(StarsTransactionsPanelContainerComponent.Item(
+                     id: "incoming",
+                     title: environment.strings.Stars_Intro_Incoming,
+@@ -1097,12 +1099,14 @@ final class StarsTransactionsScreenComponent: Component {
+                         context: component.context,
+                         transactionsContext: incomingTransactionsContext,
+                         isAccount: true,
++                        pampGramTon: component.starsContext.ton,
++                        pampGramMode: .incoming,
+                         action: { transaction in
+                             component.openTransaction(transaction)
+                         }
+                     ))
+                 ))
+-                
++
+                 panelItems.append(StarsTransactionsPanelContainerComponent.Item(
+                     id: "outgoing",
+                     title: environment.strings.Stars_Intro_Outgoing,
+@@ -1110,6 +1114,8 @@ final class StarsTransactionsScreenComponent: Component {
+                         context: component.context,
+                         transactionsContext: outgoingTransactionsContext,
+                         isAccount: true,
++                        pampGramTon: component.starsContext.ton,
++                        pampGramMode: .outgoing,
+                         action: { transaction in
+                             component.openTransaction(transaction)
+                         }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 index 07cef5bb..040b595a 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
