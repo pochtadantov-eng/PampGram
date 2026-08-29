@@ -44,7 +44,9 @@ private final class PampGramSettingsArguments {
 private enum PampGramSettingsSection: Int32 {
     case about
     case phantomGifts
-    case balances
+    case starsBalance
+    case tonBalance
+    case resetBalances
     case storage
 }
 
@@ -55,13 +57,18 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case phantomGiftsToggle(String, Bool)
     case phantomGiftsFooter(String)
 
-    case balancesHeader(String)
+    case starsBalanceHeader(String)
     case fakeStarsDisplayToggle(String, Bool)
     case starsBalance(String, String)
+    case starsBalanceFooter(String)
+
+    case tonBalanceHeader(String)
     case fakeTonDisplayToggle(String, Bool)
     case tonBalance(String, String)
+    case tonBalanceFooter(String)
+
     case resetBalances(String)
-    case balancesFooter(String)
+    case resetBalancesFooter(String)
 
     case storageHeader(String)
     case phantomGiftsCount(String, String)
@@ -74,8 +81,12 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.about.rawValue
         case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter:
             return PampGramSettingsSection.phantomGifts.rawValue
-        case .balancesHeader, .fakeStarsDisplayToggle, .starsBalance, .fakeTonDisplayToggle, .tonBalance, .resetBalances, .balancesFooter:
-            return PampGramSettingsSection.balances.rawValue
+        case .starsBalanceHeader, .fakeStarsDisplayToggle, .starsBalance, .starsBalanceFooter:
+            return PampGramSettingsSection.starsBalance.rawValue
+        case .tonBalanceHeader, .fakeTonDisplayToggle, .tonBalance, .tonBalanceFooter:
+            return PampGramSettingsSection.tonBalance.rawValue
+        case .resetBalances, .resetBalancesFooter:
+            return PampGramSettingsSection.resetBalances.rawValue
         case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
             return PampGramSettingsSection.storage.rawValue
         }
@@ -91,28 +102,34 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return 2
         case .phantomGiftsFooter:
             return 3
-        case .balancesHeader:
+        case .starsBalanceHeader:
             return 4
         case .fakeStarsDisplayToggle:
             return 5
         case .starsBalance:
             return 6
-        case .fakeTonDisplayToggle:
+        case .starsBalanceFooter:
             return 7
-        case .tonBalance:
+        case .tonBalanceHeader:
             return 8
-        case .resetBalances:
+        case .fakeTonDisplayToggle:
             return 9
-        case .balancesFooter:
+        case .tonBalance:
             return 10
-        case .storageHeader:
+        case .tonBalanceFooter:
             return 11
-        case .phantomGiftsCount:
+        case .resetBalances:
             return 12
-        case .deleteAllPhantomGifts:
+        case .resetBalancesFooter:
             return 13
-        case .storageFooter:
+        case .storageHeader:
             return 14
+        case .phantomGiftsCount:
+            return 15
+        case .deleteAllPhantomGifts:
+            return 16
+        case .storageFooter:
+            return 17
         }
     }
 
@@ -125,9 +142,9 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         switch self {
         case let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .phantomGiftsHeader(text), let .balancesHeader(text), let .storageHeader(text):
+        case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .storageHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .phantomGiftsFooter(text), let .balancesFooter(text), let .storageFooter(text):
+        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .phantomGiftsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -242,13 +259,18 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
     entries.append(.phantomGiftsToggle("Вкладка «Подарок»", settings.phantomGiftsEnabled))
     entries.append(.phantomGiftsFooter("Пока включено, при отправке подарка появляется 4-я вкладка «Подарок» — тот же настоящий маркет Telegram, что и во вкладке «Все» (те же обычные и коллекционные подарки, те же настоящие предложения других пользователей). Отличие только в покупке: любая покупка, начатая из вкладки «Подарок», проходит визуально — диалог и анимация настоящие, но списывается локальный баланс, а не настоящие Stars или TON, лот никто не покупает по-настоящему и остаётся в маркете, собеседник ничего не получает и не видит. Вкладки «Все», «Мои» и «Коллекционные» всегда работают как в оригинальном Telegram."))
 
-    entries.append(.balancesHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ"))
+    entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ ЗВЁЗДЫ"))
     entries.append(.fakeStarsDisplayToggle("Локальные звёзды", settings.fakeStarsDisplayEnabled))
     entries.append(.starsBalance("Фантом-Stars", "\(settings.fakeStarsBalance)"))
+    entries.append(.starsBalanceFooter("Решает, показывается ли этот фейковый баланс вместо настоящего — в списке настроек Telegram, на экране «Мои звёзды» и в шапке отправки подарка. Выключение не сбрасывает число ниже — оно просто перестаёт показываться, пока переключатель снова не включат. Настоящий баланс Stars вашего аккаунта этот счётчик не читает и не меняет — Telegram о нём ничего не знает."))
+
+    entries.append(.tonBalanceHeader("ЛОКАЛЬНЫЕ TON/GRAM"))
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.tonBalance("Фантом-TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
+    entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM — независимо от переключателя звёзд выше: показывается на экране «Мои GRAM» и в шапке отправки подарка. Настоящий баланс TON вашего аккаунта этот счётчик не читает и не меняет."))
+
     entries.append(.resetBalances("Сбросить балансы"))
-    entries.append(.balancesFooter("Каждый переключатель независимо решает, показывается ли фейковый баланс этой валюты вместо настоящего — в списке настроек Telegram, на экранах «Мои звёзды»/«Мои GRAM» и в шапке отправки подарка. Выключение не сбрасывает число ниже — оно просто перестаёт показываться, пока переключатель снова не включат. Настоящий баланс Stars и TON вашего аккаунта эти счётчики не читают и не меняют — Telegram о них ничего не знает."))
+    entries.append(.resetBalancesFooter("Возвращает оба счётчика — Фантом-Stars и Фантом-TON — к значениям по умолчанию."))
 
     entries.append(.storageHeader("ЛОКАЛЬНЫЕ ДАННЫЕ"))
     entries.append(.phantomGiftsCount("Фантом-подарков на устройстве", "\(phantomGiftCount)"))
