@@ -112,7 +112,7 @@ private enum PampGramCallOverridesEntry: ItemListNodeEntry {
                 systemStyle: .glass,
                 title: row.title,
                 label: pampGramCallStatusLabel(row: row),
-                additionalDetailLabelColor: row.override != nil ? .accent : .generic,
+                additionalDetailLabelColor: row.override != nil ? .constructive : .generic,
                 sectionId: self.section,
                 style: .blocks,
                 action: {
