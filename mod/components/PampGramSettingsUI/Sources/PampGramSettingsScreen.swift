@@ -20,10 +20,10 @@ private final class PampGramSettingsArguments {
     let editStarsBalance: () -> Void
     let editTonBalance: () -> Void
     let toggleFromHimGifts: (Bool) -> Void
-    let resetBalances: () -> Void
-    let deleteAllPhantomGifts: () -> Void
     let toggleLocalRublesPurchase: (Bool) -> Void
     let topUpLocalRubles: () -> Void
+    let resetBalances: () -> Void
+    let deleteAllPhantomGifts: () -> Void
 
     init(
         togglePhantomGifts: @escaping (Bool) -> Void,
@@ -32,10 +32,10 @@ private final class PampGramSettingsArguments {
         editStarsBalance: @escaping () -> Void,
         editTonBalance: @escaping () -> Void,
         toggleFromHimGifts: @escaping (Bool) -> Void,
-        resetBalances: @escaping () -> Void,
-        deleteAllPhantomGifts: @escaping () -> Void,
         toggleLocalRublesPurchase: @escaping (Bool) -> Void,
-        topUpLocalRubles: @escaping () -> Void
+        topUpLocalRubles: @escaping () -> Void,
+        resetBalances: @escaping () -> Void,
+        deleteAllPhantomGifts: @escaping () -> Void
     ) {
         self.togglePhantomGifts = togglePhantomGifts
         self.toggleFakeStarsDisplay = toggleFakeStarsDisplay
@@ -43,10 +43,10 @@ private final class PampGramSettingsArguments {
         self.editStarsBalance = editStarsBalance
         self.editTonBalance = editTonBalance
         self.toggleFromHimGifts = toggleFromHimGifts
-        self.resetBalances = resetBalances
-        self.deleteAllPhantomGifts = deleteAllPhantomGifts
         self.toggleLocalRublesPurchase = toggleLocalRublesPurchase
         self.topUpLocalRubles = topUpLocalRubles
+        self.resetBalances = resetBalances
+        self.deleteAllPhantomGifts = deleteAllPhantomGifts
     }
 }
 

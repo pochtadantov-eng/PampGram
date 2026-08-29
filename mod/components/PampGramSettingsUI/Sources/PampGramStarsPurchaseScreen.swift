@@ -11,7 +11,7 @@ import PampGramCore
 /// One package from the real "Купить звёзды" sheet's own published Stars→₽ pricing —
 /// PampGram never invents these numbers, just reuses Telegram's own public tiers so the fake
 /// screen reads as authentic.
-private struct PampGramStarsPackage {
+private struct PampGramStarsPackage: Equatable {
     let stars: Int64
     let priceKopecks: Int64
 }
@@ -60,6 +60,19 @@ private enum PampGramStarsPurchaseEntry: ItemListNodeEntry {
             return 1
         case let .package(index, _):
             return Int32(2 + index)
+        }
+    }
+
+    static func ==(lhs: PampGramStarsPurchaseEntry, rhs: PampGramStarsPurchaseEntry) -> Bool {
+        switch (lhs, rhs) {
+        case let (.balanceText(lhsText), .balanceText(rhsText)):
+            return lhsText == rhsText
+        case let (.packagesHeader(lhsText), .packagesHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.package(lhsIndex, lhsPackage), .package(rhsIndex, rhsPackage)):
+            return lhsIndex == rhsIndex && lhsPackage == rhsPackage
+        default:
+            return false
         }
     }
 
