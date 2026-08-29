@@ -27,6 +27,7 @@ import PampGramCore
 /// (`fetchLocalFileResource`, `Fetch.swift`) already knows how to read that resource type
 /// straight off disk, no upload, no CDN, no `account.network` involved at any point.
 
+@available(iOS 14.0, *)
 private var pampGramActivePhotoPickerDelegate: PampGramPhotoPickerDelegate?
 private var pampGramActiveDocumentPickerDelegate: PampGramDocumentPickerDelegate?
 
@@ -94,6 +95,7 @@ private func pampGramPersistFile(data: Data, suggestedExtension: String) -> Stri
     }
 }
 
+@available(iOS 14.0, *)
 private func pampGramMimeType(forExtension ext: String) -> String {
     if let type = UTType(filenameExtension: ext), let mime = type.preferredMIMEType {
         return mime
@@ -103,6 +105,7 @@ private func pampGramMimeType(forExtension ext: String) -> String {
 
 // MARK: - Photo
 
+@available(iOS 14.0, *)
 private final class PampGramPhotoPickerDelegate: NSObject, PHPickerViewControllerDelegate {
     var completion: ((UIImage?) -> Void)?
 
@@ -124,6 +127,7 @@ private final class PampGramPhotoPickerDelegate: NSObject, PHPickerViewControlle
 /// "Отправить фото": opens the system photo picker (no photo-library permission prompt —
 /// `PHPickerViewController` runs out-of-process) and inserts whatever gets picked as a new
 /// incoming photo message.
+@available(iOS 14.0, *)
 public func pampGramPresentInsertPhoto(context: AccountContext, peerId: EnginePeer.Id) {
     guard let presentingController = pampGramTopUIViewController(context: context) else {
         return
@@ -180,6 +184,7 @@ private final class PampGramDocumentPickerDelegate: NSObject, UIDocumentPickerDe
 /// a round voice bubble instead of a generic document. Duration is read straight off the
 /// audio track — `AVURLAsset.duration` is already how the rest of this app reads a local
 /// file's duration (see `CreatePeerAvatarSetup.swift`), not something invented for this.
+@available(iOS 14.0, *)
 public func pampGramPresentInsertFile(context: AccountContext, peerId: EnginePeer.Id, asVoice: Bool) {
     guard let presentingController = pampGramTopUIViewController(context: context) else {
         return
@@ -198,6 +203,7 @@ public func pampGramPresentInsertFile(context: AccountContext, peerId: EnginePee
     presentingController.present(picker, animated: true, completion: nil)
 }
 
+@available(iOS 14.0, *)
 private func pampGramHandlePickedDocument(context: AccountContext, peerId: EnginePeer.Id, url: URL, asVoice: Bool) {
     guard let data = try? Data(contentsOf: url) else {
         pampGramPresentTooltip(context: context, text: "Не удалось прочитать файл.")
