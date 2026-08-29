@@ -5,6 +5,40 @@ import SwiftSignalKit
 import AccountContext
 
 public enum PampGramPhantomGiftMessage {
+    /// `uniqueGift` is read straight from the real resale market, so its own `owner`/
+    /// `resellAmounts` still reflect whoever actually lists it for sale there in reality —
+    /// opening the gift card later (`GiftViewScreen`, reached by tapping the bubble) reads
+    /// those same fields straight off the message and would show the real owner still
+    /// selling it, undoing the whole illusion of a completed gift. This produces a copy with
+    /// ownership reassigned to `newOwnerPeerId` and the resale listing cleared, exactly as a
+    /// real purchase would leave it — every other field (model/backdrop/pattern/value/etc.)
+    /// stays the genuine market data.
+    private static func fakedOwnership(of uniqueGift: StarGift.UniqueGift, newOwnerPeerId: EnginePeer.Id) -> StarGift.UniqueGift {
+        return StarGift.UniqueGift(
+            id: uniqueGift.id,
+            giftId: uniqueGift.giftId,
+            title: uniqueGift.title,
+            number: uniqueGift.number,
+            slug: uniqueGift.slug,
+            owner: .peerId(newOwnerPeerId),
+            attributes: uniqueGift.attributes,
+            availability: uniqueGift.availability,
+            giftAddress: uniqueGift.giftAddress,
+            resellAmounts: nil,
+            resellForTonOnly: uniqueGift.resellForTonOnly,
+            releasedBy: uniqueGift.releasedBy,
+            valueAmount: uniqueGift.valueAmount,
+            valueCurrency: uniqueGift.valueCurrency,
+            valueUsdAmount: uniqueGift.valueUsdAmount,
+            flags: uniqueGift.flags,
+            themePeerId: uniqueGift.themePeerId,
+            peerColor: uniqueGift.peerColor,
+            hostPeerId: uniqueGift.hostPeerId,
+            minOfferStars: uniqueGift.minOfferStars,
+            craftChancePermille: uniqueGift.craftChancePermille
+        )
+    }
+
     /// Inserts a gift-card message into `peerId`'s local chat history — a real message the
     /// existing `ChatMessageGiftBubbleContentNode` will render exactly like a genuine one —
     /// but purely as a local Postbox transaction. `Namespaces.Message.Local` is the message
@@ -26,6 +60,7 @@ public enum PampGramPhantomGiftMessage {
     /// it was bought. `transferStars` stays nil regardless: that field is for a genuine
     /// peer-to-peer transfer of an already-owned gift, a different action entirely.
     public static func insertLocalUniqueGiftMessage(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<EngineMessage.Id?, NoError> {
+        let uniqueGift = self.fakedOwnership(of: uniqueGift, newOwnerPeerId: peerId)
         return self.insert(context: context, peerId: peerId, authorId: context.account.peerId, incoming: false, actionType: .starGiftUnique(
             gift: .unique(uniqueGift),
             isUpgrade: false,
@@ -57,6 +92,7 @@ public enum PampGramPhantomGiftMessage {
     /// already owns handing it to you reads as a transfer ("X передал(а) вам подарок"), which
     /// is the caption real Telegram uses for exactly this situation.
     public static func insertLocalUniqueGiftMessageFromPeer(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift) -> Signal<EngineMessage.Id?, NoError> {
+        let uniqueGift = self.fakedOwnership(of: uniqueGift, newOwnerPeerId: context.account.peerId)
         return self.insert(context: context, peerId: peerId, authorId: peerId, incoming: true, actionType: .starGiftUnique(
             gift: .unique(uniqueGift),
             isUpgrade: false,
