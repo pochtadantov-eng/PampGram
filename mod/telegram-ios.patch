@@ -1339,10 +1339,10 @@ index 806e652a..af17fef0 100644
              guard let controller = self.controller, !controller.presentAccountFrozenInfoIfNeeded() else {
                  return
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
-index c5f58f4b..a1b223d1 100644
+index c5f58f4b..48884aa7 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
-@@ -12,6 +12,8 @@ import ItemListPeerItem
+@@ -12,12 +12,17 @@ import ItemListPeerItem
  import DeviceAccess
  import TelegramStringFormatting
  import PeerNameColorItem
@@ -1351,14 +1351,16 @@ index c5f58f4b..a1b223d1 100644
  
  enum SettingsSection: Int, CaseIterable {
      case edit
-@@ -21,13 +23,14 @@ enum SettingsSection: Int, CaseIterable {
+     case phone
+     case accounts
+     case myProfile
++    // PampGram: right under "Мой профиль" rather than further down past several stock
++    // sections — the mod's entry point should be one of the first things this list shows.
++    case pampGram
      case proxy
      case apps
      case shortcuts
-+    case pampGram
-     case advanced
-     case payment
-     case extra
+@@ -27,7 +32,7 @@ enum SettingsSection: Int, CaseIterable {
      case support
  }
  
@@ -1367,7 +1369,7 @@ index c5f58f4b..a1b223d1 100644
      guard let data = data else {
          return []
      }
-@@ -221,6 +224,12 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+@@ -221,6 +226,12 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
          interaction.openSettings(.chatFolders)
      }))
      
@@ -1380,7 +1382,7 @@ index c5f58f4b..a1b223d1 100644
      let notificationsWarning: Bool
      if let settings = data.globalSettings {
          notificationsWarning = shouldDisplayNotificationsPermissionWarning(status: settings.notificationAuthorizationStatus, suppressed:  settings.notificationWarningSuppressed)
-@@ -256,7 +265,19 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+@@ -256,7 +267,19 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
              interaction.openSettings(.premium)
          }))
      }
@@ -1401,7 +1403,7 @@ index c5f58f4b..a1b223d1 100644
          if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
              let balanceText: NSAttributedString
              if abs(starsState.balance.value) > 0 {
-@@ -273,18 +294,22 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+@@ -273,18 +296,22 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
              }))
          }
      }

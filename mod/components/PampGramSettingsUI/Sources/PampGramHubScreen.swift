@@ -74,12 +74,14 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 title: "PampGram",
                 titleFont: .bold,
                 titleBadge: "MOD",
-                label: "v1.0.0 (Stable)",
+                label: pampGramVersionString,
                 additionalDetailLabel: "Расширяй. Скрывай. Контролируй.",
                 sectionId: self.section,
                 style: .blocks,
                 disclosureStyle: .none,
-                action: nil
+                action: {
+                    arguments.openAbout()
+                }
             )
         case .gifts:
             return ItemListDisclosureItem(
@@ -183,7 +185,9 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 sectionId: self.section,
                 style: .blocks,
                 disclosureStyle: .none,
-                action: nil
+                action: {
+                    arguments.openSupport()
+                }
             )
         }
     }
@@ -195,14 +199,29 @@ private final class PampGramHubArguments {
     let openGhost: () -> Void
     let openPlaceholder: (String) -> Void
     let openStatus: () -> Void
+    let openAbout: () -> Void
+    let openSupport: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openStatus: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
         self.openPlaceholder = openPlaceholder
         self.openStatus = openStatus
+        self.openAbout = openAbout
+        self.openSupport = openSupport
     }
+}
+
+/// PampGram's own Telegram channel and the person to reach for support/donations — kept in
+/// one place since the "PampGram Team" row's action sheet is the only thing that uses them.
+private let pampGramChannelUrl = "https://t.me/PampGrams"
+private let pampGramSupportUsername = "kopimastera"
+
+private func pampGramDonateUrl(currencyLabel: String) -> String {
+    let text = "Привет, я решил поддержать твой проект, поэтому хочу тебе дать \(currencyLabel), жду твоего ответа."
+    let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? text
+    return "https://t.me/\(pampGramSupportUsername)?text=\(encoded)"
 }
 
 private func pampGramHubEntries(settings: PampGramSettings) -> [PampGramHubEntry] {
@@ -227,6 +246,8 @@ private func pampGramHubEntries(settings: PampGramSettings) -> [PampGramHubEntry
 /// get their own page instead of piling into a single scroll.
 public func pampGramSettingsController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
+    var presentControllerImpl: ((ViewController) -> Void)?
+    var navigationControllerImpl: (() -> NavigationController?)?
 
     let arguments = PampGramHubArguments(
         openGifts: {
@@ -243,6 +264,69 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         },
         openStatus: {
             pushControllerImpl?(pampGramStatusController(context: context))
+        },
+        openAbout: {
+            pushControllerImpl?(pampGramAboutController(context: context))
+        },
+        openSupport: {
+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+
+            let openChannel: () -> Void = {
+                guard let navigationController = navigationControllerImpl?() else {
+                    return
+                }
+                context.sharedContext.openExternalUrl(context: context, urlContext: .generic, url: pampGramChannelUrl, forceExternal: false, presentationData: presentationData, navigationController: navigationController, dismissInput: {})
+            }
+
+            let openDonateChat: (String) -> Void = { currencyLabel in
+                guard let navigationController = navigationControllerImpl?() else {
+                    return
+                }
+                context.sharedContext.openExternalUrl(context: context, urlContext: .generic, url: pampGramDonateUrl(currencyLabel: currencyLabel), forceExternal: false, presentationData: presentationData, navigationController: navigationController, dismissInput: {})
+            }
+
+            let showDonateOptions: () -> Void = {
+                let donateSheet = ActionSheetController(presentationData: presentationData)
+                donateSheet.setItemGroups([
+                    ActionSheetItemGroup(items: [
+                        ActionSheetTextItem(title: "Чем хочешь поддержать?"),
+                        ActionSheetButtonItem(title: "⭐ Telegram Stars", color: .accent, action: { [weak donateSheet] in
+                            donateSheet?.dismissAnimated()
+                            openDonateChat("звёзды")
+                        }),
+                        ActionSheetButtonItem(title: "₽ Рубли", color: .accent, action: { [weak donateSheet] in
+                            donateSheet?.dismissAnimated()
+                            openDonateChat("рубли")
+                        })
+                    ]),
+                    ActionSheetItemGroup(items: [
+                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak donateSheet] in
+                            donateSheet?.dismissAnimated()
+                        })
+                    ])
+                ])
+                presentControllerImpl?(donateSheet)
+            }
+
+            let mainSheet = ActionSheetController(presentationData: presentationData)
+            mainSheet.setItemGroups([
+                ActionSheetItemGroup(items: [
+                    ActionSheetButtonItem(title: "Наш канал", color: .accent, action: { [weak mainSheet] in
+                        mainSheet?.dismissAnimated()
+                        openChannel()
+                    }),
+                    ActionSheetButtonItem(title: "Поддержать проект 💜", color: .accent, action: { [weak mainSheet] in
+                        mainSheet?.dismissAnimated()
+                        showDonateOptions()
+                    })
+                ]),
+                ActionSheetItemGroup(items: [
+                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak mainSheet] in
+                        mainSheet?.dismissAnimated()
+                    })
+                ])
+            ])
+            presentControllerImpl?(mainSheet)
         }
     )
 
@@ -272,6 +356,12 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
     let controller = ItemListController(context: context, state: signal)
     pushControllerImpl = { [weak controller] c in
         controller?.push(c)
+    }
+    presentControllerImpl = { [weak controller] c in
+        controller?.present(c, in: .window(.root))
+    }
+    navigationControllerImpl = { [weak controller] in
+        return controller?.navigationController as? NavigationController
     }
     return controller
 }
