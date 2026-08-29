@@ -1887,7 +1887,7 @@ index 87c58b5f..d199638d 100644
                              component.openTransaction(transaction)
                          }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5bb..040b595a 100644
+index 07cef5bb..36829662 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -1901,19 +1901,20 @@ index 07cef5bb..040b595a 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,80 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,93 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
 +// PampGram: adds a "PampGram" → "Изменить визуально" entry to a single message's long-press
-+// menu when the "Изменить визуально" toggle (Удалённые сообщения screen) is on and the
-+// message is a non-service message from the other side. Kept as a thin wrapper around the
-+// stock menu builder below (renamed …Real, same pattern as Ghost mode's read-state wrapper in
++// menu when the "Изменить визуально" toggle (Удалённые сообщения screen) is on — any
++// non-service message, this account's own included, so "Изменить текст" works the same way
++// on either side of the chat. Kept as a thin wrapper around the stock menu builder below
++// (renamed …Real, same pattern as Ghost mode's read-state wrapper in
 +// SynchronizePeerReadState.swift) so this ~4000-line function stays untouched.
  func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil) -> Signal<ContextController.Items, NoError> {
 +    let baseItems = contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: chatPresentationInterfaceState, context: context, messages: messages, controllerInteraction: controllerInteraction, selectAll: selectAll, interfaceInteraction: interfaceInteraction, readStats: readStats, messageNode: messageNode)
 +
-+    guard messages.count == 1, let message = messages.first, let author = message.author, author.id != context.account.peerId, !message.media.contains(where: { $0 is TelegramMediaAction }) else {
++    guard messages.count == 1, let message = messages.first, !message.media.contains(where: { $0 is TelegramMediaAction }) else {
 +        return baseItems
 +    }
 +
@@ -1940,6 +1941,18 @@ index 07cef5bb..040b595a 100644
 +            }, iconSource: nil, action: { _, f in
 +                f(.dismissWithoutContent)
 +                controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
++            })))
++            subItems.append(.action(ContextMenuActionItem(text: "Текст от собеседника", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "bubble.left"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                pampGramPresentInsertText(context: context, peerId: message.id.peerId, incoming: true)
++            })))
++            subItems.append(.action(ContextMenuActionItem(text: "Текст от меня", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "bubble.right"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                pampGramPresentInsertText(context: context, peerId: message.id.peerId, incoming: false)
 +            })))
 +            subItems.append(.action(ContextMenuActionItem(text: "Отправить фото", textColor: .primary, icon: { theme in
 +                return generateTintedImage(image: UIImage(systemName: "photo"), color: theme.actionSheet.primaryTextColor)

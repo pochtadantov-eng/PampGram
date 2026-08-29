@@ -10,6 +10,7 @@ import SwiftSignalKit
 import TelegramCore
 import AccountContext
 import UndoUI
+import PromptUI
 import PampGramCore
 
 /// Backs the "PampGram" → "Отправить фото/голосовое/файл"/"Показать звонок" entries next to
@@ -63,6 +64,31 @@ private func pampGramInsertIncomingMessage(context: AccountContext, peerId: Engi
             localTags: [],
             forwardInfo: nil,
             authorId: peerId,
+            text: text,
+            attributes: [],
+            media: media
+        )
+        let insertedIds = transaction.addMessages([storeMessage], location: .Random)
+        return insertedIds[globallyUniqueId]
+    }
+}
+
+private func pampGramInsertOutgoingMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media]) -> Signal<EngineMessage.Id?, NoError> {
+    return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
+        let globallyUniqueId = Int64.random(in: Int64.min ... Int64.max)
+        let storeMessage = StoreMessage(
+            id: .Partial(peerId, Namespaces.Message.Local),
+            customStableId: nil,
+            globallyUniqueId: globallyUniqueId,
+            groupingKey: nil,
+            threadId: nil,
+            timestamp: Int32(Date().timeIntervalSince1970),
+            flags: StoreMessageFlags(),
+            tags: [],
+            globalTags: [],
+            localTags: [],
+            forwardInfo: nil,
+            authorId: context.account.peerId,
             text: text,
             attributes: [],
             media: media
@@ -316,4 +342,35 @@ public func pampGramPresentInsertCall(context: AccountContext, peerId: EnginePee
         ])
     ])
     presentingController.present(typeSheet, in: .window(.root))
+}
+
+// MARK: - Text
+
+/// "Текст от собеседника" / "Текст от меня": a brand-new plain-text message, inserted the same
+/// local-only way as a fake photo/voice/file — the only difference from those is who it's
+/// authored by. `incoming` picks `pampGramInsertIncomingMessage` (authored by the other side,
+/// flagged incoming) or `pampGramInsertOutgoingMessage` (authored by this account, no
+/// incoming flag), so the bubble renders on the correct side of the chat.
+public func pampGramPresentInsertText(context: AccountContext, peerId: EnginePeer.Id, incoming: Bool) {
+    guard let presentingController = pampGramTopController(context: context) else {
+        return
+    }
+    presentingController.present(promptController(
+        context: context,
+        text: incoming ? "Текст от собеседника" : "Текст от меня",
+        subtitle: "Появится в чате обычным текстовым сообщением — только на этом устройстве.",
+        value: "",
+        placeholder: "Текст сообщения",
+        characterLimit: 4096,
+        apply: { value in
+            guard let text = value?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+                return
+            }
+            let insert = incoming
+                ? pampGramInsertIncomingMessage(context: context, peerId: peerId, text: text, media: [])
+                : pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: text, media: [])
+            let _ = insert.start()
+            pampGramPresentTooltip(context: context, text: "Сообщение добавлено.")
+        }
+    ), in: .window(.root))
 }
