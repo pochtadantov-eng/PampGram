@@ -111,25 +111,25 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return 2
         case .phantomGiftsFooter:
             return 3
-        case .starsBalanceHeader:
-            return 4
-        case .fakeStarsDisplayToggle:
-            return 5
-        case .starsBalance:
-            return 6
-        case .starsBalanceFooter:
-            return 7
-        case .tonBalanceHeader:
-            return 8
-        case .fakeTonDisplayToggle:
-            return 9
-        case .tonBalance:
-            return 10
-        case .tonBalanceFooter:
-            return 11
         case .fromHimGiftsToggle:
-            return 12
+            return 4
         case .fromHimGiftsFooter:
+            return 5
+        case .starsBalanceHeader:
+            return 6
+        case .fakeStarsDisplayToggle:
+            return 7
+        case .starsBalance:
+            return 8
+        case .starsBalanceFooter:
+            return 9
+        case .tonBalanceHeader:
+            return 10
+        case .fakeTonDisplayToggle:
+            return 11
+        case .tonBalance:
+            return 12
+        case .tonBalanceFooter:
             return 13
         case .resetBalances:
             return 14
@@ -276,6 +276,9 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
     entries.append(.phantomGiftsToggle("Вкладка «Подарок ему»", settings.phantomGiftsEnabled))
     entries.append(.phantomGiftsFooter("Тот же настоящий маркет, но покупка из вкладки визуальная, без списания настоящих Stars/TON."))
 
+    entries.append(.fromHimGiftsToggle("От него", settings.fromHimGiftsEnabled))
+    entries.append(.fromHimGiftsFooter("Добавляет вкладку «Подарок мне» — тот же маркет, но подарок выглядит подаренным вам собеседником."))
+
     entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ ЗВЁЗДЫ"))
     entries.append(.fakeStarsDisplayToggle("Локальные звёзды", settings.fakeStarsDisplayEnabled))
     entries.append(.starsBalance("Фантом-Stars", "\(settings.fakeStarsBalance)"))
@@ -285,9 +288,6 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.tonBalance("Фантом-TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
     entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM, независимо от звёзд."))
-
-    entries.append(.fromHimGiftsToggle("От него", settings.fromHimGiftsEnabled))
-    entries.append(.fromHimGiftsFooter("Добавляет вкладку «Подарок мне» — тот же маркет, но подарок выглядит подаренным вам собеседником."))
 
     entries.append(.resetBalances("Сбросить балансы"))
     entries.append(.resetBalancesFooter("Возвращает оба счётчика к значениям по умолчанию."))
@@ -385,13 +385,24 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
             }).start()
         },
         resetBalances: {
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.fakeStarsBalance = PampGramSettings.defaultFakeStarsBalance
-                settings.fakeTonBalanceNanos = PampGramSettings.defaultFakeTonBalanceNanos
-                return settings
-            }).start()
-            presentTooltipImpl?("Локальные балансы сброшены.")
+            presentControllerImpl?(textAlertController(
+                context: context,
+                title: "Сбросить балансы?",
+                text: "Оба счётчика вернутся к значениям по умолчанию. Это действие нельзя отменить.",
+                actions: [
+                    TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
+                    TextAlertAction(type: .destructiveAction, title: "Сбросить", action: {
+                        let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                            var settings = settings
+                            settings.fakeStarsBalance = PampGramSettings.defaultFakeStarsBalance
+                            settings.fakeTonBalanceNanos = PampGramSettings.defaultFakeTonBalanceNanos
+                            return settings
+                        }).start()
+                        presentTooltipImpl?("Локальные балансы сброшены.")
+                    }),
+                ],
+                actionLayout: .horizontal
+            ))
         },
         deleteAllPhantomGifts: {
             // The old low-level `theme:`-based textAlertController built the legacy iOS-style
