@@ -107,7 +107,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 presentationData: presentationData,
                 systemStyle: .glass,
                 icon: generatePampGramSectionIcon(systemName: "message.fill", backgroundColor: UIColor(rgb: 0x3b82f6)),
-                title: "Удалённые сообщения",
+                title: "Чаты",
                 titleFont: .bold,
                 label: "",
                 additionalDetailLabel: "Визуальный редактор и история",
