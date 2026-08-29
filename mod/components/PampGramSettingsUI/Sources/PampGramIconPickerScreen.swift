@@ -5,13 +5,14 @@ import TelegramPresentationData
 import AccountContext
 import AppBundle
 
-/// One tile in the icon grid: the icon's own square raster preview, its display name below,
-/// and — only on the currently applied icon — a checkmark badge plus an accent-colored ring,
-/// so the current choice reads at a glance instead of needing a text label like the old
-/// one-row-per-icon list did.
+/// One tile in the icon grid: a rounded preview card with the icon centered inside it, the
+/// display name below the card, and — only on the currently applied icon — a colored ring
+/// around the whole card plus a checkmark badge in its corner, so the current choice reads
+/// at a glance instead of needing a text label like the old one-row-per-icon list did.
 private final class PampGramIconCell: UICollectionViewCell {
     static let reuseIdentifier = "PampGramIconCell"
 
+    private let cardView = UIView()
     private let imageView = UIImageView()
     private let nameLabel = UILabel()
     private let checkmarkBadge = UIView()
@@ -20,17 +21,25 @@ private final class PampGramIconCell: UICollectionViewCell {
     override init(frame: CGRect) {
         super.init(frame: frame)
 
+        self.cardView.backgroundColor = UIColor(rgb: 0x1c1c24)
+        self.cardView.layer.cornerRadius = 20.0
+        if #available(iOS 13.0, *) {
+            self.cardView.layer.cornerCurve = .continuous
+        }
+        self.cardView.layer.borderWidth = 2.0
+        self.cardView.layer.borderColor = UIColor.clear.cgColor
+        self.cardView.clipsToBounds = false
+        self.contentView.addSubview(self.cardView)
+
         self.imageView.contentMode = .scaleAspectFit
-        self.imageView.layer.cornerRadius = 16.0
+        self.imageView.layer.cornerRadius = 14.0
         if #available(iOS 13.0, *) {
             self.imageView.layer.cornerCurve = .continuous
         }
         self.imageView.clipsToBounds = true
-        self.imageView.layer.borderWidth = 2.0
-        self.imageView.layer.borderColor = UIColor.clear.cgColor
-        self.contentView.addSubview(self.imageView)
+        self.cardView.addSubview(self.imageView)
 
-        self.nameLabel.font = UIFont.systemFont(ofSize: 12.0, weight: .medium)
+        self.nameLabel.font = UIFont.systemFont(ofSize: 13.0, weight: .medium)
         self.nameLabel.textColor = UIColor.white
         self.nameLabel.textAlignment = .center
         self.nameLabel.numberOfLines = 1
@@ -38,8 +47,8 @@ private final class PampGramIconCell: UICollectionViewCell {
         self.nameLabel.minimumScaleFactor = 0.8
         self.contentView.addSubview(self.nameLabel)
 
-        self.checkmarkBadge.backgroundColor = UIColor(rgb: 0x34c759)
-        self.checkmarkBadge.layer.cornerRadius = 11.0
+        self.checkmarkBadge.backgroundColor = UIColor(rgb: 0x8e44ec)
+        self.checkmarkBadge.layer.cornerRadius = 12.0
         self.checkmarkBadge.layer.borderWidth = 2.0
         self.checkmarkBadge.layer.borderColor = UIColor(rgb: 0x0e0e14).cgColor
         self.checkmarkBadge.isHidden = true
@@ -59,18 +68,23 @@ private final class PampGramIconCell: UICollectionViewCell {
         self.imageView.image = UIImage(named: icon.imageName, in: getAppBundle(), compatibleWith: nil)
         self.nameLabel.text = displayName
         self.checkmarkBadge.isHidden = !isSelected
-        self.imageView.layer.borderColor = isSelected ? UIColor(rgb: 0x8e44ec).cgColor : UIColor.clear.cgColor
+        self.cardView.layer.borderColor = isSelected ? UIColor(rgb: 0x8e44ec).cgColor : UIColor.clear.cgColor
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
 
-        let side = self.contentView.bounds.width
-        self.imageView.frame = CGRect(x: 0.0, y: 0.0, width: side, height: side)
-        self.nameLabel.frame = CGRect(x: 0.0, y: side + 6.0, width: self.contentView.bounds.width, height: 16.0)
+        let width = self.contentView.bounds.width
+        let cardHeight = width * 1.05
+        self.cardView.frame = CGRect(x: 0.0, y: 0.0, width: width, height: cardHeight)
 
-        let badgeSize: CGFloat = 22.0
-        self.checkmarkBadge.frame = CGRect(x: side - badgeSize - 2.0, y: 2.0, width: badgeSize, height: badgeSize)
+        let imageSide = width * 0.6
+        self.imageView.frame = CGRect(x: (width - imageSide) / 2.0, y: (cardHeight - imageSide) / 2.0, width: imageSide, height: imageSide)
+
+        self.nameLabel.frame = CGRect(x: 0.0, y: cardHeight + 10.0, width: width, height: 16.0)
+
+        let badgeSize: CGFloat = 24.0
+        self.checkmarkBadge.frame = CGRect(x: width - badgeSize + 6.0, y: -6.0, width: badgeSize, height: badgeSize)
         self.checkmarkIcon.frame = self.checkmarkBadge.bounds.insetBy(dx: 6.0, dy: 6.0)
     }
 }
@@ -104,7 +118,7 @@ private final class PampGramIconPickerViewController: UIViewController, UICollec
 
         let layout = UICollectionViewFlowLayout()
         layout.minimumInteritemSpacing = 16.0
-        layout.minimumLineSpacing = 26.0
+        layout.minimumLineSpacing = 28.0
         layout.sectionInset = UIEdgeInsets(top: 24.0, left: 20.0, bottom: 24.0, right: 20.0)
 
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
@@ -148,12 +162,13 @@ private final class PampGramIconPickerViewController: UIViewController, UICollec
     }
 
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        let columns = 3
+        let columns = 2
         let spacing: CGFloat = 16.0
         let sideInsets: CGFloat = 40.0
         let availableWidth = collectionView.bounds.width - sideInsets - spacing * CGFloat(columns - 1)
-        let side = max(60.0, floor(availableWidth / CGFloat(columns)))
-        return CGSize(width: side, height: side + 22.0)
+        let width = max(120.0, floor(availableWidth / CGFloat(columns)))
+        let cardHeight = width * 1.05
+        return CGSize(width: width, height: cardHeight + 26.0)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
