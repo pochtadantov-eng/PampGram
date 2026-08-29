@@ -258,7 +258,10 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
     return entries
 }
 
-public func pampGramSettingsController(context: AccountContext) -> ViewController {
+/// The "Подарки" section: everything about the "Подарок" tab and PampGram's local play-money
+/// balances. Split out of what used to be the single PampGram settings screen — see
+/// `PampGramHubScreen.swift` for the 5-section hub this is now pushed from.
+public func pampGramGiftsSettingsController(context: AccountContext) -> ViewController {
     var presentControllerImpl: ((ViewController) -> Void)?
     var presentTooltipImpl: ((String) -> Void)?
 
@@ -372,7 +375,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
     |> map { presentationData, settings, phantomGifts -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
-            title: .text("PampGram"),
+            title: .text("Подарки"),
             leftNavigationButton: nil,
             rightNavigationButton: nil,
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),
