@@ -13,11 +13,13 @@ import PampGramCore
 
 private final class PampGramMessagesArguments {
     let toggleAntiDelete: (Bool) -> Void
+    let openExclusions: () -> Void
     let openHistory: () -> Void
     let clearHistory: () -> Void
 
-    init(toggleAntiDelete: @escaping (Bool) -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void) {
+    init(toggleAntiDelete: @escaping (Bool) -> Void, openExclusions: @escaping () -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void) {
         self.toggleAntiDelete = toggleAntiDelete
+        self.openExclusions = openExclusions
         self.openHistory = openHistory
         self.clearHistory = clearHistory
     }
@@ -33,6 +35,7 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
     case aboutText(String)
 
     case antiDeleteToggle(String, Bool)
+    case exclusionsRow(String, String)
     case antiDeleteFooter(String)
 
     case historyHeader(String)
@@ -44,7 +47,7 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return PampGramMessagesSection.about.rawValue
-        case .antiDeleteToggle, .antiDeleteFooter:
+        case .antiDeleteToggle, .exclusionsRow, .antiDeleteFooter:
             return PampGramMessagesSection.antiDelete.rawValue
         case .historyHeader, .historyList, .clearHistory, .historyFooter:
             return PampGramMessagesSection.history.rawValue
@@ -57,16 +60,18 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return 0
         case .antiDeleteToggle:
             return 1
-        case .antiDeleteFooter:
+        case .exclusionsRow:
             return 2
-        case .historyHeader:
+        case .antiDeleteFooter:
             return 3
-        case .historyList:
+        case .historyHeader:
             return 4
-        case .clearHistory:
+        case .historyList:
             return 5
-        case .historyFooter:
+        case .clearHistory:
             return 6
+        case .historyFooter:
+            return 7
         }
     }
 
@@ -84,6 +89,10 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
         case let .antiDeleteToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleAntiDelete(value)
+            })
+        case let .exclusionsRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openExclusions()
             })
         case let .historyList(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
@@ -103,7 +112,8 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
     entries.append(.aboutText("Работает только на этом устройстве, никому не сообщается."))
 
     entries.append(.antiDeleteToggle("Восстановление удалённых сообщений", settings.antiDeleteMessagesEnabled))
-    entries.append(.antiDeleteFooter("Удалённое собеседником сообщение остаётся в чате затемнённым, с иконкой корзины."))
+    entries.append(.exclusionsRow("Исключения", "\(settings.antiDeleteExcludedPeerIds.count)"))
+    entries.append(.antiDeleteFooter("Удалённое собеседником сообщение остаётся в чате затемнённым, с иконкой корзины. В исключённых чатах — как обычно."))
 
     entries.append(.historyHeader("ИСТОРИЯ"))
     entries.append(.historyList("Восстановленные сообщения", "\(historyCount)"))
@@ -113,8 +123,8 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
     return entries
 }
 
-/// The "Сообщения" section: the anti-delete feature's master toggle and a link into its
-/// capture history.
+/// The "Удалённые сообщения" section: the anti-delete feature's master toggle, its per-chat
+/// exclusion list, and a link into its capture history.
 public func pampGramMessagesSettingsController(context: AccountContext) -> ViewController {
     var presentTooltipImpl: ((String) -> Void)?
     var pushControllerImpl: ((ViewController) -> Void)?
@@ -126,6 +136,9 @@ public func pampGramMessagesSettingsController(context: AccountContext) -> ViewC
                 settings.antiDeleteMessagesEnabled = value
                 return settings
             }).start()
+        },
+        openExclusions: {
+            pushControllerImpl?(pampGramMessagesExclusionsController(context: context))
         },
         openHistory: {
             pushControllerImpl?(pampGramMessagesHistoryController(context: context))
@@ -150,7 +163,7 @@ public func pampGramMessagesSettingsController(context: AccountContext) -> ViewC
     |> map { presentationData, settings, history -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
-            title: .text("Сообщения"),
+            title: .text("Удалённые сообщения"),
             leftNavigationButton: nil,
             rightNavigationButton: nil,
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),

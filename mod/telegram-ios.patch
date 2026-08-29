@@ -47,10 +47,10 @@ index 3f2b4794..13a3d5cb 100644
      declareEncodable(HttpReferenceMediaResource.self, f: { HttpReferenceMediaResource(decoder: $0) })
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift b/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift
 new file mode 100644
-index 00000000..21d735b4
+index 00000000..824b8e40
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,124 @@
 +import Foundation
 +import Postbox
 +import PampGramCore
@@ -71,15 +71,22 @@ index 00000000..21d735b4
 +    /// deletion path (regular private chats and basic groups), resolve with
 +    /// `transaction.messageIdsForGlobalIds(_:)` before calling this.
 +    static func captureBeforeDelete(transaction: Transaction, accountPeerId: PeerId, messageIds: [MessageId]) {
-+        guard PampGramCore.settings(transaction: transaction).antiDeleteMessagesEnabled else {
++        let settings = PampGramCore.settings(transaction: transaction)
++        guard settings.antiDeleteMessagesEnabled else {
 +            return
 +        }
++        let excludedPeerIds = Set(settings.antiDeleteExcludedPeerIds)
 +        let now = Int32(Date().timeIntervalSince1970)
 +        for id in messageIds {
 +            // Never resurrect PampGram's own local-only rows (phantom gifts, earlier
 +            // resurrections) — they're not real deletions, and re-capturing an already-local
 +            // message would just duplicate it forever.
 +            if id.namespace == Namespaces.Message.Local {
++                continue
++            }
++            // A chat the user picked to exclude from anti-delete entirely — left to behave
++            // like stock Telegram, deletions and all.
++            if excludedPeerIds.contains(id.peerId) {
 +                continue
 +            }
 +            guard let message = transaction.getMessage(id) else {

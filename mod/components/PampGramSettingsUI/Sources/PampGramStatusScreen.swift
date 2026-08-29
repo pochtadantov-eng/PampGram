@@ -210,7 +210,7 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     entries.append(.giftsRow(1, "Локальные звёзды", settings.fakeStarsDisplayEnabled))
     entries.append(.giftsRow(2, "Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
 
-    entries.append(.messagesHeader("СООБЩЕНИЯ"))
+    entries.append(.messagesHeader("УДАЛЁННЫЕ СООБЩЕНИЯ"))
     entries.append(.messagesRow(0, "Восстановление удалённых сообщений", settings.antiDeleteMessagesEnabled))
 
     entries.append(.ghostHeader("GHOST"))

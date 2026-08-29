@@ -43,6 +43,11 @@ public struct PampGramSettings: Codable, Equatable {
     /// half — keeps broadcasting "online" as persistently as the OS lets the app run, instead
     /// of going offline when backgrounded. Mutually exclusive with `ghostReaderEnabled`.
     public var onlineMaskEnabled: Bool
+    /// Chats excluded from "Восстановление удалённых сообщений": a message deleted by the
+    /// other side in one of these chats is left alone (normal Telegram behavior), instead of
+    /// being kept and shown like every other chat's deletions are. Checked by
+    /// `PampGramDeletedMessageCapture.captureBeforeDelete` per message's `peerId`.
+    public var antiDeleteExcludedPeerIds: [PeerId]
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -56,11 +61,12 @@ public struct PampGramSettings: Codable, Equatable {
             fakeTonDisplayEnabled: true,
             antiDeleteMessagesEnabled: true,
             ghostReaderEnabled: false,
-            onlineMaskEnabled: false
+            onlineMaskEnabled: false,
+            antiDeleteExcludedPeerIds: []
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId]) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -69,6 +75,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.antiDeleteMessagesEnabled = antiDeleteMessagesEnabled
         self.ghostReaderEnabled = ghostReaderEnabled
         self.onlineMaskEnabled = onlineMaskEnabled
+        self.antiDeleteExcludedPeerIds = antiDeleteExcludedPeerIds
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -85,6 +92,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.antiDeleteMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .antiDeleteMessagesEnabled) ?? defaults.antiDeleteMessagesEnabled
         self.ghostReaderEnabled = try container.decodeIfPresent(Bool.self, forKey: .ghostReaderEnabled) ?? defaults.ghostReaderEnabled
         self.onlineMaskEnabled = try container.decodeIfPresent(Bool.self, forKey: .onlineMaskEnabled) ?? defaults.onlineMaskEnabled
+        self.antiDeleteExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .antiDeleteExcludedPeerIds) ?? defaults.antiDeleteExcludedPeerIds
     }
 }
 
