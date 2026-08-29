@@ -698,6 +698,88 @@ index 0db09aed..4773f4bb 100644
              completion: completion
          ), navigationBarAppearance: .none, theme: .default)
          
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
+index 9eedd122..c74361a1 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
++++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
+@@ -50,6 +50,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/GlassBackgroundComponent",
+         "//submodules/TelegramUI/Components/ContextControllerImpl",
+         "//submodules/TelegramUI/Components/CheckComponent",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
+index c8ac3527..9c14da7b 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
++++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
+@@ -11,6 +11,7 @@ import MultilineTextWithEntitiesComponent
+ import TextFormat
+ import TelegramStringFormatting
+ import Markdown
++import PampGramCore
+ 
+ final class BalanceComponent: Component {
+     private let context: AccountContext
+@@ -43,7 +44,14 @@ final class BalanceComponent: Component {
+         private var starsBalance: Int64 = 0
+         private var tonBalance: Int64 = 0
+         private var balanceDisposable: Disposable?
+-                        
++
++        // PampGram: substituted in place of the real balances above when the matching
++        // display toggle is on — same "Локальные звёзды"/"Локальные TON/GRAM" settings this
++        // pill already respects everywhere else it's shown (gift-sending header, Settings
++        // rows, the Stars/TON balance screens).
++        private var pampGramSettings = PampGramSettings.defaultSettings
++        private var pampGramSettingsDisposable: Disposable?
++
+         override public init(frame: CGRect) {
+             super.init(frame: frame)
+             
+@@ -56,6 +64,7 @@ final class BalanceComponent: Component {
+         
+         deinit {
+             self.balanceDisposable?.dispose()
++            self.pampGramSettingsDisposable?.dispose()
+         }
+         
+         @objc private func pressed() {
+@@ -91,13 +100,29 @@ final class BalanceComponent: Component {
+                     })
+                 }
+             }
+-            
++
++            if self.pampGramSettingsDisposable == nil {
++                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
++                |> deliverOnMainQueue).start(next: { [weak self] settings in
++                    guard let self else {
++                        return
++                    }
++                    self.pampGramSettings = settings
++                    if !self.isUpdating {
++                        self.componentState?.updated()
++                    }
++                })
++            }
++
+             let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
+ 
++            let displayedStarsBalance = self.pampGramSettings.fakeStarsDisplayEnabled ? self.pampGramSettings.fakeStarsBalance : self.starsBalance
++            let displayedTonBalance = self.pampGramSettings.fakeTonDisplayEnabled ? self.pampGramSettings.fakeTonBalanceNanos : self.tonBalance
++
+             var rawString: String = ""
+-            let starsBalanceString = "**⭐️\(presentationStringsFormattedNumber(Int32(clamping: self.starsBalance), presentationData.dateTimeFormat.groupingSeparator))**"
+-            if self.tonBalance > 0 {
+-                let tonBalanceString = "**💎\(formatTonAmountText(self.tonBalance, dateTimeFormat: presentationData.dateTimeFormat))**"
++            let starsBalanceString = "**⭐️\(presentationStringsFormattedNumber(Int32(clamping: displayedStarsBalance), presentationData.dateTimeFormat.groupingSeparator))**"
++            if displayedTonBalance > 0 {
++                let tonBalanceString = "**💎\(formatTonAmountText(displayedTonBalance, dateTimeFormat: presentationData.dateTimeFormat))**"
+                 rawString = starsBalanceString + "\n" + tonBalanceString
+             } else {
+                 rawString = presentationData.strings.Stars_Purchase_Balance + "\n" + starsBalanceString
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
 index 79e9e748..a96cd49d 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
@@ -1274,6 +1356,91 @@ index c5f58f4b..a1b223d1 100644
              items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
                  interaction.openSettings(.ton)
              }))
+diff --git a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD b/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD
+index d3e5547d..47f9b993 100644
+--- a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD
++++ b/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD
+@@ -23,6 +23,7 @@ swift_library(
+         "//submodules/TextFormat",
+         "//submodules/Markdown",
+         "//submodules/TelegramStringFormatting",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/Sources/StarsBalanceOverlayComponent.swift b/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/Sources/StarsBalanceOverlayComponent.swift
+index bc8f9043..dc453cad 100644
+--- a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/Sources/StarsBalanceOverlayComponent.swift
++++ b/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/Sources/StarsBalanceOverlayComponent.swift
+@@ -12,6 +12,7 @@ import MultilineTextWithEntitiesComponent
+ import TextFormat
+ import Markdown
+ import TelegramStringFormatting
++import PampGramCore
+ 
+ public final class StarsBalanceOverlayComponent: Component {
+     private let context: AccountContext
+@@ -55,7 +56,13 @@ public final class StarsBalanceOverlayComponent: Component {
+         private var starsBalance: Int64 = 0
+         private var tonBalance: Int64 = 0
+         private var balanceDisposable: Disposable?
+-        
++
++        // PampGram: same fake-balance substitution as the corner balance pill elsewhere —
++        // only applies to this account's own balance overlay, never to the channel-revenue
++        // overlay (the `else` branch below, a different peer's real balance).
++        private var pampGramSettings = PampGramSettings.defaultSettings
++        private var pampGramSettingsDisposable: Disposable?
++
+         private var starsRevenueStatsContext: StarsRevenueStatsContext?
+         
+         private var cachedChevronImage: (UIImage, PresentationTheme)?
+@@ -74,6 +81,7 @@ public final class StarsBalanceOverlayComponent: Component {
+         
+         deinit {
+             self.balanceDisposable?.dispose()
++            self.pampGramSettingsDisposable?.dispose()
+         }
+         
+         private var didTap = false
+@@ -132,17 +140,33 @@ public final class StarsBalanceOverlayComponent: Component {
+                 }
+             }
+             
++            if component.peerId == component.context.account.peerId && self.pampGramSettingsDisposable == nil {
++                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
++                |> deliverOnMainQueue).start(next: { [weak self] settings in
++                    guard let self else {
++                        return
++                    }
++                    self.pampGramSettings = settings
++                    if !self.isUpdating {
++                        self.state?.updated()
++                    }
++                })
++            }
++
+             let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
+-            let balance = presentationStringsFormattedNumber(Int32(self.starsBalance), presentationData.dateTimeFormat.groupingSeparator)
+-            
++            let isOwnBalance = component.peerId == component.context.account.peerId
++            let displayedStarsBalance = (isOwnBalance && self.pampGramSettings.fakeStarsDisplayEnabled) ? self.pampGramSettings.fakeStarsBalance : self.starsBalance
++            let displayedTonBalance = (isOwnBalance && self.pampGramSettings.fakeTonDisplayEnabled) ? self.pampGramSettings.fakeTonBalanceNanos : self.tonBalance
++            let balance = presentationStringsFormattedNumber(Int32(clamping: displayedStarsBalance), presentationData.dateTimeFormat.groupingSeparator)
++
+             let rawString: String
+-            if component.peerId == component.context.account.peerId {
++            if isOwnBalance {
+                 let balanceString: String
+                 switch component.currency {
+                 case .stars:
+                     balanceString = "**⭐️\(balance)**"
+                 case .ton:
+-                    balanceString = "**💎\(formatTonAmountText(self.tonBalance, dateTimeFormat: presentationData.dateTimeFormat))**"
++                    balanceString = "**💎\(formatTonAmountText(displayedTonBalance, dateTimeFormat: presentationData.dateTimeFormat))**"
+                 }
+                 rawString = presentationData.strings.StarsBalance_YourBalance(balanceString).string
+             } else {
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
 index 066e81e6..42abb362 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD

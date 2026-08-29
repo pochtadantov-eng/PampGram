@@ -17,11 +17,15 @@ public enum PampGramPhantomGiftMessage {
     ///
     /// `uniqueGift` is always the real object read straight from the real market — its
     /// title, number, model/backdrop/pattern attributes are never fabricated here, so the
-    /// resulting card is indistinguishable from a genuine purchase. `transferStars` is left
-    /// nil: that field captions a peer-to-peer *transfer*, not a market purchase, and a real
-    /// purchase's bubble doesn't restate the price either — the buy confirmation and the
-    /// success toast already showed it.
-    public static func insertLocalUniqueGiftMessage(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift) -> Signal<EngineMessage.Id?, NoError> {
+    /// resulting card is indistinguishable from a genuine purchase. `price` becomes
+    /// `resaleAmount` — the field `ServiceMessageStrings.swift` checks to pick the caption:
+    /// with it set, a purchase sent to someone else reads "Вы подарили {title} за {price}",
+    /// matching the real resale-purchase text exactly; leaving it nil (as an earlier version
+    /// of this function did) instead falls through to the *transfer* caption ("Вы передали
+    /// уникальный коллекционный подарок"), which is wrong here — nothing was transferred,
+    /// it was bought. `transferStars` stays nil regardless: that field is for a genuine
+    /// peer-to-peer transfer of an already-owned gift, a different action entirely.
+    public static func insertLocalUniqueGiftMessage(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<EngineMessage.Id?, NoError> {
         return self.insert(context: context, peerId: peerId, actionType: .starGiftUnique(
             gift: .unique(uniqueGift),
             isUpgrade: false,
@@ -34,7 +38,7 @@ public enum PampGramPhantomGiftMessage {
             peerId: nil,
             senderId: nil,
             savedId: nil,
-            resaleAmount: nil,
+            resaleAmount: price,
             canTransferDate: nil,
             canResaleDate: nil,
             dropOriginalDetailsStars: nil,

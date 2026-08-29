@@ -62,7 +62,7 @@ public enum PampGramPhantomGiftManager {
                 return .single(BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency)))
             }
 
-            return PampGramPhantomGiftMessage.insertLocalUniqueGiftMessage(context: context, peerId: peerId, uniqueGift: uniqueGift)
+            return PampGramPhantomGiftMessage.insertLocalUniqueGiftMessage(context: context, peerId: peerId, uniqueGift: uniqueGift, price: price)
             |> map { messageId -> BuyResult in
                 let finalGift: PampGramPhantomGift
                 if let messageId {
