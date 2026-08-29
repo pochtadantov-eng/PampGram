@@ -58,6 +58,18 @@ public enum PampGramPhantomGiftStore {
         })
     }
 
+    public static func fakeTonBalanceNanos(transaction: Transaction) -> Int64 {
+        return PampGramCore.settings(transaction: transaction).fakeTonBalanceNanos
+    }
+
+    public static func setFakeTonBalanceNanos(transaction: Transaction, nanos: Int64) {
+        PampGramCore.updateSettings(transaction: transaction, { settings in
+            var settings = settings
+            settings.fakeTonBalanceNanos = nanos
+            return settings
+        })
+    }
+
     /// Live fake balance, for display (e.g. the "⭐ 50 000" label in the composer).
     public static func fakeStarsBalanceSignal(context: AccountContext) -> Signal<Int64, NoError> {
         return PampGramCore.settingsSignal(postbox: context.account.postbox)

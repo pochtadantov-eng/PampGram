@@ -4,90 +4,77 @@ import SwiftSignalKit
 import AccountContext
 
 public enum PampGramPhantomGiftManager {
-    /// Conforms to Error because it is carried in a `Result<SendResult, SendError>`, and
-    /// Result's failure type is constrained to Error.
-    public enum SendError: Error {
-        case insufficientBalance(have: Int64, need: Int64)
-    }
-
-    public struct SendResult {
+    public struct BuyResult {
         public let phantomGift: PampGramPhantomGift
-        public let remainingBalance: Int64
+        public let remainingBalance: CurrencyAmount
     }
 
     /// What the balance-and-store transaction hands to the message-insert step. A named
     /// type rather than a tuple: `Result`'s `success` takes exactly one associated value,
     /// so a tuple there cannot be destructured in a `case let .success(a, b)` pattern.
-    private struct PendingSend {
+    private struct PendingBuy {
         let newBalance: Int64
         let phantomGift: PampGramPhantomGift
     }
 
-    /// Full local send flow, in order: check the fake balance, optionally mint a random
-    /// collectible instance of the base gift (best-effort — falls back to the plain generic
-    /// gift if that fails or isn't requested), insert the local-only chat message, save the
-    /// gift record, and deduct the fake balance. Every step is either a pure local Postbox
-    /// transaction or the one read-only attribute-preview fetch documented in
-    /// `PampGramUniqueGiftGenerator` — nothing here calls a payment, gift-send, or
-    /// gift-transfer API.
-    public static func send(context: AccountContext, peerId: EnginePeer.Id, baseGift: StarGift.Gift, starPrice: Int64, asCollectible: Bool) -> Signal<Result<SendResult, SendError>, NoError> {
-        let resolvedGift: Signal<StarGift, NoError>
-        if asCollectible {
-            resolvedGift = PampGramUniqueGiftGenerator.randomUniqueInstance(context: context, baseGift: baseGift)
-            |> map { unique -> StarGift in
-                if let unique {
-                    return .unique(unique)
-                } else {
-                    return .generic(baseGift)
-                }
-            }
-        } else {
-            resolvedGift = .single(.generic(baseGift))
-        }
-
-        return resolvedGift
-        |> mapToSignal { gift -> Signal<Result<SendResult, SendError>, NoError> in
-            return context.account.postbox.transaction { transaction -> Result<PendingSend, SendError> in
-                let currentBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction)
-                guard currentBalance >= starPrice else {
-                    return .failure(.insufficientBalance(have: currentBalance, need: starPrice))
-                }
-                let newBalance = currentBalance - starPrice
+    /// Local-only stand-in for a real resale purchase: deducts the matching fake balance
+    /// (Stars or TON, whichever the real listing was priced in), records the gift, and —
+    /// unless this is a self-purchase, which never produces a chat message either way —
+    /// inserts the local-only chat message using the *real* `uniqueGift` straight from the
+    /// market. Never calls `context.engine.payments.buyStarGift` or any other network API;
+    /// the real listing this was matched against is untouched and stays exactly where it
+    /// was in the real market.
+    ///
+    /// Callers are expected to have already confirmed the fake balance covers `price` —
+    /// this always deducts unconditionally, matching how `buyStarGiftImpl` in
+    /// `GiftViewBuyGift.swift` checks and alerts *before* ever calling this.
+    public static func buyUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<BuyResult, NoError> {
+        return context.account.postbox.transaction { transaction -> PendingBuy in
+            let newBalance: Int64
+            switch price.currency {
+            case .stars:
+                newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) - price.amount.value
                 PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: newBalance)
-
-                let phantomGift = PampGramPhantomGift(
-                    id: Int64.random(in: 1...Int64.max),
-                    peerId: peerId,
-                    gift: gift,
-                    starPrice: starPrice,
-                    date: Int32(Date().timeIntervalSince1970),
-                    localMessageId: nil
-                )
-                PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
-                return .success(PendingSend(newBalance: newBalance, phantomGift: phantomGift))
+            case .ton:
+                newBalance = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) - price.amount.value
+                PampGramPhantomGiftStore.setFakeTonBalanceNanos(transaction: transaction, nanos: newBalance)
             }
-            |> mapToSignal { result -> Signal<Result<SendResult, SendError>, NoError> in
-                switch result {
-                case let .failure(error):
-                    return .single(.failure(error))
-                case let .success(pending):
-                    let newBalance = pending.newBalance
-                    let phantomGift = pending.phantomGift
-                    return PampGramPhantomGiftMessage.insertLocalGiftMessage(context: context, peerId: peerId, gift: phantomGift.gift, starPrice: starPrice)
-                    |> map { messageId -> Result<SendResult, SendError> in
-                        let finalGift: PampGramPhantomGift
-                        if let messageId {
-                            finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, starPrice: phantomGift.starPrice, date: phantomGift.date, localMessageId: messageId)
-                            let _ = context.account.postbox.transaction { transaction in
-                                PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
-                                PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
-                            }.start()
-                        } else {
-                            finalGift = phantomGift
-                        }
-                        return .success(SendResult(phantomGift: finalGift, remainingBalance: newBalance))
-                    }
+
+            let phantomGift = PampGramPhantomGift(
+                id: Int64.random(in: 1...Int64.max),
+                peerId: peerId,
+                gift: .unique(uniqueGift),
+                price: price,
+                date: Int32(Date().timeIntervalSince1970),
+                localMessageId: nil
+            )
+            PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+            return PendingBuy(newBalance: newBalance, phantomGift: phantomGift)
+        }
+        |> mapToSignal { pending -> Signal<BuyResult, NoError> in
+            let newBalance = pending.newBalance
+            let phantomGift = pending.phantomGift
+
+            // A self-purchase (buying for your own collection, not gifting someone) never
+            // gets a chat message — there's no chat to put it in, real purchases don't
+            // create one either.
+            guard peerId != context.account.peerId else {
+                return .single(BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency)))
+            }
+
+            return PampGramPhantomGiftMessage.insertLocalUniqueGiftMessage(context: context, peerId: peerId, uniqueGift: uniqueGift)
+            |> map { messageId -> BuyResult in
+                let finalGift: PampGramPhantomGift
+                if let messageId {
+                    finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId)
+                    let _ = context.account.postbox.transaction { transaction in
+                        PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
+                        PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
+                    }.start()
+                } else {
+                    finalGift = phantomGift
                 }
+                return BuyResult(phantomGift: finalGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency))
             }
         }
     }

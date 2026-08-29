@@ -1,5 +1,5 @@
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-index 2dcfc95e..c0980b72 100644
+index 2dcfc95e..4d5ad691 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 @@ -152,7 +152,12 @@ private func contentNodeMessagesAndClassesForItem(_ item: ChatMessageItem) -> ([
@@ -8,58 +8,48 @@ index 2dcfc95e..c0980b72 100644
          }
 -        
 +
-+        // PampGram Phantom Gifts are inserted directly as real, local-only messages
-+        // (see PampGramPhantomGiftMessage.insertLocalGiftMessage) carrying a genuine
-+        // TelegramMediaAction.starGift, so they already fall through the normal
-+        // .starGift case below — no special-casing needed here.
++        // PampGram's fake market purchases are inserted directly as real, local-only
++        // messages (see PampGramPhantomGiftMessage.insertLocalUniqueGiftMessage) carrying a
++        // genuine TelegramMediaAction.starGiftUnique, so they already fall through the
++        // normal .starGiftUnique case below — no special-casing needed here.
 +
          var isFile = false
          inner: for media in messageMedia {
              if let media = media as? TelegramMediaPaidContent {
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
-index 1820be66..a6267acf 100644
+index 1820be66..4590ccc6 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
-@@ -48,6 +48,8 @@ swift_library(
+@@ -48,6 +48,7 @@ swift_library(
          "//submodules/TelegramUI/Components/AlertComponent",
          "//submodules/TelegramUI/Components/AlertComponent/AlertTransferHeaderComponent",
          "//submodules/TelegramUI/Components/AvatarComponent",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
-+        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
      ],
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-index 429cf39c..a9c77a7c 100644
+index 429cf39c..5f26fdeb 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-@@ -28,6 +28,9 @@ import GiftViewScreen
+@@ -28,6 +28,7 @@ import GiftViewScreen
  import UndoUI
  import EdgeEffect
  import GlassBarButtonComponent
 +import PampGramCore
-+import PhantomGiftKit
-+import ConfettiEffect
  
  final class GiftOptionsScreenComponent: Component {
      typealias EnvironmentType = ViewControllerComponentContainer.Environment
-@@ -87,7 +90,8 @@ final class GiftOptionsScreenComponent: Component {
+@@ -87,7 +88,7 @@ final class GiftOptionsScreenComponent: Component {
          case resale
          case stars(Int64)
          case transfer
 -        
-+        case phantom
 +
          init(rawValue: Int64) {
              switch rawValue {
              case 0:
-@@ -100,11 +104,13 @@ final class GiftOptionsScreenComponent: Component {
-                 self = .transfer
-             case -4:
-                 self = .resale
-+            case -5:
-+                self = .phantom
-             default:
+@@ -104,7 +105,7 @@ final class GiftOptionsScreenComponent: Component {
                  self = .stars(rawValue)
              }
          }
@@ -68,44 +58,22 @@ index 429cf39c..a9c77a7c 100644
          public var rawValue: Int64 {
              switch self {
              case .all:
-@@ -117,6 +123,8 @@ final class GiftOptionsScreenComponent: Component {
-                 return -3
-             case .resale:
-                 return -4
-+            case .phantom:
-+                return -5
-             case let .stars(stars):
-                 return stars
-             }
-@@ -187,7 +195,7 @@ final class GiftOptionsScreenComponent: Component {
-                         }
-                         let filteredGifts: [StarGift] = sortedGifts.filter {
-                             switch self.starsFilter {
--                            case .all:
-+                            case .all, .phantom:
-                                 return true
-                             case .limited:
-                                 if case let .generic(gift) = $0 {
-@@ -230,6 +238,18 @@ final class GiftOptionsScreenComponent: Component {
+@@ -230,6 +231,14 @@ final class GiftOptionsScreenComponent: Component {
          private var isUpdating: Bool = false
          
          private var starsStateDisposable: Disposable?
 +
-+        // PampGram: whether the "Подарок" tab is shown at all, and the local fake-Stars
-+        // balance shown at the top of the screen while that tab is selected. Both owned by
-+        // the PampGram settings screen, so they're observed live rather than read once —
-+        // the balance has to update in place as gifts are sent from this same screen.
-+        private var pampGramPhantomGiftsEnabled = PampGramSettings.defaultSettings.phantomGiftsEnabled
++        // PampGram: the local fake-Stars balance shown at the top of this screen, and
++        // whether it's shown at all — both owned by the PampGram settings screen, so
++        // they're observed live rather than read once, since the settings screen can
++        // change either while this screen is on top.
 +        private var pampGramFakeStarsBalance = PampGramSettings.defaultSettings.fakeStarsBalance
-+        // Independent of pampGramPhantomGiftsEnabled above: that one controls whether the
-+        // "Подарок" tab itself exists, this one controls only whether the balance shown at
-+        // the top of the screen (on every tab) is the fake one or the real one.
 +        private var pampGramFakeStarsDisplayEnabled = PampGramSettings.defaultSettings.fakeStarsDisplayEnabled
 +        private var pampGramSettingsDisposable: Disposable?
          private var starsState: StarsContext.State?
          
          private let optionsPromise = Promise<[StarsTopUpOption]?>(nil)
-@@ -280,6 +300,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -280,6 +289,7 @@ final class GiftOptionsScreenComponent: Component {
          deinit {
              self.starsStateDisposable?.dispose()
              self.auctionDisposable.dispose()
@@ -113,122 +81,10 @@ index 429cf39c..a9c77a7c 100644
          }
  
          func scrollToTop() {
-@@ -291,15 +312,124 @@ final class GiftOptionsScreenComponent: Component {
-             self.updateScrolling(interactive: true, transition: self.nextScrollTransition ?? .immediate)
-         }
-         
-+        // PampGram gift send: mirrors the real purchase-confirmation and "gift sent" wording
-+        // exactly (see the screenshots this was matched against) — never touches Stars or the
-+        // real StarGift purchase APIs, see PampGramPhantomGiftManager. Deducts the local
-+        // fake-Stars balance, inserts a real but local-only chat message, and stores the gift
-+        // so it survives an app restart.
-+        private func openPhantomGift(gift: StarGift.Gift) {
-+            guard let component = self.component, let environment = self.environment else {
-+                return
-+            }
-+            guard let controller = environment.controller() as? GiftOptionsScreen else {
-+                return
-+            }
-+            let mainController: ViewController
-+            if let parentController = controller.parentController() {
-+                mainController = parentController
-+            } else {
-+                mainController = controller
-+            }
-+            let context = component.context
-+            let peerId = component.peerId
-+            let peerName = self.state?.peer?.compactDisplayTitle ?? ""
-+            let title = gift.title ?? "Gift"
-+            let starPrice = gift.price
-+            let asCollectible = gift.availability != nil
-+
-+            // take(1): the balance signal is live, and without this the confirmation alert
-+            // would be presented again every time the balance changed — including the moment
-+            // the send itself deducts it.
-+            let _ = (PampGramPhantomGiftStore.fakeStarsBalanceSignal(context: context)
-+            |> take(1)
-+            |> deliverOnMainQueue).start(next: { [weak controller] currentBalance in
-+                guard let controller else {
-+                    return
-+                }
-+                let theme = AlertControllerTheme(presentationData: context.sharedContext.currentPresentationData.with { $0 })
-+                let font = Font.regular(floor(theme.baseFontSize * 13.0 / 17.0))
-+
-+                guard currentBalance >= starPrice else {
-+                    controller.present(textAlertController(
-+                        theme: theme,
-+                        title: NSAttributedString(string: "Недостаточно звёзд", font: Font.semibold(theme.baseFontSize), textColor: theme.primaryColor, paragraphAlignment: .center),
-+                        text: NSAttributedString(string: "У вас ⭐ \(currentBalance), а «\(title)» стоит ⭐ \(starPrice).", font: font, textColor: theme.primaryColor, paragraphAlignment: .center),
-+                        actions: [TextAlertAction(type: .defaultAction, title: "OK", action: {})],
-+                        actionLayout: .horizontal
-+                    ), in: .window(.root))
-+                    return
-+                }
-+
-+                // Same shape as the real payment-confirmation sheet: "Подтверждение оплаты" /
-+                // "Вы точно хотите купить «X» за ⭐N и подарить Y?" / "Купить за ⭐N" / "Отмена".
-+                let alertController = textAlertController(
-+                    theme: theme,
-+                    title: NSAttributedString(string: "Подтверждение оплаты", font: Font.semibold(theme.baseFontSize), textColor: theme.primaryColor, paragraphAlignment: .center),
-+                    text: NSAttributedString(string: "Вы точно хотите купить «\(title)» за ⭐ \(starPrice) и подарить \(peerName)?", font: font, textColor: theme.primaryColor, paragraphAlignment: .center),
-+                    actions: [
-+                        TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
-+                        TextAlertAction(type: .defaultAction, title: "Купить за ⭐ \(starPrice)", action: { [weak mainController] in
-+                            let _ = (PampGramPhantomGiftManager.send(context: context, peerId: peerId, baseGift: gift, starPrice: starPrice, asCollectible: asCollectible)
-+                            |> deliverOnMainQueue).start(next: { [weak mainController] result in
-+                                guard let mainController, let navigationController = mainController.navigationController as? NavigationController else {
-+                                    return
-+                                }
-+                                mainController.dismiss()
-+
-+                                // Same wording as the real "gift sent" toast: title "Подарок
-+                                // отправлен", text naming the recipient and saying they were
-+                                // notified — matched against the real app 1-for-1.
-+                                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-+                                let toastTitle: String?
-+                                let text: String
-+                                switch result {
-+                                case .success:
-+                                    toastTitle = "Подарок отправлен"
-+                                    text = "\(peerName) получил(а) уведомление о подарке от Вас."
-+                                case .failure:
-+                                    toastTitle = nil
-+                                    text = "Не удалось отправить: недостаточно звёзд."
-+                                }
-+
-+                                let tooltipController = UndoOverlayController(
-+                                    presentationData: presentationData,
-+                                    content: .sticker(
-+                                        context: context,
-+                                        file: gift.file,
-+                                        loop: true,
-+                                        title: toastTitle,
-+                                        text: text,
-+                                        undoText: nil,
-+                                        customAction: nil
-+                                    ),
-+                                    action: { _ in return true }
-+                                )
-+                                (navigationController.viewControllers.last as? ViewController)?.present(tooltipController, in: .current)
-+                                navigationController.view.addSubview(ConfettiView(frame: navigationController.view.bounds))
-+                            })
-+                        }),
-+                    ],
-+                    actionLayout: .horizontal
-+                )
-+                controller.present(alertController, in: .window(.root))
-+            })
-+        }
-+
-         private func openGift(gift: StarGift, skipDateCheck: Bool = false) {
+@@ -295,11 +305,12 @@ final class GiftOptionsScreenComponent: Component {
              guard let component = self.component, let environment = self.environment else {
                  return
              }
-+
-+            if case .phantom = self.starsFilter, case let .generic(genericGift) = gift {
-+                self.openPhantomGift(gift: genericGift)
-+                return
-+            }
 +
              let context = component.context
              let strings = environment.strings
@@ -239,23 +95,19 @@ index 429cf39c..a9c77a7c 100644
              if let controller = environment.controller() as? GiftOptionsScreen {
                  let mainController: ViewController
                  if let parentController = controller.parentController() {
-@@ -1011,6 +1141,24 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1011,6 +1022,20 @@ final class GiftOptionsScreenComponent: Component {
              self.appliedStarsFilter = self.starsFilter
              
              if self.component == nil {
 +                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
-+                |> map { ($0.phantomGiftsEnabled, $0.fakeStarsBalance, $0.fakeStarsDisplayEnabled) }
++                |> map { ($0.fakeStarsBalance, $0.fakeStarsDisplayEnabled) }
 +                |> distinctUntilChanged(isEqual: { $0 == $1 })
-+                |> deliverOnMainQueue).start(next: { [weak self] enabled, fakeStarsBalance, fakeStarsDisplayEnabled in
++                |> deliverOnMainQueue).start(next: { [weak self] fakeStarsBalance, fakeStarsDisplayEnabled in
 +                    guard let self else {
 +                        return
 +                    }
-+                    self.pampGramPhantomGiftsEnabled = enabled
 +                    self.pampGramFakeStarsBalance = fakeStarsBalance
 +                    self.pampGramFakeStarsDisplayEnabled = fakeStarsDisplayEnabled
-+                    if !enabled, case .phantom = self.starsFilter {
-+                        self.starsFilter = .all
-+                    }
 +                    if !self.isUpdating {
 +                        self.state?.updated()
 +                    }
@@ -264,18 +116,19 @@ index 429cf39c..a9c77a7c 100644
                  self.starsStateDisposable = (component.starsContext.state
                  |> deliverOnMainQueue).start(next: { [weak self] state in
                      guard let self else {
-@@ -1219,7 +1367,20 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1219,7 +1244,21 @@ final class GiftOptionsScreenComponent: Component {
                  containerSize: availableSize
              )
              
 -            let formattedBalance = formatStarsAmountText(self.starsState?.balance ?? StarsAmount.zero, dateTimeFormat: environment.dateTimeFormat)
 +            // While the "Локальные звёзды" PampGram toggle is on, the balance shown up top
-+            // is the local fake balance on every tab ("Все"/"Мои"/"Коллекционные"/"Подарок")
-+            // — not the account's real Stars balance. It's purely a display swap: real
-+            // purchases on the other three tabs still charge real Stars through the normal
-+            // flow below, completely unaffected by what this label shows. Only a purchase
-+            // actually made from the "Подарок" tab (openPhantomGift) ever touches the fake
-+            // balance itself, and that tab's own existence is a separate toggle.
++            // is the local fake balance on every tab ("Все"/"Мои"/"Коллекционные") — not the
++            // account's real Stars balance. It's purely a display swap: buying a gift on
++            // this screen still charges real Stars through the normal flow below,
++            // completely unaffected by what this label shows — the fake balance is only
++            // ever touched by a purchase made through the real resale market (see
++            // buyStarGiftImpl / PampGramPhantomGiftManager), which this screen doesn't lead
++            // to directly.
 +            let displayedBalance: StarsAmount
 +            if self.pampGramFakeStarsDisplayEnabled {
 +                displayedBalance = StarsAmount(value: self.pampGramFakeStarsBalance, nanos: 0)
@@ -286,25 +139,255 @@ index 429cf39c..a9c77a7c 100644
              let smallLabelFont = Font.regular(11.0)
              let labelFont = Font.semibold(14.0)
              let balanceText = tonAmountAttributedString(formattedBalance, integralFont: labelFont, fractionalFont: smallLabelFont, color: theme.actionSheet.primaryTextColor, decimalSeparator: environment.dateTimeFormat.decimalSeparator)
-@@ -1646,7 +1807,17 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1646,7 +1685,7 @@ final class GiftOptionsScreenComponent: Component {
                          title: strings.Gift_Options_Gift_Filter_Collectibles
                      ))
                  }
 -                
 +
-+                // "Подарок" — same live gift catalog as "Все", sent as a cosmetic-only local
-+                // send instead of a real purchase. Switchable off entirely from the PampGram
-+                // settings screen.
-+                if self.pampGramPhantomGiftsEnabled {
-+                    tabSelectorItems.append(TabSelectorComponent.Item(
-+                        id: AnyHashable(StarsFilter.phantom.rawValue),
-+                        title: "Подарок"
-+                    ))
-+                }
-+
                  let tabSelectorSize = self.tabSelector.update(
                      transition: transition,
                      component: AnyComponent(TabSelectorComponent(
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
+index 79e9e748..d7dfe6d6 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
++++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
+@@ -303,6 +303,10 @@ public final class GiftStoreContentComponent: Component {
+                                                     buyGift: { slug, peerId, price in
+                                                         return self.starGiftsContext?.buyStarGift(slug: slug, peerId: peerId, price: price) ?? .complete()
+                                                     },
++                                                    // PampGram: this is the real resale-market browsing path — the one place
++                                                    // where a fake purchase is ever offered. Reaching the same real "Buy" button
++                                                    // via .confirmPurchaseImmediately (crafting) above is untouched on purpose.
++                                                    pampGramFakePurchaseAllowed: true,
+                                                     updateResellStars: { _, price in
+                                                         return self.starGiftsContext?.updateStarGiftResellPrice(slug: uniqueGift.slug, price: price) ?? .complete()
+                                                     }
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
+index 3dad3ead..cf5f2029 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
++++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
+@@ -71,6 +71,8 @@ swift_library(
+         "//submodules/TelegramUI/Components/AlertComponent/AlertInputFieldComponent",
+         "//submodules/TelegramUI/Components/GlassControls",
+         "//submodules/Components/ResizableSheetComponent",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
+index 6f6c1f3c..741b7e39 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
++++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
+@@ -7,6 +7,8 @@ import AccountContext
+ import PresentationDataUtils
+ import TelegramStringFormatting
+ import BalanceNeededScreen
++import PampGramCore
++import PhantomGiftKit
+ 
+ public func buyStarGiftImpl(
+     context: AccountContext,
+@@ -17,48 +19,71 @@ public func buyStarGiftImpl(
+     skipConfirmation: Bool = false,
+     starsTopUpOptions: Signal<[StarsTopUpOption]?, NoError>,
+     buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)?,
++    // PampGram: only the real market-browsing → gift-detail-page → buy path sets this true
++    // (see GiftStoreScreen.swift and GiftViewScreen.swift). Every other caller — crafting
++    // included — defaults to false and keeps the exact real behaviour below, untouched.
++    pampGramFakePurchaseAllowed: Bool = false,
+     getController: @escaping () -> ViewController?,
+     updateProgress: @escaping (Bool) -> Void,
+     updateIsBalanceVisible: @escaping (Bool) -> Void,
+     completion: @escaping () -> Void
+ ) {
+     let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+-                    
+-    let action: (CurrencyAmount.Currency, @escaping () -> Void) -> Void = { currency, beforeCompletion in
+-        guard let resellAmount = uniqueGift.resellAmounts?.first(where: { $0.currency == currency }) else {
+-            guard let controller = getController() else {
++
++    // PampGram: resolved once, up front, so both the real-balance gate below and the
++    // purchase itself agree on whether this specific attempt is faked. Callers that never
++    // opt in (pampGramFakePurchaseAllowed: false, the default) skip the Postbox read
++    // entirely and get exactly the pre-existing real behaviour.
++    let pampGramSettingsSignal: Signal<PampGramSettings, NoError> = pampGramFakePurchaseAllowed
++        ? PampGramCore.settingsSignal(postbox: context.account.postbox)
++        : .single(PampGramSettings.defaultSettings)
++
++    let _ = (pampGramSettingsSignal
++    |> take(1)
++    |> deliverOnMainQueue).start(next: { pampGramSettings in
++        let pampGramFakePurchaseActive = pampGramFakePurchaseAllowed && pampGramSettings.phantomGiftsEnabled
++
++        let action: (CurrencyAmount.Currency, @escaping () -> Void) -> Void = { currency, beforeCompletion in
++            guard let resellAmount = uniqueGift.resellAmounts?.first(where: { $0.currency == currency }) else {
++                guard let controller = getController() else {
++                    return
++                }
++                let alertController = textAlertController(
++                    context: context,
++                    title: nil,
++                    text: presentationData.strings.Gift_Buy_ErrorUnknown,
++                    actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})],
++                    parseMarkdown: true
++                )
++                controller.present(alertController, in: .window(.root))
++
++                beforeCompletion()
+                 return
+             }
+-            let alertController = textAlertController(
+-                context: context,
+-                title: nil,
+-                text: presentationData.strings.Gift_Buy_ErrorUnknown,
+-                actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})],
+-                parseMarkdown: true
+-            )
+-            controller.present(alertController, in: .window(.root))
+-            
+-            beforeCompletion()
+-            return
+-        }
+-        
+-        let proceed: () -> Void = {
+-            updateProgress(true)
+-            
+-            let buyGiftImpl: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)
+-            if let buyGift {
+-                buyGiftImpl = { slug, peerId, price in
+-                    return buyGift(slug, peerId, price)
+-                }
+-            } else {
+-                buyGiftImpl = { slug, peerId, price in
+-                    return context.engine.payments.buyStarGift(slug: slug, peerId: peerId, price: price)
++
++            let proceed: () -> Void = {
++                updateProgress(true)
++
++                let buyGiftImpl: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)
++                if pampGramFakePurchaseActive {
++                    buyGiftImpl = { _, peerId, price in
++                        return PampGramPhantomGiftManager.buyUniqueGift(context: context, peerId: peerId, uniqueGift: uniqueGift, price: price ?? resellAmount)
++                        |> ignoreValues
++                        |> castError(BuyStarGiftError.self)
++                    }
++                } else if let buyGift {
++                    buyGiftImpl = { slug, peerId, price in
++                        return buyGift(slug, peerId, price)
++                    }
++                } else {
++                    buyGiftImpl = { slug, peerId, price in
++                        return context.engine.payments.buyStarGift(slug: slug, peerId: peerId, price: price)
++                    }
+                 }
+-            }
+-            
+-            let finalPrice = acceptedPrice ?? resellAmount
+-            let _ = (buyGiftImpl(uniqueGift.slug, recipientPeerId, finalPrice)
+-            |> deliverOnMainQueue).start(error: { error in
++
++                let finalPrice = acceptedPrice ?? resellAmount
++                let _ = (buyGiftImpl(uniqueGift.slug, recipientPeerId, finalPrice)
++                |> deliverOnMainQueue).start(error: { error in
+                 guard let controller = getController() else {
+                     return
+                 }
+@@ -139,8 +164,47 @@ public func buyStarGiftImpl(
+                 }
+             })
+         }
+-        
+-        if resellAmount.currency == .stars, let starsContext = context.starsContext, let starsState = context.starsContext?.currentState, starsState.balance < resellAmount.amount {
++
++        if pampGramFakePurchaseActive {
++            // PampGram: the real Stars/TON balance is irrelevant here — a fake purchase
++            // never touches it, so the real "top up"/"go to Fragment" gates below would be
++            // actively wrong (they'd block a purchase that was never going to spend real
++            // money in the first place). Checked against the fake balance instead.
++            let hasEnough: Bool
++            switch resellAmount.currency {
++            case .stars:
++                hasEnough = pampGramSettings.fakeStarsBalance >= resellAmount.amount.value
++            case .ton:
++                hasEnough = pampGramSettings.fakeTonBalanceNanos >= resellAmount.amount.value
++            }
++            if hasEnough {
++                proceed()
++            } else {
++                guard let controller = getController() else {
++                    beforeCompletion()
++                    return
++                }
++                let haveText: String
++                let needText: String
++                switch resellAmount.currency {
++                case .stars:
++                    haveText = "⭐ \(pampGramSettings.fakeStarsBalance)"
++                    needText = "⭐ \(resellAmount.amount.value)"
++                case .ton:
++                    haveText = formatTonAmountText(pampGramSettings.fakeTonBalanceNanos, dateTimeFormat: presentationData.dateTimeFormat)
++                    needText = formatTonAmountText(resellAmount.amount.value, dateTimeFormat: presentationData.dateTimeFormat)
++                }
++                let alertController = textAlertController(
++                    context: context,
++                    title: "Недостаточно средств",
++                    text: "У вас \(haveText), а нужно \(needText).",
++                    actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})],
++                    parseMarkdown: true
++                )
++                controller.present(alertController, in: .window(.root))
++                beforeCompletion()
++            }
++        } else if resellAmount.currency == .stars, let starsContext = context.starsContext, let starsState = context.starsContext?.currentState, starsState.balance < resellAmount.amount {
+             let _ = (starsTopUpOptions
+              |> filter { $0 != nil }
+              |> take(1)
+@@ -251,4 +315,5 @@ public func buyStarGiftImpl(
+             updateIsBalanceVisible(false)
+         })
+     }
++    })
+ }
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
+index 1a5228a9..2ff6b546 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
++++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
+@@ -1851,6 +1851,7 @@ private final class GiftViewSheetContent: CombinedComponent {
+                 skipConfirmation: skipConfirmation,
+                 starsTopUpOptions: self.starsTopUpOptionsPromise.get(),
+                 buyGift: controller.buyGift,
++                pampGramFakePurchaseAllowed: controller.pampGramFakePurchaseAllowed,
+                 getController: self.getController,
+                 updateProgress: { [weak self] progress in
+                     guard let self else {
+@@ -5745,6 +5746,9 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+     fileprivate let transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)?
+     fileprivate let upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)?
+     fileprivate let buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)?
++    // PampGram: true only when this screen was reached by browsing the real resale market
++    // (see GiftStoreScreen.swift) — see buyStarGiftImpl's own doc for what this gates.
++    fileprivate let pampGramFakePurchaseAllowed: Bool
+     fileprivate let updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)?
+     fileprivate let togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)?
+     fileprivate let shareStory: ((StarGift.UniqueGift) -> Void)?
+@@ -5766,6 +5770,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+         transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)? = nil,
+         upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)? = nil,
+         buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)? = nil,
++        pampGramFakePurchaseAllowed: Bool = false,
+         updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)? = nil,
+         togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)? = nil,
+         shareStory: ((StarGift.UniqueGift) -> Void)? = nil,
+@@ -5782,6 +5787,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+         self.transferGift = transferGift
+         self.upgradeGift = upgradeGift
+         self.buyGift = buyGift
++        self.pampGramFakePurchaseAllowed = pampGramFakePurchaseAllowed
+         self.updateResellStars = updateResellStars
+         self.togglePinnedToTop = togglePinnedToTop
+         self.shareStory = shareStory
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
 index 09315ffb..a3aed400 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD

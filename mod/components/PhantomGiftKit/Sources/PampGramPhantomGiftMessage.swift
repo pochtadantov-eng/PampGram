@@ -14,60 +14,36 @@ public enum PampGramPhantomGiftMessage {
     /// Message" action already skips the server-side delete request for this namespace
     /// (`submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift`),
     /// so deleting it later is also purely local for free.
-    public static func insertLocalGiftMessage(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift, starPrice: Int64) -> Signal<EngineMessage.Id?, NoError> {
+    ///
+    /// `uniqueGift` is always the real object read straight from the real market — its
+    /// title, number, model/backdrop/pattern attributes are never fabricated here, so the
+    /// resulting card is indistinguishable from a genuine purchase. `transferStars` is left
+    /// nil: that field captions a peer-to-peer *transfer*, not a market purchase, and a real
+    /// purchase's bubble doesn't restate the price either — the buy confirmation and the
+    /// success toast already showed it.
+    public static func insertLocalUniqueGiftMessage(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift) -> Signal<EngineMessage.Id?, NoError> {
         return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
-            let actionType: TelegramMediaActionType
-            switch gift {
-            case .generic:
-                actionType = .starGift(
-                    gift: gift,
-                    convertStars: starPrice,
-                    text: nil,
-                    entities: nil,
-                    nameHidden: false,
-                    savedToProfile: true,
-                    converted: false,
-                    upgraded: false,
-                    canUpgrade: false,
-                    upgradeStars: nil,
-                    isRefunded: false,
-                    isPrepaidUpgrade: false,
-                    upgradeMessageId: nil,
-                    peerId: nil,
-                    senderId: nil,
-                    savedId: nil,
-                    prepaidUpgradeHash: nil,
-                    giftMessageId: nil,
-                    upgradeSeparate: false,
-                    isAuctionAcquired: false,
-                    toPeerId: nil,
-                    number: nil
-                )
-            case .unique:
-                // Collectible instances (Model/Backdrop/Symbol rows) only render for
-                // .starGiftUnique — .starGift silently drops a .unique gift value.
-                actionType = .starGiftUnique(
-                    gift: gift,
-                    isUpgrade: false,
-                    isTransferred: false,
-                    savedToProfile: true,
-                    canExportDate: nil,
-                    transferStars: starPrice,
-                    isRefunded: false,
-                    isPrepaidUpgrade: false,
-                    peerId: nil,
-                    senderId: nil,
-                    savedId: nil,
-                    resaleAmount: nil,
-                    canTransferDate: nil,
-                    canResaleDate: nil,
-                    dropOriginalDetailsStars: nil,
-                    assigned: true,
-                    fromOffer: false,
-                    canCraftAt: nil,
-                    isCrafted: false
-                )
-            }
+            let actionType: TelegramMediaActionType = .starGiftUnique(
+                gift: .unique(uniqueGift),
+                isUpgrade: false,
+                isTransferred: false,
+                savedToProfile: true,
+                canExportDate: nil,
+                transferStars: nil,
+                isRefunded: false,
+                isPrepaidUpgrade: false,
+                peerId: nil,
+                senderId: nil,
+                savedId: nil,
+                resaleAmount: nil,
+                canTransferDate: nil,
+                canResaleDate: nil,
+                dropOriginalDetailsStars: nil,
+                assigned: true,
+                fromOffer: false,
+                canCraftAt: nil,
+                isCrafted: false
+            )
             let action = TelegramMediaAction(action: actionType)
 
             // Postbox returns the assigned MessageId keyed by globallyUniqueId, and only for

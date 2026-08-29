@@ -9,18 +9,21 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     public let id: Int64
     public let peerId: EnginePeer.Id
     public let gift: StarGift
-    public let starPrice: Int64
+    /// What the fake balance was actually charged — Stars or TON, matching whichever
+    /// currency the real resale listing was priced in.
+    public let price: CurrencyAmount
     public let date: Int32
     /// The id of the local-only chat message this gift is attached to, if one was created
-    /// (see `PampGramPhantomGiftMessage.insertLocalGiftMessage`). Namespace is always
-    /// `Namespaces.Message.Local` — never a real, syncable id.
+    /// (see `PampGramPhantomGiftMessage.insertLocalUniqueGiftMessage`). Namespace is always
+    /// `Namespaces.Message.Local` — never a real, syncable id. `nil` for a self-purchase
+    /// (buying for your own collection never inserts a chat message, real or fake).
     public let localMessageId: EngineMessage.Id?
 
-    public init(id: Int64, peerId: EnginePeer.Id, gift: StarGift, starPrice: Int64, date: Int32, localMessageId: EngineMessage.Id?) {
+    public init(id: Int64, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, date: Int32, localMessageId: EngineMessage.Id?) {
         self.id = id
         self.peerId = peerId
         self.gift = gift
-        self.starPrice = starPrice
+        self.price = price
         self.date = date
         self.localMessageId = localMessageId
     }
