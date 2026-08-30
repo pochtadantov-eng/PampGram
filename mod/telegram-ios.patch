@@ -19389,7 +19389,7 @@ index 2e4d308a..5a99b742 100644
                  }))
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 new file mode 100644
-index 00000000..6065757f
+index 00000000..96f607c9
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 @@ -0,0 +1,201 @@
@@ -19447,7 +19447,7 @@ index 00000000..6065757f
 +        var buffer = [UInt8](repeating: 0, count: bufSize)
 +        while true {
 +            let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer -> Int32 in
-+                return reader.read(rawBuffer.baseAddress, bufSize: Int32(bufSize))
++                return reader.read(rawBuffer.baseAddress!, bufSize: Int32(bufSize))
 +            }
 +            if bytesRead <= 0 {
 +                break
@@ -19470,7 +19470,7 @@ index 00000000..6065757f
 +            return nil
 +        }
 +
-+        var samples = pcm
++        let samples = pcm
 +        let samplesPerFrame = self.frameByteCount / 2
 +        var offset = 0
 +        var wroteAnyFrame = false
