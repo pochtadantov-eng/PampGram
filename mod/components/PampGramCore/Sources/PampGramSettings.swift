@@ -108,6 +108,33 @@ extension PampGramSpeedMode: Codable {
     }
 }
 
+/// In-memory, per-launch record of which peers this account has *actively* messaged in the
+/// current app session. Feeds the Ghost "Читать при действиях" option: once you've sent a
+/// message into a chat you've already revealed your presence there, so suppressing your read
+/// receipts for that one chat stops being useful — the receipt is allowed through again. Kept
+/// in memory on purpose (not in Postbox): it's a session-scoped signal, resets cleanly on
+/// relaunch, and never grows a persisted list. Read from the read-state push hook, written
+/// from the outgoing-message enqueue hook — both in the same app process.
+public final class PampGramGhostRuntime {
+    public static let shared = PampGramGhostRuntime()
+
+    private let actedPeerIds = Atomic<Set<Int64>>(value: Set())
+
+    private init() {}
+
+    public func markActed(peerId: Int64) {
+        let _ = self.actedPeerIds.modify { current in
+            var current = current
+            current.insert(peerId)
+            return current
+        }
+    }
+
+    public func hasActed(peerId: Int64) -> Bool {
+        return self.actedPeerIds.with { $0.contains(peerId) }
+    }
+}
+
 /// Every PampGram feature is a *local* one: it changes what this device shows its own
 /// owner, and nothing else. Nothing in this module — or in anything that reads it — sends
 /// data to Telegram, alters another account's state, touches real Stars or real Gifts, or
@@ -138,17 +165,49 @@ public struct PampGramSettings: Codable, Equatable {
     /// history instead of vanishing. Purely local: it never tells Telegram, or the person who
     /// deleted it, that a copy was kept.
     public var antiDeleteMessagesEnabled: Bool
-    /// "Нечиталка" (Ghost section): suppresses every outgoing activity signal this account
-    /// would otherwise send to the people it talks to — read receipts, online/last-seen,
-    /// typing, and recording/uploading indicators — while the local UI keeps working exactly
-    /// as normal (messages still show as read locally, badges still clear). Mutually
-    /// exclusive with `onlineMaskEnabled`: enabling one turns the other off, since "never
-    /// online" and "always online" can't both be true.
+    /// Legacy Ghost toggles, kept only so old stored settings still decode and can be
+    /// migrated. The Ghost section is now the granular `ghostMode*` set below; `init(from:)`
+    /// maps a previously-on `ghostReaderEnabled` into the new fields once. Nothing reads
+    /// these two directly any more.
     public var ghostReaderEnabled: Bool
-    /// "Маскировка онлайна" (Ghost section): the opposite of `ghostReaderEnabled`'s presence
-    /// half — keeps broadcasting "online" as persistently as the OS lets the app run, instead
-    /// of going offline when backgrounded. Mutually exclusive with `ghostReaderEnabled`.
     public var onlineMaskEnabled: Bool
+
+    /// "Режим призрака" master switch (Ghost section). When off, every `ghostMode*` feature
+    /// below is inert regardless of its own toggle — the section's single on/off gate, exactly
+    /// like the header switch in the screen. Each feature only suppresses *this* account's own
+    /// outgoing signals (read receipts, story views, typing, presence); nothing here reads or
+    /// stores anyone else's data.
+    public var ghostModeEnabled: Bool
+    /// "Не читать сообщения": withhold the outgoing "read up to here" sync that drives the
+    /// other side's read-receipt checkmarks. Local read state (badges, this device's own
+    /// "read" UI) is untouched. Honored per-peer through the exception set below.
+    public var ghostHideReadReceipts: Bool
+    /// "Не читать истории": withhold the outgoing "story seen" sync, so viewing someone's
+    /// story doesn't add this account to their viewer list. Honored per-peer.
+    public var ghostHideStoryViews: Bool
+    /// "Не отправлять «онлайн»": never broadcast an online presence, even while the app is
+    /// open in the foreground. Presence is a single global account signal, so this (and
+    /// `ghostAutoOffline`) are not per-peer — the exception set doesn't apply to them.
+    public var ghostHideOnline: Bool
+    /// "Не отправлять «печатает»": withhold every outgoing activity ping — typing, choosing a
+    /// sticker, recording voice/video, upload progress. Honored per-peer.
+    public var ghostHideTyping: Bool
+    /// "Автоматический «офлайн»": drop the background-online window — go offline the moment
+    /// the app leaves the foreground, instead of the usual short keep-alive. Global, like
+    /// `ghostHideOnline`.
+    public var ghostAutoOffline: Bool
+    /// "Читать при действиях": once you've sent a message into a chat this session (tracked in
+    /// `PampGramGhostRuntime`), stop hiding your read receipts *for that chat* — you've already
+    /// revealed you're there. Only relaxes `ghostHideReadReceipts`, nothing else.
+    public var ghostReadOnAction: Bool
+    /// Exceptions — "Все каналы": Ghost's per-peer suppression skips broadcast channels.
+    public var ghostExcludeAllChannels: Bool
+    /// Exceptions — "Все группы": Ghost's per-peer suppression skips groups/supergroups.
+    public var ghostExcludeAllGroups: Bool
+    /// Exceptions — "Папки": chat-folder ids whose explicitly-included chats Ghost skips.
+    public var ghostExcludedFolderIds: [Int32]
+    /// Exceptions — "Добавить исключение": individual chats Ghost skips.
+    public var ghostExcludedPeerIds: [PeerId]
     /// Chats excluded from "Восстановление удалённых сообщений": a message deleted by the
     /// other side in one of these chats is left alone (normal Telegram behavior), instead of
     /// being kept and shown like every other chat's deletions are. Checked by
@@ -211,6 +270,17 @@ public struct PampGramSettings: Codable, Equatable {
             antiDeleteMessagesEnabled: true,
             ghostReaderEnabled: false,
             onlineMaskEnabled: false,
+            ghostModeEnabled: false,
+            ghostHideReadReceipts: false,
+            ghostHideStoryViews: false,
+            ghostHideOnline: false,
+            ghostHideTyping: false,
+            ghostAutoOffline: false,
+            ghostReadOnAction: false,
+            ghostExcludeAllChannels: false,
+            ghostExcludeAllGroups: false,
+            ghostExcludedFolderIds: [],
+            ghostExcludedPeerIds: [],
             antiDeleteExcludedPeerIds: [],
             visualEditEnabled: false,
             fromHimGiftsEnabled: false,
@@ -229,7 +299,7 @@ public struct PampGramSettings: Codable, Equatable {
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -238,6 +308,17 @@ public struct PampGramSettings: Codable, Equatable {
         self.antiDeleteMessagesEnabled = antiDeleteMessagesEnabled
         self.ghostReaderEnabled = ghostReaderEnabled
         self.onlineMaskEnabled = onlineMaskEnabled
+        self.ghostModeEnabled = ghostModeEnabled
+        self.ghostHideReadReceipts = ghostHideReadReceipts
+        self.ghostHideStoryViews = ghostHideStoryViews
+        self.ghostHideOnline = ghostHideOnline
+        self.ghostHideTyping = ghostHideTyping
+        self.ghostAutoOffline = ghostAutoOffline
+        self.ghostReadOnAction = ghostReadOnAction
+        self.ghostExcludeAllChannels = ghostExcludeAllChannels
+        self.ghostExcludeAllGroups = ghostExcludeAllGroups
+        self.ghostExcludedFolderIds = ghostExcludedFolderIds
+        self.ghostExcludedPeerIds = ghostExcludedPeerIds
         self.antiDeleteExcludedPeerIds = antiDeleteExcludedPeerIds
         self.visualEditEnabled = visualEditEnabled
         self.fromHimGiftsEnabled = fromHimGiftsEnabled
@@ -269,6 +350,41 @@ public struct PampGramSettings: Codable, Equatable {
         self.antiDeleteMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .antiDeleteMessagesEnabled) ?? defaults.antiDeleteMessagesEnabled
         self.ghostReaderEnabled = try container.decodeIfPresent(Bool.self, forKey: .ghostReaderEnabled) ?? defaults.ghostReaderEnabled
         self.onlineMaskEnabled = try container.decodeIfPresent(Bool.self, forKey: .onlineMaskEnabled) ?? defaults.onlineMaskEnabled
+
+        // Migration: the granular Ghost fields didn't exist before. When they're all absent
+        // (settings written by an older PampGram) but the old bundled "Нечиталка" was on, seed
+        // the new fields from it so the feature keeps working after the update instead of
+        // silently switching off. `ghostModeEnabled` being the marker key: present → new
+        // settings, honor them verbatim; absent → migrate from the legacy toggle.
+        if let ghostModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ghostModeEnabled) {
+            self.ghostModeEnabled = ghostModeEnabled
+            self.ghostHideReadReceipts = try container.decodeIfPresent(Bool.self, forKey: .ghostHideReadReceipts) ?? defaults.ghostHideReadReceipts
+            self.ghostHideStoryViews = try container.decodeIfPresent(Bool.self, forKey: .ghostHideStoryViews) ?? defaults.ghostHideStoryViews
+            self.ghostHideOnline = try container.decodeIfPresent(Bool.self, forKey: .ghostHideOnline) ?? defaults.ghostHideOnline
+            self.ghostHideTyping = try container.decodeIfPresent(Bool.self, forKey: .ghostHideTyping) ?? defaults.ghostHideTyping
+            self.ghostAutoOffline = try container.decodeIfPresent(Bool.self, forKey: .ghostAutoOffline) ?? defaults.ghostAutoOffline
+            self.ghostReadOnAction = try container.decodeIfPresent(Bool.self, forKey: .ghostReadOnAction) ?? defaults.ghostReadOnAction
+        } else if self.ghostReaderEnabled {
+            self.ghostModeEnabled = true
+            self.ghostHideReadReceipts = true
+            self.ghostHideStoryViews = true
+            self.ghostHideOnline = true
+            self.ghostHideTyping = true
+            self.ghostAutoOffline = false
+            self.ghostReadOnAction = false
+        } else {
+            self.ghostModeEnabled = defaults.ghostModeEnabled
+            self.ghostHideReadReceipts = defaults.ghostHideReadReceipts
+            self.ghostHideStoryViews = defaults.ghostHideStoryViews
+            self.ghostHideOnline = defaults.ghostHideOnline
+            self.ghostHideTyping = defaults.ghostHideTyping
+            self.ghostAutoOffline = defaults.ghostAutoOffline
+            self.ghostReadOnAction = defaults.ghostReadOnAction
+        }
+        self.ghostExcludeAllChannels = try container.decodeIfPresent(Bool.self, forKey: .ghostExcludeAllChannels) ?? defaults.ghostExcludeAllChannels
+        self.ghostExcludeAllGroups = try container.decodeIfPresent(Bool.self, forKey: .ghostExcludeAllGroups) ?? defaults.ghostExcludeAllGroups
+        self.ghostExcludedFolderIds = try container.decodeIfPresent([Int32].self, forKey: .ghostExcludedFolderIds) ?? defaults.ghostExcludedFolderIds
+        self.ghostExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .ghostExcludedPeerIds) ?? defaults.ghostExcludedPeerIds
         self.antiDeleteExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .antiDeleteExcludedPeerIds) ?? defaults.antiDeleteExcludedPeerIds
         self.visualEditEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditEnabled) ?? defaults.visualEditEnabled
         self.fromHimGiftsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fromHimGiftsEnabled) ?? defaults.fromHimGiftsEnabled
@@ -284,6 +400,29 @@ public struct PampGramSettings: Codable, Equatable {
         self.lockedChatPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .lockedChatPeerIds) ?? defaults.lockedChatPeerIds
         self.localRublesBalanceKopecks = try container.decodeIfPresent(Int64.self, forKey: .localRublesBalanceKopecks) ?? defaults.localRublesBalanceKopecks
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
+    }
+
+    /// Whether a peer is exempt from Ghost's per-peer suppression, given its type and the
+    /// folder ids it belongs to. Pure and primitive-typed on purpose: it's called from hooks
+    /// inside TelegramCore, which resolve `isChannel`/`isGroup`/`folderIds` from the peer and
+    /// the chat filters themselves — this module can't reference those TelegramCore types.
+    /// Presence (online/auto-offline) is global and never routed through here.
+    public func ghostExcludesPeer(peerId: PeerId?, isChannel: Bool, isGroup: Bool, folderIds: [Int32]) -> Bool {
+        if let peerId, self.ghostExcludedPeerIds.contains(peerId) {
+            return true
+        }
+        if isChannel && self.ghostExcludeAllChannels {
+            return true
+        }
+        if isGroup && self.ghostExcludeAllGroups {
+            return true
+        }
+        if !self.ghostExcludedFolderIds.isEmpty && !folderIds.isEmpty {
+            for folderId in folderIds where self.ghostExcludedFolderIds.contains(folderId) {
+                return true
+            }
+        }
+        return false
     }
 }
 

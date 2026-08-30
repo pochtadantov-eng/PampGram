@@ -255,8 +255,7 @@ private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [P
         settings.fromHimGiftsEnabled,
         settings.antiDeleteMessagesEnabled,
         settings.visualEditEnabled,
-        settings.ghostReaderEnabled,
-        settings.onlineMaskEnabled
+        settings.ghostModeEnabled
     ]
     let activeCount = toggles.filter { $0 }.count
     var entries: [PampGramHubEntry] = [

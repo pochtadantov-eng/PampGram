@@ -214,8 +214,13 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     entries.append(.messagesRow(1, "Изменить визуально", settings.visualEditEnabled))
 
     entries.append(.ghostHeader("GHOST"))
-    entries.append(.ghostRow(0, "Нечиталка", settings.ghostReaderEnabled))
-    entries.append(.ghostRow(1, "Маскировка онлайна", settings.onlineMaskEnabled))
+    entries.append(.ghostRow(0, "Режим призрака", settings.ghostModeEnabled))
+    entries.append(.ghostRow(1, "Не читать сообщения", settings.ghostModeEnabled && settings.ghostHideReadReceipts))
+    entries.append(.ghostRow(2, "Не читать истории", settings.ghostModeEnabled && settings.ghostHideStoryViews))
+    entries.append(.ghostRow(3, "Не отправлять «онлайн»", settings.ghostModeEnabled && settings.ghostHideOnline))
+    entries.append(.ghostRow(4, "Не отправлять «печатает»", settings.ghostModeEnabled && settings.ghostHideTyping))
+    entries.append(.ghostRow(5, "Автоматический «офлайн»", settings.ghostModeEnabled && settings.ghostAutoOffline))
+    entries.append(.ghostRow(6, "Читать при действиях", settings.ghostModeEnabled && settings.ghostReadOnAction))
 
     return entries
 }
