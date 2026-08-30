@@ -22,6 +22,7 @@ swift_library(
         "//submodules/AccountContext",
         "//submodules/PromptUI",
         "//submodules/UndoUI",
+        "//submodules/OverlayStatusController",
         "//submodules/TelegramUI/Components/PampGram/PampGramCore",
         "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
         "//submodules/AppBundle",

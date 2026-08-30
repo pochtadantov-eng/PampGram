@@ -6,6 +6,7 @@ import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import OverlayStatusController
 import PampGramCore
 
 /// One package from the real "Купить звёзды" sheet's own published Stars→₽ pricing —
@@ -31,10 +32,10 @@ private let pampGramStarsPackages: [PampGramStarsPackage] = [
 ]
 
 private final class PampGramStarsPurchaseArguments {
-    let buy: (PampGramStarsPackage) -> Void
+    let openCheckout: (PampGramStarsPackage) -> Void
 
-    init(buy: @escaping (PampGramStarsPackage) -> Void) {
-        self.buy = buy
+    init(openCheckout: @escaping (PampGramStarsPackage) -> Void) {
+        self.openCheckout = openCheckout
     }
 }
 
@@ -97,7 +98,7 @@ private enum PampGramStarsPurchaseEntry: ItemListNodeEntry {
                 sectionId: self.section,
                 style: .blocks,
                 action: {
-                    arguments.buy(package)
+                    arguments.openCheckout(package)
                 }
             )
         }
@@ -114,19 +115,120 @@ private func pampGramStarsPurchaseEntries(balanceKopecks: Int64) -> [PampGramSta
     return entries
 }
 
-/// PampGram's own "Купить звёзды" — visually mirrors the real Apple In-App Purchase sheet
-/// (same package list, same real published ₽ prices), but spends `localRublesBalanceKopecks`
-/// instead of a real card, and credits `fakeStarsBalance` instead of the real Stars balance.
-/// Reached only from the "Пополнить" action on the Stars balance screen when
-/// `localRublesPurchaseEnabled` is on — every other place the app buys Stars (gifting to a
-/// friend, paying for a message, joining a paid channel) still goes through the real flow,
-/// since those inherently involve a real other party or a real unlock this screen can't fake.
-public func pampGramStarsPurchaseController(context: AccountContext, completion: @escaping (Int64) -> Void) -> ViewController {
-    var presentControllerImpl: ((ViewController) -> Void)?
-    var dismissImpl: (() -> Void)?
+// MARK: - Checkout screen
 
-    let arguments = PampGramStarsPurchaseArguments(
-        buy: { package in
+private final class PampGramStarsCheckoutArguments {
+    let pay: () -> Void
+
+    init(pay: @escaping () -> Void) {
+        self.pay = pay
+    }
+}
+
+private enum PampGramStarsCheckoutEntry: ItemListNodeEntry {
+    case itemRow(String, String)
+    case totalRow(String, String)
+    case paymentHeader(String)
+    case paymentRow(String, String)
+    case footer(String)
+    case payButton(String, Bool)
+
+    var section: ItemListSectionId {
+        switch self {
+        case .itemRow, .totalRow:
+            return 0
+        case .paymentHeader, .paymentRow:
+            return 1
+        case .footer, .payButton:
+            return 2
+        }
+    }
+
+    var stableId: Int32 {
+        switch self {
+        case .itemRow:
+            return 0
+        case .totalRow:
+            return 1
+        case .paymentHeader:
+            return 2
+        case .paymentRow:
+            return 3
+        case .footer:
+            return 4
+        case .payButton:
+            return 5
+        }
+    }
+
+    static func ==(lhs: PampGramStarsCheckoutEntry, rhs: PampGramStarsCheckoutEntry) -> Bool {
+        switch (lhs, rhs) {
+        case let (.itemRow(lhsTitle, lhsLabel), .itemRow(rhsTitle, rhsLabel)):
+            return lhsTitle == rhsTitle && lhsLabel == rhsLabel
+        case let (.totalRow(lhsTitle, lhsLabel), .totalRow(rhsTitle, rhsLabel)):
+            return lhsTitle == rhsTitle && lhsLabel == rhsLabel
+        case let (.paymentHeader(lhsText), .paymentHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.paymentRow(lhsTitle, lhsLabel), .paymentRow(rhsTitle, rhsLabel)):
+            return lhsTitle == rhsTitle && lhsLabel == rhsLabel
+        case let (.footer(lhsText), .footer(rhsText)):
+            return lhsText == rhsText
+        case let (.payButton(lhsTitle, lhsEnabled), .payButton(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        default:
+            return false
+        }
+    }
+
+    static func <(lhs: PampGramStarsCheckoutEntry, rhs: PampGramStarsCheckoutEntry) -> Bool {
+        return lhs.stableId < rhs.stableId
+    }
+
+    func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
+        let arguments = arguments as! PampGramStarsCheckoutArguments
+        switch self {
+        case let .itemRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "star.fill", backgroundColor: UIColor(rgb: 0xf5a623)), title: title, enabled: false, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+        case let .totalRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: false, titleFont: .bold, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+        case let .paymentHeader(text):
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .paymentRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "creditcard.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, enabled: false, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+        case let .footer(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case let .payButton(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .center, sectionId: self.section, style: .blocks, action: {
+                arguments.pay()
+            })
+        }
+    }
+}
+
+private func pampGramStarsCheckoutEntries(package: PampGramStarsPackage, balanceKopecks: Int64) -> [PampGramStarsCheckoutEntry] {
+    var entries: [PampGramStarsCheckoutEntry] = []
+    entries.append(.itemRow("\(package.stars) Звёзд Telegram", formatRubles(kopecks: package.priceKopecks)))
+    entries.append(.totalRow("Итого", formatRubles(kopecks: package.priceKopecks)))
+    entries.append(.paymentHeader("СПОСОБ ОПЛАТЫ"))
+    entries.append(.paymentRow("Локальная карта", formatRubles(kopecks: balanceKopecks)))
+    let canAfford = balanceKopecks >= package.priceKopecks
+    entries.append(.footer(canAfford ? "Спишется с локальной карты — та же, что пополняется в «Подарки» → «Локальные рубли»." : "На карте недостаточно средств. Пополните карту в «Подарки» → «Локальные рубли»."))
+    entries.append(.payButton("Оплатить \(formatRubles(kopecks: package.priceKopecks))", canAfford))
+    return entries
+}
+
+/// Pushed when a package is picked on the list screen — a dedicated confirm-and-pay step
+/// (item, total, payment method, "Оплатить" button) rather than a plain alert, so the local
+/// purchase reads like an actual checkout instead of a single tap-to-buy row. On success shows
+/// Telegram's own native loading→checkmark overlay (`OverlayStatusController`, the same one
+/// real purchases and link-copies use elsewhere in the app) instead of anything borrowed from
+/// a third-party checkout UI.
+private func pampGramStarsCheckoutController(context: AccountContext, package: PampGramStarsPackage, onPaid: @escaping (Int64) -> Void) -> ViewController {
+    var presentControllerImpl: ((ViewController) -> Void)?
+    var popSelfImpl: (() -> Void)?
+
+    let arguments = PampGramStarsCheckoutArguments(
+        pay: {
             let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
                 let presentationData = context.sharedContext.currentPresentationData.with { $0 }
                 guard settings.localRublesBalanceKopecks >= package.priceKopecks else {
@@ -138,30 +240,86 @@ public func pampGramStarsPurchaseController(context: AccountContext, completion:
                     ))
                     return
                 }
-                presentControllerImpl?(textAlertController(
-                    context: context,
-                    title: "Купить \(package.stars) звёзд?",
-                    text: "С карты спишется \(formatRubles(kopecks: package.priceKopecks)).",
-                    actions: [
-                        TextAlertAction(type: .genericAction, title: presentationData.strings.Common_Cancel, action: {}),
-                        TextAlertAction(type: .defaultAction, title: "Купить", action: {
-                            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                                var settings = settings
-                                guard settings.localRublesBalanceKopecks >= package.priceKopecks else {
-                                    return settings
-                                }
-                                settings.localRublesBalanceKopecks -= package.priceKopecks
-                                settings.fakeStarsBalance += package.stars
-                                return settings
-                            }).start(completed: {
-                                dismissImpl?()
-                                completion(package.stars)
-                            })
-                        })
-                    ],
-                    actionLayout: .horizontal
-                ))
+
+                let loadingController = OverlayStatusController(theme: presentationData.theme, type: .loading(cancelled: nil))
+                presentControllerImpl?(loadingController)
+
+                Queue.mainQueue().after(0.6, {
+                    let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                        var settings = settings
+                        guard settings.localRublesBalanceKopecks >= package.priceKopecks else {
+                            return settings
+                        }
+                        settings.localRublesBalanceKopecks -= package.priceKopecks
+                        settings.fakeStarsBalance += package.stars
+                        return settings
+                    }).start(completed: {
+                        loadingController.dismiss()
+                        presentControllerImpl?(OverlayStatusController(theme: presentationData.theme, type: .starSuccess("+\(package.stars)")))
+                        popSelfImpl?()
+                        onPaid(package.stars)
+                    })
+                })
             })
+        }
+    )
+
+    let signal = combineLatest(
+        context.sharedContext.presentationData,
+        PampGramCore.settingsSignal(postbox: context.account.postbox)
+    )
+    |> deliverOnMainQueue
+    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
+        let controllerState = ItemListControllerState(
+            presentationData: ItemListPresentationData(presentationData),
+            title: .text("Оплата"),
+            leftNavigationButton: nil,
+            rightNavigationButton: nil,
+            backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),
+            animateChanges: false
+        )
+        let listState = ItemListNodeState(
+            presentationData: ItemListPresentationData(presentationData),
+            entries: pampGramStarsCheckoutEntries(package: package, balanceKopecks: settings.localRublesBalanceKopecks),
+            style: .blocks,
+            animateChanges: true
+        )
+        return (controllerState, (listState, arguments))
+    }
+
+    let controller = ItemListController(context: context, state: signal)
+    presentControllerImpl = { [weak controller] c in
+        controller?.present(c, in: .window(.root))
+    }
+    popSelfImpl = { [weak controller] in
+        if let navigationController = controller?.navigationController as? NavigationController {
+            let _ = navigationController.popViewController(animated: false)
+        } else {
+            controller?.dismiss()
+        }
+    }
+    return controller
+}
+
+/// PampGram's own "Купить звёзды" — visually mirrors the real Apple In-App Purchase sheet
+/// (same package list, same real published ₽ prices), but spends `localRublesBalanceKopecks`
+/// instead of a real card, and credits `fakeStarsBalance` instead of the real Stars balance.
+/// Picking a package pushes `pampGramStarsCheckoutController` for a proper confirm-and-pay step
+/// before anything is charged. Reached only from the "Пополнить" action on the Stars balance
+/// screen when `localRublesPurchaseEnabled` is on — every other place the app buys Stars
+/// (gifting to a friend, paying for a message, joining a paid channel) still goes through the
+/// real flow, since those inherently involve a real other party or a real unlock this screen
+/// can't fake.
+public func pampGramStarsPurchaseController(context: AccountContext, completion: @escaping (Int64) -> Void) -> ViewController {
+    var pushControllerImpl: ((ViewController) -> Void)?
+    var dismissImpl: (() -> Void)?
+
+    let arguments = PampGramStarsPurchaseArguments(
+        openCheckout: { package in
+            pushControllerImpl?(pampGramStarsCheckoutController(context: context, package: package, onPaid: { stars in
+                dismissImpl?()
+                completion(stars)
+            }))
         }
     )
 
@@ -189,8 +347,8 @@ public func pampGramStarsPurchaseController(context: AccountContext, completion:
     }
 
     let controller = ItemListController(context: context, state: signal)
-    presentControllerImpl = { [weak controller] c in
-        controller?.present(c, in: .window(.root))
+    pushControllerImpl = { [weak controller] c in
+        controller?.push(c)
     }
     dismissImpl = { [weak controller] in
         if let navigationController = controller?.navigationController as? NavigationController {
