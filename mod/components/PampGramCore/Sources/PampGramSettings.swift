@@ -6,7 +6,7 @@ import SwiftSignalKit
 /// playback-rate pair fed to `AVAudioUnitTimePitch`. Deliberately simple, honestly-named
 /// pitch/tempo changes rather than a claim of true voice conversion (a robot-style ring
 /// modulator or a real vocoder is a different, much bigger feature).
-public enum PampGramVoicePreset: String, Codable, CaseIterable {
+public enum PampGramVoicePreset: String, CaseIterable {
     case male
     case female
     case child
@@ -47,13 +47,35 @@ public enum PampGramVoicePreset: String, Codable, CaseIterable {
     }
 }
 
+/// Custom Codable conformance rather than the compiler's default raw-value synthesis: that
+/// default routes through `Encoder.singleValueContainer()`/`Decoder.singleValueContainer()`,
+/// which Telegram's own `PostboxEncoder`/`PostboxDecoder` (used for every PampGram settings
+/// write, via `PreferencesEntry`) does not implement — it's a hard `preconditionFailure()`
+/// there. A keyed container with one field is the encoding this coder actually supports.
+extension PampGramVoicePreset: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try container.decode(String.self, forKey: .value)
+        self = PampGramVoicePreset(rawValue: raw) ?? .male
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.rawValue, forKey: .value)
+    }
+}
+
 /// A profile for "Ускорение загрузки"/"Ускорение скачивания" — how aggressively PampGram
 /// asks Telegram's own upload/download machinery to parallelize file transfers. Never
 /// invents bandwidth that isn't there and never exceeds what the app's real code already
 /// uses elsewhere (`increaseParallelParts`/`useLargerParts` is the exact profile Telegram's
 /// own history-import already opts into) — this only decides how often that existing lever
 /// gets pulled.
-public enum PampGramSpeedMode: String, Codable, CaseIterable {
+public enum PampGramSpeedMode: String, CaseIterable {
     case standard
     case fast
     case turbo
@@ -64,6 +86,25 @@ public enum PampGramSpeedMode: String, Codable, CaseIterable {
         case .fast: return "Быстрый"
         case .turbo: return "Турбо"
         }
+    }
+}
+
+/// See `PampGramVoicePreset`'s matching extension for why this can't use the compiler's
+/// default raw-value Codable synthesis.
+extension PampGramSpeedMode: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try container.decode(String.self, forKey: .value)
+        self = PampGramSpeedMode(rawValue: raw) ?? .standard
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.rawValue, forKey: .value)
     }
 }
 
