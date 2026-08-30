@@ -19389,13 +19389,14 @@ index 2e4d308a..5a99b742 100644
                  }))
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 new file mode 100644
-index 00000000..78daddd4
+index 00000000..6065757f
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,201 @@
 +import Foundation
 +import AVFoundation
 +import OpusBinding
++import TelegramCore
 +import PampGramCore
 +
 +/// "Изменить голос": pitch-shifts a just-recorded voice message before it's attached to the
@@ -19461,7 +19462,9 @@ index 00000000..78daddd4
 +    }
 +
 +    private static func encode(pcm: [Int16]) -> Data? {
-+        let dataItem = TGDataItem(data: Data())
++        guard let dataItem = TGDataItem(data: Data()) else {
++            return nil
++        }
 +        let writer = TGOggOpusWriter()
 +        guard writer.begin(with: dataItem) else {
 +            return nil
