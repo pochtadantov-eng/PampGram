@@ -374,3 +374,18 @@ public func pampGramPresentInsertText(context: AccountContext, peerId: EnginePee
         }
     ), in: .window(.root))
 }
+
+/// Same as `pampGramPresentInsertText`, but takes the text directly instead of prompting for
+/// it — used by the send-button long-press menu, which already has the composed input text in
+/// hand and inserts it as a fake incoming/outgoing message in one tap.
+public func pampGramInsertTextDirect(context: AccountContext, peerId: EnginePeer.Id, text: String, incoming: Bool) {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+        return
+    }
+    let insert = incoming
+        ? pampGramInsertIncomingMessage(context: context, peerId: peerId, text: trimmed, media: [])
+        : pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: trimmed, media: [])
+    let _ = insert.start()
+    pampGramPresentTooltip(context: context, text: "Сообщение добавлено.")
+}

@@ -16697,6 +16697,78 @@ index 9202c258..7f7b0385 100644
              if let peer = item.topMessage.peers[item.topMessage.id.peerId] {
                  if conferenceAvatars.count > 1 {
                      var peersString = ""
+diff --git a/submodules/LiveLocationManager/BUILD b/submodules/LiveLocationManager/BUILD
+index 47b32863..7daad004 100644
+--- a/submodules/LiveLocationManager/BUILD
++++ b/submodules/LiveLocationManager/BUILD
+@@ -14,6 +14,7 @@ swift_library(
+         "//submodules/TelegramCore:TelegramCore",
+         "//submodules/DeviceLocationManager:DeviceLocationManager",
+         "//submodules/AccountContext:AccountContext",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/LiveLocationManager/Sources/LiveLocationManager.swift b/submodules/LiveLocationManager/Sources/LiveLocationManager.swift
+index 4187f3b4..b036df0b 100644
+--- a/submodules/LiveLocationManager/Sources/LiveLocationManager.swift
++++ b/submodules/LiveLocationManager/Sources/LiveLocationManager.swift
+@@ -4,12 +4,20 @@ import SwiftSignalKit
+ import CoreLocation
+ import DeviceLocationManager
+ import AccountContext
++import PampGramCore
+ 
+ public final class LiveLocationManagerImpl: LiveLocationManager {
+     private let queue = Queue.mainQueue()
+-    
++
+     private let engine: TelegramEngine
+     private let locationManager: DeviceLocationManager
++
++    // "Фейковая геолокация" (Дополнительно), live half: when on, every outgoing live-location
++    // update is rewritten to this coordinate instead of the real device one, so a live-location
++    // broadcast continuously shows the faked position. Cached from the settings signal so the
++    // per-update path (`updateDeviceCoordinate`) stays synchronous.
++    private var pampGramFakeCoordinate: (latitude: Double, longitude: Double)?
++    private let pampGramSettingsDisposable = MetaDisposable()
+     
+     private let summaryManagerImpl: LiveLocationSummaryManagerImpl
+     public var summaryManager: LiveLocationSummaryManager {
+@@ -53,6 +61,18 @@ public final class LiveLocationManagerImpl: LiveLocationManager {
+         
+         self.summaryManagerImpl = LiveLocationSummaryManagerImpl(queue: self.queue, engine: engine, accountPeerId: engine.account.peerId)
+ 
++        self.pampGramSettingsDisposable.set((PampGramCore.settingsSignal(postbox: engine.account.postbox)
++        |> deliverOn(self.queue)).start(next: { [weak self] settings in
++            guard let strongSelf = self else {
++                return
++            }
++            if settings.fakeLocationEnabled {
++                strongSelf.pampGramFakeCoordinate = (latitude: settings.fakeLocationLatitude, longitude: settings.fakeLocationLongitude)
++            } else {
++                strongSelf.pampGramFakeCoordinate = nil
++            }
++        }))
++
+         self.messagesDisposable = (self.engine.messages.activeLiveLocationMessages()
+         |> deliverOn(self.queue)).start(next: { [weak self] message in
+             if let strongSelf = self {
+@@ -228,7 +248,13 @@ public final class LiveLocationManagerImpl: LiveLocationManager {
+     
+     private func updateDeviceCoordinate(_ coordinate: CLLocationCoordinate2D, accuracyRadius: Double, heading: Double?) {
+         assert(self.queue.isCurrent())
+-        
++
++        var coordinate = coordinate
++        // "Фейковая геолокация": broadcast the faked coordinate for every live-location update.
++        if let fake = self.pampGramFakeCoordinate {
++            coordinate = CLLocationCoordinate2D(latitude: fake.latitude, longitude: fake.longitude)
++        }
++
+         let ids = self.broadcastToMessageIds
+         let remainingIds = Atomic<Set<EngineMessage.Id>>(value: Set(ids.keys))
+         for id in ids.keys {
 diff --git a/submodules/LocationUI/BUILD b/submodules/LocationUI/BUILD
 index 39d33fd6..f5bac660 100644
 --- a/submodules/LocationUI/BUILD
@@ -16710,7 +16782,7 @@ index 39d33fd6..f5bac660 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/LocationUI/Sources/LocationPickerController.swift b/submodules/LocationUI/Sources/LocationPickerController.swift
-index 52ccf847..32a8e6c3 100644
+index 52ccf847..3ae5bde9 100644
 --- a/submodules/LocationUI/Sources/LocationPickerController.swift
 +++ b/submodules/LocationUI/Sources/LocationPickerController.swift
 @@ -12,6 +12,7 @@ import PresentationDataUtils
@@ -16777,6 +16849,31 @@ index 52ccf847..32a8e6c3 100644
          }, sendLiveLocation: { [weak self] coordinate in
              guard let strongSelf = self else {
                  return
+@@ -201,8 +217,22 @@ public final class LocationPickerController: ViewController, AttachmentContainab
+                         guard let self else {
+                             return
+                         }
+-                        self.completion(TelegramMediaMap(coordinate: coordinate, liveBroadcastingTimeout: period), nil, nil, nil, nil)
+-                        self.dismiss()
++                        // "Фейковая геолокация": start the live broadcast at the faked coordinate
++                        // (ongoing updates are faked in LiveLocationManager). One-time reads are
++                        // fine to sample here.
++                        let _ = (PampGramCore.settingsSignal(postbox: self.context.account.postbox)
++                        |> take(1)
++                        |> deliverOnMainQueue).start(next: { [weak self] settings in
++                            guard let self else {
++                                return
++                            }
++                            var coordinate = coordinate
++                            if settings.fakeLocationEnabled {
++                                coordinate = CLLocationCoordinate2D(latitude: settings.fakeLocationLatitude, longitude: settings.fakeLocationLongitude)
++                            }
++                            self.completion(TelegramMediaMap(coordinate: coordinate, liveBroadcastingTimeout: period), nil, nil, nil, nil)
++                            self.dismiss()
++                        })
+                     }
+                 )
+                 strongSelf.presentInGlobalOverlay(controller)
 diff --git a/submodules/TelegramCore/BUILD b/submodules/TelegramCore/BUILD
 index 53c9a721..3cca62e2 100644
 --- a/submodules/TelegramCore/BUILD
@@ -17406,6 +17503,55 @@ index 66242579..6c77a8c0 100644
      if peerId.namespace == Namespaces.Peer.SecretChat {
          return inputSecretChat(postbox: postbox, peerId: peerId)
          |> mapToSignal { inputPeer -> Signal<PeerReadState, PeerReadStateValidationError> in
+diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift b/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
+index aa11e522..635ebf1f 100644
+--- a/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
++++ b/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
+@@ -1,6 +1,7 @@
+ import Foundation
+ import Postbox
+ import SwiftSignalKit
++import PampGramCore
+ 
+ public enum TogglePeerChatPinnedLocation {
+     case group(PeerGroupId)
+@@ -14,8 +15,14 @@ public enum TogglePeerChatPinnedResult {
+ 
+ func _internal_toggleItemPinned(postbox: Postbox, accountPeerId: PeerId, location: TogglePeerChatPinnedLocation, itemId: PinnedItemId) -> Signal<TogglePeerChatPinnedResult, NoError> {
+     return postbox.transaction { transaction -> TogglePeerChatPinnedResult in
+-        let isPremium = transaction.getPeer(accountPeerId)?.isPremium ?? false
+-        
++        let pampGramSettings = PampGramCore.settings(transaction: transaction)
++        // "Закрепить чаты" / "Легальный премиум": treat the account as premium for the purpose
++        // of this client-side limit check, so more than the usual number of chats/folder chats
++        // can be pinned. Client-side only — the server keeps its own limit for what actually
++        // syncs, but the pin goes through locally.
++        let pampGramUnlimitedPins = pampGramSettings.infinitePinsEnabled || pampGramSettings.legalPremiumEnabled
++        let isPremium = (transaction.getPeer(accountPeerId)?.isPremium ?? false) || pampGramUnlimitedPins
++
+         let appConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self) ?? .defaultValue
+         let userLimitsConfiguration = UserLimitsConfiguration(appConfiguration: appConfiguration, isPremium: isPremium)
+         
+@@ -49,13 +56,17 @@ func _internal_toggleItemPinned(postbox: Postbox, accountPeerId: PeerId, locatio
+                 additionalCount = 1
+             }
+             
+-            let limitCount: Int
++            var limitCount: Int
+             if case .root = groupId {
+                 limitCount = Int(userLimitsConfiguration.maxPinnedChatCount)
+             } else {
+                 limitCount = Int(userLimitsConfiguration.maxArchivedPinnedChatCount)
+             }
+-            
++            // "Закрепить чаты": no client-side ceiling at all when on.
++            if pampGramUnlimitedPins {
++                limitCount = Int.max
++            }
++
+             let count = sameKind.count + additionalCount
+             if count > limitCount, itemIds.firstIndex(of: itemId) == nil {
+                 return .limitExceeded(count: sameKind.count, limit: limitCount)
 diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
 index 5da8c15e..c8bd1d42 100644
 --- a/submodules/TelegramUI/BUILD
@@ -19678,8 +19824,89 @@ index 2e4d308a..5a99b742 100644
                          }
                      }
                  }))
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift b/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift
+index a1a8f61d..8d28620c 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift
+@@ -12,6 +12,8 @@ import TopMessageReactions
+ import ReactionSelectionNode
+ import ChatControllerInteraction
+ import ChatSendAudioMessageContextPreview
++import PampGramCore
++import PampGramSettingsUI
+ 
+ extension ChatSendMessageEffect {
+     convenience init(_ effect: ChatSendMessageActionSheetController.SendParameters.Effect) {
+@@ -32,7 +34,67 @@ private func makeRichTextSendPreview(context: AccountContext, content: ChatInput
+     return ChatSendMessageRichTextPreview(context: context, instantPage: instantPage(from: content))
+ }
+ 
++// PampGram: when "Изменить визуально" is on and there is composed input text, long-pressing
++// the send button first offers "Текст от собеседника" / "Текст от меня" — one tap drops that
++// text into the chat as a fake incoming/outgoing message on this device (and clears the input)
++// — plus a passthrough to the stock send options. When the feature is off, or the input is
++// empty, the stock options open directly, exactly as before.
+ func chatMessageDisplaySendMessageOptions(selfController: ChatControllerImpl, node: ASDisplayNode, gesture: ContextGesture) {
++    guard let peerId = selfController.chatLocation.peerId else {
++        chatMessageDisplaySendMessageOptionsReal(selfController: selfController, node: node, gesture: gesture)
++        return
++    }
++    let context = selfController.context
++    let inputText = selfController.presentationInterfaceState.interfaceState.effectiveInputState.inputText.string.trimmingCharacters(in: .whitespacesAndNewlines)
++    let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox)
++    |> take(1)
++    |> deliverOnMainQueue).startStandalone(next: { [weak selfController] settings in
++        guard let selfController else {
++            return
++        }
++        guard settings.visualEditEnabled, !inputText.isEmpty else {
++            chatMessageDisplaySendMessageOptionsReal(selfController: selfController, node: node, gesture: gesture)
++            return
++        }
++        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
++        let preview = inputText.count > 40 ? String(inputText.prefix(40)) + "…" : inputText
++        let clearInput: () -> Void = { [weak selfController] in
++            selfController?.interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
++                return (ChatTextInputState(inputText: NSAttributedString(string: "")), inputMode)
++            }
++        }
++        let sheet = ActionSheetController(presentationData: presentationData)
++        sheet.setItemGroups([
++            ActionSheetItemGroup(items: [
++                ActionSheetTextItem(title: "Отправить «\(preview)» как"),
++                ActionSheetButtonItem(title: "Текст от собеседника", color: .accent, action: { [weak sheet] in
++                    sheet?.dismissAnimated()
++                    pampGramInsertTextDirect(context: context, peerId: peerId, text: inputText, incoming: true)
++                    clearInput()
++                }),
++                ActionSheetButtonItem(title: "Текст от меня", color: .accent, action: { [weak sheet] in
++                    sheet?.dismissAnimated()
++                    pampGramInsertTextDirect(context: context, peerId: peerId, text: inputText, incoming: false)
++                    clearInput()
++                }),
++                ActionSheetButtonItem(title: "Обычная отправка…", color: .accent, action: { [weak sheet, weak selfController] in
++                    sheet?.dismissAnimated()
++                    if let selfController {
++                        chatMessageDisplaySendMessageOptionsReal(selfController: selfController, node: node, gesture: gesture)
++                    }
++                })
++            ]),
++            ActionSheetItemGroup(items: [
++                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
++                    sheet?.dismissAnimated()
++                })
++            ])
++        ])
++        selfController.present(sheet, in: .window(.root))
++    })
++}
++
++private func chatMessageDisplaySendMessageOptionsReal(selfController: ChatControllerImpl, node: ASDisplayNode, gesture: ContextGesture) {
+     guard let peerId = selfController.chatLocation.peerId, let textInputView = selfController.chatDisplayNode.textInputView(), let layout = selfController.validLayout else {
+         return
+     }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5bb..36829662 100644
+index 07cef5bb..57ff7a74 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -19693,7 +19920,7 @@ index 07cef5bb..36829662 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,93 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,87 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -19717,8 +19944,10 @@ index 07cef5bb..36829662 100644
 +        }
 +        var items = items
 +        var newList = list
-+        newList.append(.separator)
-+        newList.append(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
++        // PampGram entry pinned to the very top of a message's long-press menu (a separator
++        // then the stock items below it), instead of appended at the bottom.
++        newList.insert(.separator, at: 0)
++        newList.insert(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
 +            return pampGramSettingsIcon(size: 24.0)
 +        }, iconSource: nil, action: { c, _ in
 +            var subItems: [ContextMenuItem] = []
@@ -19734,18 +19963,10 @@ index 07cef5bb..36829662 100644
 +                f(.dismissWithoutContent)
 +                controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
 +            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Текст от собеседника", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "bubble.left"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                pampGramPresentInsertText(context: context, peerId: message.id.peerId, incoming: true)
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Текст от меня", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "bubble.right"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                pampGramPresentInsertText(context: context, peerId: message.id.peerId, incoming: false)
-+            })))
++            // "Текст от собеседника"/"Текст от меня" moved out of this message menu onto the
++            // send-button long-press menu (see ChatTextInputPanelNode) — they compose a brand
++            // new fake message from the input field, so they belong on the send control, not on
++            // an existing message. The rest of "Изменить визуально" stays here.
 +            subItems.append(.action(ContextMenuActionItem(text: "Отправить фото", textColor: .primary, icon: { theme in
 +                return generateTintedImage(image: UIImage(systemName: "photo"), color: theme.actionSheet.primaryTextColor)
 +            }, iconSource: nil, action: { _, f in
@@ -19777,7 +19998,7 @@ index 07cef5bb..36829662 100644
 +                pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
 +            })))
 +            c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
-+        })))
++        })), at: 0)
 +        items.content = .list(newList)
 +        return items
 +    }
@@ -19867,10 +20088,10 @@ index 4a255581..6d7720af 100644
                  var chatListController: ChatListControllerImpl?
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 new file mode 100644
-index 00000000..c149c58a
+index 00000000..710f5ea2
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,207 @@
 +import Foundation
 +import AVFoundation
 +import OpusBinding
@@ -19885,10 +20106,13 @@ index 00000000..c149c58a
 +/// to sending the original, unmodified recording — a voice message that sounds like the
 +/// user's real voice is always safe; a corrupted one sent by mistake would not be.
 +public enum PampGramVoiceChanger {
-+    /// PCM convention `TGOggOpusWriter`/`OggOpusReader` actually use, confirmed against
-+    /// `ManagedAudioRecorder.swift`'s own packet math (`16000/1000 * millisecondsPerPacket`,
-+    /// 60ms packets): 16kHz, mono, 16-bit signed PCM, 1920-byte (960-sample) frames.
-+    private static let sampleRate: Double = 16000
++    /// PCM convention `TGOggOpusWriter`/`OggOpusReader` actually use: `OggOpusReader` decodes
++    /// to 48kHz mono 16-bit PCM (`op_read`, sampleRate 48000) and `TGOggOpusWriter` re-encodes
++    /// at 48kHz with a 960-sample (20ms) frame. Processing at the true 48kHz — not the 16kHz
++    /// this originally, wrongly assumed — is what keeps the pitch shift clean (feeding 48kHz
++    /// audio through a 16kHz-declared engine is what made it sound raspy) and keeps the
++    /// duration correct. 960 samples * 2 bytes = 1920-byte frames, matching the writer.
++    private static let sampleRate: Double = 48000
 +    private static let frameByteCount = 1920
 +
 +    /// `compressedData` is a complete Ogg/Opus file, exactly the form voice messages are
@@ -20004,6 +20228,9 @@ index 00000000..c149c58a
 +        let pitchUnit = AVAudioUnitTimePitch()
 +        pitchUnit.pitch = pitchCents
 +        pitchUnit.rate = rate
++        // Higher overlap = smoother, less "raspy"/metallic pitch shifting. It costs CPU, but
++        // this runs once, offline, on a finished recording, so the top of the range is free.
++        pitchUnit.overlap = 32.0
 +
 +        engine.attach(player)
 +        engine.attach(pitchUnit)

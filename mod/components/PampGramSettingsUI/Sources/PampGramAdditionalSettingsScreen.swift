@@ -17,8 +17,10 @@ private final class PampGramAdditionalArguments {
     let openFakeLocation: () -> Void
     let openChatLock: () -> Void
     let openCallOverrides: () -> Void
+    let toggleInfinitePins: (Bool) -> Void
+    let toggleLegalPremium: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -26,6 +28,8 @@ private final class PampGramAdditionalArguments {
         self.openFakeLocation = openFakeLocation
         self.openChatLock = openChatLock
         self.openCallOverrides = openCallOverrides
+        self.toggleInfinitePins = toggleInfinitePins
+        self.toggleLegalPremium = toggleLegalPremium
     }
 }
 
@@ -33,6 +37,7 @@ private enum PampGramAdditionalSection: Int32 {
     case about
     case voice
     case speed
+    case premium
     case extras
 }
 
@@ -49,6 +54,11 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case downloadSpeedRow(String, String)
     case speedFooter(String)
 
+    case premiumHeader(String)
+    case infinitePinsToggle(String, Bool)
+    case legalPremiumToggle(String, Bool)
+    case premiumFooter(String)
+
     case extrasHeader(String)
     case fakeLocationRow(String, String)
     case chatLockRow(String, String)
@@ -63,6 +73,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
+        case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
+            return PampGramAdditionalSection.premium.rawValue
         case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
@@ -88,16 +100,24 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 7
         case .speedFooter:
             return 8
-        case .extrasHeader:
+        case .premiumHeader:
             return 9
-        case .fakeLocationRow:
+        case .infinitePinsToggle:
             return 10
-        case .chatLockRow:
+        case .legalPremiumToggle:
             return 11
-        case .callOverridesRow:
+        case .premiumFooter:
             return 12
-        case .extrasFooter:
+        case .extrasHeader:
             return 13
+        case .fakeLocationRow:
+            return 14
+        case .chatLockRow:
+            return 15
+        case .callOverridesRow:
+            return 16
+        case .extrasFooter:
+            return 17
         }
     }
 
@@ -108,10 +128,18 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .extrasHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .infinitePinsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleInfinitePins(value)
+            })
+        case let .legalPremiumToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "star.circle.fill", backgroundColor: UIColor(rgb: 0xf5a623)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleLegalPremium(value)
+            })
         case let .voiceToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleVoiceChanger(value)
@@ -158,6 +186,11 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.uploadSpeedRow("Ускорение загрузки", settings.uploadSpeedMode.displayName))
     entries.append(.downloadSpeedRow("Ускорение скачивания", settings.downloadSpeedMode.displayName))
     entries.append(.speedFooter("Меняет, насколько параллельно Telegram передаёт части файлов. «Турбо» задействует потолок, уже используемый самим приложением для переноса истории — реальная скорость всё равно зависит от сети и сервера."))
+
+    entries.append(.premiumHeader("ПРЕМИУМ"))
+    entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
+    entries.append(.legalPremiumToggle("Легальный премиум", settings.legalPremiumEnabled))
+    entries.append(.premiumFooter("«Закрепить чаты ∞» снимает лимит на количество закреплённых чатов. «Легальный премиум» включает клиентские премиум-послабления, которые Telegram не проверяет на сервере (лимиты закреплений и папок). Закрепления сверх серверного лимита действуют на этом устройстве и могут не синхронизироваться на другие."))
 
     entries.append(.extrasHeader("ЕЩЁ"))
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
@@ -269,6 +302,20 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         },
         openCallOverrides: {
             pushControllerImpl?(pampGramCallOverridesController(context: context))
+        },
+        toggleInfinitePins: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.infinitePinsEnabled = value
+                return settings
+            }).start()
+        },
+        toggleLegalPremium: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.legalPremiumEnabled = value
+                return settings
+            }).start()
         }
     )
 

@@ -13,10 +13,12 @@ import PampGramCore
 private final class PampGramFakeLocationArguments {
     let toggleEnabled: (Bool) -> Void
     let editCoordinate: () -> Void
+    let pickOnMap: () -> Void
 
-    init(toggleEnabled: @escaping (Bool) -> Void, editCoordinate: @escaping () -> Void) {
+    init(toggleEnabled: @escaping (Bool) -> Void, editCoordinate: @escaping () -> Void, pickOnMap: @escaping () -> Void) {
         self.toggleEnabled = toggleEnabled
         self.editCoordinate = editCoordinate
+        self.pickOnMap = pickOnMap
     }
 }
 
@@ -30,13 +32,14 @@ private enum PampGramFakeLocationEntry: ItemListNodeEntry {
 
     case enabledToggle(String, Bool)
     case coordinateRow(String, String)
+    case mapRow(String)
     case footer(String)
 
     var section: ItemListSectionId {
         switch self {
         case .aboutText:
             return PampGramFakeLocationSection.about.rawValue
-        case .enabledToggle, .coordinateRow, .footer:
+        case .enabledToggle, .coordinateRow, .mapRow, .footer:
             return PampGramFakeLocationSection.location.rawValue
         }
     }
@@ -49,8 +52,10 @@ private enum PampGramFakeLocationEntry: ItemListNodeEntry {
             return 1
         case .coordinateRow:
             return 2
-        case .footer:
+        case .mapRow:
             return 3
+        case .footer:
+            return 4
         }
     }
 
@@ -71,6 +76,10 @@ private enum PampGramFakeLocationEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editCoordinate()
             })
+        case let .mapRow(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
+                arguments.pickOnMap()
+            })
         }
     }
 }
@@ -78,11 +87,12 @@ private enum PampGramFakeLocationEntry: ItemListNodeEntry {
 private func pampGramFakeLocationEntries(settings: PampGramSettings) -> [PampGramFakeLocationEntry] {
     var entries: [PampGramFakeLocationEntry] = []
 
-    entries.append(.aboutText("Подменяет точку при отправке геолокации в чат — только на этом устройстве, только для одноразовой отправки точки."))
+    entries.append(.aboutText("Подменяет вашу геопозицию при отправке в чат — только на этом устройстве. Работает и для одноразовой точки, и для трансляции геопозиции в реальном времени."))
 
     entries.append(.enabledToggle("Подменять геолокацию", settings.fakeLocationEnabled))
     entries.append(.coordinateRow("Координаты", String(format: "%.4f, %.4f", settings.fakeLocationLatitude, settings.fakeLocationLongitude)))
-    entries.append(.footer("Не работает для «Трансляции геопозиции» (live-локация) — та обновляется в реальном времени поверх настоящих координат."))
+    entries.append(.mapRow("Выбрать на карте"))
+    entries.append(.footer("Одноразовая точка и «Трансляция геопозиции» (live) будут показывать выбранную точку вместо настоящей. Координаты можно ввести вручную или выбрать на карте."))
 
     return entries
 }
@@ -92,6 +102,7 @@ private func pampGramFakeLocationEntries(settings: PampGramSettings) -> [PampGra
 /// `LocationPickerController.swift`.
 public func pampGramFakeLocationController(context: AccountContext) -> ViewController {
     var presentControllerImpl: ((ViewController) -> Void)?
+    var pushControllerImpl: ((ViewController) -> Void)?
 
     let arguments = PampGramFakeLocationArguments(
         toggleEnabled: { value in
@@ -128,6 +139,21 @@ public func pampGramFakeLocationController(context: AccountContext) -> ViewContr
                     }
                 ))
             })
+        },
+        pickOnMap: {
+            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+                let initialLatitude = settings.fakeLocationEnabled ? settings.fakeLocationLatitude : 55.751244
+                let initialLongitude = settings.fakeLocationEnabled ? settings.fakeLocationLongitude : 37.618423
+                pushControllerImpl?(pampGramMapPickerController(context: context, initialLatitude: initialLatitude, initialLongitude: initialLongitude, apply: { latitude, longitude in
+                    let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                        var settings = settings
+                        settings.fakeLocationLatitude = latitude
+                        settings.fakeLocationLongitude = longitude
+                        settings.fakeLocationEnabled = true
+                        return settings
+                    }).start()
+                }))
+            })
         }
     )
 
@@ -157,6 +183,9 @@ public func pampGramFakeLocationController(context: AccountContext) -> ViewContr
     let controller = ItemListController(context: context, state: signal)
     presentControllerImpl = { [weak controller] c in
         controller?.present(c, in: .window(.root))
+    }
+    pushControllerImpl = { [weak controller] c in
+        (controller?.navigationController as? NavigationController)?.pushViewController(c)
     }
     return controller
 }

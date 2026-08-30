@@ -34,16 +34,12 @@ public enum PampGramVoicePreset: String, CaseIterable {
         }
     }
 
-    /// Playback-rate multiplier for the same unit — a small tempo shift alongside the pitch
-    /// one reads as a more distinct "voice" than pitch alone.
+    /// Playback-rate multiplier for the pitch unit. Kept at 1.0 for every preset on purpose:
+    /// any value ≠ 1.0 changes the message's tempo (and so its duration), which read as the
+    /// recording being sped up/slowed down. The presets change only pitch, never speed — the
+    /// message plays back at exactly its original length.
     public var rate: Float {
-        switch self {
-        case .male: return 0.97
-        case .female: return 1.04
-        case .child: return 1.12
-        case .robot: return 0.92
-        case .giant: return 0.85
-        }
+        return 1.0
     }
 }
 
@@ -249,6 +245,14 @@ public struct PampGramSettings: Codable, Equatable {
     public var chatLockEnabled: Bool
     public var chatLockPin: String
     public var lockedChatPeerIds: [PeerId]
+    /// "Закрепить чаты" (Дополнительно): bypass the client-side pinned-chats limit so more than
+    /// the usual 5/10 chats can be pinned. Client-side only — Telegram's server keeps its own
+    /// limit, so pins beyond it may not sync to other devices, but on this device they pin.
+    public var infinitePinsEnabled: Bool
+    /// "Легальный премиум" (Дополнительно): flip on the client-side-only premium unlocks that
+    /// Telegram never verifies server-side — a locally-shown Premium badge/status, premium
+    /// stickers & reactions in the picker, and the relaxed folder/pin client limits.
+    public var legalPremiumEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -295,11 +299,13 @@ public struct PampGramSettings: Codable, Equatable {
             chatLockPin: "",
             lockedChatPeerIds: [],
             localRublesBalanceKopecks: 0,
-            localRublesPurchaseEnabled: false
+            localRublesPurchaseEnabled: false,
+            infinitePinsEnabled: false,
+            legalPremiumEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -334,6 +340,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.lockedChatPeerIds = lockedChatPeerIds
         self.localRublesBalanceKopecks = localRublesBalanceKopecks
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
+        self.infinitePinsEnabled = infinitePinsEnabled
+        self.legalPremiumEnabled = legalPremiumEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -400,6 +408,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.lockedChatPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .lockedChatPeerIds) ?? defaults.lockedChatPeerIds
         self.localRublesBalanceKopecks = try container.decodeIfPresent(Int64.self, forKey: .localRublesBalanceKopecks) ?? defaults.localRublesBalanceKopecks
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
+        self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
+        self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
     }
 
     /// Whether a peer is exempt from Ghost's per-peer suppression, given its type and the
