@@ -19389,7 +19389,7 @@ index 2e4d308a..5a99b742 100644
                  }))
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 new file mode 100644
-index 00000000..96f607c9
+index 00000000..c149c58a
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 @@ -0,0 +1,201 @@
@@ -19485,7 +19485,7 @@ index 00000000..96f607c9
 +                }
 +            }
 +            let ok = frameBytes.withUnsafeMutableBytes { framePointer -> Bool in
-+                return writer.writeFrame(framePointer.baseAddress?.assumingMemoryBound(to: UInt8.self), frameByteCount: UInt(frameBytes.count))
++                return writer.writeFrame(framePointer.baseAddress?.assumingMemoryBound(to: UInt8.self), frameByteCount: UInt(framePointer.count))
 +            }
 +            if !ok {
 +                return nil
