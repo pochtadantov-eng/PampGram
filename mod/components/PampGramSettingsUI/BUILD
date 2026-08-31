@@ -1,5 +1,12 @@
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 
+objc_library(
+    name = "PampGramAppleFrameworks",
+    sdk_frameworks = [
+        "MapKit",
+    ],
+)
+
 swift_library(
     name = "PampGramSettingsUI",
     module_name = "PampGramSettingsUI",
@@ -9,10 +16,8 @@ swift_library(
     copts = [
         "-warnings-as-errors",
     ],
-    sdk_frameworks = [
-        "MapKit",
-    ],
     deps = [
+        ":PampGramAppleFrameworks",
         "//submodules/Display",
         "//submodules/AsyncDisplayKit",
         "//submodules/MergeLists",

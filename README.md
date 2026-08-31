@@ -22,3 +22,6 @@ PampGram — мод для Telegram-iOS. GitHub Actions скачивает ак�
 - `mod/overrides/PampGramVoiceChanger.swift` — актуальный DSP voice changer.
 
 Визуальные/локальные функции не создают реальные Telegram/Fragment/TON операции или права.
+
+## v8.2 build fix
+MapKit is now linked through a small `objc_library` dependency instead of the unsupported `sdk_frameworks` attribute on `swift_library`.
