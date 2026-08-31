@@ -875,7 +875,7 @@ index b547dd3b..baa87a08 100644
          
          let maxReadStoryId: Signal<Int32?, NoError>
          if let peerId = self.chatLocation.peerId, peerId.namespace == Namespaces.Peer.CloudUser {
-@@ -1934,8 +1956,9 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
+@@ -1934,8 +1956,12 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
              audioTranscriptionTrial |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_audioTranscriptionTrial"),
              chatThemes |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_chatThemes"),
              deviceContactsNumbers |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_deviceContactsNumbers"),
