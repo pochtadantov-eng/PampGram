@@ -90,7 +90,7 @@ public func pampGramAppearanceController(context: AccountContext) -> ViewControl
     var present: ((ViewController) -> Void)?
     var currentIconNameValue = context.sharedContext.applicationBindings.getAlternateIconName()
     let currentIconName = ValuePromise<String?>(currentIconNameValue)
-    var icons = context.sharedContext.applicationBindings.getAvailableAlternateIcons().filter { !$0.isPremium }
+    let icons = context.sharedContext.applicationBindings.getAvailableAlternateIcons().filter { !$0.isPremium }
 
     func update(_ f: @escaping (PampGramAppearanceState) -> PampGramAppearanceState) { let _ = context.account.postbox.transaction { transaction in PampGramAppearanceStore.update(transaction: transaction, f) }.start() }
     func numericPrompt(title: String, current: Int32, range: ClosedRange<Int32>, apply: @escaping (inout PampGramAppearanceState, Int32) -> Void) {

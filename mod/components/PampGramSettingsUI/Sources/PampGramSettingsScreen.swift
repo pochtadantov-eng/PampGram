@@ -545,7 +545,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                         return
                     }
                     let _ = context.account.postbox.transaction { transaction -> Void in
-                        _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .rubles, kind: .topUp, amount: addedKopecks, title: "Пополнение локальной карты", details: "Ручное пополнение")
+                        PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .rubles, kind: .topUp, amount: addedKopecks, title: "Пополнение локальной карты", details: "Ручное пополнение")
                     }.start()
                 }
             ))
