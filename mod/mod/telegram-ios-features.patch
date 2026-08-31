@@ -1,0 +1,1229 @@
+diff --git a/submodules/AccountContext/Sources/ChatController.swift b/submodules/AccountContext/Sources/ChatController.swift
+index 7ff34e13..bba0a12f 100644
+--- a/submodules/AccountContext/Sources/ChatController.swift
++++ b/submodules/AccountContext/Sources/ChatController.swift
+@@ -43,6 +43,8 @@ public final class ChatMessageItemAssociatedData: Equatable {
+     public let forcedResourceStatus: FileMediaResourceStatus?
+     public let currentlyPlayingMessageId: EngineMessage.Index?
+     public let isCopyProtectionEnabled: Bool
++    public let pampGramCopyProtectionBypassEnabled: Bool
++    public let pampGramScreenshotProtectionBypassEnabled: Bool
+     public let availableReactions: AvailableReactions?
+     public let availableMessageEffects: AvailableMessageEffects?
+     public let savedMessageTags: SavedMessageTags?
+@@ -83,6 +85,8 @@ public final class ChatMessageItemAssociatedData: Equatable {
+         forcedResourceStatus: FileMediaResourceStatus? = nil,
+         currentlyPlayingMessageId: EngineMessage.Index? = nil,
+         isCopyProtectionEnabled: Bool = false,
++        pampGramCopyProtectionBypassEnabled: Bool = false,
++        pampGramScreenshotProtectionBypassEnabled: Bool = false,
+         availableReactions: AvailableReactions?,
+         availableMessageEffects: AvailableMessageEffects?,
+         savedMessageTags: SavedMessageTags?,
+@@ -122,6 +126,8 @@ public final class ChatMessageItemAssociatedData: Equatable {
+         self.forcedResourceStatus = forcedResourceStatus
+         self.currentlyPlayingMessageId = currentlyPlayingMessageId
+         self.isCopyProtectionEnabled = isCopyProtectionEnabled
++        self.pampGramCopyProtectionBypassEnabled = pampGramCopyProtectionBypassEnabled
++        self.pampGramScreenshotProtectionBypassEnabled = pampGramScreenshotProtectionBypassEnabled
+         self.availableReactions = availableReactions
+         self.availableMessageEffects = availableMessageEffects
+         self.savedMessageTags = savedMessageTags
+@@ -189,6 +195,12 @@ public final class ChatMessageItemAssociatedData: Equatable {
+         if lhs.isCopyProtectionEnabled != rhs.isCopyProtectionEnabled {
+             return false
+         }
++        if lhs.pampGramCopyProtectionBypassEnabled != rhs.pampGramCopyProtectionBypassEnabled {
++            return false
++        }
++        if lhs.pampGramScreenshotProtectionBypassEnabled != rhs.pampGramScreenshotProtectionBypassEnabled {
++            return false
++        }
+         if lhs.availableReactions != rhs.availableReactions {
+             return false
+         }
+diff --git a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
+index f40bad06..31ee41de 100644
+--- a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
++++ b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
+@@ -3,6 +3,7 @@ import Postbox
+ import SwiftSignalKit
+ import TelegramApi
+ import MtProtoKit
++import PampGramCore
+ 
+ private typealias SignalKitTimer = SwiftSignalKit.Timer
+ 
+@@ -63,9 +64,19 @@ func managedAutoremoveMessageOperations(network: Network, postbox: Postbox, isRe
+ 
+         let tag: UInt16 = isRemove ? 0 : 1
+ 
+-        let disposable = combineLatest(timeOffset, postbox.timestampBasedMessageAttributesView(tag: tag)).start(next: { timeOffset, view in
++        let disposable = combineLatest(
++            timeOffset,
++            postbox.timestampBasedMessageAttributesView(tag: tag),
++            PampGramCore.settingsSignal(postbox: postbox)
++        ).start(next: { timeOffset, view, settings in
++            let head: TimestampBasedMessageAttributesEntry?
++            if settings.disableAutoDeleteEnabled {
++                head = nil
++            } else {
++                head = view.head
++            }
+             let (disposeOperations, beginOperations) = helper.with { helper -> (disposeOperations: [Disposable], beginOperations: [(TimestampBasedMessageAttributesEntry, MetaDisposable)]) in
+-                return helper.update(view.head)
++                return helper.update(head)
+             }
+             
+             for disposable in disposeOperations {
+@@ -198,4 +209,3 @@ func managedAutoexpireStoryOperations(network: Network, postbox: Postbox) -> Sig
+         }
+     }
+ }
+-
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
+index 06d13699..aae47b0c 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
+@@ -1010,7 +1010,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
+                     }
+                 }
+                 
+-                if item.associatedData.isCopyProtectionEnabled || item.message.isCopyProtected() {
++                if item.associatedData.isCopyProtectionEnabled || (item.message.isCopyProtected() && (!item.associatedData.pampGramCopyProtectionBypassEnabled || item.message.containsSecretMedia || item.message.id.peerId.namespace == Namespaces.Peer.SecretChat)) {
+                     if hasCommentButton(item: item) {
+                     } else {
+                         needsShareButton = false
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
+index 901f287a..12564e45 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
+@@ -1966,7 +1966,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+                 }
+             }
+             
+-            if (item.associatedData.isCopyProtectionEnabled || item.message.isCopyProtected()) {
++            if (item.associatedData.isCopyProtectionEnabled || (item.message.isCopyProtected() && (!item.associatedData.pampGramCopyProtectionBypassEnabled || item.message.containsSecretMedia || item.message.id.peerId.namespace == Namespaces.Peer.SecretChat))) {
+                 if mayHaveSeparateCommentsButton && hasCommentButton(item: item) {
+                 } else {
+                     needsShareButton = false
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInstantVideoItemNode/Sources/ChatMessageInstantVideoItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInstantVideoItemNode/Sources/ChatMessageInstantVideoItemNode.swift
+index f8c3faf6..18c78d56 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageInstantVideoItemNode/Sources/ChatMessageInstantVideoItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageInstantVideoItemNode/Sources/ChatMessageInstantVideoItemNode.swift
+@@ -380,7 +380,7 @@ public class ChatMessageInstantVideoItemNode: ChatMessageItemView, ASGestureReco
+                     }
+                 }
+                 
+-                if item.associatedData.isCopyProtectionEnabled || item.message.isCopyProtected() {
++                if item.associatedData.isCopyProtectionEnabled || (item.message.isCopyProtected() && (!item.associatedData.pampGramCopyProtectionBypassEnabled || item.message.containsSecretMedia || item.message.id.peerId.namespace == Namespaces.Peer.SecretChat)) {
+                     needsShareButton = false
+                 }
+             }
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveFileNode/Sources/ChatMessageInteractiveFileNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveFileNode/Sources/ChatMessageInteractiveFileNode.swift
+index 5e065398..345347f5 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveFileNode/Sources/ChatMessageInteractiveFileNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveFileNode/Sources/ChatMessageInteractiveFileNode.swift
+@@ -2035,7 +2035,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
+     
+     public func updateIsExtractedToContextPreview(_ value: Bool) {
+         if value {
+-            if self.textSelectionNode == nil, self.textClippingNode.supernode != nil, let item = self.arguments, !item.associatedData.isCopyProtectionEnabled && !item.message.isCopyProtected(), let rootNode = item.controllerInteraction.chatControllerNode() {
++            if self.textSelectionNode == nil, self.textClippingNode.supernode != nil, let item = self.arguments, !item.associatedData.isCopyProtectionEnabled && (!item.message.isCopyProtected() || (item.associatedData.pampGramCopyProtectionBypassEnabled && !item.message.containsSecretMedia && item.message.id.peerId.namespace != Namespaces.Peer.SecretChat)), let rootNode = item.controllerInteraction.chatControllerNode() {
+                 let selectionColor: UIColor
+                 let knobColor: UIColor
+                 if item.message.effectivelyIncoming(item.context.account.peerId) {
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift
+index ab6d3835..3fab2462 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift
+@@ -779,7 +779,7 @@ public class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
+                                         }
+                                     }
+                                 }
+-                            }), content: NativeVideoContent(id: .message(item.message.stableId, telegramFile.fileId), userLocation: .peer(item.message.id.peerId), fileReference: .message(message: MessageReference(item.message), media: telegramFile), streamVideo: streamVideo ? .conservative : .none, enableSound: false, fetchAutomatically: false, isAudioVideoMessage: true, captureProtected: item.associatedData.isCopyProtectionEnabled || item.message.isCopyProtected(), storeAfterDownload: nil), priority: item.associatedData.isStandalone ? .overlay : .embedded, autoplay: item.context.sharedContext.energyUsageSettings.autoplayVideo && !isViewOnceMessage)
++                            }), content: NativeVideoContent(id: .message(item.message.stableId, telegramFile.fileId), userLocation: .peer(item.message.id.peerId), fileReference: .message(message: MessageReference(item.message), media: telegramFile), streamVideo: streamVideo ? .conservative : .none, enableSound: false, fetchAutomatically: false, isAudioVideoMessage: true, captureProtected: item.message.containsSecretMedia || (!item.associatedData.pampGramScreenshotProtectionBypassEnabled && (item.associatedData.isCopyProtectionEnabled || (item.message.isCopyProtected() && (!item.associatedData.pampGramCopyProtectionBypassEnabled || item.message.id.peerId.namespace == Namespaces.Peer.SecretChat)))), storeAfterDownload: nil), priority: item.associatedData.isStandalone ? .overlay : .embedded, autoplay: item.context.sharedContext.energyUsageSettings.autoplayVideo && !isViewOnceMessage)
+                             if let previousVideoNode = previousVideoNode {
+                                 videoNode.bounds = previousVideoNode.bounds
+                                 videoNode.position = previousVideoNode.position
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
+index f2177bb6..78929358 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
+@@ -2015,7 +2015,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+                                             autoFetchFullSizeThumbnail: true,
+                                             continuePlayingWithoutSoundOnLostAudioSession: isInlinePlayableVideo,
+                                             placeholderColor: emptyColor,
+-                                            captureProtected: associatedData.isCopyProtectionEnabled || message.isCopyProtected() || isExtendedMedia,
++                                            captureProtected: message.containsSecretMedia || isExtendedMedia || (!associatedData.pampGramScreenshotProtectionBypassEnabled && (associatedData.isCopyProtectionEnabled || (message.isCopyProtected() && (!associatedData.pampGramCopyProtectionBypassEnabled || message.id.peerId.namespace == Namespaces.Peer.SecretChat)))),
+                                             storeAfterDownload: { [weak context] in
+                                                 guard let context, let peerId else {
+                                                     return
+@@ -2317,7 +2317,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+                             }
+                             
+                             if let updateImageSignal = updateImageSignal {
+-                                strongSelf.imageNode.captureProtected = associatedData.isCopyProtectionEnabled || message.isCopyProtected() || isExtendedMedia
++                                strongSelf.imageNode.captureProtected = message.containsSecretMedia || isExtendedMedia || (!associatedData.pampGramScreenshotProtectionBypassEnabled && (associatedData.isCopyProtectionEnabled || (message.isCopyProtected() && (!associatedData.pampGramCopyProtectionBypassEnabled || message.id.peerId.namespace == Namespaces.Peer.SecretChat))))
+                                 strongSelf.imageNode.setSignal(updateImageSignal(synchronousLoads, false), attemptSynchronously: synchronousLoads)
+ 
+                                 var imageDimensions: CGSize?
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageReplyInfoNode/Sources/ChatMessageReplyInfoNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageReplyInfoNode/Sources/ChatMessageReplyInfoNode.swift
+index 302ffb3c..66d371ba 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageReplyInfoNode/Sources/ChatMessageReplyInfoNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageReplyInfoNode/Sources/ChatMessageReplyInfoNode.swift
+@@ -808,7 +808,7 @@ public class ChatMessageReplyInfoNode: ASDisplayNode {
+                     node.imageNode = nil
+                 }
+                 if let message = arguments.message {
+-                    node.imageNode?.captureProtected = arguments.associatedData.isCopyProtectionEnabled || message.isCopyProtected()
++                    node.imageNode?.captureProtected = message.containsSecretMedia || (!arguments.associatedData.pampGramScreenshotProtectionBypassEnabled && (arguments.associatedData.isCopyProtectionEnabled || (message.isCopyProtected() && (!arguments.associatedData.pampGramCopyProtectionBypassEnabled || message.id.peerId.namespace == Namespaces.Peer.SecretChat))))
+                 }
+                 
+                 titleNode.frame = CGRect(origin: CGPoint(x: leftInset - textInsets.left - 2.0, y: spacing - textInsets.top + 1.0), size: titleLayout.size)
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageRichDataBubbleContentNode/Sources/ChatMessageRichDataBubbleContentNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageRichDataBubbleContentNode/Sources/ChatMessageRichDataBubbleContentNode.swift
+index b1654793..4bb116e2 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageRichDataBubbleContentNode/Sources/ChatMessageRichDataBubbleContentNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageRichDataBubbleContentNode/Sources/ChatMessageRichDataBubbleContentNode.swift
+@@ -1629,7 +1629,8 @@ public class ChatMessageRichDataBubbleContentNode: ChatMessageBubbleContentNode
+             }
+         )
+ 
+-        let enableCopy = (!messageItem.associatedData.isCopyProtectionEnabled && !messageItem.message.isCopyProtected()) || messageItem.message.id.peerId.isVerificationCodes
++        let messageIsCopyProtected = messageItem.message.isCopyProtected() && (!messageItem.associatedData.pampGramCopyProtectionBypassEnabled || messageItem.message.containsSecretMedia || messageItem.message.id.peerId.namespace == Namespaces.Peer.SecretChat)
++        let enableCopy = (!messageItem.associatedData.isCopyProtectionEnabled && !messageIsCopyProtected) || messageItem.message.id.peerId.isVerificationCodes
+         textSelectionNode.enableCopy = enableCopy
+ 
+         var enableOtherActions = true
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
+index 4d5cd55f..deb6e064 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
+@@ -562,7 +562,7 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
+                     }
+                 }
+                 
+-                if item.associatedData.isCopyProtectionEnabled || item.message.isCopyProtected() {
++                if item.associatedData.isCopyProtectionEnabled || (item.message.isCopyProtected() && (!item.associatedData.pampGramCopyProtectionBypassEnabled || item.message.containsSecretMedia || item.message.id.peerId.namespace == Namespaces.Peer.SecretChat)) {
+                     if hasCommentButton(item: item) {
+                     } else {
+                         needsShareButton = false
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift
+index 3075668c..a1e9ce7e 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift
+@@ -1654,7 +1654,8 @@ public class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
+                     }
+                 }
+                 
+-                let enableCopy = (!item.associatedData.isCopyProtectionEnabled && !item.message.isCopyProtected()) || item.message.id.peerId.isVerificationCodes
++                let messageIsCopyProtected = item.message.isCopyProtected() && (!item.associatedData.pampGramCopyProtectionBypassEnabled || item.message.containsSecretMedia || item.message.id.peerId.namespace == Namespaces.Peer.SecretChat)
++                let enableCopy = (!item.associatedData.isCopyProtectionEnabled && !messageIsCopyProtected) || item.message.id.peerId.isVerificationCodes
+                 textSelectionNode.enableCopy = enableCopy
+                 
+                 var enableQuote = !item.message.text.isEmpty
+diff --git a/submodules/TelegramUI/Components/Chat/ForwardAccessoryPanelNode/BUILD b/submodules/TelegramUI/Components/Chat/ForwardAccessoryPanelNode/BUILD
+index 7b442ab1..ccbc1993 100644
+--- a/submodules/TelegramUI/Components/Chat/ForwardAccessoryPanelNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ForwardAccessoryPanelNode/BUILD
+@@ -31,6 +31,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/Chat/AccessoryPanelNode",
+         "//submodules/ComponentFlow",
+         "//submodules/TelegramUI/Components/AlertComponent",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Chat/ForwardAccessoryPanelNode/Sources/ForwardAccessoryPanelNode.swift b/submodules/TelegramUI/Components/Chat/ForwardAccessoryPanelNode/Sources/ForwardAccessoryPanelNode.swift
+index 58191dd5..5bcc7695 100644
+--- a/submodules/TelegramUI/Components/Chat/ForwardAccessoryPanelNode/Sources/ForwardAccessoryPanelNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ForwardAccessoryPanelNode/Sources/ForwardAccessoryPanelNode.swift
+@@ -22,6 +22,7 @@ import AccessoryPanelNode
+ import AppBundle
+ import ComponentFlow
+ import AlertComponent
++import PampGramCore
+ 
+ func textStringForForwardedMessage(_ message: EngineRawMessage, strings: PresentationStrings) -> (text: NSAttributedString, entities: [MessageTextEntity], isMedia: Bool) {
+     for attribute in message.attributes {
+@@ -94,6 +95,7 @@ func textStringForForwardedMessage(_ message: EngineRawMessage, strings: Present
+ 
+ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
+     private let messageDisposable = MetaDisposable()
++    private let pampGramSettingsDisposable = MetaDisposable()
+     public let messageIds: [EngineMessage.Id]
+     private var messages: [EngineRawMessage] = []
+     
+@@ -112,6 +114,7 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
+     var fontSize: PresentationFontSize
+     var nameDisplayOrder: PresentationPersonNameOrder
+     var forwardOptionsState: ChatInterfaceForwardOptionsState?
++    private var showForwardOriginEnabled = false
+     
+     private var validLayout: (size: CGSize, inset: CGFloat, interfaceState: ChatPresentationInterfaceState)?
+     
+@@ -150,6 +153,17 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
+         self.actionArea = AccessibilityAreaNode()
+         
+         super.init()
++
++        self.pampGramSettingsDisposable.set((PampGramCore.settingsSignal(postbox: context.account.postbox)
++        |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
++            guard let self, self.showForwardOriginEnabled != settings.showForwardOriginEnabled else {
++                return
++            }
++            self.showForwardOriginEnabled = settings.showForwardOriginEnabled
++            if let (size, inset, interfaceState) = self.validLayout {
++                self.updateState(size: size, inset: inset, interfaceState: interfaceState)
++            }
++        }))
+         
+         self.closeButton.addTarget(self, action: #selector(self.closePressed), forControlEvents: [.touchUpInside])
+         self.addSubnode(self.closeButton)
+@@ -222,6 +236,7 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
+     
+     deinit {
+         self.messageDisposable.dispose()
++        self.pampGramSettingsDisposable.dispose()
+     }
+     
+     override public func didLoad() {
+@@ -350,7 +365,7 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
+             text = NSMutableAttributedString(attributedString: NSAttributedString(string: self.strings.Conversation_ForwardFrom(authors).string, font: Font.regular(15.0), textColor: self.theme.chat.inputPanel.secondaryTextColor))
+         }
+         
+-        if interfaceState.interfaceState.forwardOptionsState?.hideNames == true {
++        if !self.showForwardOriginEnabled && interfaceState.interfaceState.forwardOptionsState?.hideNames == true {
+             text = NSMutableAttributedString(attributedString: NSAttributedString(string: self.strings.Conversation_ForwardOptions_SenderNamesRemoved, font: Font.regular(15.0), textColor: self.theme.chat.inputPanel.secondaryTextColor))
+         }
+ 
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
+index e6eff30b..5ea3bf64 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
+@@ -18,6 +18,7 @@ import TopMessageReactions
+ import TelegramNotices
+ import PresentationDataUtils
+ import ChatPresentationInterfaceState
++import PampGramCore
+ 
+ extension ChatControllerImpl {
+     func openMessageContextMenu(message: EngineMessage, selectAll: Bool, node: ASDisplayNode, frame: CGRect, anyRecognizer: UIGestureRecognizer?, location: CGPoint?) -> Void {
+@@ -54,8 +55,9 @@ extension ChatControllerImpl {
+                 peerMessageAllowedReactions(context: self.context, message: topMessage, ignoreDefault: canBypassReactionRestrictions),
+                 peerMessageSelectedReactions(context: self.context, message: EngineMessage(topMessage)),
+                 topMessageReactions(context: self.context, message: topMessage, subPeerId: self.chatLocation.threadId.flatMap(EnginePeer.Id.init), ignoreDefault: canBypassReactionRestrictions),
+-                ApplicationSpecificNotice.getChatTextSelectionTips(accountManager: self.context.sharedContext.accountManager)
+-            ).startStandalone(next: { [weak self] peer, actions, allowedReactionsAndStars, selectedReactions, topReactions, chatTextSelectionTips in
++                ApplicationSpecificNotice.getChatTextSelectionTips(accountManager: self.context.sharedContext.accountManager),
++                PampGramCore.settingsSignal(postbox: self.context.account.postbox)
++            ).startStandalone(next: { [weak self] peer, actions, allowedReactionsAndStars, selectedReactions, topReactions, chatTextSelectionTips, settings in
+                 guard let self else {
+                     return
+                 }
+@@ -82,6 +84,7 @@ extension ChatControllerImpl {
+                 
+                 if tip == nil {
+                     let isAd = message.adAttribute != nil
++                    let copyProtectionBypassApplies = settings.copyProtectionBypassEnabled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia
+                         
+                     var isAction = false
+                     for media in message.media {
+@@ -90,9 +93,9 @@ extension ChatControllerImpl {
+                             break
+                         }
+                     }
+-                    if self.presentationInterfaceState.myCopyProtectionEnabled && !isAction && !isAd {
++                    if self.presentationInterfaceState.myCopyProtectionEnabled && !copyProtectionBypassApplies && !isAction && !isAd {
+                         tip = .messageCopyProtection(text: self.presentationData.strings.Conversation_CopyProtectionInfoPrivateYou)
+-                    } else if self.presentationInterfaceState.copyProtectionEnabled && !isAction && !isAd {
++                    } else if self.presentationInterfaceState.copyProtectionEnabled && !copyProtectionBypassApplies && !isAction && !isAd {
+                         if case .scheduledMessages = self.subject {
+                         } else {
+                             if let peer = self.presentationInterfaceState.renderedPeer?.peer {
+@@ -331,7 +334,8 @@ extension ChatControllerImpl {
+                     }
+                 }
+                 
+-                let isSecret = self.presentationInterfaceState.copyProtectionEnabled || self.presentationInterfaceState.myCopyProtectionEnabled || self.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat
++                let screenshotProtectionBypassApplies = settings.screenshotProtectionBypassEnabled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia
++                let isSecret = (!screenshotProtectionBypassApplies && (self.presentationInterfaceState.copyProtectionEnabled || self.presentationInterfaceState.myCopyProtectionEnabled)) || self.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat
+                 let controller = makeContextController(presentationData: self.presentationData, source: source, items: actionsSignal, recognizer: recognizer, gesture: gesture, disableScreenshots: isSecret, hideReactionPanelTail: hideReactionPanelTail)
+                 controller.dismissed = { [weak self] in
+                     self?.canReadHistory.set(true)
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPollContextMenu.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPollContextMenu.swift
+index 905080f0..91c60a09 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPollContextMenu.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPollContextMenu.swift
+@@ -16,6 +16,7 @@ import TelegramStringFormatting
+ import TelegramPresentationData
+ import AvatarNode
+ import ChatPresentationInterfaceState
++import PampGramCore
+ 
+ private enum OptionsId: Hashable {
+     case item
+@@ -50,8 +51,9 @@ extension ChatControllerImpl {
+         let _ = combineLatest(
+             queue: Queue.mainQueue(),
+             contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState: self.presentationInterfaceState, context: self.context, messages: [message], controllerInteraction: self.controllerInteraction, selectAll: false, interfaceInteraction: self.interfaceInteraction, messageNode: messageItemView),
+-            addedByPeer
+-        ).start(next: { [weak self] actions, addedByPeer in
++            addedByPeer,
++            PampGramCore.settingsSignal(postbox: self.context.account.postbox)
++        ).start(next: { [weak self] actions, addedByPeer, settings in
+             guard let self else {
+                 return
+             }
+@@ -94,7 +96,8 @@ extension ChatControllerImpl {
+             }
+             
+             var canReply = canReplyInChat(self.presentationInterfaceState, accountPeerId: self.context.account.peerId)
+-            if !canSendMessagesToChat(self.presentationInterfaceState) && (self.presentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()) {
++            let copyProtectionBypassApplies = settings.copyProtectionBypassEnabled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia
++            if !canSendMessagesToChat(self.presentationInterfaceState) && !copyProtectionBypassApplies && (self.presentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()) {
+                 canReply = false
+             }
+             
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenTodoContextMenu.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenTodoContextMenu.swift
+index 363fd5a4..d65715ec 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenTodoContextMenu.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenTodoContextMenu.swift
+@@ -15,6 +15,7 @@ import Pasteboard
+ import TelegramStringFormatting
+ import TelegramPresentationData
+ import ChatPresentationInterfaceState
++import PampGramCore
+ 
+ private enum OptionsId: Hashable {
+     case item
+@@ -35,8 +36,11 @@ extension ChatControllerImpl {
+         }
+         let canEdit = canEditMessage(context: self.context, limitsConfiguration: self.context.currentLimitsConfiguration.with { EngineConfiguration.Limits($0) }, message: message)
+         
+-        let _ = (contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState: self.presentationInterfaceState, context: self.context, messages: [message], controllerInteraction: self.controllerInteraction, selectAll: false, interfaceInteraction: self.interfaceInteraction, messageNode: params.messageNode as? ChatMessageItemView)
+-        |> deliverOnMainQueue).start(next: { [weak self] actions in
++        let _ = (combineLatest(
++            contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState: self.presentationInterfaceState, context: self.context, messages: [message], controllerInteraction: self.controllerInteraction, selectAll: false, interfaceInteraction: self.interfaceInteraction, messageNode: params.messageNode as? ChatMessageItemView),
++            PampGramCore.settingsSignal(postbox: self.context.account.postbox)
++        )
++        |> deliverOnMainQueue).start(next: { [weak self] actions, settings in
+             guard let self else {
+                 return
+             }
+@@ -126,7 +130,8 @@ extension ChatControllerImpl {
+             }
+             
+             var canReply = canReplyInChat(self.presentationInterfaceState, accountPeerId: self.context.account.peerId)
+-            if !canSendMessagesToChat(self.presentationInterfaceState) && (self.presentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()) {
++            let copyProtectionBypassApplies = settings.copyProtectionBypassEnabled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia
++            if !canSendMessagesToChat(self.presentationInterfaceState) && !copyProtectionBypassApplies && (self.presentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()) {
+                 canReply = false
+             }
+             
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatMessageActionOptions.swift b/submodules/TelegramUI/Sources/Chat/ChatMessageActionOptions.swift
+index 4669b24c..d5d5a024 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatMessageActionOptions.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatMessageActionOptions.swift
+@@ -19,6 +19,7 @@ import ChatMessageWebpageBubbleContentNode
+ import PremiumUI
+ import UndoUI
+ import WebsiteType
++import PampGramCore
+ 
+ private enum OptionsId: Hashable {
+     case reply
+@@ -157,12 +158,18 @@ private func chatForwardOptions(selfController: ChatControllerImpl, sourceView:
+     }
+     let presentationData = selfController.presentationData
+     
+-    let forwardOptions = selfController.presentationInterfaceStatePromise.get()
+-    |> map { state -> ChatControllerSubject.ForwardOptions in
++    let forwardOptions = combineLatest(
++        selfController.presentationInterfaceStatePromise.get(),
++        PampGramCore.settingsSignal(postbox: selfController.context.account.postbox)
++    )
++    |> map { state, settings -> ChatControllerSubject.ForwardOptions in
+         var hideNames = state.interfaceState.forwardOptionsState?.hideNames ?? false
+         if peerId.namespace == Namespaces.Peer.SecretChat {
+             hideNames = true
+         }
++        if settings.showForwardOriginEnabled && peerId.namespace != Namespaces.Peer.SecretChat {
++            hideNames = false
++        }
+         return ChatControllerSubject.ForwardOptions(hideNames: hideNames, hideCaptions: state.interfaceState.forwardOptionsState?.hideCaptions ?? false)
+     }
+     |> distinctUntilChanged
+@@ -398,10 +405,11 @@ private func generateChatReplyOptionItems(selfController: ChatControllerImpl, ch
+     
+     let items = combineLatest(queue: .mainQueue(),
+         selfController.context.account.postbox.messagesAtIds([replySubject.messageId]),
+-        ApplicationSpecificNotice.getReplyQuoteTextSelectionTips(accountManager: selfController.context.sharedContext.accountManager)
++        ApplicationSpecificNotice.getReplyQuoteTextSelectionTips(accountManager: selfController.context.sharedContext.accountManager),
++        PampGramCore.settingsSignal(postbox: selfController.context.account.postbox)
+     )
+     |> deliverOnMainQueue
+-    |> map { [weak selfController, weak chatController] messages, quoteTextSelectionTips -> ContextController.Items in
++    |> map { [weak selfController, weak chatController] messages, quoteTextSelectionTips, settings -> ContextController.Items in
+         guard let selfController, let chatController else {
+             return ContextController.Items(content: .list([]))
+         }
+@@ -483,7 +491,8 @@ private func generateChatReplyOptionItems(selfController: ChatControllerImpl, ch
+         }
+         
+         if let message = messages.first {
+-            if selfController.presentationInterfaceState.copyProtectionEnabled {
++            let copyProtectionBypassApplies = settings.copyProtectionBypassEnabled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia
++            if selfController.presentationInterfaceState.copyProtectionEnabled && !copyProtectionBypassApplies {
+                 canReplyInAnotherChat = false
+             }
+             
+@@ -501,7 +510,7 @@ private func generateChatReplyOptionItems(selfController: ChatControllerImpl, ch
+             if isAction {
+                 canReplyInAnotherChat = false
+             }
+-            if message.isCopyProtected() {
++            if message.isCopyProtected() && !copyProtectionBypassApplies {
+                 canReplyInAnotherChat = false
+             }
+             if message.id.peerId.namespace == Namespaces.Peer.SecretChat {
+diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
+index 23695c21..8bfce651 100644
+--- a/submodules/TelegramUI/Sources/ChatController.swift
++++ b/submodules/TelegramUI/Sources/ChatController.swift
+@@ -72,6 +72,7 @@ import Pasteboard
+ import ChatSendMessageActionUI
+ import ChatTextLinkEditUI
+ import ChatRichTextEditorComposer
++import PampGramCore
+ import WebUI
+ import PremiumUI
+ import ImageTransparency
+@@ -279,6 +280,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+     let navigationActionDisposable = MetaDisposable()
+     let messageIndexDisposable = MetaDisposable()
+     var networkStateDisposable: Disposable?
++    private var pampGramSettingsDisposable: Disposable?
++    private var pampGramCopyProtectionBypassEnabled = false
++    private var pampGramScreenshotProtectionBypassEnabled = false
+ 
+     let wallpaperReady = Promise<Bool>()
+     let presentationReady = Promise<Bool>()
+@@ -737,6 +741,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         self.moreBarButton.isUserInteractionEnabled = true
+         
+         super.init(context: context, navigationBarPresentationData: navigationBarPresentationData)
++
++        self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: context.account.postbox)
++        |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
++            self?.pampGramCopyProtectionBypassEnabled = settings.copyProtectionBypassEnabled
++            self?.pampGramScreenshotProtectionBypassEnabled = settings.screenshotProtectionBypassEnabled
++        })
+         
+         self._hasGlassStyle = true
+         
+@@ -1401,6 +1411,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                 }
+             }
+             
++            let copyProtectionBypassApplies = self.pampGramCopyProtectionBypassEnabled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia
+             let openChatMessageParams = OpenChatMessageParams(
+                 context: context,
+                 updatedPresentationData: self.updatedPresentationData,
+@@ -1410,7 +1421,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                 message: message,
+                 mediaSubject: params.mediaSubject,
+                 standalone: standalone,
+-                copyProtected: self.presentationInterfaceState.copyProtectionEnabled || self.presentationInterfaceState.myCopyProtectionEnabled,
++                copyProtected: !copyProtectionBypassApplies && (self.presentationInterfaceState.copyProtectionEnabled || self.presentationInterfaceState.myCopyProtectionEnabled),
+                 reverseMessageGalleryOrder: false,
+                 mode: mode,
+                 navigationController: self.effectiveNavigationController, dismissInput: { [weak self] in
+@@ -2193,7 +2204,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                 }
+             }
+ 
+-            let isSecret = strongSelf.presentationInterfaceState.copyProtectionEnabled || strongSelf.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat
++            let isSecret = (!strongSelf.pampGramScreenshotProtectionBypassEnabled && strongSelf.presentationInterfaceState.copyProtectionEnabled) || strongSelf.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat
+             let pinchController = makePinchController(sourceNode: sourceNode, disableScreenshots: isSecret, getContentAreaInScreenSpace: {
+                 guard let strongSelf = self else {
+                     return CGRect()
+@@ -3717,7 +3728,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                     return .none
+                 }
+                 
+-                if !canSendMessagesToChat(strongSelf.presentationInterfaceState) && (strongSelf.presentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()) {
++                let copyProtectionBypassApplies = strongSelf.pampGramCopyProtectionBypassEnabled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia
++                if !canSendMessagesToChat(strongSelf.presentationInterfaceState) && !copyProtectionBypassApplies && (strongSelf.presentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()) {
+                     return .none
+                 }
+                 
+@@ -6967,6 +6979,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         }
+ 
+         self.richTextCheckboxCompletionObserver?.dispose()
++        self.pampGramSettingsDisposable?.dispose()
+         for (_, timer) in self.richTextCheckboxDebounceTimers {
+             timer.invalidate()
+         }
+diff --git a/submodules/TelegramUI/Sources/ChatControllerForwardMessages.swift b/submodules/TelegramUI/Sources/ChatControllerForwardMessages.swift
+index ededfd22..36ed0b6b 100644
+--- a/submodules/TelegramUI/Sources/ChatControllerForwardMessages.swift
++++ b/submodules/TelegramUI/Sources/ChatControllerForwardMessages.swift
+@@ -13,6 +13,7 @@ import PremiumUI
+ import ReactionSelectionNode
+ import TopMessageReactions
+ import ChatMessagePaymentAlertController
++import PampGramCore
+ 
+ extension ChatControllerImpl {
+     func forwardMessages(messageIds: [EngineMessage.Id], options: ChatInterfaceForwardOptionsState? = nil, resetCurrent: Bool = false) {
+@@ -28,6 +29,14 @@ extension ChatControllerImpl {
+     }
+ 
+     func forwardMessages(messages: [EngineRawMessage], options: ChatInterfaceForwardOptionsState? = nil, resetCurrent: Bool) {
++        let _ = (PampGramCore.settingsSignal(postbox: self.context.account.postbox)
++        |> take(1)
++        |> deliverOnMainQueue).startStandalone(next: { [weak self] settings in
++            self?.forwardMessagesImpl(messages: messages, options: options, resetCurrent: resetCurrent, forceShowForwardOrigin: settings.showForwardOriginEnabled)
++        })
++    }
++
++    private func forwardMessagesImpl(messages: [EngineRawMessage], options: ChatInterfaceForwardOptionsState?, resetCurrent: Bool, forceShowForwardOrigin: Bool) {
+         let _ = self.presentVoiceMessageDiscardAlert(action: {
+             var filter: ChatListNodePeersFilter = [.onlyWriteable, .excludeDisabled, .doNotSearchMessages]
+             var hasPublicPolls = false
+@@ -153,7 +162,7 @@ extension ChatControllerImpl {
+                         }
+                         
+                         var attributes: [EngineMessage.Attribute] = []
+-                        attributes.append(ForwardOptionsMessageAttribute(hideNames: forwardOptions?.hideNames == true, hideCaptions: forwardOptions?.hideCaptions == true))
++                        attributes.append(ForwardOptionsMessageAttribute(hideNames: !forceShowForwardOrigin && forwardOptions?.hideNames == true, hideCaptions: forwardOptions?.hideCaptions == true))
+                         
+                         result.append(contentsOf: messages.map { message -> EnqueueMessage in
+                             return .forward(source: message.id, threadId: nil, grouping: .auto, attributes: attributes, correlationId: nil)
+@@ -374,7 +383,7 @@ extension ChatControllerImpl {
+                 }
+                 
+                 if case .peer(peerId) = strongSelf.chatLocation, strongSelf.parentController == nil, !isPinnedMessages {
+-                    strongSelf.updateChatPresentationInterfaceState(animated: false, interactive: true, { $0.updatedInterfaceState({ $0.withUpdatedForwardMessageIds(messages.map { $0.id }).withUpdatedForwardOptionsState(ChatInterfaceForwardOptionsState(hideNames: !hasNotOwnMessages, hideCaptions: false, unhideNamesOnCaptionChange: false)).withoutSelectionState() }).updatedSearch(nil) })
++                    strongSelf.updateChatPresentationInterfaceState(animated: false, interactive: true, { $0.updatedInterfaceState({ $0.withUpdatedForwardMessageIds(messages.map { $0.id }).withUpdatedForwardOptionsState(ChatInterfaceForwardOptionsState(hideNames: forceShowForwardOrigin ? false : !hasNotOwnMessages, hideCaptions: false, unhideNamesOnCaptionChange: false)).withoutSelectionState() }).updatedSearch(nil) })
+                     strongSelf.updateItemNodesSearchTextHighlightStates()
+                     strongSelf.searchResultsController = nil
+                     strongController.dismiss()
+@@ -467,7 +476,7 @@ extension ChatControllerImpl {
+                     }
+ 
+                     let _ = (ChatInterfaceState.update(engine: strongSelf.context.engine, peerId: peerId, threadId: threadId, { currentState in
+-                        return currentState.withUpdatedForwardMessageIds(messages.map { $0.id }).withUpdatedForwardOptionsState(ChatInterfaceForwardOptionsState(hideNames: !hasNotOwnMessages, hideCaptions: false, unhideNamesOnCaptionChange: false))
++                        return currentState.withUpdatedForwardMessageIds(messages.map { $0.id }).withUpdatedForwardOptionsState(ChatInterfaceForwardOptionsState(hideNames: forceShowForwardOrigin ? false : !hasNotOwnMessages, hideCaptions: false, unhideNamesOnCaptionChange: false))
+                     })
+                     |> deliverOnMainQueue).startStandalone(completed: {
+                         if let strongSelf = self {
+diff --git a/submodules/TelegramUI/Sources/ChatControllerNode.swift b/submodules/TelegramUI/Sources/ChatControllerNode.swift
+index 83c19884..f9ae6615 100644
+--- a/submodules/TelegramUI/Sources/ChatControllerNode.swift
++++ b/submodules/TelegramUI/Sources/ChatControllerNode.swift
+@@ -75,6 +75,7 @@ import RichTextEditorUIKit
+ import RichTextEditorMediaView
+ import InstantPageUI
+ import ChatRichTextEditorComposer
++import PampGramCore
+ 
+ final class VideoNavigationControllerDropContentItem: NavigationControllerDropContentItem {
+     let itemNode: OverlayMediaItemNode
+@@ -111,6 +112,20 @@ private final class ChatControllerNodeView: UITracingLayerView, WindowInputAcces
+     }
+ }
+ 
++private final class PampGramScreenshotGuardView: UIView {
++    override init(frame: CGRect) {
++        super.init(frame: frame)
++        self.backgroundColor = .black
++        self.isHidden = true
++        self.isUserInteractionEnabled = false
++        self.accessibilityElementsHidden = true
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++}
++
+ private final class ScrollContainerNode: ASScrollNode {
+     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+         if super.hitTest(point, with: event) == self.view {
+@@ -261,6 +276,13 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+     
+     private let titleAccessoryPanelContainer: ChatControllerTitlePanelNodeContainer
+     private var currentTitleAccessoryPanelNode: ChatTitleAccessoryPanelNode?
++
++    private var pampGramSettingsDisposable: Disposable?
++    private var pampGramScreenshotProtectionBypassEnabled = false
++    private var pampGramHideChatOnScreenshotsEnabled = false
++    private var pampGramShowForwardOriginEnabled = false
++    private var pampGramAdBlockEnabled = false
++    private var pampGramScreenshotGuardView: PampGramScreenshotGuardView?
+     
+     private var floatingTopicsPanelContainer: ChatControllerTitlePanelNodeContainer
+     private var floatingTopicsPanel: (view: ComponentView<ChatSidePanelEnvironment>, component: ChatFloatingTopicsPanel)?
+@@ -816,6 +838,23 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+         
+         super.init()
+ 
++        self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: context.account.postbox)
++        |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
++            guard let self else {
++                return
++            }
++            self.pampGramScreenshotProtectionBypassEnabled = settings.screenshotProtectionBypassEnabled
++            self.pampGramHideChatOnScreenshotsEnabled = settings.hideChatOnScreenshotsEnabled
++            self.pampGramShowForwardOriginEnabled = settings.showForwardOriginEnabled
++            let adBlockChanged = self.pampGramAdBlockEnabled != settings.adBlockEnabled
++            self.pampGramAdBlockEnabled = settings.adBlockEnabled
++            self.updatePampGramScreenshotProtection()
++            self.updatePampGramScreenshotGuard()
++            if adBlockChanged {
++                self.updateLayoutInternal(transition: .immediate)
++            }
++        })
++
+         getContentAreaInScreenSpaceImpl = { [weak self] in
+             guard let strongSelf = self else {
+                 return CGRect()
+@@ -1047,10 +1086,21 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+         self.inputMediaNodeDataDisposable?.dispose()
+         self.inlineSearchResultsReadyDisposable?.dispose()
+         self.loadMoreSearchResultsDisposable?.dispose()
++        self.pampGramSettingsDisposable?.dispose()
++        NotificationCenter.default.removeObserver(self)
+     }
+     
+     override func didLoad() {
+         super.didLoad()
++
++        let screenshotGuardView = PampGramScreenshotGuardView()
++        self.pampGramScreenshotGuardView = screenshotGuardView
++        self.view.addSubview(screenshotGuardView)
++        self.updatePampGramScreenshotGuard()
++        NotificationCenter.default.addObserver(self, selector: #selector(self.pampGramCaptureStateChanged), name: UIScreen.capturedDidChangeNotification, object: nil)
++        NotificationCenter.default.addObserver(self, selector: #selector(self.pampGramCaptureStateChanged), name: UIApplication.willResignActiveNotification, object: nil)
++        NotificationCenter.default.addObserver(self, selector: #selector(self.pampGramCaptureStateChanged), name: UIApplication.didBecomeActiveNotification, object: nil)
++        NotificationCenter.default.addObserver(self, selector: #selector(self.pampGramScreenshotTaken), name: UIApplication.userDidTakeScreenshotNotification, object: nil)
+         
+         let recognizer = WindowPanRecognizer(target: nil, action: nil)
+         recognizer.cancelsTouchesInView = false
+@@ -1098,6 +1148,45 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+             return false
+         }
+     }
++
++    private func updatePampGramScreenshotProtection() {
++        let isSecret = (!self.pampGramScreenshotProtectionBypassEnabled && self.chatPresentationInterfaceState.copyProtectionEnabled) || self.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat || self.chatLocation.peerId?.isVerificationCodes == true
++        if self.historyNodeContainer.isSecret != isSecret {
++            #if DEBUG
++            self.historyNodeContainer.isSecret = false
++            #else
++            self.historyNodeContainer.isSecret = isSecret
++            #endif
++        }
++        setLayerDisableScreenshots(self.titleAccessoryPanelContainer.layer, isSecret)
++    }
++
++    private func updatePampGramScreenshotGuard() {
++        // The secure layer flag is applied proactively, before iOS starts a
++        // screenshot or screen recording. The overlay below also keeps the
++        // chat hidden while the app is inactive or being captured.
++        setLayerDisableScreenshots(self.layer, self.pampGramHideChatOnScreenshotsEnabled)
++        guard let screenshotGuardView = self.pampGramScreenshotGuardView else {
++            return
++        }
++        let isCaptured = UIScreen.main.isCaptured
++        let isInactive = UIApplication.shared.applicationState != .active
++        screenshotGuardView.isHidden = !(self.pampGramHideChatOnScreenshotsEnabled && (isCaptured || isInactive))
++    }
++
++    @objc private func pampGramCaptureStateChanged() {
++        self.updatePampGramScreenshotGuard()
++    }
++
++    @objc private func pampGramScreenshotTaken() {
++        guard self.pampGramHideChatOnScreenshotsEnabled else {
++            return
++        }
++        self.pampGramScreenshotGuardView?.isHidden = false
++        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
++            self?.updatePampGramScreenshotGuard()
++        }
++    }
+     
+     private func updateIsEmpty(_ emptyType: ChatHistoryNodeLoadState.EmptyType?, wasLoading: Bool, animated: Bool) {
+         self.emptyType = emptyType
+@@ -1205,15 +1294,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+             }
+         }
+         
+-        let isSecret = self.chatPresentationInterfaceState.copyProtectionEnabled || self.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat || self.chatLocation.peerId?.isVerificationCodes == true
+-        if self.historyNodeContainer.isSecret != isSecret {
+-            #if DEBUG
+-            self.historyNodeContainer.isSecret = false
+-            #else
+-            self.historyNodeContainer.isSecret = isSecret
+-            #endif
+-            setLayerDisableScreenshots(self.titleAccessoryPanelContainer.layer, isSecret)
+-        }
++        self.updatePampGramScreenshotProtection()
+ 
+         var previousListBottomInset: CGFloat?
+         if !self.historyNode.frame.isEmpty {
+@@ -1222,6 +1303,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+ 
+         self.messageTransitionNode.frame = CGRect(origin: CGPoint(), size: layout.size)
+         self.contentContainerNode.frame = CGRect(origin: CGPoint(), size: layout.size)
++        self.pampGramScreenshotGuardView?.frame = self.view.bounds
+         
+         let isOverlay: Bool
+         switch self.chatPresentationInterfaceState.mode {
+@@ -1550,7 +1632,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+         }
+         
+         var displayAdPanel = false
+-        if !hideTopPanels, let _ = self.chatPresentationInterfaceState.adMessage {
++        if !self.pampGramAdBlockEnabled, !hideTopPanels, let _ = self.chatPresentationInterfaceState.adMessage {
+             if let chatHistoryState = self.chatPresentationInterfaceState.chatHistoryState, case .loaded(false, _) = chatHistoryState {
+                 if let user = chatPresentationInterfaceState.renderedPeer?.peer as? TelegramUser, user.botInfo != nil && !self.chatPresentationInterfaceState.peerIsBlocked && self.chatPresentationInterfaceState.hasAtLeast3Messages {
+                     displayAdPanel = true
+@@ -5184,7 +5266,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+             if !messages.isEmpty || postEmptyMessages || self.chatPresentationInterfaceState.interfaceState.forwardMessageIds != nil {
+                 if let forwardMessageIds = self.chatPresentationInterfaceState.interfaceState.forwardMessageIds {
+                     var attributes: [MessageAttribute] = []
+-                    attributes.append(ForwardOptionsMessageAttribute(hideNames: self.chatPresentationInterfaceState.interfaceState.forwardOptionsState?.hideNames == true, hideCaptions: self.chatPresentationInterfaceState.interfaceState.forwardOptionsState?.hideCaptions == true))
++                    let forceShowForwardOrigin = self.pampGramShowForwardOriginEnabled && self.chatLocation.peerId?.namespace != Namespaces.Peer.SecretChat
++                    attributes.append(ForwardOptionsMessageAttribute(hideNames: !forceShowForwardOrigin && self.chatPresentationInterfaceState.interfaceState.forwardOptionsState?.hideNames == true, hideCaptions: self.chatPresentationInterfaceState.interfaceState.forwardOptionsState?.hideCaptions == true))
+ 
+                     var replyThreadId: Int64?
+                     if case let .replyThread(replyThreadMessage) = self.chatPresentationInterfaceState.chatLocation {
+diff --git a/submodules/TelegramUI/Sources/ChatHistoryListNode.swift b/submodules/TelegramUI/Sources/ChatHistoryListNode.swift
+index b547dd3b..baa87a08 100644
+--- a/submodules/TelegramUI/Sources/ChatHistoryListNode.swift
++++ b/submodules/TelegramUI/Sources/ChatHistoryListNode.swift
+@@ -38,6 +38,7 @@ import TextFormat
+ import ChatNewThreadInfoItem
+ import PhoneNumberFormat
+ import Postbox
++import PampGramCore
+ 
+ struct ChatTopVisibleMessageRange: Equatable {
+     var lowerBound: MessageIndex
+@@ -348,6 +349,8 @@ private func extractAssociatedData(
+     subject: ChatControllerSubject?,
+     currentlyPlayingMessageId: MessageIndex?,
+     isCopyProtectionEnabled: Bool,
++    pampGramCopyProtectionBypassEnabled: Bool = false,
++    pampGramScreenshotProtectionBypassEnabled: Bool = false,
+     availableReactions: AvailableReactions?,
+     availableMessageEffects: AvailableMessageEffects?,
+     savedMessageTags: SavedMessageTags?,
+@@ -428,7 +431,7 @@ private func extractAssociatedData(
+         automaticDownloadPeerId = message.peerId
+     }
+     
+-    return ChatMessageItemAssociatedData(automaticDownloadPeerType: automaticMediaDownloadPeerType, automaticDownloadPeerId: automaticDownloadPeerId, automaticDownloadNetworkType: automaticDownloadNetworkType, preferredStoryHighQuality: preferredStoryHighQuality, isRecentActions: false, subject: subject, contactsPeerIds: contactsPeerIds, channelDiscussionGroup: channelDiscussionGroup, animatedEmojiStickers: animatedEmojiStickers, additionalAnimatedEmojiStickers: additionalAnimatedEmojiStickers, currentlyPlayingMessageId: currentlyPlayingMessageId, isCopyProtectionEnabled: isCopyProtectionEnabled, availableReactions: availableReactions, availableMessageEffects: availableMessageEffects, savedMessageTags: savedMessageTags, defaultReaction: defaultReaction, areStarReactionsEnabled: areStarReactionsEnabled, isPremium: isPremium, accountPeer: accountPeer, alwaysDisplayTranscribeButton: alwaysDisplayTranscribeButton, topicAuthorId: topicAuthorId, hasBots: hasBots, translateToLanguage: translateToLanguage, maxReadStoryId: maxReadStoryId, recommendedChannels: recommendedChannels, audioTranscriptionTrial: audioTranscriptionTrial, chatThemes: chatThemes, deviceContactsNumbers: deviceContactsNumbers, isInline: isInline, showSensitiveContent: showSensitiveContent, isSuspiciousPeer: isSuspiciousPeer, accountCountry: accountCountry, isParticipant: isParticipant, invitedOn: invitedOn)
++    return ChatMessageItemAssociatedData(automaticDownloadPeerType: automaticMediaDownloadPeerType, automaticDownloadPeerId: automaticDownloadPeerId, automaticDownloadNetworkType: automaticDownloadNetworkType, preferredStoryHighQuality: preferredStoryHighQuality, isRecentActions: false, subject: subject, contactsPeerIds: contactsPeerIds, channelDiscussionGroup: channelDiscussionGroup, animatedEmojiStickers: animatedEmojiStickers, additionalAnimatedEmojiStickers: additionalAnimatedEmojiStickers, currentlyPlayingMessageId: currentlyPlayingMessageId, isCopyProtectionEnabled: isCopyProtectionEnabled, pampGramCopyProtectionBypassEnabled: pampGramCopyProtectionBypassEnabled, pampGramScreenshotProtectionBypassEnabled: pampGramScreenshotProtectionBypassEnabled, availableReactions: availableReactions, availableMessageEffects: availableMessageEffects, savedMessageTags: savedMessageTags, defaultReaction: defaultReaction, areStarReactionsEnabled: areStarReactionsEnabled, isPremium: isPremium, accountPeer: accountPeer, alwaysDisplayTranscribeButton: alwaysDisplayTranscribeButton, topicAuthorId: topicAuthorId, hasBots: hasBots, translateToLanguage: translateToLanguage, maxReadStoryId: maxReadStoryId, recommendedChannels: recommendedChannels, audioTranscriptionTrial: audioTranscriptionTrial, chatThemes: chatThemes, deviceContactsNumbers: deviceContactsNumbers, isInline: isInline, showSensitiveContent: showSensitiveContent, isSuspiciousPeer: isSuspiciousPeer, accountCountry: accountCountry, isParticipant: isParticipant, invitedOn: invitedOn)
+ }
+ 
+ private extension ChatHistoryLocationInput {
+@@ -964,7 +967,18 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
+             return nil
+         }
+ 
+-        self.beginAdMessageManagement(adMessages: adMessages)
++        let filteredAdMessages = combineLatest(
++            PampGramCore.settingsSignal(postbox: context.account.postbox),
++            adMessages
++        )
++        |> map { settings, value -> (interPostInterval: Int32?, messages: [Message], startDelay: Int32?, betweenDelay: Int32?) in
++            if settings.adBlockEnabled {
++                return (interPostInterval: nil, messages: [], startDelay: nil, betweenDelay: nil)
++            } else {
++                return value
++            }
++        }
++        self.beginAdMessageManagement(adMessages: filteredAdMessages)
+         
+         self.listView.accessibilityPageScrolledString = { [weak self] row, count in
+             if let strongSelf = self {
+@@ -1334,6 +1348,13 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
+             guard let self else {
+                 return
+             }
++
++            if interPostInterval == nil && messages.isEmpty {
++                self.pendingDynamicAdMessages.removeAll()
++                self.pendingDynamicAdMessageInterval = nil
++                self.remainingDynamicAdMessageInterval = nil
++                self.remainingDynamicAdMessageDistance = nil
++            }
+             
+             if let interPostInterval = interPostInterval {
+                 self.pendingDynamicAdMessages = messages
+@@ -1827,6 +1848,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
+         )
+         
+         let contentSettings = self.context.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.ContentSettings())
++        let pampGramSettings = PampGramCore.settingsSignal(postbox: context.account.postbox)
+         
+         let maxReadStoryId: Signal<Int32?, NoError>
+         if let peerId = self.chatLocation.peerId, peerId.namespace == Namespaces.Peer.CloudUser {
+@@ -1934,8 +1956,12 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
+             audioTranscriptionTrial |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_audioTranscriptionTrial"),
+             chatThemes |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_chatThemes"),
+             deviceContactsNumbers |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_deviceContactsNumbers"),
+-            contentSettings |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_contentSettings")
+-        ) |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_firstChatHistoryTransition")).startStrict(next: { [weak self] update, chatPresentationData, selectedMessages, updatingMedia, networkType, preferredStoryHighQuality, animatedEmojiStickers, additionalAnimatedEmojiStickers, customChannelDiscussionReadState, customThreadOutgoingReadState, availableReactions, availableMessageEffects, savedMessageTags, defaultReaction, accountPeer, accountCountry, suggestAudioTranscription, promises, topicAuthorId, translationState, maxReadStoryId, recommendedChannels, audioTranscriptionTrial, chatThemes, deviceContactsNumbers, contentSettings in
++            combineLatest(
++                contentSettings |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_contentSettings"),
++                pampGramSettings |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_pampGramSettings")
++            )
++        ) |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_firstChatHistoryTransition")).startStrict(next: { [weak self] update, chatPresentationData, selectedMessages, updatingMedia, networkType, preferredStoryHighQuality, animatedEmojiStickers, additionalAnimatedEmojiStickers, customChannelDiscussionReadState, customThreadOutgoingReadState, availableReactions, availableMessageEffects, savedMessageTags, defaultReaction, accountPeer, accountCountry, suggestAudioTranscription, promises, topicAuthorId, translationState, maxReadStoryId, recommendedChannels, audioTranscriptionTrial, chatThemes, deviceContactsNumbers, contentSettingsAndPampGramSettings in
++            let (contentSettings, pampGramSettings) = contentSettingsAndPampGramSettings
+             let (historyAppearsCleared, pendingUnpinnedAllMessages, pendingRemovedMessages, currentlyPlayingMessageIdAndType, scrollToMessageId, chatHasBots, allAdMessages) = promises
+             
+             if measure_isFirstTime {
+@@ -2158,6 +2181,12 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
+                         }
+                     }
+                 }
++                let canBypassCopyProtection = pampGramSettings.copyProtectionBypassEnabled && chatLocation.peerId?.namespace != Namespaces.Peer.SecretChat
++                if canBypassCopyProtection {
++                    isCopyProtectionEnabled = false
++                }
++                let canBypassScreenshots = pampGramSettings.screenshotProtectionBypassEnabled && chatLocation.peerId?.namespace != Namespaces.Peer.SecretChat
++
+                 let alwaysDisplayTranscribeButton = ChatMessageItemAssociatedData.DisplayTranscribeButton(
+                     canBeDisplayed: suggestAudioTranscription.0 < 2,
+                     displayForNotConsumed: suggestAudioTranscription.1,
+@@ -2179,7 +2208,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
+                     isSuspiciousPeer = true
+                 }
+                 
+-                let associatedData = extractAssociatedData(chatLocation: chatLocation, view: view, automaticDownloadNetworkType: networkType, preferredStoryHighQuality: preferredStoryHighQuality, animatedEmojiStickers: animatedEmojiStickers, additionalAnimatedEmojiStickers: additionalAnimatedEmojiStickers, subject: subject, currentlyPlayingMessageId: currentlyPlayingMessageIdAndType?.0, isCopyProtectionEnabled: isCopyProtectionEnabled, availableReactions: availableReactions, availableMessageEffects: availableMessageEffects, savedMessageTags: savedMessageTags, defaultReaction: defaultReaction.0, areStarReactionsEnabled: defaultReaction.1, isPremium: isPremium, alwaysDisplayTranscribeButton: alwaysDisplayTranscribeButton, accountPeer: accountPeer, topicAuthorId: topicAuthorId, hasBots: chatHasBots, translateToLanguage: translateToLanguage?.toLang, maxReadStoryId: maxReadStoryId, recommendedChannels: recommendedChannels, audioTranscriptionTrial: audioTranscriptionTrial, chatThemes: chatThemes, deviceContactsNumbers: deviceContactsNumbers, isInline: !rotated, showSensitiveContent: contentSettings.ignoreContentRestrictionReasons.contains("sensitive"), isSuspiciousPeer: isSuspiciousPeer, accountCountry: accountCountry)
++                let associatedData = extractAssociatedData(chatLocation: chatLocation, view: view, automaticDownloadNetworkType: networkType, preferredStoryHighQuality: preferredStoryHighQuality, animatedEmojiStickers: animatedEmojiStickers, additionalAnimatedEmojiStickers: additionalAnimatedEmojiStickers, subject: subject, currentlyPlayingMessageId: currentlyPlayingMessageIdAndType?.0, isCopyProtectionEnabled: isCopyProtectionEnabled, pampGramCopyProtectionBypassEnabled: canBypassCopyProtection, pampGramScreenshotProtectionBypassEnabled: canBypassScreenshots, availableReactions: availableReactions, availableMessageEffects: availableMessageEffects, savedMessageTags: savedMessageTags, defaultReaction: defaultReaction.0, areStarReactionsEnabled: defaultReaction.1, isPremium: isPremium, alwaysDisplayTranscribeButton: alwaysDisplayTranscribeButton, accountPeer: accountPeer, topicAuthorId: topicAuthorId, hasBots: chatHasBots, translateToLanguage: translateToLanguage?.toLang, maxReadStoryId: maxReadStoryId, recommendedChannels: recommendedChannels, audioTranscriptionTrial: audioTranscriptionTrial, chatThemes: chatThemes, deviceContactsNumbers: deviceContactsNumbers, isInline: !rotated, showSensitiveContent: contentSettings.ignoreContentRestrictionReasons.contains("sensitive"), isSuspiciousPeer: isSuspiciousPeer, accountCountry: accountCountry)
+                 
+                 var includeEmbeddedSavedChatInfo = false
+                 if case let .replyThread(message) = chatLocation, message.peerId == context.account.peerId, !rotated {
+diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+index 36829662..e0ebfc18 100644
+--- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
++++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+@@ -500,13 +500,18 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+ // (renamed …Real, same pattern as Ghost mode's read-state wrapper in
+ // SynchronizePeerReadState.swift) so this ~4000-line function stays untouched.
+ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil) -> Signal<ContextController.Items, NoError> {
+-    let baseItems = contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: chatPresentationInterfaceState, context: context, messages: messages, controllerInteraction: controllerInteraction, selectAll: selectAll, interfaceInteraction: interfaceInteraction, readStats: readStats, messageNode: messageNode)
++    let settingsSignal = PampGramCore.settingsSignal(postbox: context.account.postbox)
++    let baseItems = settingsSignal
++    |> map { settings in
++        return contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: chatPresentationInterfaceState, context: context, messages: messages, controllerInteraction: controllerInteraction, selectAll: selectAll, interfaceInteraction: interfaceInteraction, readStats: readStats, messageNode: messageNode, copyProtectionBypassEnabled: settings.copyProtectionBypassEnabled)
++    }
++    |> switchToLatest
+ 
+     guard messages.count == 1, let message = messages.first, !message.media.contains(where: { $0 is TelegramMediaAction }) else {
+         return baseItems
+     }
+ 
+-    return combineLatest(baseItems, PampGramCore.settingsSignal(postbox: context.account.postbox))
++    return combineLatest(baseItems, settingsSignal)
+     |> map { items, settings -> ContextController.Items in
+         guard settings.visualEditEnabled, case let .list(list) = items.content else {
+             return items
+@@ -579,7 +584,7 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+     }
+ }
+ 
+-private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil) -> Signal<ContextController.Items, NoError> {
++private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil, copyProtectionBypassEnabled: Bool = false) -> Signal<ContextController.Items, NoError> {
+     guard let interfaceInteraction = interfaceInteraction, let controllerInteraction = controllerInteraction else {
+         return .single(ContextController.Items(content: .list([])))
+     }
+@@ -900,7 +905,8 @@ private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationIn
+         }
+     }
+     
+-    if !canSendMessagesToChat(chatPresentationInterfaceState) && (chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()) {
++    let copyProtectionBypassApplies = copyProtectionBypassEnabled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia
++    if !canSendMessagesToChat(chatPresentationInterfaceState) && !copyProtectionBypassApplies && (chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()) {
+         canReply = false
+     }
+     
+@@ -1023,7 +1029,7 @@ private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationIn
+                 banAuthor: nil,
+                 banAuthors: [],
+                 disableDelete: true,
+-                isCopyProtected: messageActions.isCopyProtected,
++                isCopyProtected: copyProtectionBypassApplies ? false : messageActions.isCopyProtected,
+                 setTag: false,
+                 editTags: Set()
+             )
+@@ -1419,7 +1425,7 @@ private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationIn
+             }
+         }
+         
+-        let isCopyProtected = chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()
++        let isCopyProtected = !copyProtectionBypassApplies && (chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected())
+         if !messageText.isEmpty || richMessageMarkdown != nil || (resourceAvailable && isImage) || diceEmoji != nil {
+             if !isExpired {
+                 if !isPoll {
+@@ -2010,7 +2016,7 @@ private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationIn
+             })))
+         }
+ 
+-        if data.messageActions.options.contains(.forward) {
++        if data.messageActions.options.contains(.forward) || (copyProtectionBypassApplies && !isAction) {
+             if !isCopyProtected {
+                 actions.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Conversation_ContextMenuForward, icon: { theme in
+                     return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Forward"), color: theme.actionSheet.primaryTextColor)
+@@ -2573,7 +2579,7 @@ private func canPerformDeleteActions(limits: LimitsConfiguration, accountPeerId:
+ }
+ 
+ func chatAvailableMessageActionsImpl(engine: TelegramEngine, accountPeerId: EnginePeer.Id, messageIds: Set<EngineMessage.Id>, messages: [EngineMessage.Id: EngineRawMessage] = [:], peers: [EnginePeer.Id: EngineRawPeer] = [:], keepUpdated: Bool) -> Signal<ChatAvailableMessageActions, NoError> {
+-    return engine.data.subscribe(
++    let baseDataSignal = engine.data.subscribe(
+         TelegramEngine.EngineData.Item.Configuration.Limits(),
+         EngineDataMap(Set(messageIds.map(\.peerId)).map(TelegramEngine.EngineData.Item.Peer.Peer.init)),
+         EngineDataMap(Set(messageIds).map(TelegramEngine.EngineData.Item.Messages.Message.init)),
+@@ -2582,7 +2588,10 @@ func chatAvailableMessageActionsImpl(engine: TelegramEngine, accountPeerId: Engi
+         TelegramEngine.EngineData.Item.Peer.Peer(id: accountPeerId)
+     )
+     |> take(keepUpdated ? Int.max : 1)
+-    |> map { limitsConfiguration, peerMap, messageMap, copyProtectionMap, myCopyProtectionMap, accountPeer -> ChatAvailableMessageActions in
++
++    let baseSignal = combineLatest(baseDataSignal, PampGramCore.settingsSignal(postbox: engine.account.postbox))
++    |> map { data, settings -> ChatAvailableMessageActions in
++        let (limitsConfiguration, peerMap, messageMap, copyProtectionMap, myCopyProtectionMap, accountPeer) = data
+         let isPremium: Bool
+         if let accountPeer {
+             isPremium = accountPeer.isPremium
+@@ -2658,11 +2667,12 @@ func chatAvailableMessageActionsImpl(engine: TelegramEngine, accountPeerId: Engi
+                     }
+                 }
+                 
+-                if message.isCopyProtected() || message.containsSecretMedia {
++                let copyProtectionBypassApplies = settings.copyProtectionBypassEnabled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia
++                if (!copyProtectionBypassApplies && message.isCopyProtected()) || message.containsSecretMedia {
+                     isCopyProtected = true
+                 }
+                 
+-                if isPeerCopyProtected(message.id.peerId) == true {
++                if !copyProtectionBypassApplies && isPeerCopyProtected(message.id.peerId) == true {
+                     isCopyProtected = true
+                 }
+                 
+@@ -2775,7 +2785,7 @@ func chatAvailableMessageActionsImpl(engine: TelegramEngine, accountPeerId: Engi
+                             }
+                         }
+                         if !message.containsSecretMedia && !isAction && !isShareProtected {
+-                            if message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.isCopyProtected() {
++                            if message.id.peerId.namespace != Namespaces.Peer.SecretChat && (copyProtectionBypassApplies || !message.isCopyProtected()) {
+                                 if !(message.flags.isSending || message.flags.contains(.Failed)) {
+                                     optionsMap[id]!.insert(.forward)
+                                 }
+@@ -2791,7 +2801,7 @@ func chatAvailableMessageActionsImpl(engine: TelegramEngine, accountPeerId: Engi
+                         }
+                     } else if let group = peer as? TelegramGroup {
+                         if message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia {
+-                            if !isAction && !message.isCopyProtected() && !isShareProtected {
++                            if !isAction && (copyProtectionBypassApplies || !message.isCopyProtected()) && !isShareProtected {
+                                 if !(message.flags.isSending || message.flags.contains(.Failed)) {
+                                     optionsMap[id]!.insert(.forward)
+                                 }
+@@ -2810,7 +2820,7 @@ func chatAvailableMessageActionsImpl(engine: TelegramEngine, accountPeerId: Engi
+                             optionsMap[id]!.insert(.report)
+                         }
+                     } else if let user = peer as? TelegramUser {
+-                        if !isScheduled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia && !isAction && !message.id.peerId.isReplies && !message.isCopyProtected() && !isShareProtected {
++                        if !isScheduled && message.id.peerId.namespace != Namespaces.Peer.SecretChat && !message.containsSecretMedia && !isAction && !message.id.peerId.isReplies && (copyProtectionBypassApplies || !message.isCopyProtected()) && !isShareProtected {
+                             if !(message.flags.isSending || message.flags.contains(.Failed)) {
+                                 optionsMap[id]!.insert(.forward)
+                             }
+@@ -2897,6 +2907,8 @@ func chatAvailableMessageActionsImpl(engine: TelegramEngine, accountPeerId: Engi
+             return ChatAvailableMessageActions(options: [], banAuthor: nil, banAuthors: [], disableDelete: false, isCopyProtected: isCopyProtected, setTag: false, editTags: Set())
+         }
+     }
++
++    return baseSignal
+ }
+ 
+ final class ChatDeleteMessageContextItem: ContextMenuCustomItem {
+diff --git a/submodules/TelegramUI/Sources/ChatPinnedMessageTitlePanelNode.swift b/submodules/TelegramUI/Sources/ChatPinnedMessageTitlePanelNode.swift
+index 6904c08d..d541e8e5 100644
+--- a/submodules/TelegramUI/Sources/ChatPinnedMessageTitlePanelNode.swift
++++ b/submodules/TelegramUI/Sources/ChatPinnedMessageTitlePanelNode.swift
+@@ -24,6 +24,7 @@ import TranslateUI
+ import ChatControllerInteraction
+ import LegacyChatHeaderPanelComponent
+ import UIKitRuntimeUtils
++import PampGramCore
+ 
+ private enum PinnedMessageAnimation {
+     case slideToTop
+@@ -77,6 +78,9 @@ final class ChatPinnedMessageTitlePanelNode: ChatTitleAccessoryPanelNode {
+     private var isReplyThread: Bool = false
+     
+     private let fetchDisposable = MetaDisposable()
++    private let pampGramSettingsDisposable = MetaDisposable()
++    private var pampGramScreenshotProtectionBypassEnabled = false
++    private var pampGramBaseCaptureProtected = false
+     
+     private var statusDisposable: Disposable?
+     private var progressDisposable: Disposable?
+@@ -165,6 +169,15 @@ final class ChatPinnedMessageTitlePanelNode: ChatTitleAccessoryPanelNode {
+         self.imageNodeContainer = ASDisplayNode()
+         
+         super.init()
++
++        self.pampGramSettingsDisposable.set((PampGramCore.settingsSignal(postbox: context.account.postbox)
++        |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
++            guard let self else {
++                return
++            }
++            self.pampGramScreenshotProtectionBypassEnabled = settings.screenshotProtectionBypassEnabled
++            self.updatePampGramCaptureProtection()
++        }))
+         
+         self.tapButton.highligthedChanged = { [weak self] highlighted in
+             if let strongSelf = self {
+@@ -240,6 +253,15 @@ final class ChatPinnedMessageTitlePanelNode: ChatTitleAccessoryPanelNode {
+         self.statusDisposable?.dispose()
+         self.translationDisposable.dispose()
+         self.progressDisposable?.dispose()
++        self.pampGramSettingsDisposable.dispose()
++    }
++
++    private func updatePampGramCaptureProtection() {
++        let message = self.currentMessage?.message
++        let isSecretChat = message?.id.peerId.namespace == Namespaces.Peer.SecretChat
++        let containsSecretMedia = message?.containsSecretMedia ?? false
++        let bypassApplies = self.pampGramScreenshotProtectionBypassEnabled && !isSecretChat && !containsSecretMedia
++        self.captureProtected = self.pampGramBaseCaptureProtected && !bypassApplies
+     }
+     
+     private var theme: PresentationTheme?
+@@ -291,7 +313,8 @@ final class ChatPinnedMessageTitlePanelNode: ChatTitleAccessoryPanelNode {
+         }
+         self.isReplyThread = isReplyThread
+         
+-        self.captureProtected = interfaceState.copyProtectionEnabled || interfaceState.myCopyProtectionEnabled
++        self.pampGramBaseCaptureProtected = interfaceState.copyProtectionEnabled || interfaceState.myCopyProtectionEnabled
++        self.updatePampGramCaptureProtection()
+         
+         self.contextContainer.isGestureEnabled = !isReplyThread
+         
+@@ -518,6 +541,7 @@ final class ChatPinnedMessageTitlePanelNode: ChatTitleAccessoryPanelNode {
+             let messageUpdated = self.currentMessage?.message.id != interfaceState.pinnedMessage?.message.id
+             let previousMessageWasNil = self.currentMessage == nil
+             self.currentMessage = interfaceState.pinnedMessage
++            self.updatePampGramCaptureProtection()
+             
+             if let currentMessage = self.currentMessage, let currentLayout = self.currentLayout {
+                 self.dustNode?.update(revealed: false, animated: false)
+diff --git a/submodules/TelegramUI/Sources/SharedMediaPlayer.swift b/submodules/TelegramUI/Sources/SharedMediaPlayer.swift
+index 8e69e293..f8b30848 100644
+--- a/submodules/TelegramUI/Sources/SharedMediaPlayer.swift
++++ b/submodules/TelegramUI/Sources/SharedMediaPlayer.swift
+@@ -9,6 +9,7 @@ import AccountContext
+ import TelegramUniversalVideoContent
+ import DeviceProximity
+ import PeerMessagesMediaPlaylist
++import PampGramCore
+ 
+ private enum SharedMediaPlaybackItem: Equatable {
+     case audio(MediaPlayer)
+@@ -126,6 +127,7 @@ final class SharedMediaPlayer {
+     private var forceAudioToSpeaker = false
+     
+     private var stateDisposable: Disposable?
++    private var pampGramScreenshotProtectionBypassEnabled = false
+     
+     private var stateValue: SharedMediaPlaylistState? {
+         didSet {
+@@ -204,12 +206,14 @@ final class SharedMediaPlayer {
+             self?.cancelled?()
+         }
+         
+-        self.stateDisposable = (playlist.state
+-        |> deliverOnMainQueue).startStrict(next: { [weak self] state in
++        self.stateDisposable = (combineLatest(playlist.state, PampGramCore.settingsSignal(postbox: context.account.postbox))
++        |> deliverOnMainQueue).startStrict(next: { [weak self] state, pampGramSettings in
+             if let strongSelf = self {
+                 let previousPlaybackItem = strongSelf.playbackItem
+                 strongSelf.updatePrefetchItems(item: state.item, previousItem: state.previousItem, nextItem: state.nextItem, ordering: state.order)
+-                if state.item?.playbackData != strongSelf.stateValue?.item?.playbackData {
++                let screenshotProtectionSettingChanged = strongSelf.pampGramScreenshotProtectionBypassEnabled != pampGramSettings.screenshotProtectionBypassEnabled
++                strongSelf.pampGramScreenshotProtectionBypassEnabled = pampGramSettings.screenshotProtectionBypassEnabled
++                if state.item?.playbackData != strongSelf.stateValue?.item?.playbackData || (screenshotProtectionSettingChanged && state.item?.playbackData?.type == .instantVideo) {
+                     if let playbackItem = strongSelf.playbackItem {
+                         switch playbackItem {
+                             case .audio:
+@@ -238,7 +242,8 @@ final class SharedMediaPlayer {
+                                 if let mediaManager = strongSelf.mediaManager, let context = strongSelf.context, let item = item as? MessageMediaPlaylistItem {
+                                     switch playbackData.source {
+                                         case let .telegramFile(fileReference, _, _):
+-                                        let videoNode = OverlayInstantVideoNode(context: context, audioSession: strongSelf.audioSession, manager: mediaManager.universalVideoManager, content: NativeVideoContent(id: .message(item.message.stableId, fileReference.media.fileId), userLocation: .peer(item.message.id.peerId), fileReference: fileReference, enableSound: false, baseRate: rateValue, isAudioVideoMessage: true, captureProtected: item.message.isCopyProtected(), storeAfterDownload: nil), close: { [weak mediaManager] in
++                                        let screenshotProtectionBypassApplies = pampGramSettings.screenshotProtectionBypassEnabled && item.message.id.peerId.namespace != Namespaces.Peer.SecretChat && !item.message.containsSecretMedia
++                                        let videoNode = OverlayInstantVideoNode(context: context, audioSession: strongSelf.audioSession, manager: mediaManager.universalVideoManager, content: NativeVideoContent(id: .message(item.message.stableId, fileReference.media.fileId), userLocation: .peer(item.message.id.peerId), fileReference: fileReference, enableSound: false, baseRate: rateValue, isAudioVideoMessage: true, captureProtected: !screenshotProtectionBypassApplies && item.message.isCopyProtected(), storeAfterDownload: nil), close: { [weak mediaManager] in
+                                                 mediaManager?.setPlaylist(nil, type: .voice, control: .playback(.pause))
+                                             })
+                                             strongSelf.playbackItem = .instantVideo(videoNode)
+diff --git a/submodules/TelegramUI/Sources/StoreDownloadedMedia.swift b/submodules/TelegramUI/Sources/StoreDownloadedMedia.swift
+index b1220948..e256a9e8 100644
+--- a/submodules/TelegramUI/Sources/StoreDownloadedMedia.swift
++++ b/submodules/TelegramUI/Sources/StoreDownloadedMedia.swift
+@@ -5,6 +5,7 @@ import Postbox
+ import Photos
+ import TelegramUIPreferences
+ import AccountContext
++import PampGramCore
+ 
+ private func appSpecificAssetCollection() -> Signal<PHAssetCollection, NoError> {
+     return Signal { subscriber in
+@@ -65,15 +66,16 @@ private final class DownloadedMediaStoreContext {
+             resource = file.resource
+         }
+         if let resource = resource {
+-            self.disposable = (postbox.transaction { transaction -> (MediaAutoSaveSettings, EnginePeer?, CachedPeerData?) in
++            self.disposable = (postbox.transaction { transaction -> (MediaAutoSaveSettings, EnginePeer?, CachedPeerData?, PampGramSettings) in
+                 let peer = transaction.getPeer(peerId).flatMap(EnginePeer.init)
+                 let cachedData = transaction.getPeerCachedData(peerId: peerId)
++                let pampGramSettings = PampGramCore.settings(transaction: transaction)
+                 guard let entry = transaction.getPreferencesEntry(key: ApplicationSpecificPreferencesKeys.mediaAutoSaveSettings)?.get(MediaAutoSaveSettings.self) else {
+-                    return (.default, peer, cachedData)
++                    return (.default, peer, cachedData, pampGramSettings)
+                 }
+-                return (entry, peer, cachedData)
++                return (entry, peer, cachedData, pampGramSettings)
+             }
+-            |> map { storeSettings, peer, cachedData -> Bool in
++            |> map { storeSettings, peer, cachedData, pampGramSettings -> Bool in
+                 guard let peer = peer else {
+                     return false
+                 }
+@@ -85,7 +87,7 @@ private final class DownloadedMediaStoreContext {
+                     let peerTypeValue: MediaAutoSaveSettings.PeerType
+                     switch peer {
+                     case .user:
+-                        if let cachedUserData = cachedData as? CachedUserData, cachedUserData.flags.contains(.copyProtectionEnabled) || cachedUserData.flags.contains(.myCopyProtectionEnabled) {
++                        if let cachedUserData = cachedData as? CachedUserData, !pampGramSettings.copyProtectionBypassEnabled && (cachedUserData.flags.contains(.copyProtectionEnabled) || cachedUserData.flags.contains(.myCopyProtectionEnabled)) {
+                             return false
+                         }
+                         peerTypeValue = .users
+@@ -94,7 +96,7 @@ private final class DownloadedMediaStoreContext {
+                     case .legacyGroup:
+                         peerTypeValue = .groups
+                     case let .channel(channel):
+-                        if channel.flags.contains(.copyProtectionEnabled) {
++                        if channel.flags.contains(.copyProtectionEnabled) && !pampGramSettings.copyProtectionBypassEnabled {
+                             return false
+                         }
+                         
+
