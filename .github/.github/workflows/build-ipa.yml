@@ -1,0 +1,291 @@
+name: Build IPA (device, fake-signed)
+
+# Manual only — this is a huge build (Telegram-iOS plus WebRTC/dav1d/libvpx/td from
+# source). Run it from the Actions tab when you actually want a new .ipa.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 350 # under the 6h hosted-runner cap
+    steps:
+      - name: Check out PampGram (patch + PhantomGiftKit)
+        uses: actions/checkout@v4
+        with:
+          path: pampgram
+
+      # versions.json pins Xcode 26.2; --overrideXcodeVersion skips the assertion, but the
+      # project genuinely needs Xcode 26+ (its app icons use the Icon Composer .icon bundle
+      # format). Pick the newest Xcode actually present rather than trusting the image label.
+      - name: Select latest available Xcode
+        run: |
+          ls /Applications | grep -i xcode || true
+          latest_xcode="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest_xcode" ]; then sudo xcode-select -s "$latest_xcode"; fi
+          xcodebuild -version
+
+      - name: Check out Telegram-iOS
+        run: |
+          git clone --recursive --shallow-submodules --depth 1 -j8 \
+            https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
+
+      # mod/components/* are whole new Bazel packages, dropped in as-is under a single
+      # PampGram/ directory. The two patches only touch files that already exist upstream;
+      # keeping them separate lets the original mod patch and the six "Прочее" features
+      # evolve independently.
+      - name: Apply the PampGram patch
+        working-directory: telegram-ios
+        run: |
+          git apply --check ../pampgram/mod/telegram-ios.patch
+          git apply ../pampgram/mod/telegram-ios.patch
+          git apply --check ../pampgram/mod/telegram-ios-features.patch
+          git apply ../pampgram/mod/telegram-ios-features.patch
+          # v8.1: both historical patches used to edit ChatInterfaceStateContextMenus.swift.
+          # The v8 base patch now owns the PampGram wrapper, so apply the remaining
+          # copy-protection integration semantically after both non-overlapping patches.
+          python3 ../pampgram/mod/apply-chat-context-features.py
+          mkdir -p submodules/TelegramUI/Components/PampGram
+          cp -R ../pampgram/mod/components/. submodules/TelegramUI/Components/PampGram/
+          # Replace the voice-note DSP implementation with the current PampGram override.
+          # Keeping this outside the large base patch makes audio fixes independent from
+          # upstream patch offsets and avoids accidentally reintroducing an older version.
+          cp ../pampgram/mod/overrides/PampGramVoiceChanger.swift submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
+          ls -1 submodules/TelegramUI/Components/PampGram
+
+      # Signing, the whole story in one place.
+      #
+      # Two separate problems had to be solved here, and the first one masked the second.
+      #
+      # (1) The shipped certs/SelfSigned.p12 is encrypted with pbeWithSHA1And40BitRC2-CBC —
+      # 40-bit RC2, which modern crypto stacks refuse outright (OpenSSL 3 errors with
+      # "unsupported: RC2-40-CBC"). So it is re-encrypted below: same key, same certificate,
+      # only the container changes. Its SHA-1 fingerprint
+      # (D3:45:DE:EE:63:A1:D7:16:F2:23:25:8E:9C:2E:F3:EB:FB:DC:C0:11) matches the
+      # DeveloperCertificates entry embedded in the .mobileprovision files exactly, so the
+      # signing material is self-consistent — it just could not be read as shipped.
+      # It also gets a real password: with an empty one, OpenSSL and Apple's Security
+      # framework derive the MAC key differently, and Apple then calls the file corrupt
+      # ("MAC verification failed during PKCS12 import"). Runs 2-4 established that the hard
+      # way — four different PBE/MAC combinations all failed *identically*, which ruled the
+      # algorithms out and left the empty password as the only shared cause.
+      #
+      # (2) Nothing was importing it. build-system/Make/ImportCertificates.py is called only
+      # from TartBuild.py and RemoteBuild.py — a VM build or a remote-Mac build. A plain
+      # `Make.py build` never runs it, because on a developer's own Mac the identity is
+      # already in their login keychain. On a fresh CI runner it is in no keychain at all,
+      # which is why run 7 failed at "Unable to find an identity on the system matching the
+      # ones in .../Intents.mobileprovision" — the same wall run 1 hit. So this step sets up
+      # the keychain itself.
+      #
+      # And the identity has to be *trusted*, not merely present: rules_apple looks for it
+      # with `security find-identity -v -p codesigning`, and -v lists only identities that
+      # pass trust evaluation, which a self-signed certificate never does on its own. Hence
+      # add-trusted-cert into the System keychain. (Perfectly safe here: the runner is
+      # thrown away when the job ends, and this certificate signs nothing but this build.)
+      #
+      # The final check runs the exact command rules_apple runs, so if it passes, signing
+      # works — rather than proving something adjacent, which is what the previous version
+      # of this step did.
+      - name: Install the fake signing identity into the keychain
+        working-directory: telegram-ios
+        run: |
+          set -euo pipefail
+          openssl version
+          P12=build-system/fake-codesigning/certs/SelfSigned.p12
+          PASS=pampgram
+          KEYCHAIN=pampgram.keychain-db
+
+          # OpenSSL 3 needs -legacy to read the shipped RC2-40 container; LibreSSL (Apple's
+          # /usr/bin/openssl) has no such flag but reads it natively — try one, fall back.
+          openssl pkcs12 -legacy -in "$P12" -nodes -passin pass: -out /tmp/sc.pem 2>/dev/null \
+            || openssl pkcs12 -in "$P12" -nodes -passin pass: -out /tmp/sc.pem
+          test -s /tmp/sc.pem
+
+          # Apple accepts AES-256 containers here less reliably ("Unknown format in import"),
+          # so 3DES + SHA-1 is what run 4 proved works.
+          openssl pkcs12 -export -in /tmp/sc.pem -out /tmp/signing.p12 -passout "pass:$PASS" \
+            -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
+          openssl x509 -in /tmp/sc.pem -out /tmp/signing.cer
+          openssl x509 -in /tmp/signing.cer -noout -subject -fingerprint
+
+          security delete-keychain "$KEYCHAIN" 2>/dev/null || true
+          security create-keychain -p "$PASS" "$KEYCHAIN"
+          # No auto-lock: a locked keychain mid-build fails signing with the same
+          # unhelpful "no identity" message.
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "$PASS" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+
+          security import /tmp/signing.p12 -k "$KEYCHAIN" -P "$PASS" -A \
+            -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign
+          # Without this, codesign cannot use the private key non-interactively and blocks
+          # on a UI prompt that no one is there to answer.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$PASS" "$KEYCHAIN"
+
+          sudo security add-trusted-cert -d -r trustRoot \
+            -k /Library/Keychains/System.keychain /tmp/signing.cer
+
+          rm -f /tmp/sc.pem /tmp/signing.p12 /tmp/signing.cer
+
+          echo "--- identities rules_apple will see ---"
+          security find-identity -v -p codesigning
+          if ! security find-identity -v -p codesigning | grep -q 'Telegram FZ-LLC'; then
+            echo "FAIL: the identity is not valid for codesigning; signing would fail later."
+            exit 1
+          fi
+          echo "OK: signing identity is installed and trusted."
+
+      # The bundle_id and team_id MUST match what's baked into the fake provisioning profiles
+      # shipped in build-system/fake-codesigning/profiles/ (Telegram.mobileprovision carries
+      # application-identifier C67CF9S4VU.ph.telegra.Telegraph) — a mismatch fails codesigning.
+      #
+      # api_id/api_hash come from repo secrets TELEGRAM_API_ID / TELEGRAM_API_HASH (get a free
+      # pair at https://my.telegram.org/apps). The fallback is Telegram's own public App Store
+      # pair, which is restricted to the official app — logging into a third-party build with
+      # it risks the account being limited or banned.
+      #
+      # Hence the checks below. A secret whose name is misspelled does not error: the ||
+      # fallback quietly substitutes the public pair, the build succeeds, and the first sign
+      # that anything was wrong is a restricted account. That failure is worth catching in the
+      # first ten seconds of the job instead. The values themselves are never printed — only
+      # whether they arrived and whether they are the right shape.
+      - name: Write build configuration
+        working-directory: telegram-ios
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '8' }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || '7245de8e747a0d6fbe11f7cc14fcc0bb' }}
+          ALLOW_PUBLIC_API_KEYS: ${{ vars.ALLOW_PUBLIC_API_KEYS }}
+        run: |
+          set -euo pipefail
+
+          if [ "$TELEGRAM_API_ID" = "8" ]; then
+            if [ "$ALLOW_PUBLIC_API_KEYS" = "true" ]; then
+              echo "WARNING: building with Telegram's public api_id 8, because the repository"
+              echo "variable ALLOW_PUBLIC_API_KEYS is set to true. Signing in to this build"
+              echo "risks the account being limited."
+            else
+              echo "FAIL: secret TELEGRAM_API_ID is not set, so the build would fall back to"
+              echo "Telegram's public api_id 8 and put the account at risk."
+              echo
+              echo "Add it under Settings -> Secrets and variables -> Actions -> Repository"
+              echo "secrets (NOT Environment secrets). The name must be exactly"
+              echo "TELEGRAM_API_ID, uppercase, with underscores."
+              echo
+              echo "To build with the public pair on purpose, set the repository VARIABLE"
+              echo "ALLOW_PUBLIC_API_KEYS to true."
+              exit 1
+            fi
+          else
+            # Whitespace is stripped rather than rejected: a value pasted on a phone very
+            # often picks up a trailing space or newline, and Telegram would reject the pair
+            # at login with nothing to explain why.
+            API_ID="$(printf '%s' "$TELEGRAM_API_ID" | tr -d '[:space:]')"
+            API_HASH="$(printf '%s' "$TELEGRAM_API_HASH" | tr -d '[:space:]')"
+
+            if [[ ! "$API_ID" =~ ^[0-9]+$ ]]; then
+              echo "FAIL: TELEGRAM_API_ID must be digits only; got ${#API_ID} character(s)."
+              echo "Looks like the api_hash ended up in this secret."
+              exit 1
+            fi
+
+            # An api_hash is exactly 32 hex characters. A bash regex rather than a piped
+            # grep: this ran once as `printf | grep -Eqi` under `set -o pipefail` and reported
+            # "is not 32 hex characters (got 32)" — self-contradictory, and useless for
+            # working out what was actually wrong with the value.
+            if [[ ! "$API_HASH" =~ ^[0-9a-fA-F]{32}$ ]]; then
+              echo "FAIL: TELEGRAM_API_HASH is not a valid api_hash."
+              echo "  length after trimming spaces: ${#API_HASH} (expected 32)"
+              # Shape only: every hex character becomes 'x', anything else is shown as-is.
+              # Whatever shows through is by definition NOT part of a valid api_hash, and it
+              # is the one thing that makes a bad paste diagnosable.
+              echo "  shape (hex shown as x): $(printf '%s' "$API_HASH" | sed 's/[0-9a-fA-F]/x/g')"
+              echo
+              echo "It is 32 characters, digits and the letters a-f only, e.g."
+              echo "  a1b2c3d4e5f67890abcdef1234567890"
+              echo "On my.telegram.org/apps it is the long string under the numeric App api_id."
+              echo "If a letter outside a-f shows above, the wrong field was copied."
+              exit 1
+            fi
+
+            TELEGRAM_API_ID="$API_ID"
+            TELEGRAM_API_HASH="$API_HASH"
+            echo "OK: using your own api_id (${#API_ID} digits) and api_hash (32 hex)."
+          fi
+
+          cat > build-system/pampgram-configuration.json <<EOF
+          {
+            "bundle_id": "ph.telegra.Telegraph",
+            "api_id": "${TELEGRAM_API_ID}",
+            "api_hash": "${TELEGRAM_API_HASH}",
+            "team_id": "C67CF9S4VU",
+            "app_center_id": "0",
+            "is_internal_build": "false",
+            "is_appstore_build": "false",
+            "appstore_id": "686449807",
+            "app_specific_url_scheme": "tg",
+            "premium_iap_product_id": "org.telegram.telegramPremium.monthly",
+            "enable_siri": false,
+            "enable_icloud": false
+          }
+          EOF
+          # Deliberately not `cat`-ing the file: GitHub masks registered secrets in logs, but
+          # there is no reason to lean on that when the interesting part is the rest of it.
+          python3 -c "import json;d=json.load(open('build-system/pampgram-configuration.json'));d['api_id']='<set>';d['api_hash']='<set>';print(json.dumps(d,indent=2))"
+
+      # Split restore/save instead of actions/cache, because actions/cache only writes the
+      # cache when the job succeeds. Every run so far has failed, so nothing was ever saved
+      # and each attempt recompiled all ~6000 targets from scratch — roughly 37 minutes to
+      # reach our own module, which is the very last thing built. Saving on failure too means
+      # a retry only recompiles what actually changed.
+      - name: Restore Bazel cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/telegram-bazel-cache
+          key: telegram-bazel-cache-${{ github.run_id }}
+          restore-keys: |
+            telegram-bazel-cache-
+
+      # A DEVICE build (release_arm64), signed with the self-signed cert + fake provisioning
+      # profiles the Telegram repo ships in build-system/fake-codesigning for exactly this
+      # purpose (README: "Copy build-system/fake-codesigning"). --codesigningInformationPath
+      # only makes Make.py hand those *profiles* to Bazel; putting the matching identity
+      # where codesign can find it is the previous step's job, not Make.py's.
+      #
+      # The resulting signature is NOT valid for installing on a real iPhone as-is. That's
+      # fine and expected: Sideloadly / AltStore / an on-device signer strip it and re-sign
+      # with YOUR Apple ID at install time. They only need a structurally valid device .ipa,
+      # which is what this produces.
+      - name: Build device IPA (fake-signed)
+        working-directory: telegram-ios
+        run: |
+          python3 build-system/Make/Make.py \
+            --overrideXcodeVersion \
+            --cacheDir="$HOME/telegram-bazel-cache" \
+            build \
+            --configurationPath=build-system/pampgram-configuration.json \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --buildNumber=1 \
+            --configuration=release_arm64 \
+            --outputBuildArtifactsPath="$GITHUB_WORKSPACE/output"
+
+      - name: Save Bazel cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/telegram-bazel-cache
+          key: telegram-bazel-cache-${{ github.run_id }}
+
+      - name: Show what was produced
+        if: always()
+        run: ls -lh "$GITHUB_WORKSPACE/output" || echo "no output directory — the build did not reach packaging"
+
+      - name: Upload IPA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PampGram-ipa
+          path: output/Telegram.ipa
+          if-no-files-found: warn
+          retention-days: 14
