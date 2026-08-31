@@ -842,7 +842,7 @@ index b547dd3b..baa87a08 100644
 +            PampGramCore.settingsSignal(postbox: context.account.postbox),
 +            adMessages
 +        )
-+        |> map { settings, value in
++        |> map { settings, value -> (interPostInterval: Int32?, messages: [Message], startDelay: Int32?, betweenDelay: Int32?) in
 +            if settings.adBlockEnabled {
 +                return (interPostInterval: nil, messages: [], startDelay: nil, betweenDelay: nil)
 +            } else {
