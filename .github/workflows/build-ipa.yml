@@ -15,14 +15,21 @@ jobs:
         with:
           path: pampgram
 
-      # versions.json pins Xcode 26.2; --overrideXcodeVersion skips the assertion, but the
-      # project genuinely needs Xcode 26+ (its app icons use the Icon Composer .icon bundle
-      # format). Pick the newest Xcode actually present rather than trusting the image label.
-      - name: Select latest available Xcode
+      # Telegram-iOS currently pins Xcode 26.2. Do not select the newest Xcode on the
+      # runner: release/WMO builds have crashed inside swift-frontend when compiled with a
+      # newer toolchain than the one pinned upstream. Select 26.2 explicitly and fail early
+      # if the runner image ever stops shipping it.
+      - name: Select Xcode 26.2
         run: |
-          ls /Applications | grep -i xcode || true
-          latest_xcode="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
-          if [ -n "$latest_xcode" ]; then sudo xcode-select -s "$latest_xcode"; fi
+          set -euo pipefail
+          XCODE_APP="/Applications/Xcode_26.2.app"
+          if [ ! -d "$XCODE_APP" ]; then
+            echo "FAIL: Xcode 26.2 is not installed on this runner. Available Xcodes:"
+            ls -1 /Applications | grep -i '^Xcode' || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          echo "Selected developer directory: $(xcode-select -p)"
           xcodebuild -version
 
       - name: Check out Telegram-iOS
@@ -243,9 +250,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/telegram-bazel-cache
-          key: telegram-bazel-cache-${{ github.run_id }}
+          key: telegram-bazel-cache-xcode-26.2-${{ github.run_id }}
           restore-keys: |
-            telegram-bazel-cache-
+            telegram-bazel-cache-xcode-26.2-
 
       # A DEVICE build (release_arm64), signed with the self-signed cert + fake provisioning
       # profiles the Telegram repo ships in build-system/fake-codesigning for exactly this
@@ -261,7 +268,6 @@ jobs:
         working-directory: telegram-ios
         run: |
           python3 build-system/Make/Make.py \
-            --overrideXcodeVersion \
             --cacheDir="$HOME/telegram-bazel-cache" \
             build \
             --configurationPath=build-system/pampgram-configuration.json \
@@ -275,7 +281,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/telegram-bazel-cache
-          key: telegram-bazel-cache-${{ github.run_id }}
+          key: telegram-bazel-cache-xcode-26.2-${{ github.run_id }}
 
       - name: Show what was produced
         if: always()

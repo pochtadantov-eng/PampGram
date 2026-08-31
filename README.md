@@ -25,3 +25,7 @@ PampGram — мод для Telegram-iOS. GitHub Actions скачивает ак�
 
 ## v8.2 build fix
 MapKit is now linked through a small `objc_library` dependency instead of the unsupported `sdk_frameworks` attribute on `swift_library`.
+
+## v8.4 build fix
+- GitHub Actions now selects Xcode 26.2 explicitly (the version pinned by Telegram-iOS).
+- Removed `--overrideXcodeVersion` and isolated the Bazel cache by Xcode version to avoid mixing 26.6 build artifacts.
