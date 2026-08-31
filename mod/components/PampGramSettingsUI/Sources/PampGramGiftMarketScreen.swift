@@ -41,6 +41,7 @@ private enum PampGramGiftMarketEntry: ItemListNodeEntry {
         }
     }
     static func <(lhs: Self, rhs: Self) -> Bool { lhs.stableId < rhs.stableId }
+    @_optimize(none)
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let a = arguments as! PampGramGiftMarketArguments
         switch self {
@@ -55,7 +56,13 @@ private enum PampGramGiftMarketEntry: ItemListNodeEntry {
             if !gift.savedToProfile { badges.append("скрыт") }
             if gift.marketPrice != nil { badges.append("маркет") }
             let detail = badges.isEmpty ? pampGramGiftPriceText(gift.marketPrice) : "\(badges.joined(separator: " · ")) · \(pampGramGiftPriceText(gift.marketPrice))"
-            let title = gift.number.map { "\(gift.title) #\($0)" } ?? gift.title
+            let baseTitle = gift.title
+            let title: String
+            if let number = gift.number {
+                title = "\(baseTitle) #\(number)"
+            } else {
+                title = baseTitle
+            }
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: detail, sectionId: self.section, style: .blocks, action: { a.openGift(gift) })
         }
     }
@@ -86,7 +93,14 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
     let args = PampGramGiftMarketArguments(openGift: { gift in
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
         let sheet = ActionSheetController(presentationData: presentationData)
-        var items: [ActionSheetItem] = [ActionSheetTextItem(title: gift.number.map { "\(gift.title) #\($0)" } ?? gift.title)]
+        let baseTitle = gift.title
+        let displayTitle: String
+        if let number = gift.number {
+            displayTitle = "\(baseTitle) #\(number)"
+        } else {
+            displayTitle = baseTitle
+        }
+        var items: [ActionSheetItem] = [ActionSheetTextItem(title: displayTitle)]
         if gift.peerId == context.account.peerId {
             items.append(ActionSheetButtonItem(title: gift.pinnedToTop ? "Открепить в профиле" : "Закрепить в профиле", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
