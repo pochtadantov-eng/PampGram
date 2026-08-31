@@ -37,13 +37,9 @@ public enum PampGramVoicePreset: String, CaseIterable {
     /// Playback-rate multiplier for the same unit — a small tempo shift alongside the pitch
     /// one reads as a more distinct "voice" than pitch alone.
     public var rate: Float {
-        switch self {
-        case .male: return 0.97
-        case .female: return 1.04
-        case .child: return 1.12
-        case .robot: return 0.92
-        case .giant: return 0.85
-        }
+        // Voice presets must never change message tempo. The voice changer now uses
+        // pitch-only processing and keeps playback speed at exactly 1.0.
+        return 1.0
     }
 }
 
@@ -345,6 +341,11 @@ public enum PampGramPreferencesKeys {
     public static let phantomGifts = key(900_100)
     public static let deletedMessages = key(900_200)
     public static let adminToken = key(900_300)
+    public static let localOperations = key(900_400)
+    public static let profileVisuals = key(900_500)
+    public static let appearance = key(900_600)
+    public static let behavior = key(900_700)
+    public static let fakeAdmin = key(900_800)
 }
 
 public enum PampGramCore {
@@ -352,27 +353,17 @@ public enum PampGramCore {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
+    /// The master visual switch belongs to the Gifts section only. Turning it off must not
+    /// silently disable unrelated Chat/Ghost/Location/Media features. Stored gift settings
+    /// remain untouched; only their effective runtime values are suppressed.
     private static func effective(_ value: PampGramSettings) -> PampGramSettings {
         guard !value.pampGramEnabled else { return value }
         var value = value
         value.phantomGiftsEnabled = false
         value.fakeStarsDisplayEnabled = false
         value.fakeTonDisplayEnabled = false
-        value.antiDeleteMessagesEnabled = false
-        value.ghostReaderEnabled = false
-        value.onlineMaskEnabled = false
-        value.visualEditEnabled = false
         value.fromHimGiftsEnabled = false
-        value.voiceChangerMessagesEnabled = false
-        value.fakeLocationEnabled = false
-        value.chatLockEnabled = false
         value.localRublesPurchaseEnabled = false
-        value.copyProtectionBypassEnabled = false
-        value.showForwardOriginEnabled = false
-        value.disableAutoDeleteEnabled = false
-        value.screenshotProtectionBypassEnabled = false
-        value.hideChatOnScreenshotsEnabled = false
-        value.adBlockEnabled = false
         return value
     }
 

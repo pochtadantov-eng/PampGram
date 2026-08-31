@@ -3,6 +3,7 @@ import Postbox
 import TelegramCore
 import SwiftSignalKit
 import AccountContext
+import PampGramCore
 
 public enum PampGramPhantomGiftManager {
     public struct BuyResult {
@@ -50,6 +51,17 @@ public enum PampGramPhantomGiftManager {
                 localMessageId: nil
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+            let ledgerCurrency: PampGramLocalCurrency = price.currency == .stars ? .stars : .ton
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: ledgerCurrency,
+                kind: .purchase,
+                amount: -price.amount.value,
+                title: "Покупка подарка",
+                details: phantomGift.title,
+                peerId: peerId,
+                giftId: phantomGift.id,
+                balanceAfter: newBalance
+            ))
             return PendingBuy(newBalance: newBalance, phantomGift: phantomGift)
         }
         |> mapToSignal { pending -> Signal<BuyResult, NoError> in
@@ -105,6 +117,16 @@ public enum PampGramPhantomGiftManager {
                 localMessageId: nil
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: .stars,
+                kind: .purchase,
+                amount: -starPrice,
+                title: "Покупка подарка",
+                details: phantomGift.title,
+                peerId: peerId,
+                giftId: phantomGift.id,
+                balanceAfter: newBalance
+            ))
             return PendingBuy(newBalance: newBalance, phantomGift: phantomGift)
         }
         |> mapToSignal { pending -> Signal<Never, NoError> in
@@ -270,16 +292,79 @@ public enum PampGramPhantomGiftManager {
             guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
                 return
             }
-            switch match.price.currency {
+            let salePrice = match.marketPrice ?? match.price
+            let newBalance: Int64
+            let ledgerCurrency: PampGramLocalCurrency
+            switch salePrice.currency {
             case .stars:
-                let newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + match.price.amount.value
+                newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + salePrice.amount.value
                 PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: newBalance)
+                ledgerCurrency = .stars
             case .ton:
-                let newBalance = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) + match.price.amount.value
+                newBalance = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) + salePrice.amount.value
                 PampGramPhantomGiftStore.setFakeTonBalanceNanos(transaction: transaction, nanos: newBalance)
+                ledgerCurrency = .ton
             }
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: ledgerCurrency,
+                kind: .sale,
+                amount: salePrice.amount.value,
+                title: "Продажа подарка",
+                details: match.title,
+                peerId: match.peerId,
+                giftId: match.id,
+                balanceAfter: newBalance
+            ))
             PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withSold(date: Int32(Date().timeIntervalSince1970)) })
         }
         |> ignoreValues
     }
+
+    /// Marks one local gift as the profile decoration currently being worn. Only one self-gift
+    /// is worn at a time; this is local PampGram state and never calls Telegram.
+    public static func setWorn(context: AccountContext, giftId: Int64, worn: Bool) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            let gifts = PampGramPhantomGiftStore.allGifts(transaction: transaction)
+            if worn {
+                for gift in gifts where gift.peerId == context.account.peerId && gift.worn && gift.id != giftId {
+                    PampGramPhantomGiftStore.update(transaction: transaction, id: gift.id, { $0.withWorn(false) })
+                }
+            }
+            PampGramPhantomGiftStore.update(transaction: transaction, id: giftId, { $0.withWorn(worn) })
+        }
+        |> ignoreValues
+    }
+
+    /// Local marketplace listing. A nil price removes the listing; no real Stars/TON or
+    /// Telegram marketplace state is touched.
+    public static func setMarketListing(context: AccountContext, giftId: Int64, price: CurrencyAmount?) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            PampGramPhantomGiftStore.update(transaction: transaction, id: giftId, { $0.withMarketPrice(price) })
+        }
+        |> ignoreValues
+    }
+
+    /// Moves a local gift to another local profile/chat owner. This changes only the
+    /// PampGram record and intentionally clears pin/wear/market state.
+    public static func transfer(context: AccountContext, giftId: Int64, to peerId: EnginePeer.Id) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            guard let gift = PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.id == giftId }) else {
+                return
+            }
+            PampGramPhantomGiftStore.update(transaction: transaction, id: giftId, { $0.withPeerId(peerId) })
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: gift.price.currency == .stars ? .stars : .ton,
+                kind: .transfer,
+                amount: 0,
+                title: "Передача подарка",
+                details: gift.title,
+                peerId: peerId,
+                giftId: gift.id,
+                balanceAfter: nil
+            ))
+        }
+        |> ignoreValues
+    }
+
+
 }

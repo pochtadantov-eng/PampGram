@@ -43,6 +43,10 @@ jobs:
           git apply ../pampgram/mod/telegram-ios-features.patch
           mkdir -p submodules/TelegramUI/Components/PampGram
           cp -R ../pampgram/mod/components/. submodules/TelegramUI/Components/PampGram/
+          # Replace the voice-note DSP implementation with the current PampGram override.
+          # Keeping this outside the large base patch makes audio fixes independent from
+          # upstream patch offsets and avoids accidentally reintroducing an older version.
+          cp ../pampgram/mod/overrides/PampGramVoiceChanger.swift submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
           ls -1 submodules/TelegramUI/Components/PampGram
 
       # Signing, the whole story in one place.

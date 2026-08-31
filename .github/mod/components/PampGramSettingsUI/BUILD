@@ -9,8 +9,12 @@ swift_library(
     copts = [
         "-warnings-as-errors",
     ],
+    sdk_frameworks = [
+        "MapKit",
+    ],
     deps = [
         "//submodules/Display",
+        "//submodules/AsyncDisplayKit",
         "//submodules/MergeLists",
         "//submodules/Postbox",
         "//submodules/SSignalKit/SwiftSignalKit",

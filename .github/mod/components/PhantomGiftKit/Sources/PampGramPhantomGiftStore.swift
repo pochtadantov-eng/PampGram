@@ -117,4 +117,25 @@ public enum PampGramPhantomGiftStore {
                 }
         }
     }
+
+    public static func gift(transaction: Transaction, id: Int64) -> PampGramPhantomGift? {
+        return self.allGifts(transaction: transaction).first(where: { $0.id == id })
+    }
+
+    public static func marketGiftsSignal(context: AccountContext) -> Signal<[PampGramPhantomGift], NoError> {
+        return self.allGiftsSignal(context: context)
+        |> map { gifts in
+            gifts.filter { $0.marketPrice != nil && $0.soldDate == nil }
+                .sorted { ($0.marketListedAt ?? 0) > ($1.marketListedAt ?? 0) }
+        }
+    }
+
+    public static func wornGiftSignal(context: AccountContext) -> Signal<PampGramPhantomGift?, NoError> {
+        let selfPeerId = context.account.peerId
+        return self.allGiftsSignal(context: context)
+        |> map { gifts in
+            gifts.first(where: { $0.peerId == selfPeerId && $0.worn && $0.soldDate == nil })
+        }
+    }
+
 }

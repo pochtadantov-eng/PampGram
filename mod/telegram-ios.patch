@@ -137,12 +137,14 @@ index 3f2b4794..8b0fdfbb 100644
  
  private enum AccountKind {
      case authorized
-@@ -138,6 +139,8 @@ private var declaredEncodables: Void = {
+@@ -138,6 +139,10 @@ private var declaredEncodables: Void = {
      declareEncodable(SourceReferenceMessageAttribute.self, f: { SourceReferenceMessageAttribute(decoder: $0) })
      declareEncodable(SourceAuthorInfoMessageAttribute.self, f: { SourceAuthorInfoMessageAttribute(decoder: $0) })
      declareEncodable(EditedMessageAttribute.self, f: { EditedMessageAttribute(decoder: $0) })
 +    declareEncodable(PampGramDeletedByRemoteAttribute.self, f: { PampGramDeletedByRemoteAttribute(decoder: $0) })
 +    declareEncodable(PampGramCallOverrideAttribute.self, f: { PampGramCallOverrideAttribute(decoder: $0) })
++    declareEncodable(PampGramVisualEditHistoryAttribute.self, f: { PampGramVisualEditHistoryAttribute(decoder: $0) })
++    declareEncodable(PampGramLocalOnlyMessageAttribute.self, f: { PampGramLocalOnlyMessageAttribute(decoder: $0) })
      declareEncodable(ReplyMarkupMessageAttribute.self, f: { ReplyMarkupMessageAttribute(decoder: $0) })
      declareEncodable(OutgoingChatContextResultMessageAttribute.self, f: { OutgoingChatContextResultMessageAttribute(decoder: $0) })
      declareEncodable(HttpReferenceMediaResource.self, f: { HttpReferenceMediaResource(decoder: $0) })
@@ -414,7 +416,7 @@ index 2dcfc95e..901f287a 100644
          var isFile = false
          inner: for media in messageMedia {
              if let media = media as? TelegramMediaPaidContent {
-@@ -694,7 +700,15 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+@@ -694,7 +700,17 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
      private var clippingNode: ChatMessageBubbleClippingNode
      
      private var suggestedPostInfoNode: ChatMessageSuggestedPostInfoNode?
@@ -427,11 +429,13 @@ index 2dcfc95e..901f287a 100644
 +    private var pampGramDeletedOverlayNode: ASDisplayNode?
 +    private var pampGramDeletedTrashBadgeNode: ASDisplayNode?
 +    private var pampGramDeletedTrashIconNode: ASImageNode?
++    private var pampGramEditedBadgeNode: ASDisplayNode?
++    private var pampGramEditedIconNode: ASImageNode?
 +
      override public var extractedBackgroundNode: ASDisplayNode? {
          return self.shadowNode
      }
-@@ -3981,7 +3995,70 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+@@ -3981,7 +3995,109 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
          
          let previousBackgroundFrame = strongSelf.backgroundNode.backgroundFrame
          strongSelf.backgroundNode.backgroundFrame = backgroundFrame
@@ -498,6 +502,45 @@ index 2dcfc95e..901f287a 100644
 +            strongSelf.pampGramDeletedTrashBadgeNode = nil
 +            strongSelf.pampGramDeletedTrashIconNode?.removeFromSupernode()
 +            strongSelf.pampGramDeletedTrashIconNode = nil
++        }
++
++        let hasPampGramEditHistory = item.content.firstMessage.attributes.contains(where: { $0 is PampGramVisualEditHistoryAttribute })
++        if hasPampGramEditHistory {
++            let badgeNode: ASDisplayNode
++            if let current = strongSelf.pampGramEditedBadgeNode {
++                badgeNode = current
++            } else {
++                badgeNode = ASDisplayNode()
++                badgeNode.isUserInteractionEnabled = false
++                badgeNode.backgroundColor = UIColor.systemBlue
++                strongSelf.pampGramEditedBadgeNode = badgeNode
++                strongSelf.addSubnode(badgeNode)
++            }
++            let badgeSize = CGSize(width: 20.0, height: 20.0)
++            badgeNode.cornerRadius = 10.0
++            let deletedOffset: CGFloat = item.content.firstMessage.attributes.contains(where: { $0 is PampGramDeletedByRemoteAttribute }) ? 24.0 : 0.0
++            let badgeFrame = CGRect(origin: CGPoint(x: backgroundFrame.maxX + 6.0 + deletedOffset, y: backgroundFrame.maxY - badgeSize.height - 4.0), size: badgeSize)
++            badgeNode.frame = badgeFrame
++            let iconNode: ASImageNode
++            if let current = strongSelf.pampGramEditedIconNode {
++                iconNode = current
++            } else {
++                iconNode = ASImageNode()
++                iconNode.displaysAsynchronously = false
++                iconNode.isUserInteractionEnabled = false
++                if let baseImage = UIImage(systemName: "pencil") {
++                    iconNode.image = baseImage.withTintColor(.white, renderingMode: .alwaysOriginal)
++                }
++                strongSelf.pampGramEditedIconNode = iconNode
++                strongSelf.addSubnode(iconNode)
++            }
++            let iconSize = CGSize(width: 11.0, height: 11.0)
++            iconNode.frame = CGRect(x: badgeFrame.midX - iconSize.width / 2.0, y: badgeFrame.midY - iconSize.height / 2.0, width: iconSize.width, height: iconSize.height)
++        } else {
++            strongSelf.pampGramEditedBadgeNode?.removeFromSupernode()
++            strongSelf.pampGramEditedBadgeNode = nil
++            strongSelf.pampGramEditedIconNode?.removeFromSupernode()
++            strongSelf.pampGramEditedIconNode = nil
 +        }
 +
          if let (suggestedPostInfoSize, suggestedPostInfoApply) = suggestedPostInfoNodeLayout {
@@ -2194,7 +2237,7 @@ index 07cef5bb..36829662 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,93 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,102 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -2213,7 +2256,9 @@ index 07cef5bb..36829662 100644
 +
 +    return combineLatest(baseItems, PampGramCore.settingsSignal(postbox: context.account.postbox))
 +    |> map { items, settings -> ContextController.Items in
-+        guard settings.visualEditEnabled, case let .list(list) = items.content else {
++        let isLocalOnly = message.attributes.contains(where: { $0 is PampGramLocalOnlyMessageAttribute })
++        let hasVisualEditHistory = message.attributes.contains(where: { $0 is PampGramVisualEditHistoryAttribute })
++        guard (settings.visualEditEnabled || isLocalOnly || hasVisualEditHistory), case let .list(list) = items.content else {
 +            return items
 +        }
 +        var items = items
@@ -2229,24 +2274,30 @@ index 07cef5bb..36829662 100644
 +                c?.popItems()
 +            })))
 +            subItems.append(.separator)
++            if isLocalOnly {
++                subItems.append(.action(ContextMenuActionItem(text: "Локально", textColor: .primary, icon: { theme in
++                    return generateTintedImage(image: UIImage(systemName: "iphone"), color: theme.actionSheet.primaryTextColor)
++                }, iconSource: nil, action: { _, f in
++                    f(.default)
++                })))
++            }
++            if hasVisualEditHistory {
++                subItems.append(.action(ContextMenuActionItem(text: "История изменений", textColor: .primary, icon: { theme in
++                    return generateTintedImage(image: UIImage(systemName: "clock.arrow.circlepath"), color: theme.actionSheet.primaryTextColor)
++                }, iconSource: nil, action: { _, f in
++                    f(.dismissWithoutContent)
++                    controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditHistoryController(context: context, message: message))
++                })))
++            }
++            if settings.visualEditEnabled {
 +            subItems.append(.action(ContextMenuActionItem(text: "Изменить текст", textColor: .primary, icon: { theme in
 +                return generateTintedImage(image: UIImage(systemName: "pencil"), color: theme.actionSheet.primaryTextColor)
 +            }, iconSource: nil, action: { _, f in
 +                f(.dismissWithoutContent)
 +                controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
 +            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Текст от собеседника", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "bubble.left"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                pampGramPresentInsertText(context: context, peerId: message.id.peerId, incoming: true)
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Текст от меня", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "bubble.right"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                pampGramPresentInsertText(context: context, peerId: message.id.peerId, incoming: false)
-+            })))
++            }
++            if settings.visualEditEnabled {
 +            subItems.append(.action(ContextMenuActionItem(text: "Отправить фото", textColor: .primary, icon: { theme in
 +                return generateTintedImage(image: UIImage(systemName: "photo"), color: theme.actionSheet.primaryTextColor)
 +            }, iconSource: nil, action: { _, f in
@@ -2277,6 +2328,7 @@ index 07cef5bb..36829662 100644
 +                f(.dismissWithoutContent)
 +                pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
 +            })))
++            }
 +            c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
 +        })))
 +        items.content = .list(newList)
@@ -19904,8 +19956,8 @@ index 52ccf847..32a8e6c3 100644
 -                geoAddress?.country
 -            )
 -            strongSelf.dismiss()
-+            // "Фейковая геолокация" (Дополнительно): only a one-time pin, never live location
-+            // — see PampGramSettings.fakeLocationEnabled's own doc comment for why.
++            // PampGram: use the point selected in «Геолокация» for a normal location send.
++            // The same saved point is also used by the PampGram live-location integration.
 +            let _ = (PampGramCore.settingsSignal(postbox: strongSelf.context.account.postbox)
 +            |> take(1)
 +            |> deliverOnMainQueue).start(next: { [weak strongSelf] settings in

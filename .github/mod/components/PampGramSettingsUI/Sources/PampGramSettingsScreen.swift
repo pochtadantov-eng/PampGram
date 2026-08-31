@@ -14,6 +14,7 @@ import PampGramCore
 import PhantomGiftKit
 
 private final class PampGramSettingsArguments {
+    let toggleMaster: (Bool) -> Void
     let togglePhantomGifts: (Bool) -> Void
     let toggleFakeStarsDisplay: (Bool) -> Void
     let toggleFakeTonDisplay: (Bool) -> Void
@@ -24,8 +25,14 @@ private final class PampGramSettingsArguments {
     let topUpLocalRubles: () -> Void
     let resetBalances: () -> Void
     let deleteAllPhantomGifts: () -> Void
+    let openProfileVisuals: () -> Void
+    let openCollectionMarket: () -> Void
+    let openStarsLedger: () -> Void
+    let openTonLedger: () -> Void
+    let openRublesLedger: () -> Void
 
     init(
+        toggleMaster: @escaping (Bool) -> Void,
         togglePhantomGifts: @escaping (Bool) -> Void,
         toggleFakeStarsDisplay: @escaping (Bool) -> Void,
         toggleFakeTonDisplay: @escaping (Bool) -> Void,
@@ -35,8 +42,14 @@ private final class PampGramSettingsArguments {
         toggleLocalRublesPurchase: @escaping (Bool) -> Void,
         topUpLocalRubles: @escaping () -> Void,
         resetBalances: @escaping () -> Void,
-        deleteAllPhantomGifts: @escaping () -> Void
+        deleteAllPhantomGifts: @escaping () -> Void,
+        openProfileVisuals: @escaping () -> Void,
+        openCollectionMarket: @escaping () -> Void,
+        openStarsLedger: @escaping () -> Void,
+        openTonLedger: @escaping () -> Void,
+        openRublesLedger: @escaping () -> Void
     ) {
+        self.toggleMaster = toggleMaster
         self.togglePhantomGifts = togglePhantomGifts
         self.toggleFakeStarsDisplay = toggleFakeStarsDisplay
         self.toggleFakeTonDisplay = toggleFakeTonDisplay
@@ -47,21 +60,30 @@ private final class PampGramSettingsArguments {
         self.topUpLocalRubles = topUpLocalRubles
         self.resetBalances = resetBalances
         self.deleteAllPhantomGifts = deleteAllPhantomGifts
+        self.openProfileVisuals = openProfileVisuals
+        self.openCollectionMarket = openCollectionMarket
+        self.openStarsLedger = openStarsLedger
+        self.openTonLedger = openTonLedger
+        self.openRublesLedger = openRublesLedger
     }
 }
 
 private enum PampGramSettingsSection: Int32 {
+    case master
     case about
     case phantomGifts
     case starsBalance
     case tonBalance
     case localRubles
     case fromHimGifts
+    case profileVisuals
+    case ledger
     case resetBalances
     case storage
 }
 
 private enum PampGramSettingsEntry: ItemListNodeEntry {
+    case masterToggle(String, Bool)
     case aboutText(String)
 
     case phantomGiftsHeader(String)
@@ -86,6 +108,17 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case fromHimGiftsToggle(String, Bool)
     case fromHimGiftsFooter(String)
 
+    case profileVisualsHeader(String)
+    case profileVisuals(String, String)
+    case collectionMarket(String, String)
+    case profileVisualsFooter(String)
+
+    case ledgerHeader(String)
+    case starsLedger(String, String)
+    case tonLedger(String, String)
+    case rublesLedger(String, String)
+    case ledgerFooter(String)
+
     case resetBalances(String)
     case resetBalancesFooter(String)
 
@@ -96,6 +129,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 
     var section: ItemListSectionId {
         switch self {
+        case .masterToggle:
+            return PampGramSettingsSection.master.rawValue
         case .aboutText:
             return PampGramSettingsSection.about.rawValue
         case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter:
@@ -108,6 +143,10 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.localRubles.rawValue
         case .fromHimGiftsToggle, .fromHimGiftsFooter:
             return PampGramSettingsSection.fromHimGifts.rawValue
+        case .profileVisualsHeader, .profileVisuals, .collectionMarket, .profileVisualsFooter:
+            return PampGramSettingsSection.profileVisuals.rawValue
+        case .ledgerHeader, .starsLedger, .tonLedger, .rublesLedger, .ledgerFooter:
+            return PampGramSettingsSection.ledger.rawValue
         case .resetBalances, .resetBalancesFooter:
             return PampGramSettingsSection.resetBalances.rawValue
         case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
@@ -117,54 +156,40 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 
     var stableId: Int32 {
         switch self {
-        case .aboutText:
-            return 0
-        case .phantomGiftsHeader:
-            return 1
-        case .phantomGiftsToggle:
-            return 2
-        case .phantomGiftsFooter:
-            return 3
-        case .fromHimGiftsToggle:
-            return 4
-        case .fromHimGiftsFooter:
-            return 5
-        case .starsBalanceHeader:
-            return 6
-        case .fakeStarsDisplayToggle:
-            return 7
-        case .starsBalance:
-            return 8
-        case .starsBalanceFooter:
-            return 9
-        case .tonBalanceHeader:
-            return 10
-        case .fakeTonDisplayToggle:
-            return 11
-        case .tonBalance:
-            return 12
-        case .tonBalanceFooter:
-            return 13
-        case .localRublesHeader:
-            return 14
-        case .localRublesPurchaseToggle:
-            return 15
-        case .localRublesBalance:
-            return 16
-        case .localRublesFooter:
-            return 17
-        case .resetBalances:
-            return 18
-        case .resetBalancesFooter:
-            return 19
-        case .storageHeader:
-            return 20
-        case .phantomGiftsCount:
-            return 21
-        case .deleteAllPhantomGifts:
-            return 22
-        case .storageFooter:
-            return 23
+        case .masterToggle: return 0
+        case .aboutText: return 1
+        case .phantomGiftsHeader: return 2
+        case .phantomGiftsToggle: return 3
+        case .phantomGiftsFooter: return 4
+        case .fromHimGiftsToggle: return 5
+        case .fromHimGiftsFooter: return 6
+        case .starsBalanceHeader: return 7
+        case .fakeStarsDisplayToggle: return 8
+        case .starsBalance: return 9
+        case .starsBalanceFooter: return 10
+        case .tonBalanceHeader: return 11
+        case .fakeTonDisplayToggle: return 12
+        case .tonBalance: return 13
+        case .tonBalanceFooter: return 14
+        case .localRublesHeader: return 15
+        case .localRublesPurchaseToggle: return 16
+        case .localRublesBalance: return 17
+        case .localRublesFooter: return 18
+        case .profileVisualsHeader: return 19
+        case .profileVisuals: return 20
+        case .collectionMarket: return 21
+        case .profileVisualsFooter: return 22
+        case .ledgerHeader: return 23
+        case .starsLedger: return 24
+        case .tonLedger: return 25
+        case .rublesLedger: return 26
+        case .ledgerFooter: return 27
+        case .resetBalances: return 28
+        case .resetBalancesFooter: return 29
+        case .storageHeader: return 30
+        case .phantomGiftsCount: return 31
+        case .deleteAllPhantomGifts: return 32
+        case .storageFooter: return 33
         }
     }
 
@@ -175,11 +200,15 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramSettingsArguments
         switch self {
+        case let .masterToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleMaster(value)
+            })
         case let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .storageHeader(text):
+        case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .profileVisualsHeader(text), let .ledgerHeader(text), let .storageHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
+        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .profileVisualsFooter(text), let .ledgerFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .localRublesPurchaseToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -213,6 +242,16 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFromHimGifts(value)
             })
+        case let .profileVisuals(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openProfileVisuals)
+        case let .collectionMarket(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openCollectionMarket)
+        case let .starsLedger(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openStarsLedger)
+        case let .tonLedger(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openTonLedger)
+        case let .rublesLedger(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openRublesLedger)
         case let .resetBalances(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.resetBalances()
@@ -345,13 +384,14 @@ private func parseRublesTopUp(_ text: String) -> Int64? {
 private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCount: Int) -> [PampGramSettingsEntry] {
     var entries: [PampGramSettingsEntry] = []
 
-    entries.append(.aboutText("Меняет только то, что видите вы на этом устройстве."))
+    entries.append(.masterToggle("Включить визуалку", settings.pampGramEnabled))
+    entries.append(.aboutText("Главный переключатель только для раздела «Подарки». Остальные разделы PampGram от него не зависят."))
 
     entries.append(.phantomGiftsHeader("ВИЗУАЛЬНЫЕ ПОДАРКИ"))
-    entries.append(.phantomGiftsToggle("← Подарок ему →", settings.phantomGiftsEnabled))
+    entries.append(.phantomGiftsToggle("«Подарок ему»", settings.phantomGiftsEnabled))
     entries.append(.phantomGiftsFooter("Тот же настоящий маркет, но покупка из вкладки визуальная, без списания настоящих Stars/TON."))
 
-    entries.append(.fromHimGiftsToggle("← Подарок мне →", settings.fromHimGiftsEnabled))
+    entries.append(.fromHimGiftsToggle("«Подарок мне»", settings.fromHimGiftsEnabled))
     entries.append(.fromHimGiftsFooter("Добавляет вкладку «Подарок мне» — тот же маркет, но подарок выглядит подаренным вам собеседником."))
 
     entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ · ЗВЁЗДЫ"))
@@ -367,7 +407,18 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
     entries.append(.localRublesHeader("РУБЛИ ДЛЯ ПОПОЛНЕНИЯ ЗВЁЗД"))
     entries.append(.localRublesPurchaseToggle("Покупка звёзд за рубли", settings.localRublesPurchaseEnabled))
     entries.append(.localRublesBalance("Рубли", formatRubles(kopecks: settings.localRublesBalanceKopecks)))
-    entries.append(.localRublesFooter("Пока включено, кнопка «Пополнить» на экране звёзд открывает не настоящую оплату Apple, а покупку за эту локальную карту — списывает отсюда и зачисляет в «Фантом-Stars» выше."))
+    entries.append(.localRublesFooter("Пока включено, кнопка «Пополнить» на экране звёзд открывает локальную оплату SberPay — списывает рубли и зачисляет визуальные Stars."))
+
+    entries.append(.profileVisualsHeader("ПРОФИЛЬ И КОЛЛЕКЦИЯ"))
+    entries.append(.profileVisuals("Рейтинг и анонимный номер", "Настроить"))
+    entries.append(.collectionMarket("Коллекция и маркет", "\(phantomGiftCount) подарков"))
+    entries.append(.profileVisualsFooter("Визуальный рейтинг, баллы, анонимный номер, ношение, закрепление, скрытие, передача и локальный маркет подарков."))
+
+    entries.append(.ledgerHeader("ИСТОРИЯ И СТАТИСТИКА"))
+    entries.append(.starsLedger("Stars", "История · статистика"))
+    entries.append(.tonLedger("TON", "История · статистика"))
+    entries.append(.rublesLedger("Рубли", "История · статистика"))
+    entries.append(.ledgerFooter("Покупки подарков, продажа, пополнения и ручные операции автоматически пересчитывают локальную статистику."))
 
     entries.append(.resetBalances("Сбросить балансы"))
     entries.append(.resetBalancesFooter("Возвращает оба счётчика к значениям по умолчанию."))
@@ -386,8 +437,16 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
 public func pampGramGiftsSettingsController(context: AccountContext) -> ViewController {
     var presentControllerImpl: ((ViewController) -> Void)?
     var presentTooltipImpl: ((String) -> Void)?
+    var pushControllerImpl: ((ViewController) -> Void)?
 
     let arguments = PampGramSettingsArguments(
+        toggleMaster: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.pampGramEnabled = value
+                return settings
+            }).start()
+        },
         togglePhantomGifts: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
@@ -424,11 +483,12 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                         guard let value, let stars = parseFakeStars(value) else {
                             return
                         }
-                        let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                            var settings = settings
-                            settings.fakeStarsBalance = stars
-                            return settings
-                        }).start()
+                        let _ = context.account.postbox.transaction { transaction -> Void in
+                            let current = PampGramCore.settings(transaction: transaction).fakeStarsBalance
+                            let delta = stars - current
+                            PampGramCore.updateSettings(transaction: transaction, { settings in var settings = settings; settings.fakeStarsBalance = stars; return settings })
+                            if delta != 0 { PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .stars, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", balanceAfter: stars)) }
+                        }.start()
                     }
                 ))
             })
@@ -448,11 +508,12 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                         guard let value, let nanos = parseFakeTon(value) else {
                             return
                         }
-                        let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                            var settings = settings
-                            settings.fakeTonBalanceNanos = nanos
-                            return settings
-                        }).start()
+                        let _ = context.account.postbox.transaction { transaction -> Void in
+                            let current = PampGramCore.settings(transaction: transaction).fakeTonBalanceNanos
+                            let delta = nanos - current
+                            PampGramCore.updateSettings(transaction: transaction, { settings in var settings = settings; settings.fakeTonBalanceNanos = nanos; return settings })
+                            if delta != 0 { PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .ton, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", balanceAfter: nanos)) }
+                        }.start()
                     }
                 ))
             })
@@ -483,11 +544,9 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                     guard let value, let addedKopecks = parseRublesTopUp(value), addedKopecks > 0 else {
                         return
                     }
-                    let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                        var settings = settings
-                        settings.localRublesBalanceKopecks += addedKopecks
-                        return settings
-                    }).start()
+                    let _ = context.account.postbox.transaction { transaction -> Void in
+                        _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .rubles, kind: .topUp, amount: addedKopecks, title: "Пополнение локальной карты", details: "Ручное пополнение")
+                    }.start()
                 }
             ))
         },
@@ -499,12 +558,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                 actions: [
                     TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
                     TextAlertAction(type: .destructiveAction, title: "Сбросить", action: {
-                        let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                            var settings = settings
-                            settings.fakeStarsBalance = PampGramSettings.defaultFakeStarsBalance
-                            settings.fakeTonBalanceNanos = PampGramSettings.defaultFakeTonBalanceNanos
-                            return settings
-                        }).start()
+                        let _ = context.account.postbox.transaction { transaction -> Void in
+                            let current = PampGramCore.settings(transaction: transaction)
+                            let starsDelta = PampGramSettings.defaultFakeStarsBalance - current.fakeStarsBalance
+                            let tonDelta = PampGramSettings.defaultFakeTonBalanceNanos - current.fakeTonBalanceNanos
+                            if starsDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: starsDelta > 0 ? .credit : .debit, amount: starsDelta, title: "Сброс баланса Stars") }
+                            if tonDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .ton, kind: tonDelta > 0 ? .credit : .debit, amount: tonDelta, title: "Сброс баланса TON") }
+                        }.start()
                         presentTooltipImpl?("Локальные балансы сброшены.")
                     }),
                 ],
@@ -531,7 +591,12 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                 ],
                 actionLayout: .horizontal
             ))
-        }
+        },
+        openProfileVisuals: { pushControllerImpl?(pampGramProfileVisualsController(context: context)) },
+        openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
+        openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },
+        openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) },
+        openRublesLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .rubles)) }
     )
 
     let signal = combineLatest(
@@ -561,6 +626,9 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
     let controller = ItemListController(context: context, state: signal)
     presentControllerImpl = { [weak controller] c in
         controller?.present(c, in: .window(.root))
+    }
+    pushControllerImpl = { [weak controller] c in
+        controller?.push(c)
     }
     presentTooltipImpl = { [weak controller] text in
         guard let controller else {

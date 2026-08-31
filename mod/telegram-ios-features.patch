@@ -707,7 +707,7 @@ index 83c19884..f9ae6615 100644
 +        self.view.addSubview(screenshotGuardView)
 +        self.updatePampGramScreenshotGuard()
 +        NotificationCenter.default.addObserver(self, selector: #selector(self.pampGramCaptureStateChanged), name: UIScreen.capturedDidChangeNotification, object: nil)
-+        NotificationCenter.default.addObserver(self, selector: #selector(self.pampGramCaptureStateChanged), name: UIApplication.willResignActiveNotification, object: nil)
++        NotificationCenter.default.addObserver(self, selector: #selector(self.pampGramCaptureStateChanged), name: UIApplication.didEnterBackgroundNotification, object: nil)
 +        NotificationCenter.default.addObserver(self, selector: #selector(self.pampGramCaptureStateChanged), name: UIApplication.didBecomeActiveNotification, object: nil)
 +        NotificationCenter.default.addObserver(self, selector: #selector(self.pampGramScreenshotTaken), name: UIApplication.userDidTakeScreenshotNotification, object: nil)
          
@@ -739,8 +739,8 @@ index 83c19884..f9ae6615 100644
 +            return
 +        }
 +        let isCaptured = UIScreen.main.isCaptured
-+        let isInactive = UIApplication.shared.applicationState != .active
-+        screenshotGuardView.isHidden = !(self.pampGramHideChatOnScreenshotsEnabled && (isCaptured || isInactive))
++        let isBackground = UIApplication.shared.applicationState == .background
++        screenshotGuardView.isHidden = !(self.pampGramHideChatOnScreenshotsEnabled && (isCaptured || isBackground))
 +    }
 +
 +    @objc private func pampGramCaptureStateChanged() {

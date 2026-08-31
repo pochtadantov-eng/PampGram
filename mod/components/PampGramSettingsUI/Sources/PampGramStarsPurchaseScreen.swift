@@ -254,15 +254,24 @@ private func pampGramStarsCheckoutController(context: AccountContext, package: P
                 presentControllerImpl?(loadingController)
 
                 Queue.mainQueue().after(0.6, {
-                    let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                        var settings = settings
-                        guard settings.localRublesBalanceKopecks >= package.priceKopecks else {
+                    let _ = context.account.postbox.transaction { transaction -> Bool in
+                        let current = PampGramCore.settings(transaction: transaction)
+                        guard current.localRublesBalanceKopecks >= package.priceKopecks else { return false }
+                        var rubleBalanceAfter: Int64 = 0
+                        var starsBalanceAfter: Int64 = 0
+                        PampGramCore.updateSettings(transaction: transaction, { settings in
+                            var settings = settings
+                            settings.localRublesBalanceKopecks -= package.priceKopecks
+                            settings.fakeStarsBalance += package.stars
+                            rubleBalanceAfter = settings.localRublesBalanceKopecks
+                            starsBalanceAfter = settings.fakeStarsBalance
                             return settings
-                        }
-                        settings.localRublesBalanceKopecks -= package.priceKopecks
-                        settings.fakeStarsBalance += package.stars
-                        return settings
-                    }).start(completed: {
+                        })
+                        PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .rubles, kind: .purchase, amount: -package.priceKopecks, title: "Покупка Stars", details: "SberPay · локальная карта", balanceAfter: rubleBalanceAfter))
+                        PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .stars, kind: .topUp, amount: package.stars, title: "Пополнение Stars", details: "Покупка звёзд Telegram успешно", balanceAfter: starsBalanceAfter))
+                        return true
+                    }.start(next: { success in
+                        guard success else { return }
                         loadingController.dismiss()
                         presentControllerImpl?(OverlayStatusController(theme: presentationData.theme, type: .starSuccess("+\(package.stars)")))
                         popSelfImpl?()

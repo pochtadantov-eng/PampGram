@@ -1,17 +1,9 @@
-# Загрузка новой сборки
+# Как залить эту версию
 
-Этот пакет подготовлен для замены содержимого текущего репозитория PampGram.
-
-Что сделать на GitHub:
-1. Сохраните старую ветку/коммит на случай отката.
-2. Загрузите содержимое этого архива в корень репозитория (не саму папку PampGram-new-build).
-3. Убедитесь, что присутствуют:
-   - .github/workflows/build-ipa.yml
-   - mod/telegram-ios.patch
-   - mod/telegram-ios-features.patch
-   - mod/components/
-4. Сделайте Commit changes.
-5. Откройте Actions → Build IPA (device, fake-signed) → Run workflow.
-6. После успешной сборки скачайте артефакт PampGram-ipa.
-
-Важно: workflow применяет основной патч, затем патч первых шести функций и копирует новые Bazel-компоненты.
+1. Распакуй ZIP.
+2. Скопируй **всё содержимое архива** в `Документы\GitHub\PampGram` с заменой файлов. Не кидай саму внешнюю папку внутрь репозитория.
+3. Открой GitHub Desktop: repository `PampGram`, branch `main`.
+4. Summary: `PampGram all features update`.
+5. `Commit to main` → `Push origin`.
+6. GitHub → Actions → `Build IPA (device, fake-signed)` → `Run workflow` → branch `main`. Используй **новый Run workflow**, а не Re-run старого запуска.
+7. Если зелёная — скачай artifact `PampGram-ipa`. Если красная — пришли первую строку `error:` и 20–30 строк вокруг неё.

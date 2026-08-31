@@ -20,13 +20,13 @@ private enum PampGramHubSection: Int32 {
 
 private enum PampGramHubEntry: ItemListNodeEntry {
     case hero
-    case master(Bool)
     case search
     case gifts
     case messages
     case privacy
+    case location
+    case voiceMedia
     case appearance
-    case other
     case advanced
     case admin
     case status(Int, Int)
@@ -37,9 +37,9 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return PampGramHubSection.hero.rawValue
-        case .master, .search:
+        case .search:
             return PampGramHubSection.controls.rawValue
-        case .gifts, .messages, .privacy, .appearance, .other, .advanced, .admin:
+        case .gifts, .messages, .privacy, .location, .voiceMedia, .appearance, .advanced, .admin:
             return PampGramHubSection.sections.rawValue
         case .status:
             return PampGramHubSection.status.rawValue
@@ -50,32 +50,19 @@ private enum PampGramHubEntry: ItemListNodeEntry {
 
     var stableId: Int32 {
         switch self {
-        case .hero:
-            return 0
-        case .master:
-            return 1
-        case .search:
-            return 2
-        case .gifts:
-            return 10
-        case .messages:
-            return 11
-        case .privacy:
-            return 12
-        case .appearance:
-            return 13
-        case .other:
-            return 14
-        case .advanced:
-            return 15
-        case .admin:
-            return 16
-        case .status:
-            return 17
-        case .team:
-            return 18
-        case .footer:
-            return 19
+        case .hero: return 0
+        case .search: return 1
+        case .gifts: return 10
+        case .messages: return 11
+        case .privacy: return 12
+        case .location: return 13
+        case .voiceMedia: return 14
+        case .appearance: return 15
+        case .advanced: return 16
+        case .admin: return 17
+        case .status: return 18
+        case .team: return 19
+        case .footer: return 20
         }
     }
 
@@ -101,12 +88,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 disclosureStyle: .none,
                 action: {
                     arguments.openAbout()
-                }
-            )
-        case let .master(value):
-            return ItemListSwitchItem(
-                presentationData: presentationData, systemStyle: .glass, title: "Включить визуалку", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                    arguments.toggleMaster(value)
                 }
             )
         case .search:
@@ -154,12 +135,38 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 title: "Ghost",
                 titleFont: .bold,
                 label: "",
-                additionalDetailLabel: "Скрытые функции и защита",
+                additionalDetailLabel: "Приватность и скрытые функции",
                 sectionId: self.section,
                 style: .blocks,
                 action: {
                     arguments.openGhost()
                 }
+            )
+        case .location:
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "location.fill", backgroundColor: UIColor(rgb: 0x0a84ff)),
+                title: "Геолокация",
+                titleFont: .bold,
+                label: "",
+                additionalDetailLabel: "Подмена точки при отправке",
+                sectionId: self.section,
+                style: .blocks,
+                action: { arguments.openLocation() }
+            )
+        case .voiceMedia:
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "waveform", backgroundColor: UIColor(rgb: 0xff2d55)),
+                title: "Голос / Медиа",
+                titleFont: .bold,
+                label: "",
+                additionalDetailLabel: "Голосовые и передача файлов",
+                sectionId: self.section,
+                style: .blocks,
+                action: { arguments.openVoiceMedia() }
             )
         case .appearance:
             return ItemListDisclosureItem(
@@ -173,7 +180,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 sectionId: self.section,
                 style: .blocks,
                 action: {
-                    arguments.openPlaceholder("Внешний вид")
+                    arguments.openAppearance()
                 }
             )
         case .advanced:
@@ -189,21 +196,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 style: .blocks,
                 action: {
                     arguments.openAdditional()
-                }
-            )
-        case .other:
-            return ItemListDisclosureItem(
-                presentationData: presentationData,
-                systemStyle: .glass,
-                icon: generatePampGramSectionIcon(systemName: "ellipsis.circle.fill", backgroundColor: UIColor(rgb: 0x5856d6)),
-                title: "Прочее",
-                titleFont: .bold,
-                label: "",
-                additionalDetailLabel: "Копирование, скриншоты и реклама",
-                sectionId: self.section,
-                style: .blocks,
-                action: {
-                    arguments.openOther()
                 }
             )
         case .admin:
@@ -259,27 +251,27 @@ private enum PampGramHubEntry: ItemListNodeEntry {
 }
 
 private final class PampGramHubArguments {
-    let toggleMaster: (Bool) -> Void
     let openSearch: () -> Void
     let openGifts: () -> Void
     let openMessages: () -> Void
     let openGhost: () -> Void
-    let openPlaceholder: (String) -> Void
-    let openOther: () -> Void
+    let openLocation: () -> Void
+    let openVoiceMedia: () -> Void
+    let openAppearance: () -> Void
     let openAdditional: () -> Void
     let openAdmin: () -> Void
     let openStatus: () -> Void
     let openAbout: () -> Void
     let openSupport: () -> Void
 
-    init(toggleMaster: @escaping (Bool) -> Void, openSearch: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openOther: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
-        self.toggleMaster = toggleMaster
+    init(openSearch: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openLocation: @escaping () -> Void, openVoiceMedia: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
         self.openSearch = openSearch
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
-        self.openPlaceholder = openPlaceholder
-        self.openOther = openOther
+        self.openLocation = openLocation
+        self.openVoiceMedia = openVoiceMedia
+        self.openAppearance = openAppearance
         self.openAdditional = openAdditional
         self.openAdmin = openAdmin
         self.openStatus = openStatus
@@ -301,6 +293,7 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
 
 private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [PampGramHubEntry] {
     let toggles = [
+        settings.pampGramEnabled,
         settings.phantomGiftsEnabled,
         settings.fakeStarsDisplayEnabled,
         settings.fakeTonDisplayEnabled,
@@ -314,18 +307,22 @@ private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [P
         settings.disableAutoDeleteEnabled,
         settings.screenshotProtectionBypassEnabled,
         settings.hideChatOnScreenshotsEnabled,
+        settings.voiceChangerMessagesEnabled,
+        settings.fakeLocationEnabled,
+        settings.chatLockEnabled,
+        settings.localRublesPurchaseEnabled,
         settings.adBlockEnabled
     ]
     let activeCount = toggles.filter { $0 }.count
     var entries: [PampGramHubEntry] = [
         .hero,
-        .master(settings.pampGramEnabled),
         .search,
         .gifts,
         .messages,
         .privacy,
+        .location,
+        .voiceMedia,
         .appearance,
-        .other,
         .advanced
     ]
     if isAdmin {
@@ -346,13 +343,6 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
     var navigationControllerImpl: (() -> NavigationController?)?
 
     let arguments = PampGramHubArguments(
-        toggleMaster: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.pampGramEnabled = value
-                return settings
-            }).start()
-        },
         openSearch: {
             pushControllerImpl?(pampGramSearchController(context: context))
         },
@@ -371,11 +361,14 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
                 pushControllerImpl?(pampGramGhostSettingsController(context: context))
             }
         },
-        openPlaceholder: { title in
-            pushControllerImpl?(pampGramPlaceholderController(context: context, title: title))
+        openLocation: {
+            pushControllerImpl?(pampGramFakeLocationController(context: context))
         },
-        openOther: {
-            pushControllerImpl?(pampGramOtherSettingsController(context: context))
+        openVoiceMedia: {
+            pushControllerImpl?(pampGramVoiceMediaController(context: context))
+        },
+        openAppearance: {
+            pushControllerImpl?(pampGramAppearanceController(context: context))
         },
         openAdditional: {
             pushControllerImpl?(pampGramAdditionalSettingsController(context: context))

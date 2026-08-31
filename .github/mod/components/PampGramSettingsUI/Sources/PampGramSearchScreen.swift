@@ -7,7 +7,7 @@ import PresentationDataUtils
 import AccountContext
 
 private enum PampGramSearchDestination: Int32 {
-    case gifts, messages, ghost, appearance, other, additional, status
+    case gifts, messages, ghost, location, voiceMedia, appearance, additional, status
 }
 
 private struct PampGramSearchItem: Equatable {
@@ -19,27 +19,39 @@ private struct PampGramSearchItem: Equatable {
 }
 
 private let pampGramSearchCatalog: [PampGramSearchItem] = [
+    .init(title: "Включить визуалку", section: "Подарки", detail: "Главный переключатель визуальных функций подарков", keywords: "подарки визуалка master", destination: .gifts),
     .init(title: "Подарок ему", section: "Подарки", detail: "Визуальная отправка подарка", keywords: "от себя ему подарок вкладка", destination: .gifts),
     .init(title: "Подарок мне", section: "Подарки", detail: "Подарок выглядит полученным от собеседника", keywords: "от него мне подарок вкладка", destination: .gifts),
     .init(title: "Локальные звёзды", section: "Подарки", detail: "Локальный баланс Stars", keywords: "stars звезды баланс", destination: .gifts),
     .init(title: "Локальные TON", section: "Подарки", detail: "Локальный баланс TON/GRAM", keywords: "ton gram тоны баланс", destination: .gifts),
     .init(title: "Локальные рубли", section: "Подарки", detail: "Локальная карта для визуальной покупки Stars", keywords: "рубли карта купить звезды", destination: .gifts),
+    .init(title: "Рейтинг профиля", section: "Подарки", detail: "Визуальный рейтинг и баллы профиля", keywords: "рейтинг профиль баллы points rating", destination: .gifts),
+    .init(title: "Анонимный номер", section: "Подарки", detail: "Визуальный +888 номер, дата и цена покупки", keywords: "анонимный номер +888 ton fragment", destination: .gifts),
+    .init(title: "Коллекция и маркет", section: "Подарки", detail: "Закрепить, носить, скрыть, передать и выставить подарок", keywords: "маркет коллекция подарок продажа stars ton носить", destination: .gifts),
+    .init(title: "История Stars / TON / рублей", section: "Подарки", detail: "Покупки, пополнения, списания и статистика", keywords: "история операции статистика stars ton рубли пополнение", destination: .gifts),
     .init(title: "Удалённые сообщения", section: "Чаты", detail: "Локальное сохранение удалённых сообщений", keywords: "антиудаление удаленные сообщения", destination: .messages),
     .init(title: "Изменить визуально", section: "Чаты", detail: "Локальное изменение отображаемого текста", keywords: "редактор сообщение визуально", destination: .messages),
+    .init(title: "История изменений", section: "Чаты", detail: "Предыдущие локальные версии изменённых сообщений", keywords: "карандаш edit история изменения", destination: .messages),
+    .init(title: "Бесплатный перевод текста", section: "Чаты", detail: "Автоопределение языка и выбранный целевой язык", keywords: "translate перевод язык", destination: .messages),
     .init(title: "Нечиталка", section: "Ghost", detail: "Управление локальными privacy-функциями", keywords: "ghost read прочитано", destination: .ghost),
     .init(title: "Маскировка онлайна", section: "Ghost", detail: "Настройки отображения присутствия", keywords: "онлайн online ghost", destination: .ghost),
-    .init(title: "Иконка приложения", section: "Статус", detail: "Выбор альтернативной иконки PampGram", keywords: "иконка значок цвет синяя", destination: .status),
-    .init(title: "Обход защиты от копирования", section: "Прочее", detail: "Настройка копирования в обычных облачных чатах", keywords: "копировать copy защита", destination: .other),
-    .init(title: "Добавлять от кого переслано", section: "Прочее", detail: "Показывать источник пересланного сообщения", keywords: "переслано forward автор", destination: .other),
-    .init(title: "Отключить автоудаление", section: "Прочее", detail: "Локальная настройка исчезающих сообщений", keywords: "таймер исчезающие автоудаление", destination: .other),
-    .init(title: "Обход защиты от скриншотов", section: "Прочее", detail: "Настройка скриншотов обычных чатов", keywords: "скрин screenshot защита", destination: .other),
-    .init(title: "Скрывать чат на скриншотах", section: "Прочее", detail: "Маска при захвате экрана", keywords: "скрин запись экран скрыть", destination: .other),
-    .init(title: "Блокировать рекламу", section: "Прочее", detail: "Скрытие sponsored-сообщений", keywords: "реклама ads sponsored", destination: .other),
-    .init(title: "Изменение голоса", section: "Дополнительно", detail: "Пресеты для новых голосовых сообщений", keywords: "голос voice", destination: .additional),
-    .init(title: "Ускорение загрузки", section: "Дополнительно", detail: "Профиль параллельной загрузки", keywords: "upload скорость", destination: .additional),
-    .init(title: "Ускорение скачивания", section: "Дополнительно", detail: "Профиль параллельного скачивания", keywords: "download скорость", destination: .additional),
-    .init(title: "Фейковая геолокация", section: "Дополнительно", detail: "Локальная подстановка координаты при отправке", keywords: "гео location координаты", destination: .additional),
-    .init(title: "Блокировка чатов", section: "Дополнительно", detail: "Локальный PIN для выбранных чатов", keywords: "pin пароль lock", destination: .additional)
+    .init(title: "Иконка приложения", section: "Внешний вид", detail: "Выбор альтернативной иконки PampGram", keywords: "иконка значок цвет синяя", destination: .appearance),
+    .init(title: "Пресеты оформления", section: "Внешний вид", detail: "Standard / Glass / Compact", keywords: "preset glass compact внешний вид", destination: .appearance),
+    .init(title: "Пузыри и blur", section: "Внешний вид", detail: "Радиус, прозрачность и стекло", keywords: "bubble пузырь blur прозрачность", destination: .appearance),
+    .init(title: "OLED Black", section: "Внешний вид", detail: "Тёмный визуальный пресет", keywords: "oled black theme", destination: .appearance),
+    .init(title: "Обход защиты от копирования", section: "Чаты", detail: "Настройка копирования в обычных облачных чатах", keywords: "копировать copy защита", destination: .messages),
+    .init(title: "Добавлять от кого переслано", section: "Чаты", detail: "Показывать источник пересланного сообщения", keywords: "переслано forward автор", destination: .messages),
+    .init(title: "Отключить автоудаление", section: "Чаты", detail: "Локальная настройка исчезающих сообщений", keywords: "таймер исчезающие автоудаление", destination: .messages),
+    .init(title: "Обход защиты от скриншотов", section: "Ghost", detail: "Настройка скриншотов обычных чатов", keywords: "скрин screenshot защита", destination: .ghost),
+    .init(title: "Скрывать чат на скриншотах", section: "Ghost", detail: "Маска при захвате экрана", keywords: "скрин запись экран скрыть", destination: .ghost),
+    .init(title: "Блокировать рекламу", section: "Дополнительно", detail: "Скрытие sponsored-сообщений", keywords: "реклама ads sponsored", destination: .additional),
+    .init(title: "Настоящий ID профиля", section: "Дополнительно", detail: "Показывать реальный Telegram Peer ID", keywords: "id айди профиль", destination: .additional),
+    .init(title: "Скрыть мой номер", section: "Дополнительно", detail: "Убрать номер из собственного профиля локально", keywords: "телефон номер профиль скрыть", destination: .additional),
+    .init(title: "Изменение голоса", section: "Голос / Медиа", detail: "Пресеты для новых голосовых сообщений", keywords: "голос voice", destination: .voiceMedia),
+    .init(title: "Ускорение загрузки", section: "Голос / Медиа", detail: "Профиль параллельной загрузки", keywords: "upload скорость медиа", destination: .voiceMedia),
+    .init(title: "Ускорение скачивания", section: "Голос / Медиа", detail: "Профиль параллельного скачивания", keywords: "download скорость медиа", destination: .voiceMedia),
+    .init(title: "Фейковая геолокация", section: "Геолокация", detail: "Подмена выбранной точки при отправке", keywords: "гео location карта точка", destination: .location),
+    .init(title: "Блокировка чатов", section: "Ghost", detail: "Локальный PIN для выбранных чатов", keywords: "pin пароль lock защита", destination: .ghost)
 ]
 
 private func pampGramSearchScore(_ item: PampGramSearchItem, query: String) -> Int {
@@ -91,8 +103,9 @@ public func pampGramSearchController(context: AccountContext) -> ViewController 
         case .gifts: controller = pampGramGiftsSettingsController(context: context)
         case .messages: controller = pampGramMessagesSettingsController(context: context)
         case .ghost: controller = pampGramGhostSettingsController(context: context)
-        case .appearance: controller = pampGramPlaceholderController(context: context, title: "Внешний вид")
-        case .other: controller = pampGramOtherSettingsController(context: context)
+        case .location: controller = pampGramFakeLocationController(context: context)
+        case .voiceMedia: controller = pampGramVoiceMediaController(context: context)
+        case .appearance: controller = pampGramAppearanceController(context: context)
         case .additional: controller = pampGramAdditionalSettingsController(context: context)
         case .status: controller = pampGramStatusController(context: context)
         }

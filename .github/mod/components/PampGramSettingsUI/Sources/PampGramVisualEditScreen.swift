@@ -82,7 +82,17 @@ public func pampGramVisualEditController(context: AccountContext, messageId: Mes
                     forwardInfo: message.forwardInfo.map(StoreMessageForwardInfo.init),
                     authorId: message.author?.id,
                     text: newText,
-                    attributes: message.attributes.filter { !($0 is TextEntitiesMessageAttribute) },
+                    attributes: {
+                        var attributes = message.attributes.filter { !($0 is TextEntitiesMessageAttribute) && !($0 is PampGramVisualEditHistoryAttribute) }
+                        var revisions = message.attributes.compactMap { $0 as? PampGramVisualEditHistoryAttribute }.first?.revisions ?? []
+                        if message.text != newText {
+                            revisions.append(PampGramEditRevision(timestamp: Int32(Date().timeIntervalSince1970), text: message.text))
+                        }
+                        if !revisions.isEmpty {
+                            attributes.append(PampGramVisualEditHistoryAttribute(revisions: revisions))
+                        }
+                        return attributes
+                    }(),
                     media: message.media
                 )
                 return .update(updatedMessage)
@@ -135,4 +145,36 @@ public func pampGramVisualEditController(context: AccountContext, messageId: Mes
         }
     }
     return controller
+}
+
+
+private enum PampGramEditHistoryEntry: ItemListNodeEntry {
+    case about(String)
+    case revision(Int32, String, String)
+    var section: ItemListSectionId { return 0 }
+    var stableId: Int32 { switch self { case .about: return 0; case let .revision(i, _, _): return 10 + i } }
+    static func <(lhs: Self, rhs: Self) -> Bool { lhs.stableId < rhs.stableId }
+    func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
+        switch self {
+        case let .about(text): return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case let .revision(_, text, date): return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: text.isEmpty ? "(пустое сообщение)" : text, label: date, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+        }
+    }
+}
+
+/// Local history of visual edits. Telegram doesn't expose historical revisions, so this only
+/// contains versions that PampGram itself observed before replacing the local text.
+public func pampGramVisualEditHistoryController(context: AccountContext, message: EngineRawMessage) -> ViewController {
+    let pdSignal = context.sharedContext.presentationData
+    let revisions = message.attributes.compactMap { $0 as? PampGramVisualEditHistoryAttribute }.first?.revisions ?? []
+    let signal = pdSignal |> map { pd -> (ItemListControllerState, (ItemListNodeState, Any)) in
+        let formatter = DateFormatter(); formatter.dateStyle = .short; formatter.timeStyle = .short
+        var entries: [PampGramEditHistoryEntry] = [.about("История содержит только те версии, которые PampGram успел сохранить на этом устройстве.")]
+        for (index, revision) in revisions.enumerated().reversed() {
+            entries.append(.revision(Int32(index), revision.text, formatter.string(from: Date(timeIntervalSince1970: Double(revision.timestamp)))))
+        }
+        entries.append(.revision(Int32(revisions.count + 1), message.text, "Текущая версия"))
+        return (ItemListControllerState(presentationData: ItemListPresentationData(pd), title: .text("История изменений"), leftNavigationButton: nil, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: pd.strings.Common_Back), animateChanges: false), (ItemListNodeState(presentationData: ItemListPresentationData(pd), entries: entries, style: .blocks, animateChanges: false), { } as Any))
+    }
+    return ItemListController(context: context, state: signal)
 }
