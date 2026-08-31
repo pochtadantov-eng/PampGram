@@ -41,6 +41,10 @@ jobs:
           git apply ../pampgram/mod/telegram-ios.patch
           git apply --check ../pampgram/mod/telegram-ios-features.patch
           git apply ../pampgram/mod/telegram-ios-features.patch
+          # v8.1: both historical patches used to edit ChatInterfaceStateContextMenus.swift.
+          # The v8 base patch now owns the PampGram wrapper, so apply the remaining
+          # copy-protection integration semantically after both non-overlapping patches.
+          python3 ../pampgram/mod/apply-chat-context-features.py
           mkdir -p submodules/TelegramUI/Components/PampGram
           cp -R ../pampgram/mod/components/. submodules/TelegramUI/Components/PampGram/
           # Replace the voice-note DSP implementation with the current PampGram override.
