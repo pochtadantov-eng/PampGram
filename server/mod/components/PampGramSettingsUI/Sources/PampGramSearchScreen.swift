@@ -73,7 +73,7 @@ private enum PampGramSearchEntry: ItemListNodeEntry {
         let arguments = arguments as! PampGramSearchArguments
         switch self {
         case let .input(text):
-            return ItemListMultilineInputItem(presentationData: presentationData, systemStyle: .glass, text: text, placeholder: "Поиск функции или раздела", maxLength: 80, sectionId: 0, style: .blocks, capitalization: false, autocorrection: true, textUpdated: arguments.update)
+            return ItemListMultilineInputItem(presentationData: presentationData, systemStyle: .glass, text: text, placeholder: "Поиск функции или раздела", maxLength: ItemListMultilineInputItemTextLimit(value: 80, display: false), sectionId: 0, style: .blocks, capitalization: false, autocorrection: true, textUpdated: arguments.update)
         case let .result(_, result):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: result.title, label: result.section, additionalDetailLabel: result.detail, sectionId: 0, style: .blocks, action: { arguments.open(result.destination) })
         case let .empty(text):

@@ -31,6 +31,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
     case admin
     case status(Int, Int)
     case team
+    case footer
 
     var section: ItemListSectionId {
         switch self {
