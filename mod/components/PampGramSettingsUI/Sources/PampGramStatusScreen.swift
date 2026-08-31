@@ -12,12 +12,14 @@ import AppBundle
 import PampGramCore
 
 private final class PampGramStatusArguments {
+    let refreshSubscription: () -> Void
     let openIconPicker: () -> Void
     let openGifts: () -> Void
     let openMessages: () -> Void
     let openGhost: () -> Void
 
-    init(openIconPicker: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void) {
+    init(refreshSubscription: @escaping () -> Void, openIconPicker: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void) {
+        self.refreshSubscription = refreshSubscription
         self.openIconPicker = openIconPicker
         self.openGifts = openGifts
         self.openMessages = openMessages
@@ -49,6 +51,7 @@ func pampGramIconDisplayName(_ icon: PresentationAppIcon) -> String {
 
 private enum PampGramStatusEntry: ItemListNodeEntry {
     case badge(Bool)
+    case refreshSubscription
 
     case iconHeader(String)
     case iconSummary(PresentationAppIcon)
@@ -67,6 +70,8 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         switch self {
         case .badge:
             return 0
+        case .refreshSubscription:
+            return 0
         case .iconHeader, .iconSummary, .iconFooter:
             return 1
         case .giftsHeader, .giftsRow:
@@ -82,8 +87,10 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         switch self {
         case .badge:
             return 0
-        case .iconHeader:
+        case .refreshSubscription:
             return 1
+        case .iconHeader:
+            return 10
         case .iconSummary:
             return 100
         case .iconFooter:
@@ -125,6 +132,10 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
                 disclosureStyle: .none,
                 action: nil
             )
+        case .refreshSubscription:
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Обновить подписку", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.refreshSubscription()
+            })
         case let .iconHeader(text), let .giftsHeader(text), let .messagesHeader(text), let .ghostHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .iconFooter(text):
@@ -196,6 +207,7 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     var entries: [PampGramStatusEntry] = []
 
     entries.append(.badge(isPro))
+    entries.append(.refreshSubscription)
 
     entries.append(.iconHeader("ИКОНКА ПРИЛОЖЕНИЯ"))
     if let selectedIcon = icons.first(where: { $0.name == currentIconName }) ?? icons.first(where: { $0.isDefault }) ?? icons.first {
@@ -234,7 +246,16 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
     var appIcons = context.sharedContext.applicationBindings.getAvailableAlternateIcons()
     appIcons = appIcons.filter { !$0.isPremium }
 
+    let tierPromise = ValuePromise<PampGramSubscriptionTier>(.standard, ignoreRepeated: true)
+    let refreshTier: () -> Void = {
+        let _ = (PampGramSubscriptionAPI.fetchTier(userId: context.account.peerId.id._internalGetInt64Value()) |> deliverOnMainQueue).start(next: { tier in
+            tierPromise.set(tier)
+        })
+    }
+    refreshTier()
+
     let arguments = PampGramStatusArguments(
+        refreshSubscription: { refreshTier() },
         openIconPicker: {
             pampGramPresentIconPicker(context: context, icons: appIcons, currentIconName: currentIconNameValue, onSelect: { icon in
                 currentIconNameValue = icon.name
@@ -261,7 +282,7 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox),
-        PampGramSubscriptionAPI.fetchTier(userId: context.account.peerId.id._internalGetInt64Value()),
+        tierPromise.get(),
         currentIconName.get()
     )
     |> deliverOnMainQueue

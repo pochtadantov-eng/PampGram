@@ -16,16 +16,14 @@ private final class PampGramAdditionalArguments {
     let openDownloadSpeed: () -> Void
     let openFakeLocation: () -> Void
     let openChatLock: () -> Void
-    let openCallOverrides: () -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
         self.openDownloadSpeed = openDownloadSpeed
         self.openFakeLocation = openFakeLocation
         self.openChatLock = openChatLock
-        self.openCallOverrides = openCallOverrides
     }
 }
 
@@ -52,7 +50,6 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case extrasHeader(String)
     case fakeLocationRow(String, String)
     case chatLockRow(String, String)
-    case callOverridesRow(String)
     case extrasFooter(String)
 
     var section: ItemListSectionId {
@@ -63,7 +60,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -94,8 +91,6 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 10
         case .chatLockRow:
             return 11
-        case .callOverridesRow:
-            return 12
         case .extrasFooter:
             return 13
         }
@@ -136,10 +131,6 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openChatLock()
             })
-        case let .callOverridesRow(title):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
-                arguments.openCallOverrides()
-            })
         }
     }
 }
@@ -162,7 +153,6 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.extrasHeader("ЕЩЁ"))
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
-    entries.append(.callOverridesRow("Звонки"))
     entries.append(.extrasFooter("Всё работает только на этом устройстве."))
 
     return entries
@@ -266,9 +256,6 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         },
         openChatLock: {
             pushControllerImpl?(pampGramChatLockController(context: context))
-        },
-        openCallOverrides: {
-            pushControllerImpl?(pampGramCallOverridesController(context: context))
         }
     )
 

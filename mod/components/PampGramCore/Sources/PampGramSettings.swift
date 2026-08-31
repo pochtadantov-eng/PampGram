@@ -115,6 +115,15 @@ extension PampGramSpeedMode: Codable {
 /// a key range reserved for the mod, and are never synced to the account manager or to any
 /// server-backed preferences.
 public struct PampGramSettings: Codable, Equatable {
+    private enum CodingKeys: String, CodingKey {
+        case pampGramEnabled, phantomGiftsEnabled, fakeStarsBalance, fakeTonBalanceNanos, fakeStarsDisplayEnabled, fakeTonDisplayEnabled
+        case antiDeleteMessagesEnabled, ghostReaderEnabled, onlineMaskEnabled, antiDeleteExcludedPeerIds, visualEditEnabled, fromHimGiftsEnabled
+        case voiceChangerMessagesEnabled, voicePreset, uploadSpeedMode, downloadSpeedMode, fakeLocationEnabled, fakeLocationLatitude, fakeLocationLongitude
+        case chatLockEnabled, chatLockPin, lockedChatPeerIds, localRublesBalanceKopecks, localRublesPurchaseEnabled
+        case copyProtectionBypassEnabled, showForwardOriginEnabled, disableAutoDeleteEnabled, screenshotProtectionBypassEnabled, hideChatOnScreenshotsEnabled, adBlockEnabled
+    }
+    /// Global master switch. When off, every PampGram runtime feature reads as disabled, while the stored per-feature choices are preserved.
+    public var pampGramEnabled: Bool
     /// Shows the clearly-labelled "Фантом" tab inside the real gift-sending screen.
     public var phantomGiftsEnabled: Bool
     /// The mod's own play-money Stars counter, spent by Phantom Gifts. Completely unrelated
@@ -216,6 +225,7 @@ public struct PampGramSettings: Codable, Equatable {
 
     public static var defaultSettings: PampGramSettings {
         return PampGramSettings(
+            pampGramEnabled: true,
             phantomGiftsEnabled: true,
             fakeStarsBalance: defaultFakeStarsBalance,
             fakeTonBalanceNanos: defaultFakeTonBalanceNanos,
@@ -248,7 +258,8 @@ public struct PampGramSettings: Codable, Equatable {
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, copyProtectionBypassEnabled: Bool, showForwardOriginEnabled: Bool, disableAutoDeleteEnabled: Bool, screenshotProtectionBypassEnabled: Bool, hideChatOnScreenshotsEnabled: Bool, adBlockEnabled: Bool) {
+    public init(pampGramEnabled: Bool, phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, copyProtectionBypassEnabled: Bool, showForwardOriginEnabled: Bool, disableAutoDeleteEnabled: Bool, screenshotProtectionBypassEnabled: Bool, hideChatOnScreenshotsEnabled: Bool, adBlockEnabled: Bool) {
+        self.pampGramEnabled = pampGramEnabled
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -286,6 +297,7 @@ public struct PampGramSettings: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = PampGramSettings.defaultSettings
+        self.pampGramEnabled = try container.decodeIfPresent(Bool.self, forKey: .pampGramEnabled) ?? defaults.pampGramEnabled
         self.phantomGiftsEnabled = try container.decodeIfPresent(Bool.self, forKey: .phantomGiftsEnabled) ?? defaults.phantomGiftsEnabled
         self.fakeStarsBalance = try container.decodeIfPresent(Int64.self, forKey: .fakeStarsBalance) ?? defaults.fakeStarsBalance
         self.fakeTonBalanceNanos = try container.decodeIfPresent(Int64.self, forKey: .fakeTonBalanceNanos) ?? defaults.fakeTonBalanceNanos
@@ -336,12 +348,40 @@ public enum PampGramPreferencesKeys {
 }
 
 public enum PampGramCore {
-    public static func settings(transaction: Transaction) -> PampGramSettings {
+    private static func rawSettings(transaction: Transaction) -> PampGramSettings {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
+    private static func effective(_ value: PampGramSettings) -> PampGramSettings {
+        guard !value.pampGramEnabled else { return value }
+        var value = value
+        value.phantomGiftsEnabled = false
+        value.fakeStarsDisplayEnabled = false
+        value.fakeTonDisplayEnabled = false
+        value.antiDeleteMessagesEnabled = false
+        value.ghostReaderEnabled = false
+        value.onlineMaskEnabled = false
+        value.visualEditEnabled = false
+        value.fromHimGiftsEnabled = false
+        value.voiceChangerMessagesEnabled = false
+        value.fakeLocationEnabled = false
+        value.chatLockEnabled = false
+        value.localRublesPurchaseEnabled = false
+        value.copyProtectionBypassEnabled = false
+        value.showForwardOriginEnabled = false
+        value.disableAutoDeleteEnabled = false
+        value.screenshotProtectionBypassEnabled = false
+        value.hideChatOnScreenshotsEnabled = false
+        value.adBlockEnabled = false
+        return value
+    }
+
+    public static func settings(transaction: Transaction) -> PampGramSettings {
+        return self.effective(self.rawSettings(transaction: transaction))
+    }
+
     public static func updateSettings(transaction: Transaction, _ f: (PampGramSettings) -> PampGramSettings) {
-        let updated = f(self.settings(transaction: transaction))
+        let updated = f(self.rawSettings(transaction: transaction))
         transaction.setPreferencesEntry(key: PampGramPreferencesKeys.settings, value: PreferencesEntry(updated))
     }
 
@@ -349,7 +389,7 @@ public enum PampGramCore {
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return postbox.preferencesView(keys: [PampGramPreferencesKeys.settings])
         |> map { view -> PampGramSettings in
-            return view.values[PampGramPreferencesKeys.settings]?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
+            return self.effective(view.values[PampGramPreferencesKeys.settings]?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings)
         }
         |> distinctUntilChanged
     }

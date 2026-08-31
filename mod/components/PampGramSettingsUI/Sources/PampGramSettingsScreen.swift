@@ -347,26 +347,26 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
 
     entries.append(.aboutText("Меняет только то, что видите вы на этом устройстве."))
 
-    entries.append(.phantomGiftsHeader("ЛОКАЛЬНЫЕ ПОДАРКИ"))
-    entries.append(.phantomGiftsToggle("Вкладка «Подарок ему»", settings.phantomGiftsEnabled))
+    entries.append(.phantomGiftsHeader("ВИЗУАЛЬНЫЕ ПОДАРКИ"))
+    entries.append(.phantomGiftsToggle("← Подарок ему →", settings.phantomGiftsEnabled))
     entries.append(.phantomGiftsFooter("Тот же настоящий маркет, но покупка из вкладки визуальная, без списания настоящих Stars/TON."))
 
-    entries.append(.fromHimGiftsToggle("От него", settings.fromHimGiftsEnabled))
+    entries.append(.fromHimGiftsToggle("← Подарок мне →", settings.fromHimGiftsEnabled))
     entries.append(.fromHimGiftsFooter("Добавляет вкладку «Подарок мне» — тот же маркет, но подарок выглядит подаренным вам собеседником."))
 
-    entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ ЗВЁЗДЫ"))
+    entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ · ЗВЁЗДЫ"))
     entries.append(.fakeStarsDisplayToggle("Локальные звёзды", settings.fakeStarsDisplayEnabled))
-    entries.append(.starsBalance("Фантом-Stars", "\(settings.fakeStarsBalance)"))
+    entries.append(.starsBalance("Звёзды", "\(settings.fakeStarsBalance)"))
     entries.append(.starsBalanceFooter("Показывает этот баланс вместо настоящего — в настройках и шапке подарка."))
 
-    entries.append(.tonBalanceHeader("ЛОКАЛЬНЫЕ TON/GRAM"))
+    entries.append(.tonBalanceHeader("ТОНЫ"))
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
-    entries.append(.tonBalance("Фантом-TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
+    entries.append(.tonBalance("TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
     entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM, независимо от звёзд."))
 
-    entries.append(.localRublesHeader("ЛОКАЛЬНЫЕ РУБЛИ"))
+    entries.append(.localRublesHeader("РУБЛИ ДЛЯ ПОПОЛНЕНИЯ ЗВЁЗД"))
     entries.append(.localRublesPurchaseToggle("Покупка звёзд за рубли", settings.localRublesPurchaseEnabled))
-    entries.append(.localRublesBalance("Баланс карты", formatRubles(kopecks: settings.localRublesBalanceKopecks)))
+    entries.append(.localRublesBalance("Рубли", formatRubles(kopecks: settings.localRublesBalanceKopecks)))
     entries.append(.localRublesFooter("Пока включено, кнопка «Пополнить» на экране звёзд открывает не настоящую оплату Apple, а покупку за эту локальную карту — списывает отсюда и зачисляет в «Фантом-Stars» выше."))
 
     entries.append(.resetBalances("Сбросить балансы"))

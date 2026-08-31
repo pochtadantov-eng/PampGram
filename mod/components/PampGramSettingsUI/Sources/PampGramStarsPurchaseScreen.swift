@@ -18,24 +18,24 @@ private struct PampGramStarsPackage: Equatable {
 }
 
 private let pampGramStarsPackages: [PampGramStarsPackage] = [
-    PampGramStarsPackage(stars: 50, priceKopecks: 10_299),
-    PampGramStarsPackage(stars: 75, priceKopecks: 14_699),
-    PampGramStarsPackage(stars: 100, priceKopecks: 18_900),
-    PampGramStarsPackage(stars: 150, priceKopecks: 27_599),
-    PampGramStarsPackage(stars: 250, priceKopecks: 44_900),
-    PampGramStarsPackage(stars: 350, priceKopecks: 61_900),
-    PampGramStarsPackage(stars: 500, priceKopecks: 87_900),
-    PampGramStarsPackage(stars: 750, priceKopecks: 131_900),
-    PampGramStarsPackage(stars: 1_000, priceKopecks: 174_900),
-    PampGramStarsPackage(stars: 1_500, priceKopecks: 259_900),
-    PampGramStarsPackage(stars: 2_500, priceKopecks: 433_900)
+    .init(stars: 100, priceKopecks: 18_199), .init(stars: 150, priceKopecks: 26_499),
+    .init(stars: 250, priceKopecks: 42_900), .init(stars: 350, priceKopecks: 59_900),
+    .init(stars: 500, priceKopecks: 84_900), .init(stars: 750, priceKopecks: 125_900),
+    .init(stars: 1_000, priceKopecks: 167_900), .init(stars: 1_500, priceKopecks: 249_900),
+    .init(stars: 2_500, priceKopecks: 419_900), .init(stars: 5_000, priceKopecks: 829_900),
+    .init(stars: 10_000, priceKopecks: 1_659_900), .init(stars: 25_000, priceKopecks: 4_149_900),
+    .init(stars: 50_000, priceKopecks: 8_299_900), .init(stars: 100_000, priceKopecks: 16_599_900),
+    .init(stars: 150_000, priceKopecks: 24_999_900)
 ]
+private let pampGramStarsCompact: Set<Int64> = [100, 250, 500, 1_000, 2_500, 10_000, 50_000, 150_000]
 
 private final class PampGramStarsPurchaseArguments {
     let openCheckout: (PampGramStarsPackage) -> Void
+    let toggleExpanded: () -> Void
 
-    init(openCheckout: @escaping (PampGramStarsPackage) -> Void) {
+    init(openCheckout: @escaping (PampGramStarsPackage) -> Void, toggleExpanded: @escaping () -> Void) {
         self.openCheckout = openCheckout
+        self.toggleExpanded = toggleExpanded
     }
 }
 
@@ -43,12 +43,13 @@ private enum PampGramStarsPurchaseEntry: ItemListNodeEntry {
     case balanceText(String)
     case packagesHeader(String)
     case package(Int, PampGramStarsPackage)
+    case additional(Bool)
 
     var section: ItemListSectionId {
         switch self {
         case .balanceText:
             return 0
-        case .packagesHeader, .package:
+        case .packagesHeader, .package, .additional:
             return 1
         }
     }
@@ -61,6 +62,8 @@ private enum PampGramStarsPurchaseEntry: ItemListNodeEntry {
             return 1
         case let .package(index, _):
             return Int32(2 + index)
+        case .additional:
+            return 100
         }
     }
 
@@ -72,6 +75,8 @@ private enum PampGramStarsPurchaseEntry: ItemListNodeEntry {
             return lhsText == rhsText
         case let (.package(lhsIndex, lhsPackage), .package(rhsIndex, rhsPackage)):
             return lhsIndex == rhsIndex && lhsPackage == rhsPackage
+        case let (.additional(lhs), .additional(rhs)):
+            return lhs == rhs
         default:
             return false
         }
@@ -88,6 +93,8 @@ private enum PampGramStarsPurchaseEntry: ItemListNodeEntry {
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .packagesHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .additional(expanded):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: expanded ? "Скрыть дополнительные" : "⌄  Дополнительно", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: { arguments.toggleExpanded() })
         case let .package(_, package):
             return ItemListDisclosureItem(
                 presentationData: presentationData,
@@ -105,13 +112,13 @@ private enum PampGramStarsPurchaseEntry: ItemListNodeEntry {
     }
 }
 
-private func pampGramStarsPurchaseEntries(balanceKopecks: Int64) -> [PampGramStarsPurchaseEntry] {
+private func pampGramStarsPurchaseEntries(balanceKopecks: Int64, expanded: Bool) -> [PampGramStarsPurchaseEntry] {
     var entries: [PampGramStarsPurchaseEntry] = []
     entries.append(.balanceText("Баланс карты: \(formatRubles(kopecks: balanceKopecks))"))
     entries.append(.packagesHeader("ВЫБЕРИТЕ КОЛИЧЕСТВО"))
-    for (index, package) in pampGramStarsPackages.enumerated() {
-        entries.append(.package(index, package))
-    }
+    let visible = expanded ? pampGramStarsPackages : pampGramStarsPackages.filter { pampGramStarsCompact.contains($0.stars) }
+    for (index, package) in visible.enumerated() { entries.append(.package(index, package)) }
+    entries.append(.additional(expanded))
     return entries
 }
 
@@ -119,9 +126,11 @@ private func pampGramStarsPurchaseEntries(balanceKopecks: Int64) -> [PampGramSta
 
 private final class PampGramStarsCheckoutArguments {
     let pay: () -> Void
+    let choosePayment: () -> Void
 
-    init(pay: @escaping () -> Void) {
+    init(pay: @escaping () -> Void, choosePayment: @escaping () -> Void) {
         self.pay = pay
+        self.choosePayment = choosePayment
     }
 }
 
@@ -194,7 +203,7 @@ private enum PampGramStarsCheckoutEntry: ItemListNodeEntry {
         case let .paymentHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .paymentRow(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "creditcard.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, enabled: false, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "creditcard.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: label, sectionId: self.section, style: .blocks, action: { arguments.choosePayment() })
         case let .footer(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .payButton(title, enabled):
@@ -210,7 +219,7 @@ private func pampGramStarsCheckoutEntries(package: PampGramStarsPackage, balance
     entries.append(.itemRow("\(package.stars) Звёзд Telegram", formatRubles(kopecks: package.priceKopecks)))
     entries.append(.totalRow("Итого", formatRubles(kopecks: package.priceKopecks)))
     entries.append(.paymentHeader("СПОСОБ ОПЛАТЫ"))
-    entries.append(.paymentRow("Локальная карта", formatRubles(kopecks: balanceKopecks)))
+    entries.append(.paymentRow("Способ оплаты", "SberPay · локальная карта"))
     let canAfford = balanceKopecks >= package.priceKopecks
     entries.append(.footer(canAfford ? "Спишется с локальной карты — та же, что пополняется в «Подарки» → «Локальные рубли»." : "На карте недостаточно средств. Пополните карту в «Подарки» → «Локальные рубли»."))
     entries.append(.payButton("Оплатить \(formatRubles(kopecks: package.priceKopecks))", canAfford))
@@ -261,6 +270,19 @@ private func pampGramStarsCheckoutController(context: AccountContext, package: P
                     })
                 })
             })
+        },
+        choosePayment: {
+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+            let sheet = ActionSheetController(presentationData: presentationData)
+            sheet.setItemGroups([
+                ActionSheetItemGroup(items: [
+                    ActionSheetTextItem(title: "Способ оплаты"),
+                    ActionSheetButtonItem(title: "Новая карта…", color: .accent, action: { [weak sheet] in sheet?.dismissAnimated() }),
+                    ActionSheetButtonItem(title: "✓ SberPay · локальная карта", color: .accent, action: { [weak sheet] in sheet?.dismissAnimated() })
+                ]),
+                ActionSheetItemGroup(items: [ActionSheetButtonItem(title: "OK", color: .accent, font: .bold, action: { [weak sheet] in sheet?.dismissAnimated() })])
+            ])
+            presentControllerImpl?(sheet)
         }
     )
 
@@ -313,6 +335,8 @@ private func pampGramStarsCheckoutController(context: AccountContext, package: P
 public func pampGramStarsPurchaseController(context: AccountContext, completion: @escaping (Int64) -> Void) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
     var dismissImpl: (() -> Void)?
+    var expandedValue = false
+    let expanded = ValuePromise<Bool>(false, ignoreRepeated: true)
 
     let arguments = PampGramStarsPurchaseArguments(
         openCheckout: { package in
@@ -320,15 +344,20 @@ public func pampGramStarsPurchaseController(context: AccountContext, completion:
                 dismissImpl?()
                 completion(stars)
             }))
+        },
+        toggleExpanded: {
+            expandedValue.toggle()
+            expanded.set(expandedValue)
         }
     )
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        expanded.get()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, isExpanded -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Купить звёзды"),
@@ -339,7 +368,7 @@ public func pampGramStarsPurchaseController(context: AccountContext, completion:
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramStarsPurchaseEntries(balanceKopecks: settings.localRublesBalanceKopecks),
+            entries: pampGramStarsPurchaseEntries(balanceKopecks: settings.localRublesBalanceKopecks, expanded: isExpanded),
             style: .blocks,
             animateChanges: true
         )

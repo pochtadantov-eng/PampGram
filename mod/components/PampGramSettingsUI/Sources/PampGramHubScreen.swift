@@ -11,13 +11,17 @@ import PampGramCore
 
 private enum PampGramHubSection: Int32 {
     case hero
+    case controls
     case sections
     case status
     case team
+    case footer
 }
 
 private enum PampGramHubEntry: ItemListNodeEntry {
     case hero
+    case master(Bool)
+    case search
     case gifts
     case messages
     case privacy
@@ -32,11 +36,13 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return PampGramHubSection.hero.rawValue
+        case .master, .search:
+            return PampGramHubSection.controls.rawValue
         case .gifts, .messages, .privacy, .appearance, .other, .advanced, .admin:
             return PampGramHubSection.sections.rawValue
         case .status:
             return PampGramHubSection.status.rawValue
-        case .team:
+        case .team, .footer:
             return PampGramHubSection.team.rawValue
         }
     }
@@ -45,24 +51,30 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return 0
-        case .gifts:
+        case .master:
             return 1
-        case .messages:
+        case .search:
             return 2
+        case .gifts:
+            return 10
+        case .messages:
+            return 11
         case .privacy:
-            return 3
+            return 12
         case .appearance:
-            return 4
+            return 13
         case .other:
-            return 5
+            return 14
         case .advanced:
-            return 6
+            return 15
         case .admin:
-            return 7
+            return 16
         case .status:
-            return 8
+            return 17
         case .team:
-            return 9
+            return 18
+        case .footer:
+            return 19
         }
     }
 
@@ -81,7 +93,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 title: "PampGram",
                 titleFont: .bold,
                 titleBadge: "MOD",
-                label: pampGramVersionString,
+                label: "",
                 additionalDetailLabel: "Расширяй. Скрывай. Контролируй.",
                 sectionId: self.section,
                 style: .blocks,
@@ -89,6 +101,19 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 action: {
                     arguments.openAbout()
                 }
+            )
+        case let .master(value):
+            return ItemListSwitchItem(
+                presentationData: presentationData, systemStyle: .glass, title: "Включить визуалку", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                    arguments.toggleMaster(value)
+                }
+            )
+        case .search:
+            return ItemListDisclosureItem(
+                presentationData: presentationData, systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "magnifyingglass", backgroundColor: UIColor(rgb: 0x5ac8fa)),
+                title: "Поиск по PampGram", label: "", additionalDetailLabel: "Найти раздел или функцию",
+                sectionId: self.section, style: .blocks, action: { arguments.openSearch() }
             )
         case .gifts:
             return ItemListDisclosureItem(
@@ -211,6 +236,8 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                     arguments.openStatus()
                 }
             )
+        case .footer:
+            return ItemListTextItem(presentationData: presentationData, text: .plain("PampGram \(pampGramVersionString)\n© 2026 PampGram Team. Все права защищены. Не является официальным приложением Telegram."), sectionId: self.section)
         case .team:
             return ItemListDisclosureItem(
                 presentationData: presentationData,
@@ -218,7 +245,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 icon: pampGramSettingsIcon(),
                 title: "PampGram Team",
                 label: "",
-                additionalDetailLabel: "Сделано с 💜 для тебя",
+                additionalDetailLabel: "Команда и поддержка",
                 sectionId: self.section,
                 style: .blocks,
                 disclosureStyle: .none,
@@ -231,6 +258,8 @@ private enum PampGramHubEntry: ItemListNodeEntry {
 }
 
 private final class PampGramHubArguments {
+    let toggleMaster: (Bool) -> Void
+    let openSearch: () -> Void
     let openGifts: () -> Void
     let openMessages: () -> Void
     let openGhost: () -> Void
@@ -242,7 +271,9 @@ private final class PampGramHubArguments {
     let openAbout: () -> Void
     let openSupport: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openOther: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
+    init(toggleMaster: @escaping (Bool) -> Void, openSearch: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openOther: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
+        self.toggleMaster = toggleMaster
+        self.openSearch = openSearch
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
@@ -287,6 +318,8 @@ private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [P
     let activeCount = toggles.filter { $0 }.count
     var entries: [PampGramHubEntry] = [
         .hero,
+        .master(settings.pampGramEnabled),
+        .search,
         .gifts,
         .messages,
         .privacy,
@@ -299,6 +332,7 @@ private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [P
     }
     entries.append(.status(activeCount, toggles.count))
     entries.append(.team)
+    entries.append(.footer)
     return entries
 }
 
@@ -311,6 +345,16 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
     var navigationControllerImpl: (() -> NavigationController?)?
 
     let arguments = PampGramHubArguments(
+        toggleMaster: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.pampGramEnabled = value
+                return settings
+            }).start()
+        },
+        openSearch: {
+            pushControllerImpl?(pampGramSearchController(context: context))
+        },
         openGifts: {
             pampGramGateSection(context: context, section: .gifts) {
                 pushControllerImpl?(pampGramGiftsSettingsController(context: context))
