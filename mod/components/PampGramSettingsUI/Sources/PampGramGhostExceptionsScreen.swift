@@ -140,7 +140,7 @@ public func pampGramGhostExceptionsController(context: AccountContext) -> ViewCo
     let arguments = PampGramGhostExceptionsArguments(
         addChat: {
             let _ = (context.account.postbox.transaction { transaction -> Set<PeerId> in
-                return Set(PampGramCore.settings(transaction: transaction).ghostExcludedPeerIds)
+                return Set(PampGramCore.rawSettings(transaction: transaction).ghostExcludedPeerIds)
             }
             |> deliverOnMainQueue).start(next: { excluded in
                 let selectionController = context.sharedContext.makeContactMultiselectionController(ContactMultiselectionControllerParams(
@@ -199,7 +199,7 @@ public func pampGramGhostExceptionsController(context: AccountContext) -> ViewCo
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox)
+        PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
     )
     |> mapToSignal { presentationData, settings -> Signal<(PresentationData, PampGramSettings, [PeerId: EnginePeer?]), NoError> in
         return context.engine.data.subscribe(

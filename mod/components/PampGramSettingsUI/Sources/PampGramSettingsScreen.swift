@@ -52,11 +52,8 @@ private final class PampGramSettingsArguments {
 
 private enum PampGramSettingsSection: Int32 {
     case about
-    case phantomGifts
-    case starsBalance
-    case tonBalance
-    case localRubles
-    case fromHimGifts
+    case tabs
+    case balances
     case resetBalances
     case storage
 }
@@ -98,16 +95,12 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return PampGramSettingsSection.about.rawValue
-        case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter:
-            return PampGramSettingsSection.phantomGifts.rawValue
-        case .starsBalanceHeader, .fakeStarsDisplayToggle, .starsBalance, .starsBalanceFooter:
-            return PampGramSettingsSection.starsBalance.rawValue
-        case .tonBalanceHeader, .fakeTonDisplayToggle, .tonBalance, .tonBalanceFooter:
-            return PampGramSettingsSection.tonBalance.rawValue
-        case .localRublesHeader, .localRublesPurchaseToggle, .localRublesBalance, .localRublesFooter:
-            return PampGramSettingsSection.localRubles.rawValue
-        case .fromHimGiftsToggle, .fromHimGiftsFooter:
-            return PampGramSettingsSection.fromHimGifts.rawValue
+        case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter, .fromHimGiftsToggle, .fromHimGiftsFooter:
+            return PampGramSettingsSection.tabs.rawValue
+        case .starsBalanceHeader, .fakeStarsDisplayToggle, .starsBalance, .starsBalanceFooter,
+             .tonBalanceHeader, .fakeTonDisplayToggle, .tonBalance, .tonBalanceFooter,
+             .localRublesHeader, .localRublesPurchaseToggle, .localRublesBalance, .localRublesFooter:
+            return PampGramSettingsSection.balances.rawValue
         case .resetBalances, .resetBalancesFooter:
             return PampGramSettingsSection.resetBalances.rawValue
         case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
@@ -121,11 +114,11 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return 0
         case .phantomGiftsHeader:
             return 1
-        case .phantomGiftsToggle:
-            return 2
-        case .phantomGiftsFooter:
-            return 3
         case .fromHimGiftsToggle:
+            return 2
+        case .phantomGiftsToggle:
+            return 3
+        case .phantomGiftsFooter:
             return 4
         case .fromHimGiftsFooter:
             return 5
@@ -347,27 +340,19 @@ private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCoun
 
     entries.append(.aboutText("Меняет только то, что видите вы на этом устройстве."))
 
-    entries.append(.phantomGiftsHeader("ЛОКАЛЬНЫЕ ПОДАРКИ"))
-    entries.append(.phantomGiftsToggle("Вкладка «Подарок ему»", settings.phantomGiftsEnabled))
-    entries.append(.phantomGiftsFooter("Тот же настоящий маркет, но покупка из вкладки визуальная, без списания настоящих Stars/TON."))
+    entries.append(.phantomGiftsHeader("ВКЛАДКИ ПОДАРКОВ"))
+    entries.append(.fromHimGiftsToggle("← Подарок мне ←", settings.fromHimGiftsEnabled))
+    entries.append(.phantomGiftsToggle("→ Подарок ему →", settings.phantomGiftsEnabled))
+    entries.append(.phantomGiftsFooter("«Подарок мне» — подарок выглядит подаренным вам собеседником. «Подарок ему» — тот же настоящий маркет, но покупка визуальная, без списания настоящих Stars/TON."))
 
-    entries.append(.fromHimGiftsToggle("От него", settings.fromHimGiftsEnabled))
-    entries.append(.fromHimGiftsFooter("Добавляет вкладку «Подарок мне» — тот же маркет, но подарок выглядит подаренным вам собеседником."))
-
-    entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ ЗВЁЗДЫ"))
+    entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ"))
     entries.append(.fakeStarsDisplayToggle("Локальные звёзды", settings.fakeStarsDisplayEnabled))
-    entries.append(.starsBalance("Фантом-Stars", "\(settings.fakeStarsBalance)"))
-    entries.append(.starsBalanceFooter("Показывает этот баланс вместо настоящего — в настройках и шапке подарка."))
-
-    entries.append(.tonBalanceHeader("ЛОКАЛЬНЫЕ TON/GRAM"))
+    entries.append(.starsBalance("Звёзды", "\(settings.fakeStarsBalance)"))
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
-    entries.append(.tonBalance("Фантом-TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
-    entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM, независимо от звёзд."))
-
-    entries.append(.localRublesHeader("ЛОКАЛЬНЫЕ РУБЛИ"))
+    entries.append(.tonBalance("TON/GRAM", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
     entries.append(.localRublesPurchaseToggle("Покупка звёзд за рубли", settings.localRublesPurchaseEnabled))
-    entries.append(.localRublesBalance("Баланс карты", formatRubles(kopecks: settings.localRublesBalanceKopecks)))
-    entries.append(.localRublesFooter("Пока включено, кнопка «Пополнить» на экране звёзд открывает не настоящую оплату Apple, а покупку за эту локальную карту — списывает отсюда и зачисляет в «Фантом-Stars» выше."))
+    entries.append(.localRublesBalance("Рубли (для покупки звёзд)", formatRubles(kopecks: settings.localRublesBalanceKopecks)))
+    entries.append(.localRublesFooter("Звёзды и TON/GRAM показываются вместо настоящих балансов. Рубли — локальная «карта»: пока «Покупка звёзд за рубли» включена, кнопка «Пополнить» на экране звёзд списывает отсюда и зачисляет в звёзды. Все поля можно редактировать вручную."))
 
     entries.append(.resetBalances("Сбросить балансы"))
     entries.append(.resetBalancesFooter("Возвращает оба счётчика к значениям по умолчанию."))
@@ -411,7 +396,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         },
         editStarsBalance: {
             let _ = (context.account.postbox.transaction { transaction -> Int64 in
-                return PampGramCore.settings(transaction: transaction).fakeStarsBalance
+                return PampGramCore.rawSettings(transaction: transaction).fakeStarsBalance
             }
             |> deliverOnMainQueue).start(next: { current in
                 presentControllerImpl?(promptController(
@@ -435,7 +420,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         },
         editTonBalance: {
             let _ = (context.account.postbox.transaction { transaction -> Int64 in
-                return PampGramCore.settings(transaction: transaction).fakeTonBalanceNanos
+                return PampGramCore.rawSettings(transaction: transaction).fakeTonBalanceNanos
             }
             |> deliverOnMainQueue).start(next: { current in
                 presentControllerImpl?(promptController(
@@ -536,7 +521,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        PampGramCore.rawSettingsSignal(postbox: context.account.postbox),
         PampGramPhantomGiftStore.allGiftsSignal(context: context)
     )
     |> deliverOnMainQueue

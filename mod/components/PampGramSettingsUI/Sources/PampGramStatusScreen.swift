@@ -9,6 +9,7 @@ import ItemListUI
 import PresentationDataUtils
 import AccountContext
 import AppBundle
+import UndoUI
 import PampGramCore
 
 private final class PampGramStatusArguments {
@@ -16,12 +17,14 @@ private final class PampGramStatusArguments {
     let openGifts: () -> Void
     let openMessages: () -> Void
     let openGhost: () -> Void
+    let refreshSubscription: () -> Void
 
-    init(openIconPicker: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void) {
+    init(openIconPicker: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, refreshSubscription: @escaping () -> Void) {
         self.openIconPicker = openIconPicker
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
+        self.refreshSubscription = refreshSubscription
     }
 }
 
@@ -49,6 +52,7 @@ func pampGramIconDisplayName(_ icon: PresentationAppIcon) -> String {
 
 private enum PampGramStatusEntry: ItemListNodeEntry {
     case badge(Bool)
+    case refreshSubscription(String)
 
     case iconHeader(String)
     case iconSummary(PresentationAppIcon)
@@ -65,7 +69,7 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
 
     var section: ItemListSectionId {
         switch self {
-        case .badge:
+        case .badge, .refreshSubscription:
             return 0
         case .iconHeader, .iconSummary, .iconFooter:
             return 1
@@ -82,8 +86,10 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         switch self {
         case .badge:
             return 0
-        case .iconHeader:
+        case .refreshSubscription:
             return 1
+        case .iconHeader:
+            return 2
         case .iconSummary:
             return 100
         case .iconFooter:
@@ -125,6 +131,10 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
                 disclosureStyle: .none,
                 action: nil
             )
+        case let .refreshSubscription(title):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .center, sectionId: self.section, style: .blocks, action: {
+                arguments.refreshSubscription()
+            })
         case let .iconHeader(text), let .giftsHeader(text), let .messagesHeader(text), let .ghostHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .iconFooter(text):
@@ -196,6 +206,7 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     var entries: [PampGramStatusEntry] = []
 
     entries.append(.badge(isPro))
+    entries.append(.refreshSubscription("Обновить подписку"))
 
     entries.append(.iconHeader("ИКОНКА ПРИЛОЖЕНИЯ"))
     if let selectedIcon = icons.first(where: { $0.name == currentIconName }) ?? icons.first(where: { $0.isDefault }) ?? icons.first {
@@ -233,8 +244,12 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
 /// home-screen icon), plus a grouped, tap-to-open read-out of every PampGram toggle.
 public func pampGramStatusController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
+    var presentTooltipImpl: ((String) -> Void)?
     var currentIconNameValue = context.sharedContext.applicationBindings.getAlternateIconName()
     let currentIconName = ValuePromise<String?>(currentIconNameValue)
+    // Re-emits on each "Обновить подписку" tap so the tier is re-fetched from the server; the
+    // first value fetches on open. `ignoreRepeated: false` so repeated taps always refetch.
+    let subscriptionReload = ValuePromise<Void>(Void(), ignoreRepeated: false)
 
     var appIcons = context.sharedContext.applicationBindings.getAvailableAlternateIcons()
     appIcons = appIcons.filter { !$0.isPremium }
@@ -260,13 +275,22 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
             pampGramGateSection(context: context, section: .ghost) {
                 pushControllerImpl?(pampGramGhostSettingsController(context: context))
             }
+        },
+        refreshSubscription: {
+            subscriptionReload.set(Void())
+            presentTooltipImpl?("Обновляю подписку…")
         }
     )
 
+    let subscriptionTierSignal = subscriptionReload.get()
+    |> mapToSignal { _ -> Signal<PampGramSubscriptionTier, NoError> in
+        return PampGramSubscriptionAPI.fetchTier(userId: context.account.peerId.id._internalGetInt64Value())
+    }
+
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox),
-        PampGramSubscriptionAPI.fetchTier(userId: context.account.peerId.id._internalGetInt64Value()),
+        PampGramCore.rawSettingsSignal(postbox: context.account.postbox),
+        subscriptionTierSignal,
         currentIconName.get()
     )
     |> deliverOnMainQueue
@@ -292,6 +316,13 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
     let controller = ItemListController(context: context, state: signal)
     pushControllerImpl = { [weak controller] c in
         controller?.push(c)
+    }
+    presentTooltipImpl = { [weak controller] text in
+        guard let controller else {
+            return
+        }
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        controller.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
     }
     return controller
 }

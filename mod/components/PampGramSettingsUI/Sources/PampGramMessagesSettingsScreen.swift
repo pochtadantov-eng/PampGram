@@ -183,7 +183,7 @@ public func pampGramMessagesSettingsController(context: AccountContext) -> ViewC
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        PampGramCore.rawSettingsSignal(postbox: context.account.postbox),
         PampGramDeletedMessageStore.allSignal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue

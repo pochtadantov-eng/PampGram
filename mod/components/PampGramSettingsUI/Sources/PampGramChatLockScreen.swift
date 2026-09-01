@@ -146,7 +146,7 @@ public func pampGramChatLockController(context: AccountContext) -> ViewControlle
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox)
+        PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue
     |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in

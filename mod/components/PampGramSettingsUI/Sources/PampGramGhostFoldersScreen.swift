@@ -125,7 +125,7 @@ public func pampGramGhostFoldersController(context: AccountContext) -> ViewContr
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        PampGramCore.rawSettingsSignal(postbox: context.account.postbox),
         context.engine.peers.updatedChatListFilters()
     )
     |> deliverOnMainQueue
