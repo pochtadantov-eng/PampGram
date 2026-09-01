@@ -11,7 +11,6 @@ import PampGramCore
 
 private enum PampGramHubSection: Int32 {
     case hero
-    case master
     case search
     case sections
     case status
@@ -20,8 +19,6 @@ private enum PampGramHubSection: Int32 {
 
 private enum PampGramHubEntry: ItemListNodeEntry {
     case hero
-    case masterToggle(Bool)
-    case masterFooter(String)
     case search
     case gifts
     case messages
@@ -37,8 +34,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return PampGramHubSection.hero.rawValue
-        case .masterToggle, .masterFooter:
-            return PampGramHubSection.master.rawValue
         case .search:
             return PampGramHubSection.search.rawValue
         case .gifts, .messages, .privacy, .appearance, .advanced, .admin:
@@ -54,30 +49,26 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return 0
-        case .masterToggle:
-            return 1
-        case .masterFooter:
-            return 2
         case .search:
-            return 3
+            return 1
         case .gifts:
-            return 4
+            return 2
         case .messages:
-            return 5
+            return 3
         case .privacy:
-            return 6
+            return 4
         case .appearance:
-            return 7
+            return 5
         case .advanced:
-            return 8
+            return 6
         case .admin:
-            return 9
+            return 7
         case .status:
-            return 10
+            return 8
         case .team:
-            return 11
+            return 9
         case .legal:
-            return 12
+            return 10
         }
     }
 
@@ -241,12 +232,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             )
         case let .legal(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .masterToggle(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "wand.and.stars", backgroundColor: UIColor(rgb: 0x8e44ec)), title: "Включить визуалку", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                arguments.toggleMaster(value)
-            })
-        case let .masterFooter(text):
-            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         }
     }
 }
@@ -262,10 +247,8 @@ private final class PampGramHubArguments {
     let openAbout: () -> Void
     let openSupport: () -> Void
     let openSearch: () -> Void
-    let toggleMaster: (Bool) -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void, openSearch: @escaping () -> Void, toggleMaster: @escaping (Bool) -> Void) {
-        self.toggleMaster = toggleMaster
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void, openSearch: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
@@ -303,8 +286,6 @@ private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [P
     let activeCount = toggles.filter { $0 }.count
     var entries: [PampGramHubEntry] = [
         .hero,
-        .masterToggle(settings.masterEnabled),
-        .masterFooter(settings.masterEnabled ? "Все функции PampGram активны. Выключи — и ни одна функция не будет работать, но настройки сохранятся." : "PampGram выключен: ни одна функция не работает. Включи, чтобы вернуть все настройки как были."),
         .search,
         .gifts,
         .messages,
@@ -422,13 +403,6 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
                 ])
             ])
             presentControllerImpl?(mainSheet)
-        },
-        toggleMaster: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.masterEnabled = value
-                return settings
-            }).start()
         }
     )
 

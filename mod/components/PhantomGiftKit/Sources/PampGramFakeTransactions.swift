@@ -13,19 +13,25 @@ import AccountContext
 /// off later — only the gift records themselves (never cleared by a toggle) decide what
 /// shows here.
 public extension PampGramPhantomGiftStore {
-    /// - A debit for every gift actually bought/sent (`!isReceived`) — "Подарок мне"/"От
-    ///   него" gifts never appear here, matching that nothing was ever charged for them.
-    /// - A matching credit, same date, when that gift's `peerId` is this account's own —
+    /// - A debit for every gift actually bought/sent (`!isReceived`).
+    /// - A credit for every "Подарок мне"/"От него" gift (`isReceived`) — it reads as a top-up
+    ///   (пополнение), matching how the user asked for a gift they sent themselves "from"
+    ///   someone to land in their Stars/TON top-ups.
+    /// - A matching credit, same date, when a *sent* gift's `peerId` is this account's own —
     ///   sending a gift to yourself shows up both as the payment and as it "arriving".
     /// - A credit when a gift already in the profile was later sold (`soldDate != nil`).
     static func fakeTransactionsSignal(context: AccountContext, ton: Bool, mode: StarsTransactionsContext.Mode) -> Signal<[StarsContext.State.Transaction], NoError> {
         let currency: CurrencyAmount.Currency = ton ? .ton : .stars
         let selfPeerId = context.account.peerId
 
-        return self.allGiftsSignal(context: context)
-        |> mapToSignal { gifts -> Signal<[StarsContext.State.Transaction], NoError> in
-            let relevant = gifts.filter { $0.price.currency == currency && !$0.isReceived }
-            if relevant.isEmpty {
+        return combineLatest(
+            self.allGiftsSignal(context: context),
+            PampGramFakeTopUpStore.allSignal(context: context)
+        )
+        |> mapToSignal { gifts, topUps -> Signal<[StarsContext.State.Transaction], NoError> in
+            let relevant = gifts.filter { $0.price.currency == currency }
+            let relevantTopUps = topUps.filter { $0.isTon == ton }
+            if relevant.isEmpty && relevantTopUps.isEmpty {
                 return .single([])
             }
             let peerIds = Array(Set(relevant.map { $0.peerId }))
@@ -50,6 +56,27 @@ public extension PampGramPhantomGiftStore {
                         isUnique = true
                     case .generic:
                         isUnique = false
+                    }
+
+                    // "Подарок мне" / "От него": a received gift reads as a top-up — a single
+                    // positive (incoming) row, nothing debited, since nobody paid in this
+                    // direction. Its price becomes the credited amount.
+                    if gift.isReceived {
+                        var creditFlags: StarsContext.State.Transaction.Flags = [.isGift]
+                        if isUnique {
+                            creditFlags.insert(.isStarGiftResale)
+                        }
+                        transactions.append(self.fakeTransaction(
+                            id: "pampgram_\(gift.id)_received",
+                            flags: creditFlags,
+                            amount: gift.price.amount,
+                            currency: currency,
+                            date: gift.date,
+                            peer: peer,
+                            title: gift.title,
+                            starGift: gift.gift
+                        ))
+                        continue
                     }
 
                     var debitFlags: StarsContext.State.Transaction.Flags = [.isGift]
@@ -94,6 +121,17 @@ public extension PampGramPhantomGiftStore {
                     }
                 }
 
+                // Local star/TON purchases from "Купить звёзды" — a пополнение, shown as an
+                // In-App-Purchase credit (`.appStore`), exactly where a real top-up sits.
+                for topUp in relevantTopUps {
+                    transactions.append(self.fakeAppStoreTransaction(
+                        id: "pampgram_topup_\(topUp.id)",
+                        amount: StarsAmount(value: topUp.amount, nanos: 0),
+                        currency: currency,
+                        date: topUp.date
+                    ))
+                }
+
                 switch mode {
                 case .all:
                     break
@@ -106,6 +144,37 @@ public extension PampGramPhantomGiftStore {
                 return transactions.sorted(by: { $0.date > $1.date })
             }
         }
+    }
+
+    /// A top-up row whose "peer" is the App Store, so the real transaction UI renders it as an
+    /// In-App-Purchase credit ("Пополнение · Telegram") — the same slot a genuine Stars top-up
+    /// occupies — rather than attributing it to a chat peer.
+    private static func fakeAppStoreTransaction(id: String, amount: StarsAmount, currency: CurrencyAmount.Currency, date: Int32) -> StarsContext.State.Transaction {
+        return StarsContext.State.Transaction(
+            flags: [],
+            id: id,
+            count: CurrencyAmount(amount: amount, currency: currency),
+            date: date,
+            peer: .appStore,
+            title: nil,
+            description: nil,
+            photo: nil,
+            transactionDate: nil,
+            transactionUrl: nil,
+            paidMessageId: nil,
+            giveawayMessageId: nil,
+            media: [],
+            subscriptionPeriod: nil,
+            starGift: nil,
+            floodskipNumber: nil,
+            starrefCommissionPermille: nil,
+            starrefPeerId: nil,
+            starrefAmount: nil,
+            paidMessageCount: nil,
+            premiumGiftMonths: nil,
+            adsProceedsFromDate: nil,
+            adsProceedsToDate: nil
+        )
     }
 
     private static func fakeTransaction(id: String, flags: StarsContext.State.Transaction.Flags, amount: StarsAmount, currency: CurrencyAmount.Currency, date: Int32, peer: EnginePeer, title: String?, starGift: StarGift?) -> StarsContext.State.Transaction {

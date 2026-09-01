@@ -245,10 +245,13 @@ public struct PampGramSettings: Codable, Equatable {
     public var chatLockEnabled: Bool
     public var chatLockPin: String
     public var lockedChatPeerIds: [PeerId]
-    /// "Включить визуалку" — the global master switch. When off, `PampGramCore.settings` and
-    /// `settingsSignal` report every feature as disabled (via `withAllFeaturesOff()`), so nothing
-    /// PampGram does takes effect anywhere, while the stored per-feature values are preserved and
-    /// restored the moment it's turned back on. The settings SCREENS read the raw value instead
+    /// "Включить визуалку" — the on/off gate for the **Подарки** section only (it lives at the
+    /// top of the Gifts screen, not the hub). When off, `PampGramCore.settings`/`settingsSignal`
+    /// report just the gift-visual features as disabled (via `withGiftsVisualsOff()`) — the
+    /// phantom "Подарок ему" tab, the "Подарок мне" tab, the fake Stars/TON balance display, and
+    /// the local-rubles star purchase — while every other section (Ghost, voice, pins, location,
+    /// chat lock…) keeps working. Stored per-feature values are preserved and restored the moment
+    /// it's turned back on. The settings SCREENS read the raw value instead
     /// (`rawSettings`/`rawSettingsSignal`) so they still show and edit the real state.
     public var masterEnabled: Bool
     /// "Закрепить чаты" (Дополнительно): bypass the client-side pinned-chats limit so more than
@@ -421,28 +424,17 @@ public struct PampGramSettings: Codable, Equatable {
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
     }
 
-    /// A copy with every feature flag forced off (but stored values — balances, PIN, coordinates,
-    /// excluded lists, presets — preserved). Returned by `PampGramCore.settings`/`settingsSignal`
-    /// while the master switch is off, so no feature takes effect while nothing is lost.
-    public func withAllFeaturesOff() -> PampGramSettings {
+    /// A copy with just the **Подарки** section's visual features forced off (but every stored
+    /// value — balances, the sub-toggles' real state, everything — preserved). Returned by
+    /// `PampGramCore.settings`/`settingsSignal` while "Включить визуалку" is off, so the gift
+    /// visuals stop taking effect while nothing is lost and no other section is touched.
+    public func withGiftsVisualsOff() -> PampGramSettings {
         var settings = self
         settings.phantomGiftsEnabled = false
+        settings.fromHimGiftsEnabled = false
         settings.fakeStarsDisplayEnabled = false
         settings.fakeTonDisplayEnabled = false
-        settings.antiDeleteMessagesEnabled = false
-        settings.ghostReaderEnabled = false
-        settings.onlineMaskEnabled = false
-        settings.ghostModeEnabled = false
-        settings.visualEditEnabled = false
-        settings.fromHimGiftsEnabled = false
-        settings.voiceChangerMessagesEnabled = false
-        settings.uploadSpeedMode = .standard
-        settings.downloadSpeedMode = .standard
-        settings.fakeLocationEnabled = false
-        settings.chatLockEnabled = false
         settings.localRublesPurchaseEnabled = false
-        settings.infinitePinsEnabled = false
-        settings.legalPremiumEnabled = false
         return settings
     }
 
@@ -485,6 +477,7 @@ public enum PampGramPreferencesKeys {
     public static let phantomGifts = key(900_100)
     public static let deletedMessages = key(900_200)
     public static let adminToken = key(900_300)
+    public static let fakeTopUps = key(900_400)
 }
 
 public enum PampGramCore {
@@ -494,12 +487,13 @@ public enum PampGramCore {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
-    /// Master-gated settings, used by all feature EFFECT and display code: when "Включить
-    /// визуалку" is off, every feature reads as disabled. Screens that need the real stored
-    /// state use `rawSettings` instead.
+    /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
+    /// визуалку" (the Подарки section gate) is off, only the gift-visual features read as
+    /// disabled; every other section is unaffected. Screens that need the real stored state use
+    /// `rawSettings` instead.
     public static func settings(transaction: Transaction) -> PampGramSettings {
         let raw = self.rawSettings(transaction: transaction)
-        return raw.masterEnabled ? raw : raw.withAllFeaturesOff()
+        return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
     }
 
     public static func updateSettings(transaction: Transaction, _ f: (PampGramSettings) -> PampGramSettings) {
@@ -522,7 +516,7 @@ public enum PampGramCore {
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return self.rawSettingsSignal(postbox: postbox)
         |> map { raw -> PampGramSettings in
-            return raw.masterEnabled ? raw : raw.withAllFeaturesOff()
+            return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
         }
         |> distinctUntilChanged
     }

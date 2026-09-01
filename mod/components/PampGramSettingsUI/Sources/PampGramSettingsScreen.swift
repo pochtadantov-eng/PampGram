@@ -14,6 +14,7 @@ import PampGramCore
 import PhantomGiftKit
 
 private final class PampGramSettingsArguments {
+    let toggleVisual: (Bool) -> Void
     let togglePhantomGifts: (Bool) -> Void
     let toggleFakeStarsDisplay: (Bool) -> Void
     let toggleFakeTonDisplay: (Bool) -> Void
@@ -26,6 +27,7 @@ private final class PampGramSettingsArguments {
     let deleteAllPhantomGifts: () -> Void
 
     init(
+        toggleVisual: @escaping (Bool) -> Void,
         togglePhantomGifts: @escaping (Bool) -> Void,
         toggleFakeStarsDisplay: @escaping (Bool) -> Void,
         toggleFakeTonDisplay: @escaping (Bool) -> Void,
@@ -37,6 +39,7 @@ private final class PampGramSettingsArguments {
         resetBalances: @escaping () -> Void,
         deleteAllPhantomGifts: @escaping () -> Void
     ) {
+        self.toggleVisual = toggleVisual
         self.togglePhantomGifts = togglePhantomGifts
         self.toggleFakeStarsDisplay = toggleFakeStarsDisplay
         self.toggleFakeTonDisplay = toggleFakeTonDisplay
@@ -51,6 +54,7 @@ private final class PampGramSettingsArguments {
 }
 
 private enum PampGramSettingsSection: Int32 {
+    case visual
     case about
     case tabs
     case balances
@@ -59,6 +63,9 @@ private enum PampGramSettingsSection: Int32 {
 }
 
 private enum PampGramSettingsEntry: ItemListNodeEntry {
+    case visualToggle(Bool)
+    case visualFooter(String)
+
     case aboutText(String)
 
     case phantomGiftsHeader(String)
@@ -93,6 +100,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 
     var section: ItemListSectionId {
         switch self {
+        case .visualToggle, .visualFooter:
+            return PampGramSettingsSection.visual.rawValue
         case .aboutText:
             return PampGramSettingsSection.about.rawValue
         case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter, .fromHimGiftsToggle, .fromHimGiftsFooter:
@@ -110,6 +119,10 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 
     var stableId: Int32 {
         switch self {
+        case .visualToggle:
+            return -2
+        case .visualFooter:
+            return -1
         case .aboutText:
             return 0
         case .phantomGiftsHeader:
@@ -168,6 +181,12 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramSettingsArguments
         switch self {
+        case let .visualToggle(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "wand.and.stars", backgroundColor: UIColor(rgb: 0x8e44ec)), title: "Включить визуалку", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleVisual(value)
+            })
+        case let .visualFooter(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .storageHeader(text):
@@ -338,11 +357,14 @@ private func parseRublesTopUp(_ text: String) -> Int64? {
 private func pampGramSettingsEntries(settings: PampGramSettings, phantomGiftCount: Int) -> [PampGramSettingsEntry] {
     var entries: [PampGramSettingsEntry] = []
 
+    entries.append(.visualToggle(settings.masterEnabled))
+    entries.append(.visualFooter(settings.masterEnabled ? "Визуальные функции подарков включены. Выключи — и вкладки «Подарок мне»/«Подарок ему» и локальные балансы перестанут действовать, но настройки сохранятся." : "Визуалка подарков выключена: вкладки и локальные балансы не работают. Включи, чтобы вернуть всё как было. Остальные разделы PampGram это не затрагивает."))
+
     entries.append(.aboutText("Меняет только то, что видите вы на этом устройстве."))
 
     entries.append(.phantomGiftsHeader("ВКЛАДКИ ПОДАРКОВ"))
-    entries.append(.fromHimGiftsToggle("← Подарок мне ←", settings.fromHimGiftsEnabled))
-    entries.append(.phantomGiftsToggle("→ Подарок ему →", settings.phantomGiftsEnabled))
+    entries.append(.fromHimGiftsToggle("«Подарок мне»", settings.fromHimGiftsEnabled))
+    entries.append(.phantomGiftsToggle("«Подарок ему»", settings.phantomGiftsEnabled))
     entries.append(.phantomGiftsFooter("«Подарок мне» — подарок выглядит подаренным вам собеседником. «Подарок ему» — тот же настоящий маркет, но покупка визуальная, без списания настоящих Stars/TON."))
 
     entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ"))
@@ -373,6 +395,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
     var presentTooltipImpl: ((String) -> Void)?
 
     let arguments = PampGramSettingsArguments(
+        toggleVisual: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.masterEnabled = value
+                return settings
+            }).start()
+        },
         togglePhantomGifts: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings

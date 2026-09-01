@@ -7,7 +7,9 @@ import ItemListUI
 import PresentationDataUtils
 import AccountContext
 import OverlayStatusController
+import PromptUI
 import PampGramCore
+import PhantomGiftKit
 
 /// One package from the real "Купить звёзды" sheet's own published Stars→₽ pricing —
 /// PampGram never invents these numbers, just reuses Telegram's own public tiers so the fake
@@ -146,19 +148,18 @@ private func pampGramStarsPurchaseEntries(balanceKopecks: Int64, expanded: Bool)
 
 // MARK: - Checkout screen
 
-/// The fake card the local checkout "charges" — SberPay is the default, matching the sheet in
-/// the reference screenshots. It's purely cosmetic: whatever is selected, the money comes out
-/// of `localRublesBalanceKopecks`.
+/// The fake card the local checkout "charges" — cosmetic only: whatever is selected, the money
+/// comes out of `localRublesBalanceKopecks`, never a real card.
 private struct PampGramPaymentMethod: Equatable {
     let id: String
     let title: String
     let detail: String
 }
 
-private let pampGramPaymentMethods: [PampGramPaymentMethod] = [
-    PampGramPaymentMethod(id: "sberpay", title: "SberPay", detail: "Сбербанк •••• 4415"),
-    PampGramPaymentMethod(id: "card", title: "Банковская карта", detail: "MIR •••• 7720")
-]
+/// PampGram's own already-linked payment source — a SberPay-style card shown as attached, so
+/// star purchases have a believable "Способ оплаты" to charge. Extra cards can be added on top
+/// of it via "Добавить карту".
+private let pampGramAttachedCard = PampGramPaymentMethod(id: "sberpay", title: "SberPay", detail: "Привязана · Сбербанк •••• 4415")
 
 private final class PampGramStarsCheckoutArguments {
     let pay: () -> Void
@@ -285,31 +286,73 @@ private func pampGramStarsCheckoutEntries(package: PampGramStarsPackage, balance
 private func pampGramStarsCheckoutController(context: AccountContext, package: PampGramStarsPackage, onPaid: @escaping (Int64) -> Void) -> ViewController {
     var presentControllerImpl: ((ViewController) -> Void)?
     var popSelfImpl: (() -> Void)?
-    let methodPromise = ValuePromise<PampGramPaymentMethod>(pampGramPaymentMethods[0], ignoreRepeated: true)
-    var currentMethod = pampGramPaymentMethods[0]
+    let methodPromise = ValuePromise<PampGramPaymentMethod>(pampGramAttachedCard, ignoreRepeated: true)
+    var currentMethod = pampGramAttachedCard
+    // Starts with the attached SberPay card; "Добавить карту" appends to it.
+    var methods: [PampGramPaymentMethod] = [pampGramAttachedCard]
+    var showPaymentSheetImpl: (() -> Void)?
+
+    let addCard: () -> Void = {
+        presentControllerImpl?(promptController(
+            context: context,
+            text: "Добавить карту",
+            subtitle: "Введите номер карты. Оплата всё равно списывается с локальной карты — настоящая карта не привязывается.",
+            value: "",
+            placeholder: "0000 0000 0000 0000",
+            characterLimit: 19,
+            apply: { value in
+                guard let value else {
+                    showPaymentSheetImpl?()
+                    return
+                }
+                let digits = value.filter { $0.isNumber }
+                guard digits.count >= 4 else {
+                    showPaymentSheetImpl?()
+                    return
+                }
+                let last4 = String(digits.suffix(4))
+                let newCard = PampGramPaymentMethod(id: "card_\(digits)", title: "Банковская карта", detail: "•••• \(last4)")
+                if !methods.contains(newCard) {
+                    methods.append(newCard)
+                }
+                currentMethod = newCard
+                methodPromise.set(newCard)
+                showPaymentSheetImpl?()
+            }
+        ))
+    }
+
+    let showPaymentSheet: () -> Void = {
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        let sheet = ActionSheetController(presentationData: presentationData)
+        var items: [ActionSheetItem] = [ActionSheetTextItem(title: "Способ оплаты")]
+        for method in methods {
+            let selected = method == currentMethod
+            items.append(ActionSheetButtonItem(title: selected ? "✓ \(method.title) · \(method.detail)" : "\(method.title) · \(method.detail)", color: .accent, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                currentMethod = method
+                methodPromise.set(method)
+            }))
+        }
+        items.append(ActionSheetButtonItem(title: "Добавить карту", color: .accent, action: { [weak sheet] in
+            sheet?.dismissAnimated()
+            addCard()
+        }))
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: items),
+            ActionSheetItemGroup(items: [
+                ActionSheetButtonItem(title: "OK", color: .accent, font: .bold, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                })
+            ])
+        ])
+        presentControllerImpl?(sheet)
+    }
+    showPaymentSheetImpl = showPaymentSheet
 
     let arguments = PampGramStarsCheckoutArguments(
         selectPaymentMethod: {
-            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-            let sheet = ActionSheetController(presentationData: presentationData)
-            var items: [ActionSheetItem] = [ActionSheetTextItem(title: "Способ оплаты")]
-            for method in pampGramPaymentMethods {
-                let selected = method == currentMethod
-                items.append(ActionSheetButtonItem(title: selected ? "✓ \(method.title) · \(method.detail)" : "\(method.title) · \(method.detail)", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    currentMethod = method
-                    methodPromise.set(method)
-                }))
-            }
-            sheet.setItemGroups([
-                ActionSheetItemGroup(items: items),
-                ActionSheetItemGroup(items: [
-                    ActionSheetButtonItem(title: "OK", color: .accent, font: .bold, action: { [weak sheet] in
-                        sheet?.dismissAnimated()
-                    })
-                ])
-            ])
-            presentControllerImpl?(sheet)
+            showPaymentSheet()
         },
         cancel: {
             popSelfImpl?()
@@ -341,6 +384,11 @@ private func pampGramStarsCheckoutController(context: AccountContext, package: P
                         return settings
                     }).start(completed: {
                         loadingController.dismiss()
+                        // Record the пополнение so it shows in the (merged) Stars transaction
+                        // history, and drop the native star-topup plaque into the Telegram
+                        // service chat — same as a real purchase.
+                        let _ = PampGramFakeTopUpStore.record(context: context, isTon: false, amount: package.stars, fiatKopecks: package.priceKopecks).start()
+                        let _ = PampGramPhantomGiftMessage.insertLocalStarsTopUpMessage(context: context, starCount: package.stars, fiatKopecks: package.priceKopecks).start()
                         presentControllerImpl?(OverlayStatusController(theme: presentationData.theme, type: .starSuccess("+\(package.stars)")))
                         popSelfImpl?()
                         onPaid(package.stars)
