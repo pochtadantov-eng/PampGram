@@ -35,8 +35,13 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     /// `savedToProfile = false`, with this timestamp marking when the matching "sale"
     /// credit transaction happened.
     public let soldDate: Int32?
+    /// Local profile decoration flag. Only PampGram reads it; Telegram has no server-side equivalent.
+    public let worn: Bool
+    /// Local marketplace listing. `nil` means the gift is not currently listed.
+    public let marketPrice: CurrencyAmount?
+    public let marketListedAt: Int32?
 
-    public init(id: Int64, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, date: Int32, localMessageId: EngineMessage.Id?, isReceived: Bool = false, pinnedToTop: Bool = false, savedToProfile: Bool = true, soldDate: Int32? = nil) {
+    public init(id: Int64, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, date: Int32, localMessageId: EngineMessage.Id?, isReceived: Bool = false, pinnedToTop: Bool = false, savedToProfile: Bool = true, soldDate: Int32? = nil, worn: Bool = false, marketPrice: CurrencyAmount? = nil, marketListedAt: Int32? = nil) {
         self.id = id
         self.peerId = peerId
         self.gift = gift
@@ -47,6 +52,9 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         self.pinnedToTop = pinnedToTop
         self.savedToProfile = savedToProfile
         self.soldDate = soldDate
+        self.worn = worn
+        self.marketPrice = marketPrice
+        self.marketListedAt = marketListedAt
     }
 
     /// Decoded field by field, like `PampGramSettings`: a gift saved before `isReceived`/
@@ -65,6 +73,9 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         self.pinnedToTop = try container.decodeIfPresent(Bool.self, forKey: .pinnedToTop) ?? false
         self.savedToProfile = try container.decodeIfPresent(Bool.self, forKey: .savedToProfile) ?? true
         self.soldDate = try container.decodeIfPresent(Int32.self, forKey: .soldDate)
+        self.worn = try container.decodeIfPresent(Bool.self, forKey: .worn) ?? false
+        self.marketPrice = try container.decodeIfPresent(CurrencyAmount.self, forKey: .marketPrice)
+        self.marketListedAt = try container.decodeIfPresent(Int32.self, forKey: .marketListedAt)
     }
 
     public var title: String {
@@ -86,15 +97,27 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     }
 
     public func withPinnedToTop(_ pinnedToTop: Bool) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt)
     }
 
     public func withSavedToProfile(_ savedToProfile: Bool) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: savedToProfile, soldDate: self.soldDate)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt)
     }
 
     public func withSold(date: Int32) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: false, soldDate: date)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: false, soldDate: date, worn: false, marketPrice: nil, marketListedAt: nil)
+    }
+
+    public func withWorn(_ worn: Bool) -> PampGramPhantomGift {
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt)
+    }
+
+    public func withMarketPrice(_ marketPrice: CurrencyAmount?, listedAt: Int32? = nil) -> PampGramPhantomGift {
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: marketPrice, marketListedAt: marketPrice == nil ? nil : (listedAt ?? self.marketListedAt ?? Int32(Date().timeIntervalSince1970)))
+    }
+
+    public func withPeerId(_ peerId: EnginePeer.Id) -> PampGramPhantomGift {
+        return PampGramPhantomGift(id: self.id, peerId: peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: peerId == self.peerId ? self.savedToProfile : true, soldDate: self.soldDate, worn: false, marketPrice: nil, marketListedAt: nil)
     }
 
     /// The real profile gifts grid's own item type, built straight from this Phantom Gift —
@@ -111,7 +134,7 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             text: nil,
             entities: nil,
             nameHidden: false,
-            savedToProfile: true,
+            savedToProfile: self.savedToProfile,
             pinnedToTop: self.pinnedToTop,
             convertStars: self.price.currency == .stars ? self.price.amount.value : nil,
             canUpgrade: false,

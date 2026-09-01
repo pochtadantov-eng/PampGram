@@ -11,7 +11,6 @@ import PampGramCore
 
 private enum PampGramHubSection: Int32 {
     case hero
-    case search
     case sections
     case status
     case team
@@ -19,7 +18,6 @@ private enum PampGramHubSection: Int32 {
 
 private enum PampGramHubEntry: ItemListNodeEntry {
     case hero
-    case search
     case gifts
     case messages
     case privacy
@@ -28,19 +26,16 @@ private enum PampGramHubEntry: ItemListNodeEntry {
     case admin
     case status(Int, Int)
     case team
-    case legal(String)
 
     var section: ItemListSectionId {
         switch self {
         case .hero:
             return PampGramHubSection.hero.rawValue
-        case .search:
-            return PampGramHubSection.search.rawValue
         case .gifts, .messages, .privacy, .appearance, .advanced, .admin:
             return PampGramHubSection.sections.rawValue
         case .status:
             return PampGramHubSection.status.rawValue
-        case .team, .legal:
+        case .team:
             return PampGramHubSection.team.rawValue
         }
     }
@@ -49,26 +44,22 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return 0
-        case .search:
-            return 1
         case .gifts:
-            return 2
+            return 1
         case .messages:
-            return 3
+            return 2
         case .privacy:
-            return 4
+            return 3
         case .appearance:
-            return 5
+            return 4
         case .advanced:
-            return 6
+            return 5
         case .admin:
-            return 7
+            return 6
         case .status:
-            return 8
+            return 7
         case .team:
-            return 9
-        case .legal:
-            return 10
+            return 8
         }
     }
 
@@ -87,26 +78,13 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 title: "PampGram",
                 titleFont: .bold,
                 titleBadge: "MOD",
-                label: "",
+                label: pampGramVersionString,
                 additionalDetailLabel: "Расширяй. Скрывай. Контролируй.",
                 sectionId: self.section,
                 style: .blocks,
                 disclosureStyle: .none,
                 action: {
                     arguments.openAbout()
-                }
-            )
-        case .search:
-            return ItemListDisclosureItem(
-                presentationData: presentationData,
-                systemStyle: .glass,
-                icon: generatePampGramSectionIcon(systemName: "magnifyingglass", backgroundColor: UIColor(rgb: 0x636366)),
-                title: "Найти функцию или раздел",
-                label: "",
-                sectionId: self.section,
-                style: .blocks,
-                action: {
-                    arguments.openSearch()
                 }
             )
         case .gifts:
@@ -166,7 +144,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 sectionId: self.section,
                 style: .blocks,
                 action: {
-                    arguments.openPlaceholder("Внешний вид")
+                    arguments.openAppearance()
                 }
             )
         case .advanced:
@@ -222,7 +200,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 icon: pampGramSettingsIcon(),
                 title: "PampGram Team",
                 label: "",
-                additionalDetailLabel: "Канал, поддержка и донат",
+                additionalDetailLabel: "Сделано с 💜 для тебя",
                 sectionId: self.section,
                 style: .blocks,
                 disclosureStyle: .none,
@@ -230,8 +208,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                     arguments.openSupport()
                 }
             )
-        case let .legal(text):
-            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         }
     }
 }
@@ -240,25 +216,23 @@ private final class PampGramHubArguments {
     let openGifts: () -> Void
     let openMessages: () -> Void
     let openGhost: () -> Void
-    let openPlaceholder: (String) -> Void
+    let openAppearance: () -> Void
     let openAdditional: () -> Void
     let openAdmin: () -> Void
     let openStatus: () -> Void
     let openAbout: () -> Void
     let openSupport: () -> Void
-    let openSearch: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openPlaceholder: @escaping (String) -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void, openSearch: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
-        self.openPlaceholder = openPlaceholder
+        self.openAppearance = openAppearance
         self.openAdditional = openAdditional
         self.openAdmin = openAdmin
         self.openStatus = openStatus
         self.openAbout = openAbout
         self.openSupport = openSupport
-        self.openSearch = openSearch
     }
 }
 
@@ -273,12 +247,14 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
     return "https://t.me/\(pampGramSupportUsername)?text=\(encoded)"
 }
 
-private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [PampGramHubEntry] {
+private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, isAdmin: Bool) -> [PampGramHubEntry] {
     let toggles = [
         settings.phantomGiftsEnabled,
         settings.fakeStarsDisplayEnabled,
         settings.fakeTonDisplayEnabled,
         settings.fromHimGiftsEnabled,
+        profileVisuals.anonymousNumberEnabled,
+        profileVisuals.ratingEnabled,
         settings.antiDeleteMessagesEnabled,
         settings.visualEditEnabled,
         settings.ghostModeEnabled
@@ -286,7 +262,6 @@ private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [P
     let activeCount = toggles.filter { $0 }.count
     var entries: [PampGramHubEntry] = [
         .hero,
-        .search,
         .gifts,
         .messages,
         .privacy,
@@ -298,7 +273,6 @@ private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [P
     }
     entries.append(.status(activeCount, toggles.count))
     entries.append(.team)
-    entries.append(.legal("PampGram \(pampGramVersionString)\n© 2026 PampGram. Все права защищены. Неофициальная модификация, не связана с Telegram."))
     return entries
 }
 
@@ -326,8 +300,8 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
                 pushControllerImpl?(pampGramGhostSettingsController(context: context))
             }
         },
-        openPlaceholder: { title in
-            pushControllerImpl?(pampGramPlaceholderController(context: context, title: title))
+        openAppearance: {
+            pushControllerImpl?(pampGramAppearanceController(context: context))
         },
         openAdditional: {
             pushControllerImpl?(pampGramAdditionalSettingsController(context: context))
@@ -340,9 +314,6 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         },
         openAbout: {
             pushControllerImpl?(pampGramAboutController(context: context))
-        },
-        openSearch: {
-            pushControllerImpl?(pampGramSearchController(context: context))
         },
         openSupport: {
             let presentationData = context.sharedContext.currentPresentationData.with { $0 }
@@ -366,11 +337,11 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
                 donateSheet.setItemGroups([
                     ActionSheetItemGroup(items: [
                         ActionSheetTextItem(title: "Чем хочешь поддержать?"),
-                        ActionSheetButtonItem(title: "Telegram Stars", color: .accent, action: { [weak donateSheet] in
+                        ActionSheetButtonItem(title: "⭐ Telegram Stars", color: .accent, action: { [weak donateSheet] in
                             donateSheet?.dismissAnimated()
                             openDonateChat("звёзды")
                         }),
-                        ActionSheetButtonItem(title: "Рубли", color: .accent, action: { [weak donateSheet] in
+                        ActionSheetButtonItem(title: "₽ Рубли", color: .accent, action: { [weak donateSheet] in
                             donateSheet?.dismissAnimated()
                             openDonateChat("рубли")
                         })
@@ -391,7 +362,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
                         mainSheet?.dismissAnimated()
                         openChannel()
                     }),
-                    ActionSheetButtonItem(title: "Поддержать проект", color: .accent, action: { [weak mainSheet] in
+                    ActionSheetButtonItem(title: "Поддержать проект 💜", color: .accent, action: { [weak mainSheet] in
                         mainSheet?.dismissAnimated()
                         showDonateOptions()
                     })
@@ -419,10 +390,11 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        PampGramProfileVisualStore.signal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, profileVisuals -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("PampGram"),
@@ -433,7 +405,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramHubEntries(settings: settings, isAdmin: isAdmin),
+            entries: pampGramHubEntries(settings: settings, profileVisuals: profileVisuals, isAdmin: isAdmin),
             style: .blocks,
             animateChanges: true
         )

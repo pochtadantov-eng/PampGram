@@ -179,29 +179,6 @@ public enum PampGramPhantomGiftMessage {
         ))
     }
 
-    /// The Telegram service/notifications chat — the one that delivers login codes — is always
-    /// the cloud user with id 777000. A local star top-up plaque is dropped in here so it reads
-    /// exactly like a genuine "you bought N Stars" notification.
-    private static var telegramServicePeerId: EnginePeer.Id {
-        return PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(777000))
-    }
-
-    /// "Пополнение звёзд": inserts a local-only `.giftStars` message into the Telegram service
-    /// chat (777000), so buying Stars on the local "Купить звёзды" screen shows the same star
-    /// top-up plaque a real purchase does — and because Telegram's own rendering picks the box
-    /// art/colour from the star `count`, each amount gets its own plaque and colour for free.
-    /// `fiatKopecks` fills the "$1.50"-style price line; nothing here is sent or charged.
-    public static func insertLocalStarsTopUpMessage(context: AccountContext, starCount: Int64, fiatKopecks: Int64) -> Signal<EngineMessage.Id?, NoError> {
-        return self.insert(context: context, peerId: self.telegramServicePeerId, authorId: self.telegramServicePeerId, incoming: true, actionType: .giftStars(
-            currency: "RUB",
-            amount: fiatKopecks,
-            count: starCount,
-            cryptoCurrency: nil,
-            cryptoAmount: nil,
-            transactionId: "pampgram_topup_\(Int64.random(in: 1...Int64.max))"
-        ))
-    }
-
     private static func insert(context: AccountContext, peerId: EnginePeer.Id, authorId: EnginePeer.Id, incoming: Bool, actionType: TelegramMediaActionType) -> Signal<EngineMessage.Id?, NoError> {
         return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
             let action = TelegramMediaAction(action: actionType)

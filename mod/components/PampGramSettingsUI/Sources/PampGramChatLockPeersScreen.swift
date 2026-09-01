@@ -139,7 +139,7 @@ public func pampGramChatLockPeersController(context: AccountContext) -> ViewCont
     let arguments = PampGramChatLockPeersArguments(
         addChat: {
             let _ = (context.account.postbox.transaction { transaction -> Set<PeerId> in
-                return Set(PampGramCore.rawSettings(transaction: transaction).lockedChatPeerIds)
+                return Set(PampGramCore.settings(transaction: transaction).lockedChatPeerIds)
             }
             |> deliverOnMainQueue).start(next: { locked in
                 let selectionController = context.sharedContext.makeContactMultiselectionController(ContactMultiselectionControllerParams(
@@ -198,7 +198,7 @@ public func pampGramChatLockPeersController(context: AccountContext) -> ViewCont
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox)
     )
     |> mapToSignal { presentationData, settings -> Signal<(PresentationData, PampGramSettings, [PeerId: EnginePeer?]), NoError> in
         return context.engine.data.subscribe(

@@ -195,8 +195,6 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.extrasHeader("ЕЩЁ"))
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
-    // "Звонки" (callOverridesRow) removed from the UI per request — the controller stays in the
-    // module, just no longer linked here.
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.extrasFooter("Всё работает только на этом устройстве."))
 
@@ -264,7 +262,7 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             }).start()
         },
         openVoicePreset: {
-            let _ = (PampGramCore.rawSettingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
                 pampGramPresentVoicePresetPicker(context: context, presentController: { c in presentControllerImpl?(c) }, current: settings.voicePreset, apply: { preset in
                     let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                         var settings = settings
@@ -275,7 +273,7 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             })
         },
         openUploadSpeed: {
-            let _ = (PampGramCore.rawSettingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
                 pampGramPresentModePicker(context: context, presentController: { c in presentControllerImpl?(c) }, title: "Ускорение загрузки", current: settings.uploadSpeedMode, apply: { mode in
                     let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                         var settings = settings
@@ -286,7 +284,7 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             })
         },
         openDownloadSpeed: {
-            let _ = (PampGramCore.rawSettingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
                 pampGramPresentModePicker(context: context, presentController: { c in presentControllerImpl?(c) }, title: "Ускорение скачивания", current: settings.downloadSpeedMode, apply: { mode in
                     let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                         var settings = settings
@@ -323,7 +321,7 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue
     |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in

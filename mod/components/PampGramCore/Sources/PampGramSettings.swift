@@ -245,15 +245,6 @@ public struct PampGramSettings: Codable, Equatable {
     public var chatLockEnabled: Bool
     public var chatLockPin: String
     public var lockedChatPeerIds: [PeerId]
-    /// "Включить визуалку" — the on/off gate for the **Подарки** section only (it lives at the
-    /// top of the Gifts screen, not the hub). When off, `PampGramCore.settings`/`settingsSignal`
-    /// report just the gift-visual features as disabled (via `withGiftsVisualsOff()`) — the
-    /// phantom "Подарок ему" tab, the "Подарок мне" tab, the fake Stars/TON balance display, and
-    /// the local-rubles star purchase — while every other section (Ghost, voice, pins, location,
-    /// chat lock…) keeps working. Stored per-feature values are preserved and restored the moment
-    /// it's turned back on. The settings SCREENS read the raw value instead
-    /// (`rawSettings`/`rawSettingsSignal`) so they still show and edit the real state.
-    public var masterEnabled: Bool
     /// "Закрепить чаты" (Дополнительно): bypass the client-side pinned-chats limit so more than
     /// the usual 5/10 chats can be pinned. Client-side only — Telegram's server keeps its own
     /// limit, so pins beyond it may not sync to other devices, but on this device they pin.
@@ -310,12 +301,11 @@ public struct PampGramSettings: Codable, Equatable {
             localRublesBalanceKopecks: 0,
             localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
-            legalPremiumEnabled: false,
-            masterEnabled: true
+            legalPremiumEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -352,7 +342,6 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
-        self.masterEnabled = masterEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -421,21 +410,6 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
-        self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
-    }
-
-    /// A copy with just the **Подарки** section's visual features forced off (but every stored
-    /// value — balances, the sub-toggles' real state, everything — preserved). Returned by
-    /// `PampGramCore.settings`/`settingsSignal` while "Включить визуалку" is off, so the gift
-    /// visuals stop taking effect while nothing is lost and no other section is touched.
-    public func withGiftsVisualsOff() -> PampGramSettings {
-        var settings = self
-        settings.phantomGiftsEnabled = false
-        settings.fromHimGiftsEnabled = false
-        settings.fakeStarsDisplayEnabled = false
-        settings.fakeTonDisplayEnabled = false
-        settings.localRublesPurchaseEnabled = false
-        return settings
     }
 
     /// Whether a peer is exempt from Ghost's per-peer suppression, given its type and the
@@ -477,46 +451,28 @@ public enum PampGramPreferencesKeys {
     public static let phantomGifts = key(900_100)
     public static let deletedMessages = key(900_200)
     public static let adminToken = key(900_300)
-    public static let fakeTopUps = key(900_400)
+    public static let localOperations = key(900_400)
+    public static let profileVisuals = key(900_500)
+    public static let appearance = key(900_600)
+    public static let behavior = key(900_700)
+    public static let fakeAdmin = key(900_800)
 }
 
 public enum PampGramCore {
-    /// The stored settings, verbatim — no master gating. Used by the settings SCREENS (so they
-    /// show and edit the real state) and by every write path.
-    public static func rawSettings(transaction: Transaction) -> PampGramSettings {
+    public static func settings(transaction: Transaction) -> PampGramSettings {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
-    /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
-    /// визуалку" (the Подарки section gate) is off, only the gift-visual features read as
-    /// disabled; every other section is unaffected. Screens that need the real stored state use
-    /// `rawSettings` instead.
-    public static func settings(transaction: Transaction) -> PampGramSettings {
-        let raw = self.rawSettings(transaction: transaction)
-        return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
-    }
-
     public static func updateSettings(transaction: Transaction, _ f: (PampGramSettings) -> PampGramSettings) {
-        // Reads RAW so an edit never operates on the master-gated (all-off) view — otherwise
-        // toggling the master back on, or changing any field while it's off, would persist zeros.
-        let updated = f(self.rawSettings(transaction: transaction))
+        let updated = f(self.settings(transaction: transaction))
         transaction.setPreferencesEntry(key: PampGramPreferencesKeys.settings, value: PreferencesEntry(updated))
     }
 
-    /// Live raw settings, for the settings screens.
-    public static func rawSettingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
+    /// Live settings, for screens that need to redraw when a value changes.
+    public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return postbox.preferencesView(keys: [PampGramPreferencesKeys.settings])
         |> map { view -> PampGramSettings in
             return view.values[PampGramPreferencesKeys.settings]?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
-        }
-        |> distinctUntilChanged
-    }
-
-    /// Live master-gated settings, for feature effect/display code.
-    public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
-        return self.rawSettingsSignal(postbox: postbox)
-        |> map { raw -> PampGramSettings in
-            return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
         }
         |> distinctUntilChanged
     }

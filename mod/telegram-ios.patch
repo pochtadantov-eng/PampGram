@@ -18872,21 +18872,20 @@ index e1c98a1a..b94501ec 100644
  
  final class GiftsListView: UIView {
      private let context: AccountContext
-@@ -143,14 +144,41 @@ final class GiftsListView: UIView {
+@@ -143,14 +144,40 @@ final class GiftsListView: UIView {
          
          super.init(frame: .zero)
                                          
-+        // PampGram: this account's own Phantom Gifts (self-gifts sent or received "into"
-+        // this profile) are merged into the default ("All", date-sorted) view of the grid,
++        // PampGram: local visual gifts assigned to this profile are merged into the
++        // default ("All", date-sorted) view of the grid, including gifts visually sent
 +        // right alongside the real ones — nothing here calls `ProfileGiftsContext` or
 +        // touches the network; see `PeerInfoGiftsPaneNode` for how pin/hide/sell on one of
 +        // these entries (recognized by `reference == nil`) stay local-only too.
 +        let pampGramProfileGifts: Signal<[ProfileGiftsContext.State.StarGift], NoError>
 +        if peerId == context.account.peerId {
-+            pampGramProfileGifts = PampGramPhantomGiftStore.profileGiftsSignal(context: context)
-+            |> map { gifts in gifts.map { $0.asProfileGift } }
++            pampGramProfileGifts = PampGramPhantomGiftStore.profileGiftsSignal(context: context) |> map { gifts in gifts.map { $0.asProfileGift } }
 +        } else {
-+            pampGramProfileGifts = .single([])
++            pampGramProfileGifts = PampGramPhantomGiftStore.profileGiftsSignal(context: context, peerId: peerId) |> map { gifts in gifts.map { $0.asProfileGift } }
 +        }
 +
          self.dataDisposable = combineLatest(
@@ -19659,12 +19658,12 @@ index b1ea96b8..fa3a4959 100644
 -                    PresentationAppIcon(name: "BlueFilledIcon", imageName: "BlueFilledIcon"),
 -                    PresentationAppIcon(name: "BlackFilledIcon", imageName: "BlackFilledIcon")
 +                // PampGram: 9 in-house color variants replace Telegram's stock alternate icon
-+                // list — see PampGramStatusScreen.swift for the picker UI. Each maps to its own
-+                // *.alticon folder (Telegram/BUILD `alternate_icon_folders`); none is the default,
-+                // because the built app's primary icon is still Telegram's stock one, so mapping a
-+                // choice to `nil` would show that stock icon instead of the PampGram one picked.
++                // list — see PampGramStatusScreen.swift for the picker UI. PampGramIcon (the
++                // dark one) mirrors the app's primary icon (Telegram.icon), so it's both the
++                // default alternate-icon selection and what a fresh install shows before the
++                // user ever opens this picker.
 +                let icons = [
-+                    PresentationAppIcon(name: "PampGramIcon", imageName: "PampGramIcon"),
++                    PresentationAppIcon(name: "PampGramIcon", imageName: "PampGramIcon", isDefault: true),
 +                    PresentationAppIcon(name: "PampGramPurple", imageName: "PampGramPurple"),
 +                    PresentationAppIcon(name: "PampGramRed", imageName: "PampGramRed"),
 +                    PresentationAppIcon(name: "PampGramBlue", imageName: "PampGramBlue"),

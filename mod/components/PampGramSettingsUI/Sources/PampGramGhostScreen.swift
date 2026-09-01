@@ -283,7 +283,7 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue
     |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in

@@ -113,7 +113,7 @@ public func pampGramFakeLocationController(context: AccountContext) -> ViewContr
             }).start()
         },
         editCoordinate: {
-            let _ = (PampGramCore.rawSettingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
                 let currentValue = String(format: "%.6f, %.6f", settings.fakeLocationLatitude, settings.fakeLocationLongitude)
                 presentControllerImpl?(promptController(
                     context: context,
@@ -141,7 +141,7 @@ public func pampGramFakeLocationController(context: AccountContext) -> ViewContr
             })
         },
         pickOnMap: {
-            let _ = (PampGramCore.rawSettingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
                 let initialLatitude = settings.fakeLocationEnabled ? settings.fakeLocationLatitude : 55.751244
                 let initialLongitude = settings.fakeLocationEnabled ? settings.fakeLocationLongitude : 37.618423
                 pushControllerImpl?(pampGramMapPickerController(context: context, initialLatitude: initialLatitude, initialLongitude: initialLongitude, apply: { latitude, longitude in
@@ -159,7 +159,7 @@ public func pampGramFakeLocationController(context: AccountContext) -> ViewContr
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue
     |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in

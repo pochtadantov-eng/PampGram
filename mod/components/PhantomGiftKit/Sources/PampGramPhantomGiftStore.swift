@@ -99,16 +99,15 @@ public enum PampGramPhantomGiftStore {
         }
     }
 
-    /// Live list of Phantom Gifts that belong in this account's own profile gifts grid:
-    /// gifts sent/received with `peerId == context.account.peerId` (a self-gift) that
-    /// haven't been hidden or sold. Pinned first, then newest first — same ordering the
-    /// real profile gifts grid uses.
-    public static func profileGiftsSignal(context: AccountContext) -> Signal<[PampGramPhantomGift], NoError> {
-        let selfPeerId = context.account.peerId
+    /// Live list of local visual gifts assigned to a profile. The recipient profile is
+    /// selected by `peerId`; if omitted, it is the account owner's own profile. These
+    /// records live only in the local Postbox and are never sent to Telegram.
+    public static func profileGiftsSignal(context: AccountContext, peerId: EnginePeer.Id? = nil) -> Signal<[PampGramPhantomGift], NoError> {
+        let profilePeerId = peerId ?? context.account.peerId
         return self.allGiftsSignal(context: context)
         |> map { gifts -> [PampGramPhantomGift] in
             return gifts
-                .filter { $0.peerId == selfPeerId && $0.savedToProfile }
+                .filter { $0.peerId == profilePeerId && $0.savedToProfile }
                 .sorted { lhs, rhs in
                     if lhs.pinnedToTop != rhs.pinnedToTop {
                         return lhs.pinnedToTop
@@ -117,4 +116,25 @@ public enum PampGramPhantomGiftStore {
                 }
         }
     }
+
+    public static func gift(transaction: Transaction, id: Int64) -> PampGramPhantomGift? {
+        return self.allGifts(transaction: transaction).first(where: { $0.id == id })
+    }
+
+    public static func marketGiftsSignal(context: AccountContext) -> Signal<[PampGramPhantomGift], NoError> {
+        return self.allGiftsSignal(context: context)
+        |> map { gifts in
+            gifts.filter { $0.marketPrice != nil && $0.soldDate == nil }
+                .sorted { ($0.marketListedAt ?? 0) > ($1.marketListedAt ?? 0) }
+        }
+    }
+
+    public static func wornGiftSignal(context: AccountContext) -> Signal<PampGramPhantomGift?, NoError> {
+        let selfPeerId = context.account.peerId
+        return self.allGiftsSignal(context: context)
+        |> map { gifts in
+            gifts.first(where: { $0.peerId == selfPeerId && $0.worn && $0.soldDate == nil })
+        }
+    }
+
 }

@@ -15,14 +15,18 @@ jobs:
         with:
           path: pampgram
 
-      # versions.json pins Xcode 26.2; --overrideXcodeVersion skips the assertion, but the
-      # project genuinely needs Xcode 26+ (its app icons use the Icon Composer .icon bundle
-      # format). Pick the newest Xcode actually present rather than trusting the image label.
-      - name: Select latest available Xcode
+      # Telegram-iOS pins Xcode 26.2. Keeping the runner on that exact toolchain avoids
+      # compiler crashes caused by mixing a newer Xcode with the upstream Bazel cache.
+      - name: Select Xcode 26.2
         run: |
-          ls /Applications | grep -i xcode || true
-          latest_xcode="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
-          if [ -n "$latest_xcode" ]; then sudo xcode-select -s "$latest_xcode"; fi
+          set -euo pipefail
+          XCODE_APP="/Applications/Xcode_26.2.app"
+          if [ ! -d "$XCODE_APP" ]; then
+            echo "FAIL: Xcode 26.2 is not installed on this runner. Available Xcodes:"
+            ls -1 /Applications | grep -i '^Xcode' || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
           xcodebuild -version
 
       - name: Check out Telegram-iOS
@@ -41,6 +45,9 @@ jobs:
           git apply ../pampgram/mod/telegram-ios.patch
           mkdir -p submodules/TelegramUI/Components/PampGram
           cp -R ../pampgram/mod/components/. submodules/TelegramUI/Components/PampGram/
+          # The visual profile state is rendered in Telegram's profile screen by this
+          # anchor-checked post-patch, after the base PampGram patch is in place.
+          python3 ../pampgram/mod/apply-profile-visuals.py
           ls -1 submodules/TelegramUI/Components/PampGram
 
       # Signing, the whole story in one place.
@@ -233,9 +240,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/telegram-bazel-cache
-          key: telegram-bazel-cache-${{ github.run_id }}
+          key: telegram-bazel-cache-xcode-26.2-${{ github.run_id }}
           restore-keys: |
-            telegram-bazel-cache-
+            telegram-bazel-cache-xcode-26.2-
 
       # A DEVICE build (release_arm64), signed with the self-signed cert + fake provisioning
       # profiles the Telegram repo ships in build-system/fake-codesigning for exactly this
@@ -251,7 +258,6 @@ jobs:
         working-directory: telegram-ios
         run: |
           python3 build-system/Make/Make.py \
-            --overrideXcodeVersion \
             --cacheDir="$HOME/telegram-bazel-cache" \
             build \
             --configurationPath=build-system/pampgram-configuration.json \
@@ -265,7 +271,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/telegram-bazel-cache
-          key: telegram-bazel-cache-${{ github.run_id }}
+          key: telegram-bazel-cache-xcode-26.2-${{ github.run_id }}
 
       - name: Show what was produced
         if: always()
