@@ -11,6 +11,7 @@ import PampGramCore
 
 private enum PampGramHubSection: Int32 {
     case hero
+    case search
     case sections
     case status
     case team
@@ -18,6 +19,7 @@ private enum PampGramHubSection: Int32 {
 
 private enum PampGramHubEntry: ItemListNodeEntry {
     case hero
+    case search
     case gifts
     case messages
     case privacy
@@ -31,6 +33,8 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return PampGramHubSection.hero.rawValue
+        case .search:
+            return PampGramHubSection.search.rawValue
         case .gifts, .messages, .privacy, .appearance, .advanced, .admin:
             return PampGramHubSection.sections.rawValue
         case .status:
@@ -44,22 +48,24 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return 0
-        case .gifts:
+        case .search:
             return 1
-        case .messages:
+        case .gifts:
             return 2
-        case .privacy:
+        case .messages:
             return 3
-        case .appearance:
+        case .privacy:
             return 4
-        case .advanced:
+        case .appearance:
             return 5
-        case .admin:
+        case .advanced:
             return 6
-        case .status:
+        case .admin:
             return 7
-        case .team:
+        case .status:
             return 8
+        case .team:
+            return 9
         }
     }
 
@@ -85,6 +91,19 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 disclosureStyle: .none,
                 action: {
                     arguments.openAbout()
+                }
+            )
+        case .search:
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "magnifyingglass", backgroundColor: UIColor(rgb: 0x636366)),
+                title: "Найти функцию или раздел",
+                label: "",
+                sectionId: self.section,
+                style: .blocks,
+                action: {
+                    arguments.openSearch()
                 }
             )
         case .gifts:
@@ -222,8 +241,9 @@ private final class PampGramHubArguments {
     let openStatus: () -> Void
     let openAbout: () -> Void
     let openSupport: () -> Void
+    let openSearch: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void, openSearch: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
@@ -233,6 +253,7 @@ private final class PampGramHubArguments {
         self.openStatus = openStatus
         self.openAbout = openAbout
         self.openSupport = openSupport
+        self.openSearch = openSearch
     }
 }
 
@@ -262,6 +283,7 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
     let activeCount = toggles.filter { $0 }.count
     var entries: [PampGramHubEntry] = [
         .hero,
+        .search,
         .gifts,
         .messages,
         .privacy,
@@ -314,6 +336,9 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         },
         openAbout: {
             pushControllerImpl?(pampGramAboutController(context: context))
+        },
+        openSearch: {
+            pushControllerImpl?(pampGramSearchController(context: context))
         },
         openSupport: {
             let presentationData = context.sharedContext.currentPresentationData.with { $0 }

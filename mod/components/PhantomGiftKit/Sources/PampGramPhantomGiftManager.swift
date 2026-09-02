@@ -148,10 +148,10 @@ public enum PampGramPhantomGiftManager {
 
     /// "Подарок мне": local-only stand-in for *receiving* a unique gift — records it and
     /// inserts the local-only chat message with `insertLocalUniqueGiftMessageFromPeer`, so it
-    /// reads as `peerId` having sent it to this account. Unlike `buyUniqueGift`, no balance is
-    /// touched: nobody spent anything in this direction, real or fake. `price` is kept only
-    /// for the phantom-gift record (the "Фантом-подарков на устройстве" list) — informational,
-    /// never deducted.
+    /// reads as `peerId` having sent it to this account. Credits the matching fake balance
+    /// (Stars or TON) by the gift's `price` and logs a `.topUp` in the ledger, so a gift you
+    /// "received" shows up as a пополнение — the behaviour the user asked for — rather than
+    /// silently doing nothing to the balance.
     public static func receiveUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<PampGramPhantomGift, NoError> {
         return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
             let phantomGift = PampGramPhantomGift(
@@ -164,6 +164,27 @@ public enum PampGramPhantomGiftManager {
                 isReceived: true
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+
+            let ledgerCurrency: PampGramLocalCurrency = price.currency == .stars ? .stars : .ton
+            let balanceAfter: Int64
+            switch price.currency {
+            case .stars:
+                balanceAfter = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + price.amount.value
+                PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: balanceAfter)
+            case .ton:
+                balanceAfter = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) + price.amount.value
+                PampGramPhantomGiftStore.setFakeTonBalanceNanos(transaction: transaction, nanos: balanceAfter)
+            }
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: ledgerCurrency,
+                kind: .topUp,
+                amount: price.amount.value,
+                title: "Подарок мне",
+                details: phantomGift.title,
+                peerId: peerId,
+                giftId: phantomGift.id,
+                balanceAfter: balanceAfter
+            ))
             return phantomGift
         }
         |> mapToSignal { phantomGift -> Signal<PampGramPhantomGift, NoError> in
@@ -196,6 +217,20 @@ public enum PampGramPhantomGiftManager {
                 isReceived: true
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+
+            // Received gift → пополнение (Stars), same as receiveUniqueGift.
+            let balanceAfter = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + gift.price
+            PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: balanceAfter)
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: .stars,
+                kind: .topUp,
+                amount: gift.price,
+                title: "Подарок мне",
+                details: phantomGift.title,
+                peerId: peerId,
+                giftId: phantomGift.id,
+                balanceAfter: balanceAfter
+            ))
             return phantomGift
         }
         |> mapToSignal { phantomGift -> Signal<Never, NoError> in

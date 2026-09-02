@@ -14,6 +14,7 @@ import PampGramCore
 import PhantomGiftKit
 
 private final class PampGramSettingsArguments {
+    let toggleVisual: (Bool) -> Void
     let togglePhantomGifts: (Bool) -> Void
     let toggleFakeStarsDisplay: (Bool) -> Void
     let toggleFakeTonDisplay: (Bool) -> Void
@@ -32,6 +33,7 @@ private final class PampGramSettingsArguments {
     let openRublesLedger: () -> Void
 
     init(
+        toggleVisual: @escaping (Bool) -> Void,
         togglePhantomGifts: @escaping (Bool) -> Void,
         toggleFakeStarsDisplay: @escaping (Bool) -> Void,
         toggleFakeTonDisplay: @escaping (Bool) -> Void,
@@ -49,6 +51,7 @@ private final class PampGramSettingsArguments {
         openTonLedger: @escaping () -> Void,
         openRublesLedger: @escaping () -> Void
     ) {
+        self.toggleVisual = toggleVisual
         self.togglePhantomGifts = togglePhantomGifts
         self.toggleFakeStarsDisplay = toggleFakeStarsDisplay
         self.toggleFakeTonDisplay = toggleFakeTonDisplay
@@ -69,6 +72,7 @@ private final class PampGramSettingsArguments {
 }
 
 private enum PampGramSettingsSection: Int32 {
+    case visual
     case about
     case phantomGifts
     case starsBalance
@@ -83,6 +87,9 @@ private enum PampGramSettingsSection: Int32 {
 }
 
 private enum PampGramSettingsEntry: ItemListNodeEntry {
+    case visualToggle(Bool)
+    case visualFooter(String)
+
     case aboutText(String)
 
     case phantomGiftsHeader(String)
@@ -130,6 +137,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 
     var section: ItemListSectionId {
         switch self {
+        case .visualToggle, .visualFooter:
+            return PampGramSettingsSection.visual.rawValue
         case .aboutText:
             return PampGramSettingsSection.about.rawValue
         case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter:
@@ -157,6 +166,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 
     var stableId: Int32 {
         switch self {
+        case .visualToggle: return -2
+        case .visualFooter: return -1
         case .aboutText: return 1
         case .phantomGiftsHeader: return 2
         case .phantomGiftsToggle: return 3
@@ -202,6 +213,12 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramSettingsArguments
         switch self {
+        case let .visualToggle(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "wand.and.stars", backgroundColor: UIColor(rgb: 0x8e44ec)), title: "Включить визуалку", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleVisual(value)
+            })
+        case let .visualFooter(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .profileVisualsHeader(text), let .collectionHeader(text), let .ledgerHeader(text), let .storageHeader(text):
@@ -384,6 +401,9 @@ private func parseRublesTopUp(_ text: String) -> Int64? {
 private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, phantomGiftCount: Int) -> [PampGramSettingsEntry] {
     var entries: [PampGramSettingsEntry] = []
 
+    entries.append(.visualToggle(settings.masterEnabled))
+    entries.append(.visualFooter(settings.masterEnabled ? "Визуальные функции подарков включены. Выключи — и вкладки «Подарок мне»/«Подарок ему» и локальные балансы перестанут действовать, но настройки сохранятся." : "Визуалка подарков выключена: вкладки и локальные балансы не работают. Включи, чтобы вернуть всё как было. Остальные разделы PampGram это не затрагивает."))
+
     entries.append(.aboutText("Все значения в этом разделе сохраняются только на устройстве. Ниже находятся две настройки визуального номера и рейтинга профиля."))
 
     entries.append(.phantomGiftsHeader("ВИЗУАЛЬНЫЕ ПОДАРКИ"))
@@ -444,6 +464,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
     var presentRatingEditorImpl: (() -> Void)?
 
     let arguments = PampGramSettingsArguments(
+        toggleVisual: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.masterEnabled = value
+                return settings
+            }).start()
+        },
         togglePhantomGifts: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
@@ -467,7 +494,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         },
         editStarsBalance: {
             let _ = (context.account.postbox.transaction { transaction -> Int64 in
-                return PampGramCore.settings(transaction: transaction).fakeStarsBalance
+                return PampGramCore.rawSettings(transaction: transaction).fakeStarsBalance
             }
             |> deliverOnMainQueue).start(next: { current in
                 presentControllerImpl?(promptController(
@@ -481,7 +508,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                             return
                         }
                         let _ = context.account.postbox.transaction { transaction -> Void in
-                            let current = PampGramCore.settings(transaction: transaction).fakeStarsBalance
+                            let current = PampGramCore.rawSettings(transaction: transaction).fakeStarsBalance
                             let delta = stars - current
                             PampGramCore.updateSettings(transaction: transaction, { settings in var settings = settings; settings.fakeStarsBalance = stars; return settings })
                             if delta != 0 { PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .stars, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", balanceAfter: stars)) }
@@ -492,7 +519,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         },
         editTonBalance: {
             let _ = (context.account.postbox.transaction { transaction -> Int64 in
-                return PampGramCore.settings(transaction: transaction).fakeTonBalanceNanos
+                return PampGramCore.rawSettings(transaction: transaction).fakeTonBalanceNanos
             }
             |> deliverOnMainQueue).start(next: { current in
                 presentControllerImpl?(promptController(
@@ -506,7 +533,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                             return
                         }
                         let _ = context.account.postbox.transaction { transaction -> Void in
-                            let current = PampGramCore.settings(transaction: transaction).fakeTonBalanceNanos
+                            let current = PampGramCore.rawSettings(transaction: transaction).fakeTonBalanceNanos
                             let delta = nanos - current
                             PampGramCore.updateSettings(transaction: transaction, { settings in var settings = settings; settings.fakeTonBalanceNanos = nanos; return settings })
                             if delta != 0 { PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .ton, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", balanceAfter: nanos)) }
@@ -556,7 +583,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                     TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
                     TextAlertAction(type: .destructiveAction, title: "Сбросить", action: {
                         let _ = context.account.postbox.transaction { transaction -> Void in
-                            let current = PampGramCore.settings(transaction: transaction)
+                            let current = PampGramCore.rawSettings(transaction: transaction)
                             let starsDelta = PampGramSettings.defaultFakeStarsBalance - current.fakeStarsBalance
                             let tonDelta = PampGramSettings.defaultFakeTonBalanceNanos - current.fakeTonBalanceNanos
                             if starsDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: starsDelta > 0 ? .credit : .debit, amount: starsDelta, title: "Сброс баланса Stars") }
@@ -607,7 +634,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        PampGramCore.rawSettingsSignal(postbox: context.account.postbox),
         PampGramProfileVisualStore.signal(postbox: context.account.postbox),
         PampGramPhantomGiftStore.allGiftsSignal(context: context)
     )
