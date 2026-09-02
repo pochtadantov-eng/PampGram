@@ -19596,17 +19596,17 @@ index 87c58b5f..78a3939e 100644
 +            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox)
              |> take(1)
 -            |> deliverOnMainQueue).start(next: { [weak self] options in
-+            |> deliverOnMainQueue).start(next: { [weak self] settings in
++            |> deliverOnMainQueue).start(next: { [weak self] _ in
                  guard let self else {
                      return
                  }
 -                let controller = context.sharedContext.makeStarsPurchaseScreen(context: context, starsContext: starsContext, options: options, purpose: .generic, targetPeerId: nil, customTheme: nil, completion: { [weak self] stars in
-+                if settings.localRublesPurchaseEnabled {
-+                    let controller = pampGramStarsPurchaseController(context: context, completion: presentPurchaseToast)
-+                    self.push(controller)
-+                    return
-+                }
-+
++                // PampGram: star top-ups now always open Telegram's real "Пополнить" screen;
++                // the visual (no-money) purchase is handled by intercepting `buy` inside
++                // StarsPurchaseScreen (see PampGramStarsHook). The old separate PampGram purchase
++                // screen was removed, so there is no separate branch here any more.
++                //
++                //
 +                let _ = (self.options.get()
 +                |> take(1)
 +                |> deliverOnMainQueue).start(next: { [weak self] options in
@@ -20371,3 +20371,119 @@ index 97de6187..e8a64ca1 100644
                  account.shouldKeepOnlinePresence.set(.single(false))
                  account.shouldKeepBackgroundDownloadConnections.set(.single(false))
              }
+diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
+index b1e8596..db7e43b 100644
+--- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
++++ b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
+@@ -21,6 +21,7 @@ swift_library(
+         "//submodules/Components/BalancedTextComponent",
+         "//submodules/TelegramPresentationData",
+         "//submodules/AccountContext",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
+         "//submodules/AppBundle",
+         "//submodules/ItemListUI",
+         "//submodules/TelegramStringFormatting",
+diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
+index 9e0f9fb..fadea1b 100644
+--- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
++++ b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
+@@ -25,6 +25,7 @@ import PremiumStarComponent
+ import BundleIconComponent
+ import ConfettiEffect
+ import ItemShimmeringLoadingComponent
++import PhantomGiftKit
+ 
+ private struct StarsProduct: Equatable {
+     enum Option: Equatable {
+@@ -679,72 +680,31 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+         }
+         
+         func buy(product: StarsProduct) {
+-            guard let inAppPurchaseManager = self.context.inAppPurchaseManager, self.progressProduct == nil else {
++            guard self.progressProduct == nil else {
+                 return
+             }
+-            
++            // PampGram: visual star purchase — Telegram's real StoreKit path is intercepted
++            // entirely. Show the imitation Apple Pay sheet; on confirm the local fake Stars
++            // balance is credited (PampGramStarsHook) and the screen's own success/close runs.
++            // No StoreKit, no money, no server call.
+             self.progressProduct = product
+             self.updateInProgress(true)
+             self.updated(transition: .easeInOut(duration: 0.2))
+-            
+-            let (currency, amount) = product.storeProduct.priceCurrencyAndAmount
+-            let purpose: AppStoreTransactionPurpose
+-            switch self.purpose {
+-            case let .gift(peerId):
+-                purpose = .starsGift(peerId: peerId, count: product.count, currency: currency, amount: amount)
+-            default:
+-                purpose = .stars(count: product.count, currency: currency, amount: amount, peerId: self.purpose.commercialPeerId)
+-            }
+-            
+-            let _ = (self.context.engine.payments.canPurchasePremium(purpose: purpose)
+-            |> deliverOnMainQueue).start(next: { [weak self] available in
+-                if let strongSelf = self {
+-                    let presentationData = strongSelf.context.sharedContext.currentPresentationData.with { $0 }
+-                    if available {
+-                        strongSelf.paymentDisposable.set((inAppPurchaseManager.buyProduct(product.storeProduct, purpose: purpose)
+-                        |> deliverOnMainQueue).start(next: { [weak self] status in
+-                            if let self, case .purchased = status {
+-                                self.updateInProgress(false)
+-                                
+-                                self.updated(transition: .easeInOut(duration: 0.2))
+-                                self.completion(product.count)
+-                            }
+-                        }, error: { [weak self] error in
+-                            if let strongSelf = self {
+-                                strongSelf.progressProduct = nil
+-                                strongSelf.updateInProgress(false)
+-                                strongSelf.updated(transition: .easeInOut(duration: 0.2))
+-
+-                                var errorText: String?
+-                                switch error {
+-                                    case .generic:
+-                                        errorText = presentationData.strings.Premium_Purchase_ErrorUnknown
+-                                    case .network:
+-                                        errorText = presentationData.strings.Premium_Purchase_ErrorNetwork
+-                                    case .notAllowed:
+-                                        errorText = presentationData.strings.Premium_Purchase_ErrorNotAllowed
+-                                    case .cantMakePayments:
+-                                        errorText = presentationData.strings.Premium_Purchase_ErrorCantMakePayments
+-                                    case .assignFailed:
+-                                        errorText = presentationData.strings.Premium_Purchase_ErrorUnknown
+-                                    case .tryLater:
+-                                        errorText = presentationData.strings.Premium_Purchase_ErrorTryLater
+-                                    case .cancelled:
+-                                        break
+-                                }
+-                                
+-                                if let errorText = errorText {
+-                                    let alertController = textAlertController(context: strongSelf.context, title: nil, text: errorText, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})])
+-                                    strongSelf.present(alertController)
+-                                }
+-                            }
+-                        }))
+-                    } else {
+-                        strongSelf.progressProduct = nil
+-                        strongSelf.updateInProgress(false)
+-                        strongSelf.updated(transition: .easeInOut(duration: 0.2))
+-                    }
++            PampGramStarsHook.presentFakeApplePay(context: self.context, count: product.count, priceText: product.price, onCancel: { [weak self] in
++                guard let self else {
++                    return
++                }
++                self.progressProduct = nil
++                self.updateInProgress(false)
++                self.updated(transition: .easeInOut(duration: 0.2))
++            }, onConfirm: { [weak self] in
++                guard let self else {
++                    return
+                 }
++                self.progressProduct = nil
++                self.updateInProgress(false)
++                self.updated(transition: .easeInOut(duration: 0.2))
++                self.completion(product.count)
+             })
+         }
+         
