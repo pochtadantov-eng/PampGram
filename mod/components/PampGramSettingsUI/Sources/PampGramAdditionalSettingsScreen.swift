@@ -17,10 +17,11 @@ private final class PampGramAdditionalArguments {
     let openFakeLocation: () -> Void
     let openChatLock: () -> Void
     let openCallOverrides: () -> Void
+    let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -28,6 +29,7 @@ private final class PampGramAdditionalArguments {
         self.openFakeLocation = openFakeLocation
         self.openChatLock = openChatLock
         self.openCallOverrides = openCallOverrides
+        self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
     }
@@ -63,6 +65,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case fakeLocationRow(String, String)
     case chatLockRow(String, String)
     case callOverridesRow(String)
+    case fakeAdminRow(String)
     case extrasFooter(String)
 
     var section: ItemListSectionId {
@@ -75,7 +78,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.speed.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -116,8 +119,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 15
         case .callOverridesRow:
             return 16
-        case .extrasFooter:
+        case .fakeAdminRow:
             return 17
+        case .extrasFooter:
+            return 18
         }
     }
 
@@ -168,6 +173,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openCallOverrides()
             })
+        case let .fakeAdminRow(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
+                arguments.openFakeAdmin()
+            })
         }
     }
 }
@@ -196,7 +205,8 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
     entries.append(.callOverridesRow("Звонки"))
-    entries.append(.extrasFooter("Всё работает только на этом устройстве."))
+    entries.append(.fakeAdminRow("Фейк админ"))
+    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас."))
 
     return entries
 }
@@ -302,6 +312,9 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         },
         openCallOverrides: {
             pushControllerImpl?(pampGramCallOverridesController(context: context))
+        },
+        openFakeAdmin: {
+            pushControllerImpl?(pampGramFakeAdminController(context: context))
         },
         toggleInfinitePins: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in

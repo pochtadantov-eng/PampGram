@@ -494,4 +494,14 @@ public enum PampGramFakeAdminStore {
         }
         |> distinctUntilChanged
     }
+
+    /// Live list of every channel with a fake-admin record (enabled or not), for the
+    /// "Фейк админ" management screen.
+    public static func allSignal(postbox: Postbox) -> Signal<[PampGramFakeAdminChannelState], NoError> {
+        return postbox.preferencesView(keys: [PampGramPreferencesKeys.fakeAdmin])
+        |> map { view in
+            return view.values[PampGramPreferencesKeys.fakeAdmin]?.get(PampGramFakeAdminList.self)?.channels ?? []
+        }
+        |> distinctUntilChanged
+    }
 }
