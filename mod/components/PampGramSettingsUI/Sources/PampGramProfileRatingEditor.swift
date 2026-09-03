@@ -142,6 +142,9 @@ private final class PampGramProfileRatingEditorController: ViewController {
     private func configureView(_ rootView: UIView) {
         let theme = self.presentationData.theme.list
         rootView.backgroundColor = .clear
+        // Dragging the sliders must not trigger the navigation's interactive back/dismiss gesture
+        // (which slid the whole sheet away). The editor closes only via its own X / Save buttons.
+        rootView.disablesInteractiveTransitionGestureRecognizer = true
 
         self.sheetView.translatesAutoresizingMaskIntoConstraints = false
         self.sheetView.backgroundColor = theme.blocksBackgroundColor

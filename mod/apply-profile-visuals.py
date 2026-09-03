@@ -168,15 +168,20 @@ replace_once(
         let visualRating: TelegramStarRating?
         if isUsingVisualRating {
             let level = Int32(max(Int64(1), min(Int64(100), pampGramProfileVisuals.ratingValue)))
-            let stars = max(Int64(1), pampGramProfileVisuals.ratingPoints)
-            // Always render a full progress bar — crown at the very end, "X / X", with both the
-            // current and next level segments filled — regardless of the chosen level/points.
-            // nextLevelStars == stars (and currentLevelStars 0) makes levelFraction == 1.0.
+            // The current level occupies a real points range [lower, upper) — the same formula
+            // the rating editor shows as "Диапазон уровня" — so the bar fills partially, exactly
+            // where the chosen points sit inside the level, and the crown lands at that position
+            // (not pinned to the end). currentLevelStars = lower, nextLevelStars = upper.
+            let levelValue = Int64(level)
+            let lowerBound = levelValue * 10_840 + levelValue * levelValue * 24
+            let upperBound = lowerBound + 13_100
+            let storedPoints = pampGramProfileVisuals.ratingPoints
+            let stars = max(lowerBound, min(upperBound, storedPoints > 0 ? storedPoints : lowerBound))
             visualRating = TelegramStarRating(
                 level: level,
-                currentLevelStars: 0,
+                currentLevelStars: lowerBound,
                 stars: stars,
-                nextLevelStars: stars
+                nextLevelStars: upperBound
             )
         } else {
             visualRating = nil

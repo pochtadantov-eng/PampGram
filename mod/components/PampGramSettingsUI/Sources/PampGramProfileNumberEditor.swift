@@ -36,6 +36,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
     private var showInProfile = false
     private var didLoadInitialState = false
+    private weak var activeField: UITextField?
 
     init(context: AccountContext) {
         self.context = context
@@ -50,6 +51,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
     deinit {
         self.stateDisposable.dispose()
+        NotificationCenter.default.removeObserver(self)
     }
 
     override func loadDisplayNode() {
@@ -58,6 +60,9 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         self.displayNode = node
         self.displayNodeDidLoad()
         self.configureView(node.view)
+
+        NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillHide(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
 
         self.stateDisposable.set((PampGramProfileVisualStore.signal(postbox: self.context.account.postbox)
         |> take(1)
@@ -74,6 +79,9 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
     private func configureView(_ rootView: UIView) {
         let theme = self.presentationData.theme.list
         rootView.backgroundColor = .clear
+        // Editing fields must not trigger the navigation's interactive back/dismiss gesture — the
+        // editor closes only via its own X / Save buttons (or a tap outside the sheet).
+        rootView.disablesInteractiveTransitionGestureRecognizer = true
 
         let dismissTap = UITapGestureRecognizer(target: self, action: #selector(self.backgroundTapped))
         dismissTap.cancelsTouchesInView = false
@@ -173,12 +181,12 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
         self.stackView.setCustomSpacing(16.0, after: datePickerRow)
         self.stackView.addArrangedSubview(self.makeFieldTitle("Цена, 💎 TON", color: theme.itemPrimaryTextColor))
-        self.configureField(self.tonField, placeholder: "например, 12.5", keyboard: .decimalPad, theme: theme)
+        self.configureField(self.tonField, placeholder: "например, 12,5", keyboard: .numbersAndPunctuation, theme: theme)
         self.stackView.addArrangedSubview(self.tonField)
 
         self.stackView.setCustomSpacing(16.0, after: self.tonField)
         self.stackView.addArrangedSubview(self.makeFieldTitle("Цена, $ USD", color: theme.itemPrimaryTextColor))
-        self.configureField(self.usdField, placeholder: "например, 45.00", keyboard: .decimalPad, theme: theme)
+        self.configureField(self.usdField, placeholder: "например, 45,00", keyboard: .numbersAndPunctuation, theme: theme)
         self.stackView.addArrangedSubview(self.usdField)
 
         self.stackView.setCustomSpacing(18.0, after: self.usdField)
@@ -297,6 +305,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         field.leftViewMode = .always
         field.clearButtonMode = .whileEditing
         field.returnKeyType = .done
+        field.addTarget(self, action: #selector(self.fieldEditingChanged), for: .editingChanged)
     }
 
     private func configurePillButton(_ button: UIButton, title: String, primary: Bool) {
@@ -346,11 +355,53 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         self.updatePreview()
     }
 
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        self.activeField = textField
+        DispatchQueue.main.async { [weak self] in
+            self?.scrollActiveFieldToVisible()
+        }
+    }
+
     func textFieldDidEndEditing(_ textField: UITextField) {
+        if self.activeField === textField {
+            self.activeField = nil
+        }
+        self.updatePreview()
+    }
+
+    @objc private func fieldEditingChanged() {
         self.updatePreview()
     }
 
     func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
+        // The number field accepts free-form input ("+888 0000 0000"); only the two price fields
+        // are constrained to a decimal amount: digits plus a single "." or "," separator, capped
+        // at 10 digits total so the value stays a sensible visual price.
+        guard textField === self.tonField || textField === self.usdField else {
+            return true
+        }
+        guard let currentText = textField.text, let textRange = Range(range, in: currentText) else {
+            return true
+        }
+        let updatedText = currentText.replacingCharacters(in: textRange, with: string)
+        if updatedText.isEmpty {
+            return true
+        }
+        let separators = CharacterSet(charactersIn: ".,")
+        var digitCount = 0
+        var separatorCount = 0
+        for scalar in updatedText.unicodeScalars {
+            if CharacterSet.decimalDigits.contains(scalar) {
+                digitCount += 1
+            } else if separators.contains(scalar) {
+                separatorCount += 1
+            } else {
+                return false
+            }
+        }
+        if digitCount > 10 || separatorCount > 1 {
+            return false
+        }
         return true
     }
 
@@ -358,6 +409,35 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         textField.resignFirstResponder()
         self.updatePreview()
         return true
+    }
+
+    @objc private func keyboardWillChangeFrame(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let endFrame = (userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else {
+            return
+        }
+        let rootView = self.displayNode.view
+        let keyboardFrameInView = rootView.convert(endFrame, from: nil)
+        let overlap = max(0.0, rootView.bounds.maxY - keyboardFrameInView.minY)
+        self.keyboardInset = overlap
+        self.scrollView.contentInset.bottom = overlap
+        self.scrollView.verticalScrollIndicatorInsets.bottom = overlap
+        self.scrollActiveFieldToVisible()
+    }
+
+    @objc private func keyboardWillHide(_ notification: Notification) {
+        self.keyboardInset = 0.0
+        self.scrollView.contentInset.bottom = 0.0
+        self.scrollView.verticalScrollIndicatorInsets.bottom = 0.0
+    }
+
+    private func scrollActiveFieldToVisible() {
+        guard let field = self.activeField else {
+            return
+        }
+        let fieldFrame = field.convert(field.bounds, to: self.contentView)
+        let target = fieldFrame.insetBy(dx: 0.0, dy: -18.0)
+        self.scrollView.scrollRectToVisible(target, animated: true)
     }
 
     @objc private func savePressed() {
