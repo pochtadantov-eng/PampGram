@@ -19920,7 +19920,7 @@ index 07cef5bb..57ff7a74 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,113 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,87 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -19939,37 +19939,11 @@ index 07cef5bb..57ff7a74 100644
 +
 +    return combineLatest(baseItems, PampGramCore.settingsSignal(postbox: context.account.postbox))
 +    |> map { items, settings -> ContextController.Items in
-+        guard case let .list(list) = items.content else {
-+            return items
-+        }
-+        var newList = list
-+        var pampGramChanged = false
-+        // PampGram: "Получить подарок" — materialize a gift another PampGram user sent in this
-+        // message into the recipient's own collection. Shown only when the message carries a
-+        // gift payload; independent of the "Изменить визуально" toggle.
-+        if pampGramMessageCarriesGift(message.text) {
-+            newList.insert(.action(ContextMenuActionItem(text: "Получить подарок", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "gift"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                let _ = (pampGramReceiveGift(context: context, messageText: message.text, fromPeerId: message.id.peerId)
-+                |> deliverOnMainQueue).start(next: { success in
-+                    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-+                    let text = success ? "Подарок добавлен в вашу коллекцию." : "Не удалось получить подарок."
-+                    controllerInteraction?.presentController(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), nil)
-+                })
-+            })), at: 0)
-+            pampGramChanged = true
-+        }
-+        guard settings.visualEditEnabled else {
-+            guard pampGramChanged else {
-+                return items
-+            }
-+            var items = items
-+            items.content = .list(newList)
++        guard settings.visualEditEnabled, case let .list(list) = items.content else {
 +            return items
 +        }
 +        var items = items
++        var newList = list
 +        // PampGram entry pinned to the very top of a message's long-press menu (a separator
 +        // then the stock items below it), instead of appended at the bottom.
 +        newList.insert(.separator, at: 0)
@@ -20654,3 +20628,44 @@ index 57ecb9d..f0a68ec 100644
      deinit {
      }
      
+diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
+index 4d971fd..7bb0216 100644
+--- a/submodules/TelegramUI/Sources/AccountContext.swift
++++ b/submodules/TelegramUI/Sources/AccountContext.swift
+@@ -8,6 +8,7 @@ import DeviceAccess
+ import TelegramPresentationData
+ import AccountContext
+ import LiveLocationManager
++import PhantomGiftKit
+ import TemporaryCachedPeerDataManager
+ import PhoneNumberFormat
+ import TelegramUIPreferences
+@@ -271,7 +272,11 @@ public final class AccountContextImpl: AccountContext {
+     public private(set) var isFrozen: Bool
+     
+     public let imageCache: AnyObject?
+-    
++
++    // PampGram: watches incoming messages account-wide and materializes any visual gift another
++    // PampGram user transferred into this account's own collection automatically (no user action).
++    private let pampGramGiftReceiveDisposable = MetaDisposable()
++
+     public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
+     {
+         self.sharedContextImpl = sharedContext
+@@ -295,6 +300,7 @@ public final class AccountContextImpl: AccountContext {
+         }
+         self.fetchManager = FetchManagerImpl(postbox: account.postbox, storeManager: self.downloadedMediaStoreManager)
+         if sharedContext.applicationBindings.isMainApp && !temp {
++            self.pampGramGiftReceiveDisposable.set(PampGramPhantomGiftManager.observeIncomingGiftTransfers(account: account))
+             self.prefetchManager = PrefetchManagerImpl(sharedContext: sharedContext, account: account, engine: self.engine, fetchManager: self.fetchManager)
+             self.wallpaperUploadManager = WallpaperUploadManagerImpl(sharedContext: sharedContext, account: account, presentationData: sharedContext.presentationData)
+             self.themeUpdateManager = ThemeUpdateManagerImpl(sharedContext: sharedContext, account: account)
+@@ -505,6 +511,7 @@ public final class AccountContextImpl: AccountContext {
+     }
+     
+     deinit {
++        self.pampGramGiftReceiveDisposable.dispose()
+         self.limitsConfigurationDisposable?.dispose()
+         self.managedAppSpecificContactsDisposable?.dispose()
+         self.contentSettingsDisposable?.dispose()

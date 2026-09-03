@@ -437,47 +437,78 @@ public enum PampGramPhantomGiftManager {
 
     // MARK: - Cross-device visual transfer (mod-to-mod)
     //
-    // A local gift is carried to another user inside a normal Telegram text message (the only
-    // channel that reaches another device). Both sides see the message; a recipient running
-    // PampGram decodes the payload and materializes a real local phantom gift they then own and
-    // manage like any other. Nothing touches Telegram's real gifts, Stars, or money.
-
-    /// Marker + version prefix for the encoded gift inside a carrier message.
-    public static let transferMarker = "PGGIFT1:"
+    // A local gift is carried to another user inside a normal Telegram text message — the only
+    // channel that reaches another device. The gift data rides along as invisible Unicode "tag"
+    // characters appended after a clean, human-readable line, so the message looks like an
+    // ordinary short note on both sides (and to non-PampGram clients). A recipient running
+    // PampGram detects it automatically (observeIncomingGiftTransfers) and materializes a real
+    // local phantom gift they then own and manage like any other — no button, no extra step. For
+    // unique gifts only the slug travels and the recipient fetches the real art from Telegram by
+    // slug. Nothing here moves real gifts, Stars, or money; only an ordinary text message is sent.
 
     private struct TransferPayload: Codable {
-        let gift: StarGift
-        let price: CurrencyAmount
+        let v: Int
+        let slug: String?
+        let genericData: Data?
+        let priceStars: Bool
+        let priceAmount: Int64
         let title: String
     }
 
-    /// The base64 gift token inside a message's text, if it carries one.
-    public static func transferToken(inText text: String) -> String? {
-        guard let range = text.range(of: transferMarker) else {
-            return nil
+    // Unicode Tag block (U+E0000…U+E007F) mirrors ASCII and renders invisibly, so a base64
+    // payload hidden with it never shows in the message text.
+    private static let tagBase: UInt32 = 0xE0000
+
+    private static func hide(_ ascii: String) -> String {
+        var result = ""
+        for scalar in ascii.unicodeScalars where scalar.value <= 0x7F {
+            if let tag = Unicode.Scalar(tagBase + scalar.value) {
+                result.unicodeScalars.append(tag)
+            }
         }
-        let token = text[range.upperBound...].prefix(while: { !$0.isWhitespace })
-        return token.isEmpty ? nil : String(token)
+        return result
+    }
+
+    private static func reveal(_ text: String) -> String? {
+        var ascii = ""
+        for scalar in text.unicodeScalars where scalar.value >= tagBase && scalar.value <= tagBase + 0x7F {
+            if let a = Unicode.Scalar(scalar.value - tagBase) {
+                ascii.unicodeScalars.append(a)
+            }
+        }
+        return ascii.isEmpty ? nil : ascii
+    }
+
+    /// The hidden base64 gift token in a message's text, if it carries one.
+    public static func transferToken(inText text: String) -> String? {
+        return reveal(text)
     }
 
     private static func decodePayload(token: String) -> TransferPayload? {
         guard let data = Data(base64Encoded: token) else {
             return nil
         }
-        // Binary plist rather than JSON: StarGift's Codable nests types (and Data) that the
-        // property-list coder round-trips more reliably than JSONEncoder.
         return try? PropertyListDecoder().decode(TransferPayload.self, from: data)
     }
 
-    /// Sends a phantom gift to `peerId` as a real Telegram message carrying the encoded gift,
-    /// then removes it from this account's own collection (it now belongs to the recipient).
-    /// Returns true once the carrier message is enqueued.
+    /// Sends a phantom gift to `peerId` as a real Telegram message carrying the (hidden) gift,
+    /// then removes it from this account's own collection. Returns true once enqueued.
     public static func sendGiftToPeer(context: AccountContext, giftId: Int64, peerId: EnginePeer.Id) -> Signal<Bool, NoError> {
         return context.account.postbox.transaction { transaction -> (token: String, title: String)? in
             guard let gift = PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.id == giftId }) else {
                 return nil
             }
-            let payload = TransferPayload(gift: gift.gift, price: gift.price, title: gift.title)
+            var slug: String?
+            var genericData: Data?
+            switch gift.gift {
+            case let .unique(uniqueGift):
+                slug = uniqueGift.slug
+            case let .generic(genericGift):
+                let giftEncoder = PropertyListEncoder()
+                giftEncoder.outputFormat = .binary
+                genericData = try? giftEncoder.encode(genericGift)
+            }
+            let payload = TransferPayload(v: 1, slug: slug, genericData: genericData, priceStars: gift.price.currency == .stars, priceAmount: gift.price.amount.value, title: gift.title)
             let encoder = PropertyListEncoder()
             encoder.outputFormat = .binary
             guard let data = try? encoder.encode(payload) else {
@@ -503,41 +534,96 @@ public enum PampGramPhantomGiftManager {
             guard let encoded else {
                 return .single(false)
             }
-            let text = "🎁 Тебе подарок «\(encoded.title)» от PampGram.\n\(transferMarker)\(encoded.token)"
+            let text = "🎁 Подарок «\(encoded.title)» передан." + hide(encoded.token)
             let message: EnqueueMessage = .message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
             return enqueueMessages(account: context.account, peerId: peerId, messages: [message])
             |> map { _ in true }
         }
     }
 
-    /// Materializes a gift received in a carrier message into this account's own collection, so
-    /// the recipient can manage it exactly like a gift they bought. Returns true on success.
-    public static func materializeReceivedGift(context: AccountContext, token: String, fromPeerId: EnginePeer.Id) -> Signal<Bool, NoError> {
+    // In-memory guard so a message that happens to emit more than once in a session is
+    // materialized only once. notificationMessages only fires for newly-received messages, so a
+    // persistent record isn't needed.
+    private static var processedTransferMessageIds = Set<MessageId>()
+    private static let processedLock = NSLock()
+
+    /// Subscribes to incoming messages account-wide and materializes any carried gift into this
+    /// account's own collection automatically — no user action. Owned by the account context.
+    public static func observeIncomingGiftTransfers(account: Account) -> Disposable {
+        return (account.stateManager.notificationMessages
+        |> deliverOnMainQueue).start(next: { batches in
+            for (messages, _, _, _) in batches {
+                for message in messages {
+                    guard message.flags.contains(.Incoming), message.author?.id != account.peerId else {
+                        continue
+                    }
+                    guard let token = reveal(message.text) else {
+                        continue
+                    }
+                    processedLock.lock()
+                    let alreadyDone = processedTransferMessageIds.contains(message.id)
+                    if !alreadyDone {
+                        processedTransferMessageIds.insert(message.id)
+                    }
+                    processedLock.unlock()
+                    if alreadyDone {
+                        continue
+                    }
+                    let _ = materializeIncoming(account: account, token: token, fromPeerId: message.id.peerId).start()
+                }
+            }
+        })
+    }
+
+    private static func materializeIncoming(account: Account, token: String, fromPeerId: EnginePeer.Id) -> Signal<Bool, NoError> {
         guard let payload = decodePayload(token: token) else {
             return .single(false)
         }
-        return context.account.postbox.transaction { transaction -> Bool in
-            let phantomGift = PampGramPhantomGift(
-                id: Int64.random(in: 1...Int64.max),
-                peerId: context.account.peerId,
-                gift: payload.gift,
-                price: payload.price,
-                date: Int32(Date().timeIntervalSince1970),
-                localMessageId: nil,
-                isReceived: true
-            )
-            PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
-            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
-                currency: payload.price.currency == .stars ? .stars : .ton,
-                kind: .credit,
-                amount: 0,
-                title: "Получен подарок",
-                details: payload.title,
-                peerId: fromPeerId,
-                giftId: phantomGift.id,
-                balanceAfter: nil
-            ))
-            return true
+        let price = CurrencyAmount(amount: StarsAmount(value: payload.priceAmount, nanos: 0), currency: payload.priceStars ? .stars : .ton)
+
+        let giftSignal: Signal<StarGift?, NoError>
+        if let slug = payload.slug {
+            giftSignal = TelegramEngine(account: account).payments.getUniqueStarGift(slug: slug)
+            |> map { uniqueGift -> StarGift? in
+                return .unique(uniqueGift)
+            }
+            |> `catch` { _ -> Signal<StarGift?, NoError> in
+                return .single(nil)
+            }
+        } else if let data = payload.genericData, let genericGift = try? PropertyListDecoder().decode(StarGift.Gift.self, from: data) {
+            giftSignal = .single(.generic(genericGift))
+        } else {
+            giftSignal = .single(nil)
+        }
+
+        return giftSignal
+        |> mapToSignal { starGift -> Signal<Bool, NoError> in
+            guard let starGift else {
+                return .single(false)
+            }
+            return account.postbox.transaction { transaction -> Bool in
+                let phantomGift = PampGramPhantomGift(
+                    id: Int64.random(in: 1...Int64.max),
+                    peerId: account.peerId,
+                    gift: starGift,
+                    price: price,
+                    date: Int32(Date().timeIntervalSince1970),
+                    localMessageId: nil,
+                    isReceived: true
+                )
+                PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+                PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                    currency: price.currency == .stars ? .stars : .ton,
+                    kind: .credit,
+                    amount: 0,
+                    title: "Получен подарок",
+                    details: payload.title,
+                    peerId: fromPeerId,
+                    giftId: phantomGift.id,
+                    balanceAfter: nil
+                ))
+                return true
+            }
         }
     }
 }
