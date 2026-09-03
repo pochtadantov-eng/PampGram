@@ -8,6 +8,7 @@ import ItemListUI
 import AccountContext
 import PromptUI
 import PhantomGiftKit
+import UndoUI
 
 private func pampGramGiftPriceText(_ price: CurrencyAmount?) -> String {
     guard let price else { return "Не на продаже" }
@@ -83,11 +84,47 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
     }
 
     func transfer(gift: PampGramPhantomGift) {
-        present?(promptController(context: context, text: "Передать визуально", subtitle: "Введите настоящий числовой ID профиля-получателя. Передача существует только в локальной коллекции PampGram.", value: "", placeholder: "123456789", characterLimit: 20, apply: { value in
-            guard let value, let raw = Int64(value), raw > 0 else { return }
-            let peerId = PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(raw))
-            let _ = PampGramPhantomGiftManager.transfer(context: context, giftId: gift.id, to: peerId).start()
-        }))
+        // Cross-device visual transfer: pick a recipient, send them a real carrier message with
+        // the encoded gift, and remove it from this collection. A recipient running PampGram can
+        // then receive it ("Получить подарок" on the message) and manage it as their own.
+        let selectionController = context.sharedContext.makeContactMultiselectionController(ContactMultiselectionControllerParams(
+            context: context,
+            mode: .chatSelection(ContactMultiselectionControllerMode.ChatSelection(
+                title: "Кому передать",
+                searchPlaceholder: "Поиск",
+                selectedChats: Set(),
+                additionalCategories: nil,
+                chatListFilters: nil
+            )),
+            filters: [.excludeSelf]
+        ))
+        selectionController.navigationPresentation = .modal
+
+        let _ = (selectionController.result
+        |> take(1)
+        |> deliverOnMainQueue).start(next: { [weak selectionController] result in
+            var peerId: PeerId?
+            if case let .result(peerIdsValue, _) = result {
+                for item in peerIdsValue {
+                    if case let .peer(id) = item {
+                        peerId = id
+                        break
+                    }
+                }
+            }
+            selectionController?.dismiss()
+            guard let peerId else {
+                return
+            }
+            let _ = (PampGramPhantomGiftManager.sendGiftToPeer(context: context, giftId: gift.id, peerId: peerId)
+            |> deliverOnMainQueue).start(next: { success in
+                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+                let text = success ? "Подарок отправлен." : "Не удалось отправить подарок."
+                present?(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }))
+            })
+        })
+
+        present?(selectionController)
     }
 
     let args = PampGramGiftMarketArguments(openGift: { gift in
