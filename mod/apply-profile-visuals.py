@@ -168,12 +168,15 @@ replace_once(
         let visualRating: TelegramStarRating?
         if isUsingVisualRating {
             let level = Int32(max(Int64(1), min(Int64(100), pampGramProfileVisuals.ratingValue)))
-            let stars = max(Int64(0), pampGramProfileVisuals.ratingPoints)
+            let stars = max(Int64(1), pampGramProfileVisuals.ratingPoints)
+            // Always render a full progress bar — crown at the very end, "X / X", with both the
+            // current and next level segments filled — regardless of the chosen level/points.
+            // nextLevelStars == stars (and currentLevelStars 0) makes levelFraction == 1.0.
             visualRating = TelegramStarRating(
                 level: level,
                 currentLevelStars: 0,
                 stars: stars,
-                nextLevelStars: stars < Int64.max ? stars + 1 : nil
+                nextLevelStars: stars
             )
         } else {
             visualRating = nil
