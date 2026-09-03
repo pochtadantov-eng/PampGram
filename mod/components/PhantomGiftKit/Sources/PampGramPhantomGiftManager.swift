@@ -75,10 +75,14 @@ public enum PampGramPhantomGiftManager {
                 return .single(BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency)))
             }
 
-            // Gifting someone: send the real carrier message so a recipient running PampGram
-            // materializes the gift into their own collection (and can then manage/re-transfer it),
-            // exactly like a transfer. This is the only thing that crosses the network.
-            return deliverGiftMessage(context: context, peerId: peerId, gift: .unique(uniqueGift), price: price, title: phantomGift.title, verb: "подарен")
+            // Gifting someone: the sender gets their own "Вы подарили …" gift card (same as a real
+            // gift send), and the invisible carrier is delivered so a recipient running PampGram
+            // turns it into a proper "X передал вам подарок" card and materializes the gift into
+            // their own collection. Only the carrier crosses the network.
+            let senderCard = PampGramPhantomGiftMessage.insertLocalUniqueGiftMessage(context: context, peerId: peerId, uniqueGift: uniqueGift, price: price)
+            let deliver = deliverGiftMessage(context: context, peerId: peerId, gift: .unique(uniqueGift), price: price, title: phantomGift.title)
+            return senderCard
+            |> mapToSignal { _ in deliver }
             |> map { _ -> BuyResult in
                 return BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency))
             }
@@ -125,11 +129,14 @@ public enum PampGramPhantomGiftManager {
         |> mapToSignal { pending -> Signal<Never, NoError> in
             let phantomGift = pending.phantomGift
 
-            // Gifting someone else: send the real carrier message so a recipient running PampGram
-            // materializes the gift into their own collection (and can re-transfer it), exactly
-            // like a transfer. Only this message crosses the network.
+            // Gifting someone else: the sender gets their own "Вы подарили …" gift card, and the
+            // invisible carrier is delivered so a recipient running PampGram turns it into a proper
+            // "X передал вам подарок" card and materializes the gift into their own collection.
             if peerId != context.account.peerId {
-                return deliverGiftMessage(context: context, peerId: peerId, gift: .generic(gift), price: phantomGift.price, title: phantomGift.title, verb: "подарен")
+                let senderCard = PampGramPhantomGiftMessage.insertLocalGenericGiftMessage(context: context, peerId: peerId, gift: gift, text: text, entities: entities, nameHidden: nameHidden)
+                let deliver = deliverGiftMessage(context: context, peerId: peerId, gift: .generic(gift), price: phantomGift.price, title: phantomGift.title)
+                return senderCard
+                |> mapToSignal { _ in deliver }
                 |> ignoreValues
             }
 
@@ -458,28 +465,37 @@ public enum PampGramPhantomGiftManager {
         let title: String
     }
 
-    // Unicode Tag block (U+E0000…U+E007F) mirrors ASCII and renders invisibly, so a base64
-    // payload hidden with it never shows in the message text.
-    private static let tagBase: UInt32 = 0xE0000
-
-    private static func hide(_ ascii: String) -> String {
-        var result = ""
-        for scalar in ascii.unicodeScalars where scalar.value <= 0x7F {
-            if let tag = Unicode.Scalar(tagBase + scalar.value) {
-                result.unicodeScalars.append(tag)
+    // The payload is hidden using Unicode variation selectors: each UTF-8 byte of the base64 token
+    // maps to exactly one selector (0…15 → U+FE00…U+FE0F, 16…255 → U+E0100…U+E01EF). Variation
+    // selectors render completely invisibly — they only ever tweak the *preceding* character's
+    // glyph variant and are silently ignored when no such variant exists — yet survive Telegram's
+    // servers and copy/paste. The Unicode Tag block used before was drawn as visible .notdef boxes
+    // by Telegram's text renderer (the row of "⍰" squares), which is exactly what this replaces.
+    private static func hide(_ token: String) -> String {
+        var scalars = String.UnicodeScalarView()
+        for byte in Array(token.utf8) {
+            let value: UInt32 = byte < 16 ? (0xFE00 + UInt32(byte)) : (0xE0100 + UInt32(byte) - 16)
+            if let scalar = Unicode.Scalar(value) {
+                scalars.append(scalar)
             }
         }
-        return result
+        return String(scalars)
     }
 
     private static func reveal(_ text: String) -> String? {
-        var ascii = ""
-        for scalar in text.unicodeScalars where scalar.value >= tagBase && scalar.value <= tagBase + 0x7F {
-            if let a = Unicode.Scalar(scalar.value - tagBase) {
-                ascii.unicodeScalars.append(a)
+        var bytes: [UInt8] = []
+        for scalar in text.unicodeScalars {
+            let value = scalar.value
+            if value >= 0xFE00 && value <= 0xFE0F {
+                bytes.append(UInt8(value - 0xFE00))
+            } else if value >= 0xE0100 && value <= 0xE01EF {
+                bytes.append(UInt8(value - 0xE0100 + 16))
             }
         }
-        return ascii.isEmpty ? nil : ascii
+        if bytes.isEmpty {
+            return nil
+        }
+        return String(bytes: bytes, encoding: .utf8)
     }
 
     /// The hidden base64 gift token in a message's text, if it carries one.
@@ -515,19 +531,32 @@ public enum PampGramPhantomGiftManager {
         return data.base64EncodedString()
     }
 
-    /// Sends a real Telegram message to `peerId` carrying the (hidden) gift so a recipient running
-    /// PampGram materializes it into their own collection. `verb` is the visible wording
-    /// ("подарен" for a gift-to-someone, "передан" for a transfer). Used by both the transfer flow
-    /// and the "Подарок ему" gift-sending flow. The gift only actually appears for a recipient who
-    /// also runs PampGram; the message is the sole thing that crosses the network.
-    public static func deliverGiftMessage(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, title: String, verb: String) -> Signal<Bool, NoError> {
+    /// Delivers a gift to `peerId` by sending a real Telegram message that carries the gift as an
+    /// invisible payload (no visible text of its own). A recipient running PampGram turns it into a
+    /// proper received-gift card and materializes the gift into their collection (see
+    /// scanPeerForIncomingGiftTransfers); the sender's own copy of this invisible carrier is
+    /// deleted for the sender only, once it has had time to actually send, so the sender is left
+    /// with just their own gift card. The message is the sole thing that crosses the network; the
+    /// gift only appears for a recipient who also runs PampGram.
+    public static func deliverGiftMessage(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, title: String) -> Signal<Bool, NoError> {
         guard let token = encodeTransferToken(gift: gift, price: price, title: title) else {
             return .single(false)
         }
-        let text = "🎁 Подарок «\(title)» \(verb)." + hide(token)
+        let text = hide(token)
         let message: EnqueueMessage = .message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
         return enqueueMessages(account: context.account, peerId: peerId, messages: [message])
-        |> map { _ in true }
+        |> map { ids -> Bool in
+            let sentIds = ids.compactMap { $0 }
+            if !sentIds.isEmpty {
+                // Give the carrier time to actually reach the server (deleting a still-sending
+                // message would cancel delivery), then remove only the sender's own copy so the
+                // invisible carrier never shows as an empty bubble next to the gift card.
+                Queue.mainQueue().after(8.0, {
+                    let _ = context.engine.messages.deleteMessagesInteractively(messageIds: sentIds, type: .forLocalPeer).start()
+                })
+            }
+            return true
+        }
     }
 
     /// Sends a phantom gift to `peerId` as a real Telegram message carrying the (hidden) gift,
@@ -623,7 +652,7 @@ public enum PampGramPhantomGiftManager {
                     if alreadyDone {
                         continue
                     }
-                    let _ = materializeIncoming(account: account, token: token, fromPeerId: message.id.peerId, sourceMessageId: message.id).start()
+                    let _ = materializeGift(account: account, token: token, fromPeerId: message.id.peerId, sourceMessageId: message.id).start()
                 }
             }
         })
@@ -669,14 +698,18 @@ public enum PampGramPhantomGiftManager {
                 if alreadyDone {
                     continue
                 }
-                let _ = materializeIncoming(account: account, token: token, fromPeerId: peerId, sourceMessageId: messageId).start()
+                handleIncomingCarrier(context: context, peerId: peerId, messageId: messageId, token: token)
             }
         })
     }
 
-    private static func materializeIncoming(account: Account, token: String, fromPeerId: EnginePeer.Id, sourceMessageId: MessageId) -> Signal<Bool, NoError> {
+    /// Resolves the carried gift (fetching a unique gift's real art by slug, or decoding a generic
+    /// gift), adds it to this account's own collection unless it's already there (deduped by the
+    /// deterministic id derived from the carrier message), and returns the resolved gift so the
+    /// caller can build a received-gift card. Returns nil if the gift could not be resolved.
+    private static func materializeGift(account: Account, token: String, fromPeerId: EnginePeer.Id, sourceMessageId: MessageId) -> Signal<StarGift?, NoError> {
         guard let payload = decodePayload(token: token) else {
-            return .single(false)
+            return .single(nil)
         }
         let giftId = deterministicGiftId(for: sourceMessageId)
         let price = CurrencyAmount(amount: StarsAmount(value: payload.priceAmount, nanos: 0), currency: payload.priceStars ? .stars : .ton)
@@ -697,39 +730,62 @@ public enum PampGramPhantomGiftManager {
         }
 
         return giftSignal
-        |> mapToSignal { starGift -> Signal<Bool, NoError> in
+        |> mapToSignal { starGift -> Signal<StarGift?, NoError> in
             guard let starGift else {
-                return .single(false)
+                return .single(nil)
             }
-            return account.postbox.transaction { transaction -> Bool in
+            return account.postbox.transaction { transaction -> StarGift? in
                 // Durable dedup: the id is derived from the carrier message, so if this transfer
                 // was already materialized (earlier this session, or before a relaunch) the gift
-                // already exists and we skip it.
-                if PampGramPhantomGiftStore.allGifts(transaction: transaction).contains(where: { $0.id == giftId }) {
-                    return false
+                // already exists and we don't add it again — but we still return it so the card is
+                // shown once when the chat is opened.
+                if !PampGramPhantomGiftStore.allGifts(transaction: transaction).contains(where: { $0.id == giftId }) {
+                    let phantomGift = PampGramPhantomGift(
+                        id: giftId,
+                        peerId: account.peerId,
+                        gift: starGift,
+                        price: price,
+                        date: Int32(Date().timeIntervalSince1970),
+                        localMessageId: nil,
+                        isReceived: true
+                    )
+                    PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+                    PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                        currency: price.currency == .stars ? .stars : .ton,
+                        kind: .credit,
+                        amount: 0,
+                        title: "Получен подарок",
+                        details: payload.title,
+                        peerId: fromPeerId,
+                        giftId: phantomGift.id,
+                        balanceAfter: nil
+                    ))
                 }
-                let phantomGift = PampGramPhantomGift(
-                    id: giftId,
-                    peerId: account.peerId,
-                    gift: starGift,
-                    price: price,
-                    date: Int32(Date().timeIntervalSince1970),
-                    localMessageId: nil,
-                    isReceived: true
-                )
-                PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
-                PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
-                    currency: price.currency == .stars ? .stars : .ton,
-                    kind: .credit,
-                    amount: 0,
-                    title: "Получен подарок",
-                    details: payload.title,
-                    peerId: fromPeerId,
-                    giftId: phantomGift.id,
-                    balanceAfter: nil
-                ))
-                return true
+                return starGift
             }
         }
+    }
+
+    /// Full recipient-side handling, run on chat open: materializes the gift, drops a proper
+    /// "X передал(а) вам подарок" gift card into the chat (the same card a real received gift
+    /// shows), and deletes the invisible carrier message for this user so only the card remains.
+    /// Deleting the carrier also makes this idempotent — it's never scanned again.
+    private static func handleIncomingCarrier(context: AccountContext, peerId: EnginePeer.Id, messageId: MessageId, token: String) {
+        let account = context.account
+        let _ = (materializeGift(account: account, token: token, fromPeerId: peerId, sourceMessageId: messageId)
+        |> deliverOnMainQueue).start(next: { starGift in
+            guard let starGift else {
+                return
+            }
+            let cardSignal: Signal<EngineMessage.Id?, NoError>
+            switch starGift {
+            case let .unique(uniqueGift):
+                cardSignal = PampGramPhantomGiftMessage.insertLocalUniqueGiftMessageFromPeer(context: context, peerId: peerId, uniqueGift: uniqueGift)
+            case let .generic(genericGift):
+                cardSignal = PampGramPhantomGiftMessage.insertLocalGenericGiftMessageFromPeer(context: context, peerId: peerId, gift: genericGift, text: nil, entities: nil)
+            }
+            let _ = cardSignal.start()
+            let _ = context.engine.messages.deleteMessagesInteractively(messageIds: [messageId], type: .forLocalPeer).start()
+        })
     }
 }
