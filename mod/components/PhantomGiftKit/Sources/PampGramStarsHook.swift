@@ -10,23 +10,29 @@ import PampGramCore
 /// real "Купить звёзды" screen. Nothing here talks to StoreKit or the network: the real
 /// `StarsPurchaseScreen.buy(product:)` is intercepted (see the telegram-ios.patch hunk), this
 /// look-alike App Store / side-button sheet is shown as a presented view controller, and on a
-/// double-tap anywhere the local fake Stars balance is credited (0 ₽, no money, no server).
+/// double-tap the payment is settled against the *local* ruble wallet (0 real ₽, no StoreKit and
+/// no server).
+///
+/// If the local ruble balance does not cover the package price the sheet shows a payment error and
+/// nothing is credited — mirroring a declined Apple Pay charge. If it does, the rubles are debited,
+/// the fake Stars balance is credited, and both are logged to the local ledger.
 ///
 /// The sheet mimics iOS's "double-click the side button to confirm" prompt, but a real side-button
 /// confirmation is handled by iOS in a separate secure process and cannot be summoned, detected, or
 /// intercepted by an app (a single side-button press just locks the device). So the actual
 /// confirmation gesture is a double-tap on the screen.
 public enum PampGramStarsHook {
-    public static func presentFakeApplePay(context: AccountContext, count: Int64, priceText: String, onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void) {
+    public static func presentFakeApplePay(context: AccountContext, count: Int64, priceText: String, priceKopecks: Int64, onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void) {
         Queue.mainQueue().async {
             guard let presenter = self.topViewController() else {
                 onCancel()
                 return
             }
-            let controller = PampGramStarsPaymentSheetController(count: count, priceText: priceText, onCancel: {
+            let controller = PampGramStarsPaymentSheetController(count: count, priceText: priceText, attemptPayment: { completion in
+                self.attemptPayment(context: context, count: count, priceKopecks: priceKopecks, completion: completion)
+            }, onCancel: {
                 onCancel()
-            }, onConfirm: {
-                self.credit(context: context, count: count)
+            }, onSuccess: {
                 onConfirm()
             })
             controller.modalPresentationStyle = .overFullScreen
@@ -37,28 +43,56 @@ public enum PampGramStarsHook {
         }
     }
 
-    /// Credits the local fake Stars balance, logs a ledger top-up, and drops the native
-    /// star-topup plaque into the Telegram service chat — the same result a real purchase has,
-    /// but entirely local and with a 0 ₽ charge.
-    public static func credit(context: AccountContext, count: Int64) {
-        let _ = context.account.postbox.transaction { transaction -> Void in
-            var balanceAfter: Int64 = 0
+    /// Settles the purchase against the local ruble wallet. Calls `completion(true)` and credits the
+    /// fake Stars balance when the balance covers `priceKopecks` (or the price is unknown / 0), and
+    /// `completion(false)` without any change when it does not.
+    public static func attemptPayment(context: AccountContext, count: Int64, priceKopecks: Int64, completion: @escaping (Bool) -> Void) {
+        let _ = (context.account.postbox.transaction { transaction -> Bool in
+            var ok = true
+            var starsAfter: Int64 = 0
+            var rublesAfter: Int64 = 0
             PampGramCore.updateSettings(transaction: transaction, { settings in
                 var settings = settings
+                if priceKopecks > 0 && settings.localRublesBalanceKopecks < priceKopecks {
+                    ok = false
+                    return settings
+                }
+                if priceKopecks > 0 {
+                    settings.localRublesBalanceKopecks -= priceKopecks
+                }
                 settings.fakeStarsBalance += count
-                balanceAfter = settings.fakeStarsBalance
+                starsAfter = settings.fakeStarsBalance
+                rublesAfter = settings.localRublesBalanceKopecks
                 return settings
             })
-            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
-                currency: .stars,
-                kind: .topUp,
-                amount: count,
-                title: "Пополнение Stars",
-                details: "Покупка звёзд Telegram",
-                balanceAfter: balanceAfter
-            ))
-        }.start()
-        let _ = PampGramPhantomGiftMessage.insertLocalStarsTopUpMessage(context: context, starCount: count, fiatKopecks: 0).start()
+            if ok {
+                if priceKopecks > 0 {
+                    PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                        currency: .rubles,
+                        kind: .purchase,
+                        amount: priceKopecks,
+                        title: "Покупка Stars",
+                        details: "\(count) звёзд",
+                        balanceAfter: rublesAfter
+                    ))
+                }
+                PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                    currency: .stars,
+                    kind: .topUp,
+                    amount: count,
+                    title: "Пополнение Stars",
+                    details: "Покупка звёзд Telegram",
+                    balanceAfter: starsAfter
+                ))
+            }
+            return ok
+        }
+        |> deliverOnMainQueue).start(next: { ok in
+            if ok {
+                let _ = PampGramPhantomGiftMessage.insertLocalStarsTopUpMessage(context: context, starCount: count, fiatKopecks: priceKopecks).start()
+            }
+            completion(ok)
+        })
     }
 
     private static func keyWindow() -> UIWindow? {
@@ -88,8 +122,9 @@ public enum PampGramStarsHook {
 private final class PampGramStarsPaymentSheetController: UIViewController {
     private let count: Int64
     private let priceText: String
+    private let attemptPayment: (@escaping (Bool) -> Void) -> Void
     private let onCancel: () -> Void
-    private let onConfirm: () -> Void
+    private let onSuccess: () -> Void
     private var finished = false
 
     private let dimView = UIView()
@@ -99,17 +134,21 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
 
     private let confirmIcon = UIImageView()
     private let confirmLabel = UILabel()
+    private let spinner = UIActivityIndicatorView(style: .medium)
 
     private let sheetPrimary = UIColor(white: 0.04, alpha: 1.0)
     private let sheetSecondary = UIColor(white: 0.45, alpha: 1.0)
     private let accentBlue = UIColor(red: 0x0a/255.0, green: 0x84/255.0, blue: 0xff/255.0, alpha: 1.0)
     private let starGold = UIColor(red: 0xf5/255.0, green: 0xb2/255.0, blue: 0x0a/255.0, alpha: 1.0)
+    private let successGreen = UIColor(red: 0x34/255.0, green: 0xc7/255.0, blue: 0x59/255.0, alpha: 1.0)
+    private let errorRed = UIColor(red: 0xff/255.0, green: 0x3b/255.0, blue: 0x30/255.0, alpha: 1.0)
 
-    init(count: Int64, priceText: String, onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void) {
+    init(count: Int64, priceText: String, attemptPayment: @escaping (@escaping (Bool) -> Void) -> Void, onCancel: @escaping () -> Void, onSuccess: @escaping () -> Void) {
         self.count = count
         self.priceText = priceText
+        self.attemptPayment = attemptPayment
         self.onCancel = onCancel
-        self.onConfirm = onConfirm
+        self.onSuccess = onSuccess
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -227,7 +266,7 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.sheet.addSubview(subtitleLabel)
         self.sheet.addSubview(card)
 
-        // Bottom confirm row: side-button cue + label (swaps to a checkmark on success).
+        // Bottom confirm row: side-button cue + label (swaps to success/error on double-tap).
         let confirmRow = UIView()
         confirmRow.translatesAutoresizingMaskIntoConstraints = false
         self.confirmIcon.translatesAutoresizingMaskIntoConstraints = false
@@ -235,8 +274,14 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.confirmIcon.tintColor = self.accentBlue
         self.confirmIcon.image = UIImage(systemName: "arrow.left.circle.fill")
         confirmRow.addSubview(self.confirmIcon)
+        self.spinner.translatesAutoresizingMaskIntoConstraints = false
+        self.spinner.hidesWhenStopped = true
+        self.spinner.color = self.sheetSecondary
+        confirmRow.addSubview(self.spinner)
         self.confirmLabel.translatesAutoresizingMaskIntoConstraints = false
         self.confirmLabel.text = "Подтвердите боковой кнопкой"
+        self.confirmLabel.numberOfLines = 2
+        self.confirmLabel.textAlignment = .center
         self.confirmLabel.font = UIFont.systemFont(ofSize: 18.0, weight: .semibold)
         self.confirmLabel.textColor = self.sheetPrimary
         confirmRow.addSubview(self.confirmLabel)
@@ -283,11 +328,15 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
             cardDetail.topAnchor.constraint(equalTo: cardSeparator.bottomAnchor, constant: 12.0),
 
             confirmRow.centerXAnchor.constraint(equalTo: self.sheet.centerXAnchor),
+            confirmRow.leadingAnchor.constraint(greaterThanOrEqualTo: self.sheet.leadingAnchor, constant: 24.0),
+            confirmRow.trailingAnchor.constraint(lessThanOrEqualTo: self.sheet.trailingAnchor, constant: -24.0),
             confirmRow.bottomAnchor.constraint(equalTo: self.sheet.bottomAnchor, constant: -34.0),
             self.confirmIcon.leadingAnchor.constraint(equalTo: confirmRow.leadingAnchor),
             self.confirmIcon.centerYAnchor.constraint(equalTo: confirmRow.centerYAnchor),
             self.confirmIcon.widthAnchor.constraint(equalToConstant: 26.0),
             self.confirmIcon.heightAnchor.constraint(equalToConstant: 26.0),
+            self.spinner.centerXAnchor.constraint(equalTo: self.confirmIcon.centerXAnchor),
+            self.spinner.centerYAnchor.constraint(equalTo: self.confirmIcon.centerYAnchor),
             self.confirmLabel.leadingAnchor.constraint(equalTo: self.confirmIcon.trailingAnchor, constant: 8.0),
             self.confirmLabel.trailingAnchor.constraint(equalTo: confirmRow.trailingAnchor),
             self.confirmLabel.centerYAnchor.constraint(equalTo: confirmRow.centerYAnchor),
@@ -346,14 +395,41 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
             self.hintLabel.alpha = 0.0
             self.pointerLine.alpha = 0.0
         })
-        self.confirmIcon.image = UIImage(systemName: "checkmark.circle.fill")
-        self.confirmIcon.tintColor = UIColor(red: 0x34/255.0, green: 0xc7/255.0, blue: 0x59/255.0, alpha: 1.0)
-        self.confirmLabel.text = "Готово"
-        self.confirmLabel.textColor = self.sheetPrimary
 
-        Queue.mainQueue().after(0.9, {
-            self.onConfirm()
-            self.close()
+        // Processing state.
+        self.confirmIcon.isHidden = true
+        self.spinner.startAnimating()
+        self.confirmLabel.text = "Оплата…"
+        self.confirmLabel.textColor = self.sheetSecondary
+
+        self.attemptPayment({ [weak self] success in
+            guard let self else {
+                return
+            }
+            // A short beat so the spinner reads as "processing".
+            Queue.mainQueue().after(0.5, {
+                self.spinner.stopAnimating()
+                self.confirmIcon.isHidden = false
+                if success {
+                    self.confirmIcon.image = UIImage(systemName: "checkmark.circle.fill")
+                    self.confirmIcon.tintColor = self.successGreen
+                    self.confirmLabel.text = "Готово"
+                    self.confirmLabel.textColor = self.sheetPrimary
+                    Queue.mainQueue().after(0.9, {
+                        self.onSuccess()
+                        self.close()
+                    })
+                } else {
+                    self.confirmIcon.image = UIImage(systemName: "exclamationmark.circle.fill")
+                    self.confirmIcon.tintColor = self.errorRed
+                    self.confirmLabel.text = "Не удалось выполнить платёж.\nНедостаточно средств"
+                    self.confirmLabel.textColor = self.errorRed
+                    Queue.mainQueue().after(1.7, {
+                        self.onCancel()
+                        self.close()
+                    })
+                }
+            })
         })
     }
 

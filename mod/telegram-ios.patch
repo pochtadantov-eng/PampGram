@@ -20385,7 +20385,7 @@ index b1e8596..db7e43b 100644
          "//submodules/ItemListUI",
          "//submodules/TelegramStringFormatting",
 diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
-index 9e0f9fb..d2cbf67 100644
+index 9e0f9fb..883f8bc 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
 @@ -25,16 +25,20 @@ import PremiumStarComponent
@@ -20412,7 +20412,7 @@ index 9e0f9fb..d2cbf67 100644
      var count: Int64 {
          switch self.option {
          case let .topUp(option):
-@@ -54,11 +58,27 @@ private struct StarsProduct: Equatable {
+@@ -54,11 +58,47 @@ private struct StarsProduct: Equatable {
      }
      
      var id: String {
@@ -20439,10 +20439,30 @@ index 9e0f9fb..d2cbf67 100644
 +        case let .gift(option):
 +            return formatCurrencyAmount(option.amount, currency: option.currency)
 +        }
++    }
++
++    // PampGram: the option's own currency and amount (in the currency's minor units, e.g. kopecks
++    // for RUB). Used to settle the visual purchase against the local ruble wallet.
++    var currencyCode: String {
++        switch self.option {
++        case let .topUp(option):
++            return option.currency
++        case let .gift(option):
++            return option.currency
++        }
++    }
++
++    var amountMinorUnits: Int64 {
++        switch self.option {
++        case let .topUp(option):
++            return option.amount
++        case let .gift(option):
++            return option.amount
++        }
      }
  }
  
-@@ -348,7 +368,7 @@ private final class StarsPurchaseScreenContentComponent: CombinedComponent {
+@@ -348,7 +388,7 @@ private final class StarsPurchaseScreenContentComponent: CombinedComponent {
                      ))
                      
                      let backgroundComponent: AnyComponent<Empty>?
@@ -20451,7 +20471,7 @@ index 9e0f9fb..d2cbf67 100644
                          backgroundComponent = AnyComponent(
                              ItemShimmeringLoadingComponent(
                                  color: environment.theme.list.itemAccentColor,
-@@ -623,9 +643,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+@@ -623,9 +663,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
                  |> map { availableProducts, options in
                      var products: [StarsProduct] = []
                      for option in options {
@@ -20465,7 +20485,7 @@ index 9e0f9fb..d2cbf67 100644
                      }
                      return products
                  }
-@@ -640,9 +661,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+@@ -640,9 +681,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
                  |> map { availableProducts, options in
                      var products: [StarsProduct] = []
                      for option in options {
@@ -20479,7 +20499,7 @@ index 9e0f9fb..d2cbf67 100644
                      }
                      return products
                  }
-@@ -679,72 +701,31 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+@@ -679,72 +721,34 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
          }
          
          func buy(product: StarsProduct) {
@@ -20553,7 +20573,10 @@ index 9e0f9fb..d2cbf67 100644
 -                        strongSelf.updateInProgress(false)
 -                        strongSelf.updated(transition: .easeInOut(duration: 0.2))
 -                    }
-+            PampGramStarsHook.presentFakeApplePay(context: self.context, count: product.count, priceText: product.price, onCancel: { [weak self] in
++            // The purchase is settled against the local ruble wallet; pass the price in kopecks
++            // when the store currency is RUB, otherwise 0 (no ruble gating).
++            let priceKopecks: Int64 = product.currencyCode == "RUB" ? product.amountMinorUnits : 0
++            PampGramStarsHook.presentFakeApplePay(context: self.context, count: product.count, priceText: product.price, priceKopecks: priceKopecks, onCancel: { [weak self] in
 +                guard let self else {
 +                    return
 +                }
@@ -20571,7 +20594,7 @@ index 9e0f9fb..d2cbf67 100644
              })
          }
          
-@@ -888,7 +869,7 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+@@ -888,7 +892,7 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
                          balance: state.starsState?.balance,
                          options: context.component.options,
                          purpose: context.component.purpose,
