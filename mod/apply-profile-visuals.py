@@ -221,6 +221,7 @@ import BoostLevelIconComponent
     """import PeerNameColorItem
 import BoostLevelIconComponent
 import PampGramCore
+import CollectibleItemInfoScreen
 
 """,
 )
@@ -271,43 +272,22 @@ replace_once(
                     label: presentationData.strings.UserInfo_AnonymousNumberLabel,
                     text: visualNumber,
                     textColor: .accent,
-                    action: { node, _ in
-                        // This alert is local UI only. It never queries Fragment or Telegram.
-                        let formatter = DateFormatter()
-                        formatter.locale = Locale(identifier: "ru_RU")
-                        formatter.dateStyle = .long
-                        let date = formatter.string(from: Date(timeIntervalSince1970: TimeInterval(pampGramProfileVisuals.anonymousNumberPurchasedAt)))
-                        let ownerFirst = user.firstName ?? ""
-                        let ownerLast = user.lastName ?? ""
-                        let ownerName = [ownerFirst, ownerLast].filter({ !$0.isEmpty }).joined(separator: " ")
-                        let owner = ownerName.isEmpty ? "владельцу этого аккаунта" : ownerName
-                        var priceParts: [String] = []
-                        if pampGramProfileVisuals.anonymousNumberPriceTonNanos > 0 {
-                            priceParts.append(String(format: "💎 %.2f", Double(pampGramProfileVisuals.anonymousNumberPriceTonNanos) / 1_000_000_000.0))
-                        }
-                        if pampGramProfileVisuals.anonymousNumberPriceUsdCents > 0 {
-                            priceParts.append(String(format: "$%.2f", Double(pampGramProfileVisuals.anonymousNumberPriceUsdCents) / 100.0))
-                        }
-                        let priceText: String
-                        if priceParts.count == 2 {
-                            priceText = " за \\(priceParts[0]) (\\(priceParts[1]))"
-                        } else if priceParts.count == 1 {
-                            priceText = " за \\(priceParts[0])"
-                        } else {
-                            priceText = ""
-                        }
-                        let message = "Это коллекционный номер телефона, принадлежащий \\(owner). Номер \\(visualNumber) был приобретён на платформе Fragment \\(date)\\(priceText)."
-                        let sheet = UIAlertController(
-                            title: visualNumber,
-                            message: message,
-                            preferredStyle: .alert
+                    action: { _, _ in
+                        // Local-only: opens Telegram's real collectible-number sheet, seeded with the
+                        // visual number's fake purchase details. Nothing is fetched from Fragment or
+                        // the server — the initial data is built entirely from local PampGram state.
+                        let digits = String(visualNumber.filter { $0.isNumber })
+                        let info = TelegramCollectibleItemInfo(
+                            subject: .phoneNumber(visualNumber),
+                            purchaseDate: pampGramProfileVisuals.anonymousNumberPurchasedAt,
+                            currency: "USD",
+                            currencyAmount: pampGramProfileVisuals.anonymousNumberPriceUsdCents,
+                            cryptoCurrency: "TON",
+                            cryptoCurrencyAmount: pampGramProfileVisuals.anonymousNumberPriceTonNanos,
+                            url: "https://fragment.com/number/\\(digits)"
                         )
-                        sheet.addAction(UIAlertAction(title: "Подробнее", style: .default, handler: nil))
-                        sheet.addAction(UIAlertAction(title: "Копировать номер", style: .default, handler: { _ in
-                            UIPasteboard.general.string = visualNumber
-                        }))
-                        sheet.addAction(UIAlertAction(title: "Закрыть", style: .cancel))
-                        node.view.window?.rootViewController?.present(sheet, animated: true)
+                        let initialData = CollectibleItemInfoScreen.pampGramLocalInitialData(peer: EnginePeer(user), subject: .phoneNumber(visualNumber), info: info)
+                        interaction.getController()?.push(CollectibleItemInfoScreen(context: context, initialData: initialData))
                     },
                     longTapAction: { _ in
                         UIPasteboard.general.string = visualNumber

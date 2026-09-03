@@ -18649,12 +18649,13 @@ diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD b/su
 index 09315ffb..a3aed400 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
-@@ -140,6 +140,8 @@ swift_library(
+@@ -140,6 +140,9 @@ swift_library(
          "//submodules/TelegramUI/Components/Settings/BoostLevelIconComponent",
          "//submodules/Components/MultilineTextComponent",
          "//submodules/TelegramUI/Components/Settings/PeerNameColorItem",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen",
          "//submodules/TelegramUI/Components/PlainButtonComponent",
          "//submodules/TelegramUI/Components/TextLoadingEffect",
          "//submodules/TelegramUI/Components/TextProcessingScreen",
@@ -20579,3 +20580,28 @@ index 9e0f9fb..d2cbf67 100644
                          forceDark: context.component.forceDark,
                          products: state.products,
                          expanded: state.isExpanded,
+diff --git a/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift b/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift
+index 57ecb9d..f0a68ec 100644
+--- a/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift
++++ b/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift
+@@ -747,7 +747,19 @@ public class CollectibleItemInfoScreen: ViewControllerComponentContainer {
+             }
+         }
+     }
+-    
++
++    // PampGram: builds the initial data for the real collectible-item sheet from local values,
++    // so the account owner's visual "+888" number opens Telegram's genuine collectible screen
++    // (same layout as a real Fragment number) without any server or Fragment request.
++    public static func pampGramLocalInitialData(peer: EnginePeer?, subject: TelegramCollectibleItemInfo.Subject, info: TelegramCollectibleItemInfo) -> InitialData {
++        switch subject {
++        case let .username(username):
++            return InitialData(peer: peer, subject: .username(ResolvedSubject.Username(username: username, info: info)))
++        case let .phoneNumber(phoneNumber):
++            return InitialData(peer: peer, subject: .phoneNumber(ResolvedSubject.PhoneNumber(phoneNumber: phoneNumber, info: info)))
++        }
++    }
++
+     deinit {
+     }
+     
