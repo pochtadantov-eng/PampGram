@@ -7,27 +7,32 @@ import AccountContext
 import PampGramCore
 
 /// The visual "Apple Pay" confirmation used when a star package is tapped on Telegram's real
-/// "Пополнить" screen. Nothing here talks to StoreKit or the network: the real
+/// "Купить звёзды" screen. Nothing here talks to StoreKit or the network: the real
 /// `StarsPurchaseScreen.buy(product:)` is intercepted (see the telegram-ios.patch hunk), this
-/// imitation sheet is shown, and on a double-tap the local fake Stars balance is credited. The
-/// genuine Apple side-button double-press cannot be summoned or intercepted by an app, so this
-/// is a look-alike overlay that confirms on a double-tap of the sheet itself.
+/// imitation sheet is shown as a presented view controller, and on a double-tap of the card the
+/// local fake Stars balance is credited.
+///
+/// Note: a genuine Apple Pay confirmation uses the physical side button, handled by iOS in a
+/// separate secure process — an app cannot summon it, detect it, or intercept it (and a single
+/// side-button press just locks the device). So confirmation here is a double-tap of the card.
 public enum PampGramStarsHook {
     public static func presentFakeApplePay(context: AccountContext, count: Int64, priceText: String, onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void) {
         Queue.mainQueue().async {
-            guard let window = self.keyWindow() else {
+            guard let presenter = self.topViewController() else {
                 onCancel()
                 return
             }
-            let overlay = PampGramApplePayOverlayView(frame: window.bounds, count: count, priceText: priceText, onCancel: {
+            let controller = PampGramApplePayViewController(count: count, priceText: priceText, onCancel: {
                 onCancel()
             }, onConfirm: {
                 self.credit(context: context, count: count)
                 onConfirm()
             })
-            overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            window.addSubview(overlay)
-            overlay.animateIn()
+            controller.modalPresentationStyle = .overFullScreen
+            controller.modalTransitionStyle = .crossDissolve
+            presenter.present(controller, animated: false, completion: {
+                controller.animateIn()
+            })
         }
     }
 
@@ -67,9 +72,21 @@ public enum PampGramStarsHook {
         }
         return UIApplication.shared.windows.first(where: { $0.isKeyWindow }) ?? UIApplication.shared.windows.first
     }
+
+    private static func topViewController() -> UIViewController? {
+        guard let window = self.keyWindow(), var top = window.rootViewController else {
+            return nil
+        }
+        while let presented = top.presentedViewController, !presented.isBeingDismissed {
+            top = presented
+        }
+        return top
+    }
 }
 
-private final class PampGramApplePayOverlayView: UIView {
+private final class PampGramApplePayViewController: UIViewController {
+    private let count: Int64
+    private let priceText: String
     private let onCancel: () -> Void
     private let onConfirm: () -> Void
     private var finished = false
@@ -80,26 +97,41 @@ private final class PampGramApplePayOverlayView: UIView {
     private let hintLabel = UILabel()
     private let sideButton = UIView()
 
-    init(frame: CGRect, count: Int64, priceText: String, onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void) {
+    init(count: Int64, priceText: String, onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void) {
+        self.count = count
+        self.priceText = priceText
         self.onCancel = onCancel
         self.onConfirm = onConfirm
-        super.init(frame: frame)
+        super.init(nibName: nil, bundle: nil)
+    }
 
-        self.dimView.frame = self.bounds
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        self.view = UIView()
+        self.view.backgroundColor = .clear
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        self.dimView.frame = self.view.bounds
         self.dimView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         self.dimView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        self.addSubview(self.dimView)
+        self.view.addSubview(self.dimView)
         self.dimView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.cancelTapped)))
 
-        // Side-button hint (right screen edge) — imitates the "double-click side button" cue.
+        // Side-button hint (right screen edge) — imitates Apple's "confirm with side button" cue.
         self.sideButton.backgroundColor = UIColor.white.withAlphaComponent(0.9)
         self.sideButton.layer.cornerRadius = 3.0
-        self.addSubview(self.sideButton)
+        self.view.addSubview(self.sideButton)
 
         self.card.backgroundColor = UIColor(red: 0x1c/255.0, green: 0x1c/255.0, blue: 0x1e/255.0, alpha: 1.0)
         self.card.layer.cornerRadius = 22.0
         self.card.layer.cornerCurve = .continuous
-        self.addSubview(self.card)
+        self.view.addSubview(self.card)
 
         let header = UILabel()
         header.attributedText = self.headerText()
@@ -110,10 +142,10 @@ private final class PampGramApplePayOverlayView: UIView {
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.heightAnchor.constraint(equalToConstant: 1.0).isActive = true
 
-        let merchantRow = self.row(left: "Telegram", right: "★ \(count)", rightBold: true)
-        let totalRow = self.row(left: "Итого", right: priceText, rightBold: true)
+        let merchantRow = self.row(left: "Telegram", right: "★ \(self.count)", rightBold: true)
+        let totalRow = self.row(left: "Итого", right: self.priceText, rightBold: true)
 
-        self.hintLabel.text = "Дважды нажмите\nбоковую кнопку"
+        self.hintLabel.text = "Дважды коснитесь карты,\nчтобы оплатить"
         self.hintLabel.numberOfLines = 2
         self.hintLabel.textAlignment = .center
         self.hintLabel.textColor = UIColor.white.withAlphaComponent(0.6)
@@ -137,14 +169,25 @@ private final class PampGramApplePayOverlayView: UIView {
             self.contentStack.bottomAnchor.constraint(equalTo: self.card.bottomAnchor, constant: -20.0)
         ])
 
+        // A single tap or a double tap on the card both confirm — the double-tap matches the
+        // "double press" cue, and the single tap keeps it from feeling broken.
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(self.confirmTapped))
         doubleTap.numberOfTapsRequired = 2
         self.card.addGestureRecognizer(doubleTap)
+        let singleTap = UITapGestureRecognizer(target: self, action: #selector(self.confirmTapped))
+        singleTap.numberOfTapsRequired = 1
+        singleTap.require(toFail: doubleTap)
+        self.card.addGestureRecognizer(singleTap)
         self.card.isUserInteractionEnabled = true
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let cardWidth = min(self.view.bounds.width - 40.0, 360.0)
+        let cardHeight: CGFloat = 220.0
+        self.card.frame = CGRect(x: (self.view.bounds.width - cardWidth) / 2.0, y: self.view.bounds.height - cardHeight - self.view.safeAreaInsets.bottom - 24.0, width: cardWidth, height: cardHeight)
+        let sideHeight: CGFloat = 92.0
+        self.sideButton.frame = CGRect(x: self.view.bounds.width - 4.0, y: self.card.frame.minY + 20.0, width: 4.0, height: sideHeight)
     }
 
     private func headerText() -> NSAttributedString {
@@ -181,22 +224,6 @@ private final class PampGramApplePayOverlayView: UIView {
         return container
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let cardWidth = min(self.bounds.width - 40.0, 360.0)
-        let cardHeight: CGFloat = 220.0
-        self.card.frame = CGRect(x: (self.bounds.width - cardWidth) / 2.0, y: self.bounds.height - cardHeight - self.safeBottom() - 24.0, width: cardWidth, height: cardHeight)
-        let sideHeight: CGFloat = 92.0
-        self.sideButton.frame = CGRect(x: self.bounds.width - 4.0, y: self.card.frame.minY + 20.0, width: 4.0, height: sideHeight)
-    }
-
-    private func safeBottom() -> CGFloat {
-        if #available(iOS 11.0, *) {
-            return self.safeAreaInsets.bottom
-        }
-        return 0.0
-    }
-
     func animateIn() {
         self.dimView.alpha = 0.0
         self.card.alpha = 0.0
@@ -212,7 +239,12 @@ private final class PampGramApplePayOverlayView: UIView {
     }
 
     @objc private func cancelTapped() {
-        self.finish()
+        guard !self.finished else {
+            return
+        }
+        self.finished = true
+        self.onCancel()
+        self.close()
     }
 
     @objc private func confirmTapped() {
@@ -238,20 +270,11 @@ private final class PampGramApplePayOverlayView: UIView {
         })
     }
 
-    private func finish() {
-        guard !self.finished else {
-            return
-        }
-        self.finished = true
-        self.onCancel()
-        self.close()
-    }
-
     private func close() {
         UIView.animate(withDuration: 0.2, animations: {
-            self.alpha = 0.0
+            self.view.alpha = 0.0
         }, completion: { _ in
-            self.removeFromSuperview()
+            self.dismiss(animated: false, completion: nil)
         })
     }
 }
