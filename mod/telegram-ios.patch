@@ -20392,7 +20392,7 @@ index b1e8596..db7e43b 100644
          "//submodules/ItemListUI",
          "//submodules/TelegramStringFormatting",
 diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
-index 9e0f9fb..883f8bc 100644
+index 9e0f9fb..c5a15d1 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
 @@ -25,16 +25,20 @@ import PremiumStarComponent
@@ -20610,6 +20610,41 @@ index 9e0f9fb..883f8bc 100644
                          forceDark: context.component.forceDark,
                          products: state.products,
                          expanded: state.isExpanded,
+@@ -1150,8 +1154,32 @@ func generateStarsIcon(amount: Int64) -> UIImage {
+         25000: 7,
+         35000: 7
+     ]
+-    let count = stars[amount] ?? 1
+-    
++    // PampGram: the lookup only covers the standard server amounts; large fake top-up tiers
++    // (50 000 / 150 000 …) fall through and used to render a single plain star, which looked
++    // broken next to the comet-trail icons on the smaller tiers. Fall back to a magnitude-based
++    // count so the icon keeps growing (and never drops back to one) for any amount.
++    let count: Int
++    if let mapped = stars[amount] {
++        count = mapped
++    } else {
++        switch amount {
++        case ..<50:
++            count = 1
++        case ..<150:
++            count = 2
++        case ..<500:
++            count = 3
++        case ..<1500:
++            count = 4
++        case ..<5000:
++            count = 5
++        case ..<25000:
++            count = 6
++        default:
++            count = 7
++        }
++    }
++
+     let image = generateGradientTintedImage(
+         image: UIImage(bundleImageName: "Peer Info/PremiumIcon"),
+         colors: [
 diff --git a/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift b/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift
 index 57ecb9d..f0a68ec 100644
 --- a/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift

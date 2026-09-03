@@ -419,14 +419,12 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         let rootView = self.displayNode.view
         let keyboardFrameInView = rootView.convert(endFrame, from: nil)
         let overlap = max(0.0, rootView.bounds.maxY - keyboardFrameInView.minY)
-        self.keyboardInset = overlap
         self.scrollView.contentInset.bottom = overlap
         self.scrollView.verticalScrollIndicatorInsets.bottom = overlap
         self.scrollActiveFieldToVisible()
     }
 
     @objc private func keyboardWillHide(_ notification: Notification) {
-        self.keyboardInset = 0.0
         self.scrollView.contentInset.bottom = 0.0
         self.scrollView.verticalScrollIndicatorInsets.bottom = 0.0
     }
