@@ -20091,7 +20091,7 @@ new file mode 100644
 index 00000000..710f5ea2
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,214 @@
 +import Foundation
 +import AVFoundation
 +import OpusBinding
@@ -20145,16 +20145,23 @@ index 00000000..710f5ea2
 +        }
 +
 +        var samples: [Int16] = []
-+        let bufSize = 65536
-+        var buffer = [UInt8](repeating: 0, count: bufSize)
++        // op_read counts in SAMPLES (int16 values), not bytes — both its `bufSize` argument and
++        // its return value. The old code passed the buffer's *byte* size as the capacity (which
++        // let op_read overrun it) and divided the returned *sample* count by 2 as if it were a
++        // byte count, which dropped half of every decoded chunk. That halving is what made a
++        // changed voice message play back at ~2x speed with a chipmunk / raspy pitch. Count in
++        // samples on both sides so the full, correct-length PCM is decoded.
++        let byteCapacity = 65536
++        let sampleCapacity = byteCapacity / 2
++        var buffer = [UInt8](repeating: 0, count: byteCapacity)
 +        while true {
-+            let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer -> Int32 in
-+                return reader.read(rawBuffer.baseAddress!, bufSize: Int32(bufSize))
++            let samplesRead = buffer.withUnsafeMutableBytes { rawBuffer -> Int32 in
++                return reader.read(rawBuffer.baseAddress!, bufSize: Int32(sampleCapacity))
 +            }
-+            if bytesRead <= 0 {
++            if samplesRead <= 0 {
 +                break
 +            }
-+            let sampleCount = Int(bytesRead) / 2
++            let sampleCount = Int(samplesRead)
 +            buffer.withUnsafeBytes { rawBuffer in
 +                let int16Pointer = rawBuffer.baseAddress!.assumingMemoryBound(to: Int16.self)
 +                samples.append(contentsOf: UnsafeBufferPointer(start: int16Pointer, count: sampleCount))
