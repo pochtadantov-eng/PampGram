@@ -20384,10 +20384,10 @@ index b1e8596..db7e43b 100644
          "//submodules/ItemListUI",
          "//submodules/TelegramStringFormatting",
 diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
-index 9e0f9fb..fadea1b 100644
+index 9e0f9fb..d2cbf67 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
-@@ -25,6 +25,7 @@ import PremiumStarComponent
+@@ -25,16 +25,20 @@ import PremiumStarComponent
  import BundleIconComponent
  import ConfettiEffect
  import ItemShimmeringLoadingComponent
@@ -20395,7 +20395,90 @@ index 9e0f9fb..fadea1b 100644
  
  private struct StarsProduct: Equatable {
      enum Option: Equatable {
-@@ -679,72 +680,31 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+         case topUp(StarsTopUpOption)
+         case gift(StarsGiftOption)
+     }
+-    
++
+     let option: Option
+-    let storeProduct: InAppPurchaseManager.Product
+-    
++    // PampGram: on a sideloaded build StoreKit returns no products, so this is nil and the
++    // count/price are taken from the server top-up option instead. The visual purchase never
++    // touches StoreKit, so no real product is required to show or "buy" a package.
++    let storeProduct: InAppPurchaseManager.Product?
++
+     var count: Int64 {
+         switch self.option {
+         case let .topUp(option):
+@@ -54,11 +58,27 @@ private struct StarsProduct: Equatable {
+     }
+     
+     var id: String {
+-        return self.storeProduct.id
++        if let storeProduct = self.storeProduct {
++            return storeProduct.id
++        }
++        switch self.option {
++        case let .topUp(option):
++            return option.storeProductId ?? "pampgram.topup.\(option.count)"
++        case let .gift(option):
++            return option.storeProductId ?? "pampgram.gift.\(option.count)"
++        }
+     }
+ 
+     var price: String {
+-        return self.storeProduct.price
++        if let storeProduct = self.storeProduct {
++            return storeProduct.price
++        }
++        switch self.option {
++        case let .topUp(option):
++            return formatCurrencyAmount(option.amount, currency: option.currency)
++        case let .gift(option):
++            return formatCurrencyAmount(option.amount, currency: option.currency)
++        }
+     }
+ }
+ 
+@@ -348,7 +368,7 @@ private final class StarsPurchaseScreenContentComponent: CombinedComponent {
+                     ))
+                     
+                     let backgroundComponent: AnyComponent<Empty>?
+-                    if product.storeProduct.id == context.component.selectedProductId {
++                    if product.id == context.component.selectedProductId {
+                         backgroundComponent = AnyComponent(
+                             ItemShimmeringLoadingComponent(
+                                 color: environment.theme.list.itemAccentColor,
+@@ -623,9 +643,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+                 |> map { availableProducts, options in
+                     var products: [StarsProduct] = []
+                     for option in options {
+-                        if let product = availableProducts.first(where: { $0.id == option.storeProductId }) {
+-                            products.append(StarsProduct(option: .gift(option), storeProduct: product))
+-                        }
++                        // PampGram: keep the package even when StoreKit has no matching product
++                        // (sideloaded build) — the price falls back to the server option amount.
++                        let product = availableProducts.first(where: { $0.id == option.storeProductId })
++                        products.append(StarsProduct(option: .gift(option), storeProduct: product))
+                     }
+                     return products
+                 }
+@@ -640,9 +661,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+                 |> map { availableProducts, options in
+                     var products: [StarsProduct] = []
+                     for option in options {
+-                        if let product = availableProducts.first(where: { $0.id == option.storeProductId }) {
+-                            products.append(StarsProduct(option: .topUp(option), storeProduct: product))
+-                        }
++                        // PampGram: keep the package even when StoreKit has no matching product
++                        // (sideloaded build) — the price falls back to the server option amount.
++                        let product = availableProducts.first(where: { $0.id == option.storeProductId })
++                        products.append(StarsProduct(option: .topUp(option), storeProduct: product))
+                     }
+                     return products
+                 }
+@@ -679,72 +701,31 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
          }
          
          func buy(product: StarsProduct) {
@@ -20487,3 +20570,12 @@ index 9e0f9fb..fadea1b 100644
              })
          }
          
+@@ -888,7 +869,7 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+                         balance: state.starsState?.balance,
+                         options: context.component.options,
+                         purpose: context.component.purpose,
+-                        selectedProductId: state.progressProduct?.storeProduct.id,
++                        selectedProductId: state.progressProduct?.id,
+                         forceDark: context.component.forceDark,
+                         products: state.products,
+                         expanded: state.isExpanded,
