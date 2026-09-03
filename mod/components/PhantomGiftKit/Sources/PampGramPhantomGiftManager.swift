@@ -541,14 +541,29 @@ public enum PampGramPhantomGiftManager {
         }
     }
 
-    // In-memory guard so a message that happens to emit more than once in a session is
-    // materialized only once. notificationMessages only fires for newly-received messages, so a
-    // persistent record isn't needed.
+    // In-memory fast-path guard so the same message isn't re-fetched twice in one session. The
+    // durable guard is the deterministic gift id below: the materialized gift's id is derived from
+    // the carrier message id, so re-processing the same message (a later chat open, a relaunch)
+    // resolves to a gift that already exists and is skipped — no duplicates across launches.
     private static var processedTransferMessageIds = Set<MessageId>()
     private static let processedLock = NSLock()
 
+    private static func deterministicGiftId(for messageId: MessageId) -> Int64 {
+        let key = "pgtransfer:\(messageId.peerId.toInt64()):\(messageId.namespace):\(messageId.id)"
+        var hash: UInt64 = 1469598103934665603
+        for byte in key.utf8 {
+            hash = (hash ^ UInt64(byte)) &* 1099511628211
+        }
+        return Int64(hash & 0x7FFF_FFFF_FFFF_FFFF)
+    }
+
     /// Subscribes to incoming messages account-wide and materializes any carried gift into this
     /// account's own collection automatically — no user action. Owned by the account context.
+    ///
+    /// This live signal only fires for messages processed through the update loop while the app is
+    /// running; it can miss a transfer that arrived while the app was closed or in a background
+    /// account. So it is a best-effort fast path — the reliable path is scanPeerForIncomingGiftTransfers,
+    /// which runs every time the recipient opens the chat.
     public static func observeIncomingGiftTransfers(account: Account) -> Disposable {
         return (account.stateManager.notificationMessages
         |> deliverOnMainQueue).start(next: { batches in
@@ -569,16 +584,62 @@ public enum PampGramPhantomGiftManager {
                     if alreadyDone {
                         continue
                     }
-                    let _ = materializeIncoming(account: account, token: token, fromPeerId: message.id.peerId).start()
+                    let _ = materializeIncoming(account: account, token: token, fromPeerId: message.id.peerId, sourceMessageId: message.id).start()
                 }
             }
         })
     }
 
-    private static func materializeIncoming(account: Account, token: String, fromPeerId: EnginePeer.Id) -> Signal<Bool, NoError> {
+    /// Scans the most recent messages of a chat the recipient just opened and materializes any
+    /// gift transfer carried by an incoming message. This is the reliable entry point (called from
+    /// navigateToChatControllerImpl): whenever the recipient opens the chat with the sender, any
+    /// transfer that has arrived — even while the app was closed — is picked up. Duplicates are
+    /// prevented by the deterministic gift id, so re-opening the chat is harmless.
+    public static func scanPeerForIncomingGiftTransfers(context: AccountContext, peerId: EnginePeer.Id) {
+        let account = context.account
+        let _ = (account.postbox.transaction { transaction -> [(MessageId, String)] in
+            var found: [(MessageId, String)] = []
+            guard let topId = transaction.getTopPeerMessageId(peerId: peerId, namespace: Namespaces.Message.Cloud) else {
+                return found
+            }
+            // The carrier message is the newest thing the sender sent, so it sits at (or very near)
+            // the top; walking back a bounded window from the top id is cheap and catches it.
+            var currentId = topId.id
+            var steps = 0
+            while steps < 60 && currentId > 0 && found.count < 10 {
+                let messageId = MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: currentId)
+                if let message = transaction.getMessage(messageId),
+                   message.flags.contains(.Incoming),
+                   message.author?.id != account.peerId,
+                   let token = reveal(message.text) {
+                    found.append((messageId, token))
+                }
+                currentId -= 1
+                steps += 1
+            }
+            return found
+        }
+        |> deliverOnMainQueue).start(next: { found in
+            for (messageId, token) in found {
+                processedLock.lock()
+                let alreadyDone = processedTransferMessageIds.contains(messageId)
+                if !alreadyDone {
+                    processedTransferMessageIds.insert(messageId)
+                }
+                processedLock.unlock()
+                if alreadyDone {
+                    continue
+                }
+                let _ = materializeIncoming(account: account, token: token, fromPeerId: peerId, sourceMessageId: messageId).start()
+            }
+        })
+    }
+
+    private static func materializeIncoming(account: Account, token: String, fromPeerId: EnginePeer.Id, sourceMessageId: MessageId) -> Signal<Bool, NoError> {
         guard let payload = decodePayload(token: token) else {
             return .single(false)
         }
+        let giftId = deterministicGiftId(for: sourceMessageId)
         let price = CurrencyAmount(amount: StarsAmount(value: payload.priceAmount, nanos: 0), currency: payload.priceStars ? .stars : .ton)
 
         let giftSignal: Signal<StarGift?, NoError>
@@ -602,8 +663,14 @@ public enum PampGramPhantomGiftManager {
                 return .single(false)
             }
             return account.postbox.transaction { transaction -> Bool in
+                // Durable dedup: the id is derived from the carrier message, so if this transfer
+                // was already materialized (earlier this session, or before a relaunch) the gift
+                // already exists and we skip it.
+                if PampGramPhantomGiftStore.allGifts(transaction: transaction).contains(where: { $0.id == giftId }) {
+                    return false
+                }
                 let phantomGift = PampGramPhantomGift(
-                    id: Int64.random(in: 1...Int64.max),
+                    id: giftId,
                     peerId: account.peerId,
                     gift: starGift,
                     price: price,
