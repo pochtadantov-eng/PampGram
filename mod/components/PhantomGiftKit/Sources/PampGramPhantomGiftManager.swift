@@ -456,10 +456,14 @@ public enum PampGramPhantomGiftManager {
     // unique gifts only the slug travels and the recipient fetches the real art from Telegram by
     // slug. Nothing here moves real gifts, Stars, or money; only an ordinary text message is sent.
 
+    // Only tiny identifiers travel, never the whole gift object: a unique gift's slug, or a generic
+    // catalog gift's id (resolved from the recipient's own cached catalog). Keeping the payload
+    // small is what lets it survive intact inside the hidden channel — an embedded gift object was
+    // large enough to be truncated in transit, which broke decoding on the recipient side.
     private struct TransferPayload: Codable {
         let v: Int
         let slug: String?
-        let genericData: Data?
+        let genericGiftId: Int64?
         let priceStars: Bool
         let priceAmount: Int64
         let title: String
@@ -513,16 +517,14 @@ public enum PampGramPhantomGiftManager {
     /// Encodes a gift into the base64 transfer token carried (hidden) inside a message.
     private static func encodeTransferToken(gift: StarGift, price: CurrencyAmount, title: String) -> String? {
         var slug: String?
-        var genericData: Data?
+        var genericGiftId: Int64?
         switch gift {
         case let .unique(uniqueGift):
             slug = uniqueGift.slug
         case let .generic(genericGift):
-            let giftEncoder = PropertyListEncoder()
-            giftEncoder.outputFormat = .binary
-            genericData = try? giftEncoder.encode(genericGift)
+            genericGiftId = genericGift.id
         }
-        let payload = TransferPayload(v: 1, slug: slug, genericData: genericData, priceStars: price.currency == .stars, priceAmount: price.amount.value, title: title)
+        let payload = TransferPayload(v: 1, slug: slug, genericGiftId: genericGiftId, priceStars: price.currency == .stars, priceAmount: price.amount.value, title: title)
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
         guard let data = try? encoder.encode(payload) else {
@@ -532,17 +534,18 @@ public enum PampGramPhantomGiftManager {
     }
 
     /// Delivers a gift to `peerId` by sending a real Telegram message that carries the gift as an
-    /// invisible payload (no visible text of its own). A recipient running PampGram turns it into a
-    /// proper received-gift card and materializes the gift into their collection (see
-    /// scanPeerForIncomingGiftTransfers); the sender's own copy of this invisible carrier is
-    /// deleted for the sender only, once it has had time to actually send, so the sender is left
-    /// with just their own gift card. The message is the sole thing that crosses the network; the
-    /// gift only appears for a recipient who also runs PampGram.
+    /// invisible payload after a single visible "🎁". The visible character matters: a message made
+    /// only of invisible characters is trimmed to empty and never sends (and a variation-selector
+    /// run needs a base character to attach to), so "🎁" is the minimum that reliably reaches the
+    /// recipient. A recipient running PampGram turns it into a proper received-gift card and
+    /// materializes the gift into their collection; the sender's own copy of the carrier is deleted
+    /// for the sender only, once it has had time to send. The message is the sole thing that crosses
+    /// the network; the gift only appears for a recipient who also runs PampGram.
     public static func deliverGiftMessage(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, title: String) -> Signal<Bool, NoError> {
         guard let token = encodeTransferToken(gift: gift, price: price, title: title) else {
             return .single(false)
         }
-        let text = hide(token)
+        let text = "🎁" + hide(token)
         let message: EnqueueMessage = .message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
         return enqueueMessages(account: context.account, peerId: peerId, messages: [message])
         |> map { ids -> Bool in
@@ -566,20 +569,7 @@ public enum PampGramPhantomGiftManager {
             guard let gift = PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.id == giftId }) else {
                 return nil
             }
-            var slug: String?
-            var genericData: Data?
-            switch gift.gift {
-            case let .unique(uniqueGift):
-                slug = uniqueGift.slug
-            case let .generic(genericGift):
-                let giftEncoder = PropertyListEncoder()
-                giftEncoder.outputFormat = .binary
-                genericData = try? giftEncoder.encode(genericGift)
-            }
-            let payload = TransferPayload(v: 1, slug: slug, genericData: genericData, priceStars: gift.price.currency == .stars, priceAmount: gift.price.amount.value, title: gift.title)
-            let encoder = PropertyListEncoder()
-            encoder.outputFormat = .binary
-            guard let data = try? encoder.encode(payload) else {
+            guard let token = encodeTransferToken(gift: gift.gift, price: gift.price, title: gift.title) else {
                 return nil
             }
             PampGramPhantomGiftStore.remove(transaction: transaction, id: giftId)
@@ -596,7 +586,7 @@ public enum PampGramPhantomGiftManager {
                 giftId: gift.id,
                 balanceAfter: nil
             ))
-            return (data.base64EncodedString(), gift.title)
+            return (token, gift.title)
         }
         |> mapToSignal { encoded -> Signal<Bool, NoError> in
             guard let encoded else {
@@ -643,15 +633,11 @@ public enum PampGramPhantomGiftManager {
                     guard let token = reveal(message.text) else {
                         continue
                     }
-                    processedLock.lock()
-                    let alreadyDone = processedTransferMessageIds.contains(message.id)
-                    if !alreadyDone {
-                        processedTransferMessageIds.insert(message.id)
-                    }
-                    processedLock.unlock()
-                    if alreadyDone {
-                        continue
-                    }
+                    // Best-effort quick materialization into the collection while online. The gift
+                    // card and carrier cleanup are done when the chat is opened
+                    // (scanPeerForIncomingGiftTransfers, which has the AccountContext); the gift-id
+                    // dedup keeps this from double-adding. No processed-set marking here, so a failed
+                    // fetch never blocks the chat-open handler from retrying.
                     let _ = materializeGift(account: account, token: token, fromPeerId: message.id.peerId, sourceMessageId: message.id).start()
                 }
             }
@@ -689,15 +675,6 @@ public enum PampGramPhantomGiftManager {
         }
         |> deliverOnMainQueue).start(next: { found in
             for (messageId, token) in found {
-                processedLock.lock()
-                let alreadyDone = processedTransferMessageIds.contains(messageId)
-                if !alreadyDone {
-                    processedTransferMessageIds.insert(messageId)
-                }
-                processedLock.unlock()
-                if alreadyDone {
-                    continue
-                }
                 handleIncomingCarrier(context: context, peerId: peerId, messageId: messageId, token: token)
             }
         })
@@ -723,8 +700,22 @@ public enum PampGramPhantomGiftManager {
             |> `catch` { _ -> Signal<StarGift?, NoError> in
                 return .single(nil)
             }
-        } else if let data = payload.genericData, let genericGift = try? PropertyListDecoder().decode(StarGift.Gift.self, from: data) {
-            giftSignal = .single(.generic(genericGift))
+        } else if let genericGiftId = payload.genericGiftId {
+            // Resolve a generic catalog gift from the recipient's own cached star-gift catalog by id,
+            // so only the tiny id had to travel.
+            giftSignal = TelegramEngine(account: account).payments.cachedStarGifts()
+            |> take(1)
+            |> map { gifts -> StarGift? in
+                guard let gifts else {
+                    return nil
+                }
+                for candidate in gifts {
+                    if case let .generic(genericGift) = candidate, genericGift.id == genericGiftId {
+                        return .generic(genericGift)
+                    }
+                }
+                return nil
+            }
         } else {
             giftSignal = .single(nil)
         }
@@ -771,10 +762,24 @@ public enum PampGramPhantomGiftManager {
     /// shows), and deletes the invisible carrier message for this user so only the card remains.
     /// Deleting the carrier also makes this idempotent — it's never scanned again.
     private static func handleIncomingCarrier(context: AccountContext, peerId: EnginePeer.Id, messageId: MessageId, token: String) {
+        // Dedup within a session; the durable dedup is the deleted carrier below (a handled carrier
+        // is never scanned again) plus the deterministic gift id. Crucially, a failed resolution
+        // clears the mark so a later open retries — a transient failure never blocks it forever.
+        processedLock.lock()
+        if processedTransferMessageIds.contains(messageId) {
+            processedLock.unlock()
+            return
+        }
+        processedTransferMessageIds.insert(messageId)
+        processedLock.unlock()
+
         let account = context.account
         let _ = (materializeGift(account: account, token: token, fromPeerId: peerId, sourceMessageId: messageId)
         |> deliverOnMainQueue).start(next: { starGift in
             guard let starGift else {
+                processedLock.lock()
+                processedTransferMessageIds.remove(messageId)
+                processedLock.unlock()
                 return
             }
             let cardSignal: Signal<EngineMessage.Id?, NoError>
