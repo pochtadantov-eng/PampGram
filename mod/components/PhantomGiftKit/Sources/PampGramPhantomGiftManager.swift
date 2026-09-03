@@ -75,19 +75,12 @@ public enum PampGramPhantomGiftManager {
                 return .single(BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency)))
             }
 
-            return PampGramPhantomGiftMessage.insertLocalUniqueGiftMessage(context: context, peerId: peerId, uniqueGift: uniqueGift, price: price)
-            |> map { messageId -> BuyResult in
-                let finalGift: PampGramPhantomGift
-                if let messageId {
-                    finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId)
-                    let _ = context.account.postbox.transaction { transaction in
-                        PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
-                        PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
-                    }.start()
-                } else {
-                    finalGift = phantomGift
-                }
-                return BuyResult(phantomGift: finalGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency))
+            // Gifting someone: send the real carrier message so a recipient running PampGram
+            // materializes the gift into their own collection (and can then manage/re-transfer it),
+            // exactly like a transfer. This is the only thing that crosses the network.
+            return deliverGiftMessage(context: context, peerId: peerId, gift: .unique(uniqueGift), price: price, title: phantomGift.title, verb: "подарен")
+            |> map { _ -> BuyResult in
+                return BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency))
             }
         }
     }
@@ -131,6 +124,16 @@ public enum PampGramPhantomGiftManager {
         }
         |> mapToSignal { pending -> Signal<Never, NoError> in
             let phantomGift = pending.phantomGift
+
+            // Gifting someone else: send the real carrier message so a recipient running PampGram
+            // materializes the gift into their own collection (and can re-transfer it), exactly
+            // like a transfer. Only this message crosses the network.
+            if peerId != context.account.peerId {
+                return deliverGiftMessage(context: context, peerId: peerId, gift: .generic(gift), price: phantomGift.price, title: phantomGift.title, verb: "подарен")
+                |> ignoreValues
+            }
+
+            // Gift to self (Saved Messages): stays a local-only card, nothing to send anywhere.
             return PampGramPhantomGiftMessage.insertLocalGenericGiftMessage(context: context, peerId: peerId, gift: gift, text: text, entities: entities, nameHidden: nameHidden)
             |> mapToSignal { messageId -> Signal<Never, NoError> in
                 guard let messageId else {
@@ -489,6 +492,42 @@ public enum PampGramPhantomGiftManager {
             return nil
         }
         return try? PropertyListDecoder().decode(TransferPayload.self, from: data)
+    }
+
+    /// Encodes a gift into the base64 transfer token carried (hidden) inside a message.
+    private static func encodeTransferToken(gift: StarGift, price: CurrencyAmount, title: String) -> String? {
+        var slug: String?
+        var genericData: Data?
+        switch gift {
+        case let .unique(uniqueGift):
+            slug = uniqueGift.slug
+        case let .generic(genericGift):
+            let giftEncoder = PropertyListEncoder()
+            giftEncoder.outputFormat = .binary
+            genericData = try? giftEncoder.encode(genericGift)
+        }
+        let payload = TransferPayload(v: 1, slug: slug, genericData: genericData, priceStars: price.currency == .stars, priceAmount: price.amount.value, title: title)
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        guard let data = try? encoder.encode(payload) else {
+            return nil
+        }
+        return data.base64EncodedString()
+    }
+
+    /// Sends a real Telegram message to `peerId` carrying the (hidden) gift so a recipient running
+    /// PampGram materializes it into their own collection. `verb` is the visible wording
+    /// ("подарен" for a gift-to-someone, "передан" for a transfer). Used by both the transfer flow
+    /// and the "Подарок ему" gift-sending flow. The gift only actually appears for a recipient who
+    /// also runs PampGram; the message is the sole thing that crosses the network.
+    public static func deliverGiftMessage(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, title: String, verb: String) -> Signal<Bool, NoError> {
+        guard let token = encodeTransferToken(gift: gift, price: price, title: title) else {
+            return .single(false)
+        }
+        let text = "🎁 Подарок «\(title)» \(verb)." + hide(token)
+        let message: EnqueueMessage = .message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
+        return enqueueMessages(account: context.account, peerId: peerId, messages: [message])
+        |> map { _ in true }
     }
 
     /// Sends a phantom gift to `peerId` as a real Telegram message carrying the (hidden) gift,

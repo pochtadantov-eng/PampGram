@@ -20094,10 +20094,10 @@ index 4a25558..192f9fc 100644
                  var chatListController: ChatListControllerImpl?
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 new file mode 100644
-index 00000000..710f5ea2
+index 0000000..dccd140
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,234 @@
 +import Foundation
 +import AVFoundation
 +import OpusBinding
@@ -20270,11 +20270,18 @@ index 00000000..710f5ea2
 +        }
 +
 +        var outputSamples: [Int16] = []
-+        // Slower rates lengthen the audio; give generous headroom, and cap the loop so a
-+        // rendering issue can never hang instead of just failing.
-+        let maxOutputFrames = Int(Double(pcm.count) / Double(rate) * 1.5) + 8192
++        // The time-pitch unit changes duration by 1/rate, so the real output is about
++        // pcm.count / rate samples. In offline manual-rendering mode a player node keeps
++        // returning `.success` with full buffers of pure silence once its scheduled audio is
++        // consumed — the engine has no idea the player is "done" — so rendering to any generous
++        // upper bound appends seconds of trailing silence (the "empty tail" heard at the end of a
++        // changed voice message). Render only the expected length plus a small cushion for the
++        // unit's own latency/flush tail, then trim whatever trailing silence remains below.
++        let expectedOutputFrames = Int((Double(pcm.count) / Double(max(0.01, rate))).rounded())
++        let latencyCushionFrames = Int(self.sampleRate * 0.12)
++        let renderFrameCap = expectedOutputFrames + latencyCushionFrames
 +        var renderedFrames = 0
-+        renderLoop: while renderedFrames < maxOutputFrames {
++        renderLoop: while renderedFrames < renderFrameCap {
 +            outputBuffer.frameLength = 0
 +            let status: AVAudioEngineManualRenderingStatus
 +            do {
@@ -20309,9 +20316,23 @@ index 00000000..710f5ea2
 +        }
 +
 +        engine.stop()
++
++        // Trim trailing near-silence: the unit's flush tail (and the cushion above) render as
++        // effectively silent samples, and the recorder would otherwise pad the voice message with
++        // an empty stretch after the speech. A low threshold only ever catches true silence, never
++        // speech, so the changed message is exactly as long as what was said.
++        let silenceThreshold: Int32 = 24
++        var trimmedEnd = outputSamples.count
++        while trimmedEnd > 0 && abs(Int32(outputSamples[trimmedEnd - 1])) < silenceThreshold {
++            trimmedEnd -= 1
++        }
++        if trimmedEnd < outputSamples.count {
++            outputSamples.removeLast(outputSamples.count - trimmedEnd)
++        }
 +        return outputSamples
 +    }
 +}
+\ No newline at end of file
 diff --git a/submodules/TelegramUI/Sources/SharedAccountContext.swift b/submodules/TelegramUI/Sources/SharedAccountContext.swift
 index 5637c9e3..beaabb04 100644
 --- a/submodules/TelegramUI/Sources/SharedAccountContext.swift
