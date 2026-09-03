@@ -214,6 +214,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
     public var anonymousNumber: String
     public var anonymousNumberPurchasedAt: Int32
     public var anonymousNumberPriceTonNanos: Int64
+    public var anonymousNumberPriceUsdCents: Int64
 
     public static var `default`: PampGramProfileVisualState {
         return PampGramProfileVisualState(
@@ -223,11 +224,12 @@ public struct PampGramProfileVisualState: Codable, Equatable {
             anonymousNumberEnabled: false,
             anonymousNumber: "+888 0000 0000",
             anonymousNumberPurchasedAt: Int32(Date().timeIntervalSince1970),
-            anonymousNumberPriceTonNanos: 0
+            anonymousNumberPriceTonNanos: 0,
+            anonymousNumberPriceUsdCents: 0
         )
     }
 
-    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64) {
+    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64, anonymousNumberPriceUsdCents: Int64) {
         self.ratingEnabled = ratingEnabled
         self.ratingValue = ratingValue
         self.ratingPoints = ratingPoints
@@ -235,6 +237,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumber = anonymousNumber
         self.anonymousNumberPurchasedAt = anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = anonymousNumberPriceTonNanos
+        self.anonymousNumberPriceUsdCents = anonymousNumberPriceUsdCents
     }
 
     public init(from decoder: Decoder) throws {
@@ -247,6 +250,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumber = try container.decodeIfPresent(String.self, forKey: .anonymousNumber) ?? defaults.anonymousNumber
         self.anonymousNumberPurchasedAt = try container.decodeIfPresent(Int32.self, forKey: .anonymousNumberPurchasedAt) ?? defaults.anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceTonNanos) ?? defaults.anonymousNumberPriceTonNanos
+        self.anonymousNumberPriceUsdCents = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceUsdCents) ?? defaults.anonymousNumberPriceUsdCents
     }
 }
 

@@ -25,7 +25,7 @@ private final class PampGramSettingsArguments {
     let topUpLocalRubles: () -> Void
     let resetBalances: () -> Void
     let deleteAllPhantomGifts: () -> Void
-    let toggleVisualAnonymousNumber: (Bool) -> Void
+    let openVisualNumberEditor: () -> Void
     let openVisualRatingEditor: () -> Void
     let openCollectionMarket: () -> Void
     let openStarsLedger: () -> Void
@@ -44,7 +44,7 @@ private final class PampGramSettingsArguments {
         topUpLocalRubles: @escaping () -> Void,
         resetBalances: @escaping () -> Void,
         deleteAllPhantomGifts: @escaping () -> Void,
-        toggleVisualAnonymousNumber: @escaping (Bool) -> Void,
+        openVisualNumberEditor: @escaping () -> Void,
         openVisualRatingEditor: @escaping () -> Void,
         openCollectionMarket: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
@@ -62,7 +62,7 @@ private final class PampGramSettingsArguments {
         self.topUpLocalRubles = topUpLocalRubles
         self.resetBalances = resetBalances
         self.deleteAllPhantomGifts = deleteAllPhantomGifts
-        self.toggleVisualAnonymousNumber = toggleVisualAnonymousNumber
+        self.openVisualNumberEditor = openVisualNumberEditor
         self.openVisualRatingEditor = openVisualRatingEditor
         self.openCollectionMarket = openCollectionMarket
         self.openStarsLedger = openStarsLedger
@@ -115,7 +115,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case fromHimGiftsFooter(String)
 
     case profileVisualsHeader(String)
-    case visualAnonymousNumberToggle(String, Bool)
+    case visualNumberEditor(String, String)
     case visualRating(String, String)
     case collectionHeader(String)
     case collectionMarket(String, String)
@@ -151,7 +151,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.localRubles.rawValue
         case .fromHimGiftsToggle, .fromHimGiftsFooter:
             return PampGramSettingsSection.fromHimGifts.rawValue
-        case .profileVisualsHeader, .visualAnonymousNumberToggle, .visualRating:
+        case .profileVisualsHeader, .visualNumberEditor, .visualRating:
             return PampGramSettingsSection.profileVisuals.rawValue
         case .collectionHeader, .collectionMarket, .collectionFooter:
             return PampGramSettingsSection.collectionMarket.rawValue
@@ -187,7 +187,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .localRublesBalance: return 17
         case .localRublesFooter: return 18
         case .profileVisualsHeader: return 19
-        case .visualAnonymousNumberToggle: return 20
+        case .visualNumberEditor: return 20
         case .visualRating: return 21
         case .collectionHeader: return 22
         case .collectionMarket: return 23
@@ -257,8 +257,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFromHimGifts(value)
             })
-        case let .visualAnonymousNumberToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: arguments.toggleVisualAnonymousNumber)
+        case let .visualNumberEditor(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualNumberEditor)
         case let .visualRating(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualRatingEditor)
         case let .collectionMarket(title, label):
@@ -429,7 +429,8 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.localRublesFooter("Пока включено, кнопка «Пополнить» на экране звёзд открывает локальную оплату SberPay — списывает рубли и зачисляет визуальные Stars."))
 
     entries.append(.profileVisualsHeader("ВИЗУАЛЫ ПРОФИЛЯ"))
-    entries.append(.visualAnonymousNumberToggle("Визуальный +888", profileVisuals.anonymousNumberEnabled))
+    let visualNumberLabel = profileVisuals.anonymousNumberEnabled ? profileVisuals.anonymousNumber : "Настроить"
+    entries.append(.visualNumberEditor("Визуальный +888", visualNumberLabel))
     let visualRatingLabel = profileVisuals.ratingEnabled ? "Уровень \(max(1, profileVisuals.ratingValue))" : "Настроить"
     entries.append(.visualRating("Визуальный рейтинг", visualRatingLabel))
 
@@ -462,6 +463,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
     var presentTooltipImpl: ((String) -> Void)?
     var pushControllerImpl: ((ViewController) -> Void)?
     var presentRatingEditorImpl: (() -> Void)?
+    var presentNumberEditorImpl: (() -> Void)?
 
     let arguments = PampGramSettingsArguments(
         toggleVisual: { value in
@@ -616,15 +618,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                 actionLayout: .horizontal
             ))
         },
-        toggleVisualAnonymousNumber: { value in
-            let _ = context.account.postbox.transaction { transaction -> Void in
-                PampGramProfileVisualStore.update(transaction: transaction, { state in
-                    var state = state
-                    state.anonymousNumberEnabled = value
-                    return state
-                })
-            }.start()
-        },
+        openVisualNumberEditor: { presentNumberEditorImpl?() },
         openVisualRatingEditor: { presentRatingEditorImpl?() },
         openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
         openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },
@@ -670,6 +664,16 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         }
         controller.present(
             pampGramProfileRatingEditorController(context: context),
+            in: .window(.root),
+            with: ViewControllerPresentationArguments(presentationAnimation: .modalSheet)
+        )
+    }
+    presentNumberEditorImpl = { [weak controller] in
+        guard let controller else {
+            return
+        }
+        controller.present(
+            pampGramProfileNumberEditorController(context: context),
             in: .window(.root),
             with: ViewControllerPresentationArguments(presentationAnimation: .modalSheet)
         )

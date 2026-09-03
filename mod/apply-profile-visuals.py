@@ -186,15 +186,28 @@ replace_once(
 
 replace_once(
     header_path,
-    "keep visual badge from opening the server rating screen",
+    "open the rating screen seeded with the displayed rating",
     """                    action: { [weak self] in
                         guard let self, let peer = self.peer, let currentStarRating = self.currentStarRating else {
-""",
-    """                    action: { [weak self] in
-                        guard !isUsingVisualRating else {
                             return
                         }
-                        guard let self, let peer = self.peer, let currentStarRating = self.currentStarRating else {
+                        self.controller?.push(ProfileLevelInfoScreen(
+                            context: self.context,
+                            peer: peer,
+                            starRating: currentStarRating,
+                            pendingStarRating: self.currentPendingStarRating,
+""",
+    """                    action: { [weak self] in
+                        // Open the standard rating screen, but seeded with the displayed rating so
+                        // the account owner's local visual rating renders here too. Local UI only.
+                        guard let self, let peer = self.peer else {
+                            return
+                        }
+                        self.controller?.push(ProfileLevelInfoScreen(
+                            context: self.context,
+                            peer: peer,
+                            starRating: starRating,
+                            pendingStarRating: isUsingVisualRating ? nil : self.currentPendingStarRating,
 """,
 )
 
@@ -214,20 +227,6 @@ import PampGramCore
 
 replace_once(
     profile_items_path,
-    "create a dedicated local profile section",
-    """    case personalChannel
-    case peerInfo
-    case balances
-""",
-    """    case personalChannel
-    case peerInfo
-    case pampGramProfile
-    case balances
-""",
-)
-
-replace_once(
-    profile_items_path,
     "accept profile-visual state",
     """    chatLocation: ChatLocation,
     isOpenedFromChat: Bool,
@@ -239,20 +238,6 @@ replace_once(
     isMyProfile: Bool,
     pampGramProfileVisuals: PampGramProfileVisualState
 ) -> [(AnyHashable, [PeerInfoScreenItem])] {
-""",
-)
-
-replace_once(
-    profile_items_path,
-    "reserve local profile item identifiers",
-    """        let ItemVerification = 9004
-        let ItemCommunity = 10000
-        
-""",
-    """        let ItemVerification = 9004
-        let ItemCommunity = 10000
-        let ItemPampGramRating = 11002
-        
 """,
 )
 
@@ -287,31 +272,41 @@ replace_once(
                     text: visualNumber,
                     textColor: .accent,
                     action: { node, _ in
-                        // This sheet is local UI only. It never queries Fragment or Telegram.
+                        // This alert is local UI only. It never queries Fragment or Telegram.
                         let formatter = DateFormatter()
                         formatter.locale = Locale(identifier: "ru_RU")
                         formatter.dateStyle = .long
                         let date = formatter.string(from: Date(timeIntervalSince1970: TimeInterval(pampGramProfileVisuals.anonymousNumberPurchasedAt)))
-                        let price: String
+                        let ownerFirst = user.firstName ?? ""
+                        let ownerLast = user.lastName ?? ""
+                        let ownerName = [ownerFirst, ownerLast].filter({ !$0.isEmpty }).joined(separator: " ")
+                        let owner = ownerName.isEmpty ? "владельцу этого аккаунта" : ownerName
+                        var priceParts: [String] = []
                         if pampGramProfileVisuals.anonymousNumberPriceTonNanos > 0 {
-                            price = String(format: "%.2f TON", Double(pampGramProfileVisuals.anonymousNumberPriceTonNanos) / 1_000_000_000.0)
-                        } else {
-                            price = "цена не указана"
+                            priceParts.append(String(format: "💎 %.2f", Double(pampGramProfileVisuals.anonymousNumberPriceTonNanos) / 1_000_000_000.0))
                         }
+                        if pampGramProfileVisuals.anonymousNumberPriceUsdCents > 0 {
+                            priceParts.append(String(format: "$%.2f", Double(pampGramProfileVisuals.anonymousNumberPriceUsdCents) / 100.0))
+                        }
+                        let priceText: String
+                        if priceParts.count == 2 {
+                            priceText = " за \\(priceParts[0]) (\\(priceParts[1]))"
+                        } else if priceParts.count == 1 {
+                            priceText = " за \\(priceParts[0])"
+                        } else {
+                            priceText = ""
+                        }
+                        let message = "Это коллекционный номер телефона, принадлежащий \\(owner). Номер \\(visualNumber) был приобретён на платформе Fragment \\(date)\\(priceText)."
                         let sheet = UIAlertController(
-                            title: "\\(visualNumber) — коллекционный номер телефона",
-                            message: "Номер \\(visualNumber) добавлен локально \\(date). Цена: \\(price).",
-                            preferredStyle: .actionSheet
+                            title: visualNumber,
+                            message: message,
+                            preferredStyle: .alert
                         )
                         sheet.addAction(UIAlertAction(title: "Подробнее", style: .default, handler: nil))
                         sheet.addAction(UIAlertAction(title: "Копировать номер", style: .default, handler: { _ in
                             UIPasteboard.general.string = visualNumber
                         }))
-                        sheet.addAction(UIAlertAction(title: "Отмена", style: .cancel))
-                        if let popover = sheet.popoverPresentationController {
-                            popover.sourceView = node.view
-                            popover.sourceRect = node.bounds
-                        }
+                        sheet.addAction(UIAlertAction(title: "Закрыть", style: .cancel))
                         node.view.window?.rootViewController?.present(sheet, animated: true)
                     },
                     longTapAction: { _ in
@@ -339,44 +334,6 @@ replace_once(
                 }))
             }
         }
-""",
-)
-
-replace_once(
-    profile_items_path,
-    "render the local visual rating in the own profile",
-    """        }
-        
-        if !isMyProfile {
-""",
-    """        }
-
-        // The rating is shown only in the account owner's profile.
-        if isMyProfile && pampGramProfileVisuals.ratingEnabled {
-                let visualPoints = max(Int64(0), pampGramProfileVisuals.ratingPoints)
-                let pointsText: String
-                if visualPoints >= 1_000_000 {
-                    pointsText = String(format: "%.1fM очков", Double(visualPoints) / 1_000_000.0)
-                } else if visualPoints >= 1_000 {
-                    pointsText = String(format: "%.1fK очков", Double(visualPoints) / 1_000.0)
-                } else {
-                    pointsText = "\\(visualPoints) очков"
-                }
-                let level = max(Int64(1), pampGramProfileVisuals.ratingValue)
-                items[.pampGramProfile]!.append(PeerInfoScreenLabeledValueItem(
-                    id: ItemPampGramRating,
-                    label: "Рейтинг",
-                    rightLabel: pointsText,
-                    text: "Уровень \\(level)",
-                    textColor: .primary,
-                    action: nil,
-                    requestLayout: { animated in
-                        interaction.requestLayout(animated)
-                    }
-                ))
-        }
-        
-        if !isMyProfile {
 """,
 )
 
