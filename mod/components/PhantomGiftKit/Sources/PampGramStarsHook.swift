@@ -15,6 +15,33 @@ private func pampGramDynamicColor(_ light: UIColor, _ dark: UIColor) -> UIColor 
     return light
 }
 
+/// The local ruble price (in kopecks) for a star package, used when the server option isn't priced
+/// in rubles so the visual sheet always shows and charges rubles. Known Telegram tiers use their
+/// real RUB prices; other counts fall back to a per-star rate.
+private func pampGramRubleKopecks(forStars stars: Int64) -> Int64 {
+    let table: [Int64: Int64] = [
+        100: 18199, 250: 42900, 500: 84900, 1000: 167900,
+        2500: 419900, 10000: 1659900, 50000: 8299900, 150000: 24999900
+    ]
+    if let kopecks = table[stars] {
+        return kopecks
+    }
+    return Int64((Double(stars) * 1.7 * 100.0).rounded())
+}
+
+/// Formats kopecks as a ruble string like "1 679,00 ₽".
+private func pampGramFormatRubles(_ kopecks: Int64) -> String {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.groupingSeparator = " "
+    formatter.decimalSeparator = ","
+    formatter.minimumFractionDigits = 2
+    formatter.maximumFractionDigits = 2
+    let value = Double(kopecks) / 100.0
+    let number = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    return number + " ₽"
+}
+
 /// The visual system-style purchase confirmation shown when a star package is tapped on Telegram's
 /// real "Купить звёзды" screen. Nothing here talks to StoreKit or the network: the real
 /// `StarsPurchaseScreen.buy(product:)` is intercepted (see the telegram-ios.patch hunk), this
@@ -42,8 +69,20 @@ public enum PampGramStarsHook {
                 onCancel()
                 return
             }
-            let controller = PampGramStarsPaymentSheetController(count: count, priceText: priceText, attemptPayment: { completion in
-                self.attemptPayment(context: context, count: count, priceKopecks: priceKopecks, completion: completion)
+            // Always show and charge in rubles: if the server option is already RUB, use it as-is;
+            // otherwise fall back to the local ruble price for this star count. The local ruble
+            // wallet is charged the same amount that is shown.
+            let chargeKopecks: Int64
+            let displayText: String
+            if priceKopecks > 0 {
+                chargeKopecks = priceKopecks
+                displayText = priceText
+            } else {
+                chargeKopecks = pampGramRubleKopecks(forStars: count)
+                displayText = pampGramFormatRubles(chargeKopecks)
+            }
+            let controller = PampGramStarsPaymentSheetController(count: count, priceText: displayText, attemptPayment: { completion in
+                self.attemptPayment(context: context, count: count, priceKopecks: chargeKopecks, completion: completion)
             }, onCancel: {
                 onCancel()
             }, onSuccess: {
@@ -168,6 +207,7 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
     private let secondaryColor = pampGramDynamicColor(UIColor(white: 0.55, alpha: 1.0), UIColor(white: 0.62, alpha: 1.0))
     private let separatorColor = pampGramDynamicColor(UIColor(white: 0.0, alpha: 0.10), UIColor(white: 1.0, alpha: 0.14))
     private let accentBlue = UIColor(red: 0x0a/255.0, green: 0x84/255.0, blue: 0xff/255.0, alpha: 1.0)
+    private let successGreen = UIColor(red: 0x34/255.0, green: 0xc7/255.0, blue: 0x59/255.0, alpha: 1.0)
     private let errorRed = UIColor(red: 0xff/255.0, green: 0x3b/255.0, blue: 0x30/255.0, alpha: 1.0)
     private let telegramBlueTop = UIColor(red: 0x2a/255.0, green: 0xab/255.0, blue: 0xee/255.0, alpha: 1.0)
     private let telegramBlueBottom = UIColor(red: 0x22/255.0, green: 0x9e/255.0, blue: 0xd9/255.0, alpha: 1.0)
@@ -501,57 +541,81 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         }
         self.finished = true
 
+        // Press feedback: the white side-button indicator jumps twice — the same little "double
+        // click" bounce you see when a real Apple Pay confirmation registers — then fades out.
         self.calloutChevrons.layer.removeAllAnimations()
-        UIView.animate(withDuration: 0.2, animations: {
+        let bounce = CAKeyframeAnimation(keyPath: "transform.translation.x")
+        bounce.values = [0.0, 11.0, 0.0, 11.0, 0.0]
+        bounce.keyTimes = [0.0, 0.16, 0.34, 0.52, 0.72]
+        bounce.duration = 0.42
+        bounce.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        self.calloutChevrons.layer.add(bounce, forKey: "pampGramPress")
+        UIView.animate(withDuration: 0.25, delay: 0.42, options: [.curveEaseOut], animations: {
             self.calloutContainer.alpha = 0.0
-        })
+        }, completion: nil)
 
-        // Processing state.
-        self.footerGlyph.isHidden = true
-        self.spinner.startAnimating()
-        self.footerLabel.text = "Оплата…"
-        self.footerLabel.textColor = self.secondaryColor
+        // Processing state (starts after the little bounce so the sequence reads naturally).
+        Queue.mainQueue().after(0.34, {
+            self.footerGlyph.isHidden = true
+            self.spinner.startAnimating()
+            self.footerLabel.text = "Оплата…"
+            self.footerLabel.textColor = self.secondaryColor
 
-        self.attemptPayment({ [weak self] success in
-            guard let self else {
-                return
-            }
-            Queue.mainQueue().after(0.6, {
-                self.spinner.stopAnimating()
-                let resultConfig = UIImage.SymbolConfiguration(pointSize: 34.0, weight: .regular)
-                if success {
-                    self.resultIcon.image = UIImage(systemName: "checkmark.circle", withConfiguration: resultConfig)
-                    self.resultIcon.tintColor = self.accentBlue
-                    self.resultIcon.isHidden = false
-                    self.footerLabel.text = "Готово"
-                    self.footerLabel.textColor = self.primaryColor
-                    Queue.mainQueue().after(0.9, {
-                        self.onSuccess()
-                        self.close()
-                    })
-                } else {
-                    self.resultIcon.image = UIImage(systemName: "xmark.circle", withConfiguration: resultConfig)
-                    self.resultIcon.tintColor = self.errorRed
-                    self.resultIcon.isHidden = false
-                    self.footerLabel.text = "Платёж не выполнен. Недостаточно средств"
-                    self.footerLabel.textColor = self.errorRed
-                    Queue.mainQueue().after(1.7, {
-                        self.onCancel()
-                        self.close()
-                    })
+            self.attemptPayment({ [weak self] success in
+                guard let self else {
+                    return
                 }
+                Queue.mainQueue().after(0.6, {
+                    self.spinner.stopAnimating()
+                    let resultConfig = UIImage.SymbolConfiguration(pointSize: 34.0, weight: .semibold)
+                    if success {
+                        // Confirmation animates into a green checkmark (pop-in), then the sheet
+                        // slides back down and the stars screen closes onto the balance.
+                        self.resultIcon.image = UIImage(systemName: "checkmark.circle.fill", withConfiguration: resultConfig)
+                        self.resultIcon.tintColor = self.successGreen
+                        self.resultIcon.isHidden = false
+                        self.resultIcon.transform = CGAffineTransform(scaleX: 0.4, y: 0.4)
+                        self.footerLabel.text = "Готово"
+                        self.footerLabel.textColor = self.primaryColor
+                        UIView.animate(withDuration: 0.42, delay: 0.0, usingSpringWithDamping: 0.55, initialSpringVelocity: 0.0, options: [], animations: {
+                            self.resultIcon.transform = .identity
+                        }, completion: nil)
+                        Queue.mainQueue().after(0.95, {
+                            self.close(completion: {
+                                self.onSuccess()
+                            })
+                        })
+                    } else {
+                        self.resultIcon.image = UIImage(systemName: "xmark.circle.fill", withConfiguration: resultConfig)
+                        self.resultIcon.tintColor = self.errorRed
+                        self.resultIcon.isHidden = false
+                        self.resultIcon.transform = CGAffineTransform(scaleX: 0.4, y: 0.4)
+                        self.footerLabel.text = "Платёж не выполнен. Недостаточно средств"
+                        self.footerLabel.textColor = self.errorRed
+                        UIView.animate(withDuration: 0.42, delay: 0.0, usingSpringWithDamping: 0.55, initialSpringVelocity: 0.0, options: [], animations: {
+                            self.resultIcon.transform = .identity
+                        }, completion: nil)
+                        Queue.mainQueue().after(1.7, {
+                            self.close(completion: {
+                                self.onCancel()
+                            })
+                        })
+                    }
+                })
             })
         })
     }
 
-    private func close() {
+    private func close(completion: (() -> Void)? = nil) {
         self.calloutChevrons.layer.removeAllAnimations()
-        UIView.animate(withDuration: 0.28, delay: 0.0, options: [.curveEaseIn], animations: {
+        UIView.animate(withDuration: 0.3, delay: 0.0, options: [.curveEaseInOut], animations: {
             self.calloutContainer.alpha = 0.0
             self.dimView.alpha = 0.0
             self.sheet.transform = CGAffineTransform(translationX: 0.0, y: self.sheet.frame.height)
         }, completion: { _ in
-            self.dismiss(animated: false, completion: nil)
+            self.dismiss(animated: false, completion: {
+                completion?()
+            })
         })
     }
 }
