@@ -498,10 +498,18 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
     }
 
     private func trimDecimal(_ value: Double) -> String {
+        // Never use "%g" here: it flips to scientific notation ("1.5e+06") and clamps to 6
+        // significant digits, which mangles large TON/USD prices when the editor re-opens.
         if value == value.rounded() {
             return String(format: "%.0f", value)
         }
-        return String(format: "%g", value)
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 9
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.0f", value)
     }
 }
 
