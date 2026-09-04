@@ -8,35 +8,33 @@ import TelegramPresentationData
 import AccountContext
 import PampGramCore
 
-private let pampGramNumberAccent = UIColor(red: 0.16, green: 0.55, blue: 0.98, alpha: 1.0)
-
-/// Local-only editor for the visual anonymous "+888" number. It writes into PampGram's Postbox
-/// preferences only after "Сохранить"; nothing here queries Fragment or changes Telegram's real
-/// phone number on the server.
+/// Local-only editor for the visual anonymous "+888" number — full-screen, "liquid glass" style.
+/// Writes into PampGram's Postbox preferences only on save; nothing here queries Fragment or changes
+/// Telegram's real phone number on the server.
 private final class PampGramProfileNumberEditorController: ViewController, UITextFieldDelegate {
     private let context: AccountContext
     private let presentationData: PresentationData
     private let stateDisposable = MetaDisposable()
 
-    private let sheetView = UIView()
     private let scrollView = UIScrollView()
     private let contentView = UIView()
     private let stackView = UIStackView()
-    private var sheetHeightConstraint: NSLayoutConstraint?
+    private var headerTopConstraint: NSLayoutConstraint?
 
-    private let subtitleLabel = UILabel()
     private let previewNumberLabel = UILabel()
     private let previewDetailsLabel = UILabel()
     private let numberField = UITextField()
     private let datePicker = UIDatePicker()
     private let tonField = UITextField()
     private let usdField = UITextField()
-    private let displayButton = UIButton(type: .system)
-    private let saveButton = UIButton(type: .system)
+    private let displaySwitch = UISwitch()
+
+    private var primaryColor: UIColor = .label
+    private var secondaryColor: UIColor = .secondaryLabel
+    private weak var activeField: UITextField?
 
     private var showInProfile = false
     private var didLoadInitialState = false
-    private weak var activeField: UITextField?
 
     init(context: AccountContext) {
         self.context = context
@@ -56,7 +54,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
     override func loadDisplayNode() {
         let node = ASDisplayNode()
-        node.backgroundColor = .clear
+        node.backgroundColor = self.presentationData.theme.list.blocksBackgroundColor
         self.displayNode = node
         self.displayNodeDidLoad()
         self.configureView(node.view)
@@ -73,59 +71,64 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
     override func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
         super.containerLayoutUpdated(layout, transition: transition)
-        self.sheetHeightConstraint?.constant = min(640.0, max(430.0, layout.size.height - 12.0))
+        self.headerTopConstraint?.constant = layout.insets(options: [.statusBar]).top
+        let bottomInset = layout.intrinsicInsets.bottom
+        if self.scrollView.contentInset.bottom < bottomInset + 24.0 {
+            self.scrollView.contentInset.bottom = bottomInset + 24.0
+        }
+        self.scrollView.verticalScrollIndicatorInsets.bottom = bottomInset
     }
 
     private func configureView(_ rootView: UIView) {
-        let theme = self.presentationData.theme.list
-        rootView.backgroundColor = .clear
-        // Editing fields must not trigger the navigation's interactive back/dismiss gesture — the
-        // editor closes only via its own X / Save buttons (or a tap outside the sheet).
+        let theme = self.presentationData.theme
+        self.primaryColor = theme.list.itemPrimaryTextColor
+        self.secondaryColor = theme.list.itemSecondaryTextColor
+        rootView.backgroundColor = theme.list.blocksBackgroundColor
         rootView.disablesInteractiveTransitionGestureRecognizer = true
 
-        let dismissTap = UITapGestureRecognizer(target: self, action: #selector(self.backgroundTapped))
-        dismissTap.cancelsTouchesInView = false
-        rootView.addGestureRecognizer(dismissTap)
-
-        self.sheetView.translatesAutoresizingMaskIntoConstraints = false
-        self.sheetView.backgroundColor = theme.blocksBackgroundColor
-        self.sheetView.layer.cornerRadius = 28.0
-        self.sheetView.clipsToBounds = true
-        if #available(iOS 11.0, *) {
-            self.sheetView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        }
-        rootView.addSubview(self.sheetView)
-        let heightConstraint = self.sheetView.heightAnchor.constraint(equalToConstant: 600.0)
-        self.sheetHeightConstraint = heightConstraint
+        // Header bar.
+        let header = UIView()
+        header.translatesAutoresizingMaskIntoConstraints = false
+        rootView.addSubview(header)
+        let headerTop = header.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 44.0)
+        self.headerTopConstraint = headerTop
         NSLayoutConstraint.activate([
-            self.sheetView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
-            self.sheetView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            self.sheetView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
-            heightConstraint
+            header.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            headerTop,
+            header.heightAnchor.constraint(equalToConstant: 44.0)
         ])
 
-        let grabber = UIView()
-        grabber.translatesAutoresizingMaskIntoConstraints = false
-        grabber.backgroundColor = theme.itemSecondaryTextColor.withAlphaComponent(0.35)
-        grabber.layer.cornerRadius = 2.5
-        self.sheetView.addSubview(grabber)
+        let backButton = self.makeGlyphButton(systemName: "chevron.left", action: #selector(self.closePressed))
+        header.addSubview(backButton)
+        let doneButton = self.makeGlyphButton(systemName: "checkmark", action: #selector(self.savePressed))
+        header.addSubview(doneButton)
+        let titleLabel = self.makeLabel("Анонимный номер", font: .systemFont(ofSize: 17.0, weight: .semibold), color: self.primaryColor)
+        titleLabel.textAlignment = .center
+        header.addSubview(titleLabel)
         NSLayoutConstraint.activate([
-            grabber.topAnchor.constraint(equalTo: self.sheetView.topAnchor, constant: 9.0),
-            grabber.centerXAnchor.constraint(equalTo: self.sheetView.centerXAnchor),
-            grabber.widthAnchor.constraint(equalToConstant: 34.0),
-            grabber.heightAnchor.constraint(equalToConstant: 5.0)
+            backButton.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12.0),
+            backButton.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            backButton.widthAnchor.constraint(equalToConstant: 34.0),
+            backButton.heightAnchor.constraint(equalToConstant: 34.0),
+            doneButton.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -12.0),
+            doneButton.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            doneButton.widthAnchor.constraint(equalToConstant: 34.0),
+            doneButton.heightAnchor.constraint(equalToConstant: 34.0),
+            titleLabel.centerXAnchor.constraint(equalTo: header.centerXAnchor),
+            titleLabel.centerYAnchor.constraint(equalTo: header.centerYAnchor)
         ])
 
         self.scrollView.translatesAutoresizingMaskIntoConstraints = false
         self.scrollView.alwaysBounceVertical = true
         self.scrollView.showsVerticalScrollIndicator = false
         self.scrollView.keyboardDismissMode = .interactive
-        self.sheetView.addSubview(self.scrollView)
+        rootView.addSubview(self.scrollView)
         NSLayoutConstraint.activate([
-            self.scrollView.leadingAnchor.constraint(equalTo: self.sheetView.leadingAnchor),
-            self.scrollView.trailingAnchor.constraint(equalTo: self.sheetView.trailingAnchor),
-            self.scrollView.topAnchor.constraint(equalTo: self.sheetView.topAnchor, constant: 18.0),
-            self.scrollView.bottomAnchor.constraint(equalTo: self.sheetView.bottomAnchor)
+            self.scrollView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            self.scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            self.scrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 6.0),
+            self.scrollView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor)
         ])
 
         self.contentView.translatesAutoresizingMaskIntoConstraints = false
@@ -141,143 +144,149 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         self.stackView.translatesAutoresizingMaskIntoConstraints = false
         self.stackView.axis = .vertical
         self.stackView.alignment = .fill
-        self.stackView.spacing = 12.0
+        self.stackView.spacing = 8.0
         self.contentView.addSubview(self.stackView)
         NSLayoutConstraint.activate([
-            self.stackView.leadingAnchor.constraint(equalTo: self.contentView.leadingAnchor, constant: 20.0),
-            self.stackView.trailingAnchor.constraint(equalTo: self.contentView.trailingAnchor, constant: -20.0),
-            self.stackView.topAnchor.constraint(equalTo: self.contentView.topAnchor, constant: 6.0),
-            self.stackView.bottomAnchor.constraint(equalTo: self.contentView.bottomAnchor, constant: -22.0)
+            self.stackView.leadingAnchor.constraint(equalTo: self.contentView.leadingAnchor, constant: 16.0),
+            self.stackView.trailingAnchor.constraint(equalTo: self.contentView.trailingAnchor, constant: -16.0),
+            self.stackView.topAnchor.constraint(equalTo: self.contentView.topAnchor, constant: 12.0),
+            self.stackView.bottomAnchor.constraint(equalTo: self.contentView.bottomAnchor, constant: -24.0)
         ])
 
-        self.stackView.addArrangedSubview(self.makeHeader(primaryColor: theme.itemPrimaryTextColor, secondaryColor: theme.itemSecondaryTextColor))
-        self.stackView.addArrangedSubview(self.makePreview(primaryColor: theme.itemPrimaryTextColor, secondaryColor: theme.itemSecondaryTextColor, cardColor: theme.itemBlocksBackgroundColor))
-
+        self.stackView.addArrangedSubview(self.makePreviewPanel())
         self.stackView.setCustomSpacing(18.0, after: self.stackView.arrangedSubviews.last!)
-        self.stackView.addArrangedSubview(self.makeFieldTitle("Номер", color: theme.itemPrimaryTextColor))
-        self.configureField(self.numberField, placeholder: "+888 0000 0000", keyboard: .numbersAndPunctuation, theme: theme)
-        self.stackView.addArrangedSubview(self.numberField)
 
-        self.stackView.setCustomSpacing(16.0, after: self.numberField)
-        self.stackView.addArrangedSubview(self.makeFieldTitle("Дата покупки", color: theme.itemPrimaryTextColor))
-        self.datePicker.datePickerMode = .date
-        self.datePicker.maximumDate = Date()
-        self.datePicker.tintColor = pampGramNumberAccent
-        if #available(iOS 13.4, *) {
-            self.datePicker.preferredDatePickerStyle = .compact
-        }
-        self.datePicker.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let datePickerRow = UIView()
-        datePickerRow.addSubview(self.datePicker)
-        self.datePicker.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            self.datePicker.leadingAnchor.constraint(equalTo: datePickerRow.leadingAnchor),
-            self.datePicker.topAnchor.constraint(equalTo: datePickerRow.topAnchor),
-            self.datePicker.bottomAnchor.constraint(equalTo: datePickerRow.bottomAnchor),
-            self.datePicker.trailingAnchor.constraint(lessThanOrEqualTo: datePickerRow.trailingAnchor)
-        ])
-        self.datePicker.addTarget(self, action: #selector(self.dateChanged), for: .valueChanged)
-        self.stackView.addArrangedSubview(datePickerRow)
+        self.stackView.addArrangedSubview(self.makeSectionLabel("Номер"))
+        self.configureField(self.numberField, placeholder: "+888 0000 0000", keyboard: .numbersAndPunctuation)
+        self.stackView.addArrangedSubview(self.makeFieldPanel(self.numberField))
+        self.stackView.setCustomSpacing(18.0, after: self.stackView.arrangedSubviews.last!)
 
-        self.stackView.setCustomSpacing(16.0, after: datePickerRow)
-        self.stackView.addArrangedSubview(self.makeFieldTitle("Цена, 💎 TON", color: theme.itemPrimaryTextColor))
-        self.configureField(self.tonField, placeholder: "например, 12,5", keyboard: .numbersAndPunctuation, theme: theme)
-        self.stackView.addArrangedSubview(self.tonField)
+        self.stackView.addArrangedSubview(self.makeSectionLabel("Дата покупки"))
+        self.stackView.addArrangedSubview(self.makeDatePanel())
+        self.stackView.setCustomSpacing(18.0, after: self.stackView.arrangedSubviews.last!)
 
-        self.stackView.setCustomSpacing(16.0, after: self.tonField)
-        self.stackView.addArrangedSubview(self.makeFieldTitle("Цена, $ USD", color: theme.itemPrimaryTextColor))
-        self.configureField(self.usdField, placeholder: "например, 45,00", keyboard: .numbersAndPunctuation, theme: theme)
-        self.stackView.addArrangedSubview(self.usdField)
+        self.stackView.addArrangedSubview(self.makeSectionLabel("Цена, 💎 TON"))
+        self.configureField(self.tonField, placeholder: "например, 12,5", keyboard: .numbersAndPunctuation)
+        self.stackView.addArrangedSubview(self.makeFieldPanel(self.tonField))
+        self.stackView.setCustomSpacing(18.0, after: self.stackView.arrangedSubviews.last!)
 
-        self.stackView.setCustomSpacing(18.0, after: self.usdField)
-        self.configurePillButton(self.displayButton, title: "Показывать в профиле: выкл", primary: false)
-        self.displayButton.addTarget(self, action: #selector(self.toggleDisplay), for: .touchUpInside)
-        self.displayButton.heightAnchor.constraint(equalToConstant: 46.0).isActive = true
-        self.stackView.addArrangedSubview(self.displayButton)
+        self.stackView.addArrangedSubview(self.makeSectionLabel("Цена, $ USD"))
+        self.configureField(self.usdField, placeholder: "например, 45,00", keyboard: .numbersAndPunctuation)
+        self.stackView.addArrangedSubview(self.makeFieldPanel(self.usdField))
+        self.stackView.setCustomSpacing(18.0, after: self.stackView.arrangedSubviews.last!)
 
-        self.configurePillButton(self.saveButton, title: "Сохранить", primary: true)
-        self.saveButton.addTarget(self, action: #selector(self.savePressed), for: .touchUpInside)
-        self.saveButton.heightAnchor.constraint(equalToConstant: 52.0).isActive = true
-        self.stackView.addArrangedSubview(self.saveButton)
+        self.stackView.addArrangedSubview(self.makeDisplayPanel())
 
         self.updatePreview()
     }
 
-    private func makeHeader(primaryColor: UIColor, secondaryColor: UIColor) -> UIView {
-        let container = UIView()
-        container.heightAnchor.constraint(equalToConstant: 53.0).isActive = true
-
-        let titleLabel = self.makeLabel("Анонимный номер", font: .systemFont(ofSize: 27.0, weight: .bold), color: primaryColor)
-        container.addSubview(titleLabel)
-        self.subtitleLabel.font = .systemFont(ofSize: 15.0, weight: .regular)
-        self.subtitleLabel.textColor = secondaryColor
-        self.subtitleLabel.text = "коллекционный номер Fragment"
-        self.subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(self.subtitleLabel)
-
-        let closeButton = UIButton(type: .system)
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.tintColor = secondaryColor
-        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
-        closeButton.addTarget(self, action: #selector(self.closePressed), for: .touchUpInside)
-        container.addSubview(closeButton)
-
+    private func makeGlyphButton(systemName: String, action: Selector) -> UIView {
+        let panel = PampGramGlass.makeCircleButton(diameter: 34.0)
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.tintColor = self.primaryColor
+        button.setImage(UIImage(systemName: systemName, withConfiguration: UIImage.SymbolConfiguration(pointSize: 15.0, weight: .semibold)), for: .normal)
+        button.addTarget(self, action: action, for: .touchUpInside)
+        panel.addSubview(button)
         NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            titleLabel.topAnchor.constraint(equalTo: container.topAnchor),
-            self.subtitleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            self.subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 0.0),
-            self.subtitleLabel.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor),
-            closeButton.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            closeButton.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            closeButton.widthAnchor.constraint(equalToConstant: 44.0),
-            closeButton.heightAnchor.constraint(equalToConstant: 44.0),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -10.0)
+            button.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+            button.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+            button.topAnchor.constraint(equalTo: panel.topAnchor),
+            button.bottomAnchor.constraint(equalTo: panel.bottomAnchor)
         ])
-        return container
+        return panel
     }
 
-    private func makePreview(primaryColor: UIColor, secondaryColor: UIColor, cardColor: UIColor) -> UIView {
-        let card = UIView()
-        card.backgroundColor = cardColor
-        card.layer.cornerRadius = 20.0
-        card.heightAnchor.constraint(equalToConstant: 84.0).isActive = true
+    private func makePreviewPanel() -> UIView {
+        let panel = PampGramGlass.makePanel(cornerRadius: 20.0)
+        panel.heightAnchor.constraint(equalToConstant: 84.0).isActive = true
 
         let iconView = UIImageView()
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.contentMode = .scaleAspectFit
-        iconView.tintColor = pampGramNumberAccent
+        iconView.tintColor = self.primaryColor
         iconView.image = UIImage(systemName: "phone.badge.checkmark")
-        card.addSubview(iconView)
+        panel.addSubview(iconView)
 
         self.previewNumberLabel.translatesAutoresizingMaskIntoConstraints = false
         self.previewNumberLabel.font = .systemFont(ofSize: 21.0, weight: .bold)
-        self.previewNumberLabel.textColor = primaryColor
-        card.addSubview(self.previewNumberLabel)
+        self.previewNumberLabel.textColor = self.primaryColor
+        panel.addSubview(self.previewNumberLabel)
 
         self.previewDetailsLabel.translatesAutoresizingMaskIntoConstraints = false
         self.previewDetailsLabel.font = .systemFont(ofSize: 14.0, weight: .regular)
-        self.previewDetailsLabel.textColor = secondaryColor
+        self.previewDetailsLabel.textColor = self.secondaryColor
         self.previewDetailsLabel.numberOfLines = 2
-        card.addSubview(self.previewDetailsLabel)
+        panel.addSubview(self.previewDetailsLabel)
 
         NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18.0),
-            iconView.centerYAnchor.constraint(equalTo: card.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 40.0),
-            iconView.heightAnchor.constraint(equalToConstant: 40.0),
+            iconView.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 18.0),
+            iconView.centerYAnchor.constraint(equalTo: panel.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 38.0),
+            iconView.heightAnchor.constraint(equalToConstant: 38.0),
             self.previewNumberLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 15.0),
-            self.previewNumberLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: 16.0),
-            self.previewNumberLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16.0),
+            self.previewNumberLabel.topAnchor.constraint(equalTo: panel.topAnchor, constant: 16.0),
+            self.previewNumberLabel.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -16.0),
             self.previewDetailsLabel.leadingAnchor.constraint(equalTo: self.previewNumberLabel.leadingAnchor),
             self.previewDetailsLabel.topAnchor.constraint(equalTo: self.previewNumberLabel.bottomAnchor, constant: 3.0),
             self.previewDetailsLabel.trailingAnchor.constraint(equalTo: self.previewNumberLabel.trailingAnchor)
         ])
-        return card
+        return panel
     }
 
-    private func makeFieldTitle(_ text: String, color: UIColor) -> UILabel {
-        return self.makeLabel(text, font: .systemFont(ofSize: 17.0, weight: .medium), color: color)
+    private func makeSectionLabel(_ text: String) -> UILabel {
+        let label = self.makeLabel(text, font: .systemFont(ofSize: 13.0, weight: .regular), color: self.secondaryColor)
+        return label
+    }
+
+    private func makeFieldPanel(_ field: UITextField) -> UIView {
+        let panel = PampGramGlass.makePanel(cornerRadius: 14.0)
+        panel.heightAnchor.constraint(equalToConstant: 50.0).isActive = true
+        panel.addSubview(field)
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 14.0),
+            field.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -14.0),
+            field.topAnchor.constraint(equalTo: panel.topAnchor),
+            field.bottomAnchor.constraint(equalTo: panel.bottomAnchor)
+        ])
+        return panel
+    }
+
+    private func makeDatePanel() -> UIView {
+        let panel = PampGramGlass.makePanel(cornerRadius: 14.0)
+        panel.heightAnchor.constraint(equalToConstant: 50.0).isActive = true
+        self.datePicker.datePickerMode = .date
+        self.datePicker.maximumDate = Date()
+        if #available(iOS 13.4, *) {
+            self.datePicker.preferredDatePickerStyle = .compact
+        }
+        self.datePicker.translatesAutoresizingMaskIntoConstraints = false
+        self.datePicker.addTarget(self, action: #selector(self.dateChanged), for: .valueChanged)
+        panel.addSubview(self.datePicker)
+        NSLayoutConstraint.activate([
+            self.datePicker.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 12.0),
+            self.datePicker.centerYAnchor.constraint(equalTo: panel.centerYAnchor),
+            self.datePicker.trailingAnchor.constraint(lessThanOrEqualTo: panel.trailingAnchor, constant: -12.0)
+        ])
+        return panel
+    }
+
+    private func makeDisplayPanel() -> UIView {
+        let panel = PampGramGlass.makePanel(cornerRadius: 20.0)
+        panel.heightAnchor.constraint(equalToConstant: 56.0).isActive = true
+        let title = self.makeLabel("Показывать в профиле", font: .systemFont(ofSize: 17.0, weight: .regular), color: self.primaryColor)
+        panel.addSubview(title)
+        self.displaySwitch.translatesAutoresizingMaskIntoConstraints = false
+        self.displaySwitch.addTarget(self, action: #selector(self.toggleDisplay), for: .valueChanged)
+        panel.addSubview(self.displaySwitch)
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 18.0),
+            title.centerYAnchor.constraint(equalTo: panel.centerYAnchor),
+            self.displaySwitch.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -16.0),
+            self.displaySwitch.centerYAnchor.constraint(equalTo: panel.centerYAnchor)
+        ])
+        return panel
     }
 
     private func makeLabel(_ text: String, font: UIFont, color: UIColor) -> UILabel {
@@ -289,31 +298,18 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         return label
     }
 
-    private func configureField(_ field: UITextField, placeholder: String, keyboard: UIKeyboardType, theme: PresentationThemeList) {
+    private func configureField(_ field: UITextField, placeholder: String, keyboard: UIKeyboardType) {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.placeholder = placeholder
         field.font = .systemFont(ofSize: 18.0, weight: .regular)
-        field.textColor = theme.itemPrimaryTextColor
+        field.textColor = self.primaryColor
         field.keyboardType = keyboard
         field.delegate = self
         field.borderStyle = .none
-        field.backgroundColor = theme.itemBlocksBackgroundColor
-        field.layer.cornerRadius = 12.0
-        field.heightAnchor.constraint(equalToConstant: 46.0).isActive = true
-        let padding = UIView(frame: CGRect(x: 0.0, y: 0.0, width: 14.0, height: 46.0))
-        field.leftView = padding
-        field.leftViewMode = .always
+        field.backgroundColor = .clear
         field.clearButtonMode = .whileEditing
         field.returnKeyType = .done
         field.addTarget(self, action: #selector(self.fieldEditingChanged), for: .editingChanged)
-    }
-
-    private func configurePillButton(_ button: UIButton, title: String, primary: Bool) {
-        button.setTitle(title, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 18.0, weight: .semibold)
-        button.layer.cornerRadius = primary ? 26.0 : 23.0
-        button.backgroundColor = primary ? pampGramNumberAccent : pampGramNumberAccent.withAlphaComponent(0.14)
-        button.setTitleColor(primary ? .white : pampGramNumberAccent, for: .normal)
     }
 
     private func applyInitialState(_ state: PampGramProfileVisualState) {
@@ -330,20 +326,21 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
             self.usdField.text = self.trimDecimal(Double(state.anonymousNumberPriceUsdCents) / 100.0)
         }
         self.showInProfile = state.anonymousNumberEnabled
+        self.displaySwitch.isOn = self.showInProfile
         self.updatePreview()
     }
 
-    @objc private func backgroundTapped(_ recognizer: UITapGestureRecognizer) {
-        let location = recognizer.location(in: self.displayNode.view)
-        if !self.sheetView.frame.contains(location) {
-            self.dismiss(animated: true, completion: nil)
+    private func popSelf() {
+        if let navigationController = self.navigationController as? NavigationController {
+            navigationController.popViewController(animated: true)
         } else {
-            self.displayNode.view.endEditing(true)
+            self.dismiss(animated: true, completion: nil)
         }
     }
 
     @objc private func closePressed() {
-        self.dismiss(animated: true, completion: nil)
+        self.view.endEditing(true)
+        self.popSelf()
     }
 
     @objc private func dateChanged() {
@@ -351,7 +348,10 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
     }
 
     @objc private func toggleDisplay() {
-        self.showInProfile.toggle()
+        self.showInProfile = self.displaySwitch.isOn
+    }
+
+    @objc private func fieldEditingChanged() {
         self.updatePreview()
     }
 
@@ -369,14 +369,9 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         self.updatePreview()
     }
 
-    @objc private func fieldEditingChanged() {
-        self.updatePreview()
-    }
-
     func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
-        // The number field accepts free-form input ("+888 0000 0000"); only the two price fields
-        // are constrained to a decimal amount: digits plus a single "." or "," separator, capped
-        // at 10 digits total so the value stays a sensible visual price.
+        // The number field is free-form; the two price fields accept digits plus a single "." or ","
+        // separator, up to 10 digits.
         guard textField === self.tonField || textField === self.usdField else {
             return true
         }
@@ -419,13 +414,13 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         let rootView = self.displayNode.view
         let keyboardFrameInView = rootView.convert(endFrame, from: nil)
         let overlap = max(0.0, rootView.bounds.maxY - keyboardFrameInView.minY)
-        self.scrollView.contentInset.bottom = overlap
+        self.scrollView.contentInset.bottom = overlap + 24.0
         self.scrollView.verticalScrollIndicatorInsets.bottom = overlap
         self.scrollActiveFieldToVisible()
     }
 
     @objc private func keyboardWillHide(_ notification: Notification) {
-        self.scrollView.contentInset.bottom = 0.0
+        self.scrollView.contentInset.bottom = 24.0
         self.scrollView.verticalScrollIndicatorInsets.bottom = 0.0
     }
 
@@ -434,8 +429,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
             return
         }
         let fieldFrame = field.convert(field.bounds, to: self.contentView)
-        let target = fieldFrame.insetBy(dx: 0.0, dy: -18.0)
-        self.scrollView.scrollRectToVisible(target, animated: true)
+        self.scrollView.scrollRectToVisible(fieldFrame.insetBy(dx: 0.0, dy: -24.0), animated: true)
     }
 
     @objc private func savePressed() {
@@ -456,7 +450,8 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
                 return state
             })
         }.start()
-        self.dismiss(animated: true, completion: nil)
+        self.view.endEditing(true)
+        self.popSelf()
     }
 
     private func updatePreview() {
@@ -479,11 +474,6 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         }
         let priceText = priceParts.isEmpty ? "цена не указана" : priceParts.joined(separator: " · ")
         self.previewDetailsLabel.text = "Fragment · \(dateText)\n\(priceText)"
-
-        let displayText = self.showInProfile ? "Показывать в профиле: вкл" : "Показывать в профиле: выкл"
-        self.displayButton.setTitle(displayText, for: .normal)
-        self.displayButton.backgroundColor = self.showInProfile ? pampGramNumberAccent : pampGramNumberAccent.withAlphaComponent(0.14)
-        self.displayButton.setTitleColor(self.showInProfile ? .white : pampGramNumberAccent, for: .normal)
     }
 
     private func parseTonNanos(_ text: String?) -> Int64 {

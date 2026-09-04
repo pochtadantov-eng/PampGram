@@ -662,21 +662,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         guard let controller else {
             return
         }
-        controller.present(
-            pampGramProfileRatingEditorController(context: context),
-            in: .window(.root),
-            with: ViewControllerPresentationArguments(presentationAnimation: .modalSheet)
-        )
+        controller.push(pampGramProfileRatingEditorController(context: context))
     }
     presentNumberEditorImpl = { [weak controller] in
         guard let controller else {
             return
         }
-        controller.present(
-            pampGramProfileNumberEditorController(context: context),
-            in: .window(.root),
-            with: ViewControllerPresentationArguments(presentationAnimation: .modalSheet)
-        )
+        controller.push(pampGramProfileNumberEditorController(context: context))
     }
     presentTooltipImpl = { [weak controller] text in
         guard let controller else {
