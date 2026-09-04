@@ -2,7 +2,10 @@ import Foundation
 import Postbox
 import SwiftSignalKit
 
-public enum PampGramLocalCurrency: String, Codable, CaseIterable {
+/// Raw-string enums are stored inside `PreferencesEntry`. They must use a keyed
+/// `Codable` representation: Telegram's Postbox encoder deliberately has no
+/// `singleValueContainer`, which is what Swift otherwise synthesizes for a raw enum.
+public enum PampGramLocalCurrency: String, CaseIterable {
     case stars
     case ton
     case rubles
@@ -16,7 +19,24 @@ public enum PampGramLocalCurrency: String, Codable, CaseIterable {
     }
 }
 
-public enum PampGramLocalOperationKind: String, Codable, CaseIterable {
+extension PampGramLocalCurrency: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawValue = try container.decode(String.self, forKey: .value)
+        self = PampGramLocalCurrency(rawValue: rawValue) ?? .stars
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.rawValue, forKey: .value)
+    }
+}
+
+public enum PampGramLocalOperationKind: String, CaseIterable {
     case topUp
     case purchase
     case sale
@@ -33,6 +53,23 @@ public enum PampGramLocalOperationKind: String, Codable, CaseIterable {
         case .debit: return "Списание"
         case .credit: return "Зачисление"
         }
+    }
+}
+
+extension PampGramLocalOperationKind: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawValue = try container.decode(String.self, forKey: .value)
+        self = PampGramLocalOperationKind(rawValue: rawValue) ?? .topUp
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.rawValue, forKey: .value)
     }
 }
 
@@ -177,6 +214,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
     public var anonymousNumber: String
     public var anonymousNumberPurchasedAt: Int32
     public var anonymousNumberPriceTonNanos: Int64
+    public var anonymousNumberPriceUsdCents: Int64
 
     public static var `default`: PampGramProfileVisualState {
         return PampGramProfileVisualState(
@@ -186,11 +224,12 @@ public struct PampGramProfileVisualState: Codable, Equatable {
             anonymousNumberEnabled: false,
             anonymousNumber: "+888 0000 0000",
             anonymousNumberPurchasedAt: Int32(Date().timeIntervalSince1970),
-            anonymousNumberPriceTonNanos: 0
+            anonymousNumberPriceTonNanos: 0,
+            anonymousNumberPriceUsdCents: 0
         )
     }
 
-    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64) {
+    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64, anonymousNumberPriceUsdCents: Int64) {
         self.ratingEnabled = ratingEnabled
         self.ratingValue = ratingValue
         self.ratingPoints = ratingPoints
@@ -198,6 +237,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumber = anonymousNumber
         self.anonymousNumberPurchasedAt = anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = anonymousNumberPriceTonNanos
+        self.anonymousNumberPriceUsdCents = anonymousNumberPriceUsdCents
     }
 
     public init(from decoder: Decoder) throws {
@@ -210,6 +250,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumber = try container.decodeIfPresent(String.self, forKey: .anonymousNumber) ?? defaults.anonymousNumber
         self.anonymousNumberPurchasedAt = try container.decodeIfPresent(Int32.self, forKey: .anonymousNumberPurchasedAt) ?? defaults.anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceTonNanos) ?? defaults.anonymousNumberPriceTonNanos
+        self.anonymousNumberPriceUsdCents = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceUsdCents) ?? defaults.anonymousNumberPriceUsdCents
     }
 }
 
@@ -231,7 +272,7 @@ public enum PampGramProfileVisualStore {
     }
 }
 
-public enum PampGramAppearancePreset: String, Codable, CaseIterable {
+public enum PampGramAppearancePreset: String, CaseIterable {
     case standard
     case glass
     case compact
@@ -242,6 +283,23 @@ public enum PampGramAppearancePreset: String, Codable, CaseIterable {
         case .glass: return "Glass"
         case .compact: return "Compact"
         }
+    }
+}
+
+extension PampGramAppearancePreset: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawValue = try container.decode(String.self, forKey: .value)
+        self = PampGramAppearancePreset(rawValue: rawValue) ?? .standard
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.rawValue, forKey: .value)
     }
 }
 
@@ -437,6 +495,16 @@ public enum PampGramFakeAdminStore {
         |> map { view in
             let list = view.values[PampGramPreferencesKeys.fakeAdmin]?.get(PampGramFakeAdminList.self)?.channels ?? []
             return list.first(where: { $0.peerId == peerId }) ?? PampGramFakeAdminChannelState(peerId: peerId, enabled: false)
+        }
+        |> distinctUntilChanged
+    }
+
+    /// Live list of every channel with a fake-admin record (enabled or not), for the
+    /// "Фейк админ" management screen.
+    public static func allSignal(postbox: Postbox) -> Signal<[PampGramFakeAdminChannelState], NoError> {
+        return postbox.preferencesView(keys: [PampGramPreferencesKeys.fakeAdmin])
+        |> map { view in
+            return view.values[PampGramPreferencesKeys.fakeAdmin]?.get(PampGramFakeAdminList.self)?.channels ?? []
         }
         |> distinctUntilChanged
     }

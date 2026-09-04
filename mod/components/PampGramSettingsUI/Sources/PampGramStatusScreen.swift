@@ -8,16 +8,17 @@ import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import AppBundle
 import PampGramCore
 
 private final class PampGramStatusArguments {
-    let refreshSubscription: () -> Void
+    let openIconPicker: () -> Void
     let openGifts: () -> Void
     let openMessages: () -> Void
     let openGhost: () -> Void
 
-    init(refreshSubscription: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void) {
-        self.refreshSubscription = refreshSubscription
+    init(openIconPicker: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void) {
+        self.openIconPicker = openIconPicker
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
@@ -48,7 +49,10 @@ func pampGramIconDisplayName(_ icon: PresentationAppIcon) -> String {
 
 private enum PampGramStatusEntry: ItemListNodeEntry {
     case badge(Bool)
-    case refreshSubscription
+
+    case iconHeader(String)
+    case iconSummary(PresentationAppIcon)
+    case iconFooter(String)
 
     case giftsHeader(String)
     case giftsRow(Int32, String, Bool)
@@ -63,27 +67,39 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         switch self {
         case .badge:
             return 0
-        case .refreshSubscription:
-            return 0
-        case .giftsHeader, .giftsRow:
+        case .iconHeader, .iconSummary, .iconFooter:
             return 1
-        case .messagesHeader, .messagesRow:
+        case .giftsHeader, .giftsRow:
             return 2
-        case .ghostHeader, .ghostRow:
+        case .messagesHeader, .messagesRow:
             return 3
+        case .ghostHeader, .ghostRow:
+            return 4
         }
     }
 
     var stableId: Int32 {
         switch self {
-        case .badge: return 0
-        case .refreshSubscription: return 1
-        case .giftsHeader: return 100
-        case let .giftsRow(index, _, _): return 101 + index
-        case .messagesHeader: return 120
-        case let .messagesRow(index, _, _): return 121 + index
-        case .ghostHeader: return 140
-        case let .ghostRow(index, _, _): return 141 + index
+        case .badge:
+            return 0
+        case .iconHeader:
+            return 1
+        case .iconSummary:
+            return 100
+        case .iconFooter:
+            return 199
+        case .giftsHeader:
+            return 200
+        case let .giftsRow(index, _, _):
+            return 201 + index
+        case .messagesHeader:
+            return 220
+        case let .messagesRow(index, _, _):
+            return 221 + index
+        case .ghostHeader:
+            return 240
+        case let .ghostRow(index, _, _):
+            return 241 + index
         }
     }
 
@@ -103,18 +119,30 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
                 titleFont: .bold,
                 titleBadge: isPro ? "PRO" : "STANDARD",
                 label: "",
-                additionalDetailLabel: "Подписка и состояние функций",
+                additionalDetailLabel: "Выбери свой стиль приложения и подписку",
                 sectionId: self.section,
                 style: .blocks,
                 disclosureStyle: .none,
                 action: nil
             )
-        case .refreshSubscription:
-            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Обновить подписку", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
-                arguments.refreshSubscription()
-            })
-        case let .giftsHeader(text), let .messagesHeader(text), let .ghostHeader(text):
+        case let .iconHeader(text), let .giftsHeader(text), let .messagesHeader(text), let .ghostHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .iconFooter(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case let .iconSummary(icon):
+            let previewImage = UIImage(named: icon.imageName, in: getAppBundle(), compatibleWith: nil).flatMap { generatePampGramIconPreview($0) }
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: previewImage,
+                title: "Иконка приложения",
+                label: pampGramIconDisplayName(icon),
+                sectionId: self.section,
+                style: .blocks,
+                action: {
+                    arguments.openIconPicker()
+                }
+            )
         case let .giftsRow(_, title, isOn):
             return ItemListDisclosureItem(
                 presentationData: presentationData,
@@ -164,26 +192,37 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
     }
 }
 
-private func pampGramStatusEntries(isPro: Bool, settings: PampGramSettings) -> [PampGramStatusEntry] {
+private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], currentIconName: String?, settings: PampGramSettings, profileVisuals: PampGramProfileVisualState) -> [PampGramStatusEntry] {
     var entries: [PampGramStatusEntry] = []
 
     entries.append(.badge(isPro))
-    entries.append(.refreshSubscription)
 
+    entries.append(.iconHeader("ИКОНКА ПРИЛОЖЕНИЯ"))
+    if let selectedIcon = icons.first(where: { $0.name == currentIconName }) ?? icons.first(where: { $0.isDefault }) ?? icons.first {
+        entries.append(.iconSummary(selectedIcon))
+    }
+    entries.append(.iconFooter("Иконка меняется сразу на домашнем экране."))
 
     entries.append(.giftsHeader("ПОДАРКИ"))
     entries.append(.giftsRow(0, "Вкладка «Подарок ему»", settings.phantomGiftsEnabled))
     entries.append(.giftsRow(1, "Локальные звёзды", settings.fakeStarsDisplayEnabled))
     entries.append(.giftsRow(2, "Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
-    entries.append(.giftsRow(3, "Вкладка «Подарок мне»", settings.fromHimGiftsEnabled))
+    entries.append(.giftsRow(3, "От него", settings.fromHimGiftsEnabled))
+    entries.append(.giftsRow(4, "Визуальный +888", profileVisuals.anonymousNumberEnabled))
+    entries.append(.giftsRow(5, "Визуальный рейтинг", profileVisuals.ratingEnabled))
 
     entries.append(.messagesHeader("ЧАТЫ"))
     entries.append(.messagesRow(0, "Удалённые сообщения", settings.antiDeleteMessagesEnabled))
     entries.append(.messagesRow(1, "Изменить визуально", settings.visualEditEnabled))
 
     entries.append(.ghostHeader("GHOST"))
-    entries.append(.ghostRow(0, "Нечиталка", settings.ghostReaderEnabled))
-    entries.append(.ghostRow(1, "Маскировка онлайна", settings.onlineMaskEnabled))
+    entries.append(.ghostRow(0, "Режим призрака", settings.ghostModeEnabled))
+    entries.append(.ghostRow(1, "Не читать сообщения", settings.ghostModeEnabled && settings.ghostHideReadReceipts))
+    entries.append(.ghostRow(2, "Не читать истории", settings.ghostModeEnabled && settings.ghostHideStoryViews))
+    entries.append(.ghostRow(3, "Не отправлять «онлайн»", settings.ghostModeEnabled && settings.ghostHideOnline))
+    entries.append(.ghostRow(4, "Не отправлять «печатает»", settings.ghostModeEnabled && settings.ghostHideTyping))
+    entries.append(.ghostRow(5, "Автоматический «офлайн»", settings.ghostModeEnabled && settings.ghostAutoOffline))
+    entries.append(.ghostRow(6, "Читать при действиях", settings.ghostModeEnabled && settings.ghostReadOnAction))
 
     return entries
 }
@@ -191,19 +230,24 @@ private func pampGramStatusEntries(isPro: Bool, settings: PampGramSettings) -> [
 /// "Статус": PampGram's own hub row for both this account's PampGram subscription tier
 /// (PRO/STANDARD — granted by the admin panel, see `PampGramSubscriptionAPI.swift`; this is
 /// the one screen in the mod that reads from PampGram's own server instead of only local
-/// state) plus a grouped, tap-to-open read-out of the main PampGram toggles. App appearance lives in the dedicated «Внешний вид» section.
+/// state) and the app-icon picker (wired to Telegram's own real
+/// `applicationBindings.requestSetAlternateIconName`, so picking one genuinely changes the
+/// home-screen icon), plus a grouped, tap-to-open read-out of every PampGram toggle.
 public func pampGramStatusController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
-    let tierPromise = ValuePromise<PampGramSubscriptionTier>(.standard, ignoreRepeated: true)
-    let refreshTier: () -> Void = {
-        let _ = (PampGramSubscriptionAPI.fetchTier(userId: context.account.peerId.id._internalGetInt64Value()) |> deliverOnMainQueue).start(next: { tier in
-            tierPromise.set(tier)
-        })
-    }
-    refreshTier()
+    var currentIconNameValue = context.sharedContext.applicationBindings.getAlternateIconName()
+    let currentIconName = ValuePromise<String?>(currentIconNameValue)
+
+    var appIcons = context.sharedContext.applicationBindings.getAvailableAlternateIcons()
+    appIcons = appIcons.filter { !$0.isPremium }
 
     let arguments = PampGramStatusArguments(
-        refreshSubscription: { refreshTier() },
+        openIconPicker: {
+            pampGramPresentIconPicker(context: context, icons: appIcons, currentIconName: currentIconNameValue, onSelect: { icon in
+                currentIconNameValue = icon.name
+                currentIconName.set(icon.name)
+            })
+        },
         openGifts: {
             pampGramGateSection(context: context, section: .gifts) {
                 pushControllerImpl?(pampGramGiftsSettingsController(context: context))
@@ -224,10 +268,12 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox),
-        tierPromise.get()
+        PampGramProfileVisualStore.signal(postbox: context.account.postbox),
+        PampGramSubscriptionAPI.fetchTier(userId: context.account.peerId.id._internalGetInt64Value()),
+        currentIconName.get()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings, subscriptionTier -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, profileVisuals, subscriptionTier, currentIconName -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Статус"),
@@ -239,7 +285,7 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
         let isPro = subscriptionTier == .pro
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramStatusEntries(isPro: isPro, settings: settings),
+            entries: pampGramStatusEntries(isPro: isPro, icons: appIcons, currentIconName: currentIconName, settings: settings, profileVisuals: profileVisuals),
             style: .blocks,
             animateChanges: true
         )

@@ -10,76 +10,104 @@ import UndoUI
 import PampGramCore
 
 private final class PampGramGhostArguments {
-    let toggleGhostReader: (Bool) -> Void
-    let toggleOnlineMask: (Bool) -> Void
-    let toggleScreenshotProtectionBypass: (Bool) -> Void
-    let toggleHideChatOnScreenshots: (Bool) -> Void
-    let openChatLock: () -> Void
+    let toggleMaster: (Bool) -> Void
+    let toggleHideReadReceipts: (Bool) -> Void
+    let toggleHideStoryViews: (Bool) -> Void
+    let toggleHideOnline: (Bool) -> Void
+    let toggleHideTyping: (Bool) -> Void
+    let toggleAutoOffline: (Bool) -> Void
+    let toggleReadOnAction: (Bool) -> Void
+    let toggleExcludeAllChannels: (Bool) -> Void
+    let toggleExcludeAllGroups: (Bool) -> Void
+    let openFolders: () -> Void
+    let openExceptions: () -> Void
 
-    init(toggleGhostReader: @escaping (Bool) -> Void, toggleOnlineMask: @escaping (Bool) -> Void, toggleScreenshotProtectionBypass: @escaping (Bool) -> Void, toggleHideChatOnScreenshots: @escaping (Bool) -> Void, openChatLock: @escaping () -> Void) {
-        self.toggleGhostReader = toggleGhostReader
-        self.toggleOnlineMask = toggleOnlineMask
-        self.toggleScreenshotProtectionBypass = toggleScreenshotProtectionBypass
-        self.toggleHideChatOnScreenshots = toggleHideChatOnScreenshots
-        self.openChatLock = openChatLock
+    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void) {
+        self.toggleMaster = toggleMaster
+        self.toggleHideReadReceipts = toggleHideReadReceipts
+        self.toggleHideStoryViews = toggleHideStoryViews
+        self.toggleHideOnline = toggleHideOnline
+        self.toggleHideTyping = toggleHideTyping
+        self.toggleAutoOffline = toggleAutoOffline
+        self.toggleReadOnAction = toggleReadOnAction
+        self.toggleExcludeAllChannels = toggleExcludeAllChannels
+        self.toggleExcludeAllGroups = toggleExcludeAllGroups
+        self.openFolders = openFolders
+        self.openExceptions = openExceptions
     }
 }
 
 private enum PampGramGhostSection: Int32 {
-    case about
-    case ghostReader
-    case onlineMask
-    case screenshots
-    case security
+    case master
+    case features
+    case exceptions
 }
 
 private enum PampGramGhostEntry: ItemListNodeEntry {
-    case aboutText(String)
+    case masterToggle(String, Bool)
+    case masterFooter(String)
 
-    case ghostReaderToggle(String, Bool)
-    case ghostReaderFooter(String)
+    case featuresHeader(String)
+    case hideReadReceipts(String, Bool, Bool)
+    case hideStoryViews(String, Bool, Bool)
+    case hideOnline(String, Bool, Bool)
+    case hideTyping(String, Bool, Bool)
+    case autoOffline(String, Bool, Bool)
+    case readOnAction(String, Bool, Bool)
+    case featuresFooter(String)
 
-    case onlineMaskToggle(String, Bool)
-    case onlineMaskFooter(String)
-
-    case screenshotsHeader(String)
-    case screenshotProtectionBypass(String, Bool)
-    case hideChatOnScreenshots(String, Bool)
-    case screenshotsFooter(String)
-
-    case securityHeader(String)
-    case chatLock(String, String)
-    case securityFooter(String)
+    case exceptionsHeader(String)
+    case excludeAllChannels(String, Bool, Bool)
+    case excludeAllGroups(String, Bool, Bool)
+    case foldersRow(String, String, Bool)
+    case exceptionsRow(String, String, Bool)
+    case exceptionsFooter(String)
 
     var section: ItemListSectionId {
         switch self {
-        case .aboutText:
-            return PampGramGhostSection.about.rawValue
-        case .ghostReaderToggle, .ghostReaderFooter:
-            return PampGramGhostSection.ghostReader.rawValue
-        case .onlineMaskToggle, .onlineMaskFooter:
-            return PampGramGhostSection.onlineMask.rawValue
-        case .screenshotsHeader, .screenshotProtectionBypass, .hideChatOnScreenshots, .screenshotsFooter:
-            return PampGramGhostSection.screenshots.rawValue
-        case .securityHeader, .chatLock, .securityFooter:
-            return PampGramGhostSection.security.rawValue
+        case .masterToggle, .masterFooter:
+            return PampGramGhostSection.master.rawValue
+        case .featuresHeader, .hideReadReceipts, .hideStoryViews, .hideOnline, .hideTyping, .autoOffline, .readOnAction, .featuresFooter:
+            return PampGramGhostSection.features.rawValue
+        case .exceptionsHeader, .excludeAllChannels, .excludeAllGroups, .foldersRow, .exceptionsRow, .exceptionsFooter:
+            return PampGramGhostSection.exceptions.rawValue
         }
     }
 
     var stableId: Int32 {
         switch self {
-        case .aboutText: return 0
-        case .ghostReaderToggle: return 1
-        case .ghostReaderFooter: return 2
-        case .onlineMaskToggle: return 3
-        case .onlineMaskFooter: return 4
-        case .screenshotsHeader: return 5
-        case .screenshotProtectionBypass: return 6
-        case .hideChatOnScreenshots: return 7
-        case .screenshotsFooter: return 8
-        case .securityHeader: return 9
-        case .chatLock: return 10
-        case .securityFooter: return 11
+        case .masterToggle:
+            return 0
+        case .masterFooter:
+            return 1
+        case .featuresHeader:
+            return 2
+        case .hideReadReceipts:
+            return 3
+        case .hideStoryViews:
+            return 4
+        case .hideOnline:
+            return 5
+        case .hideTyping:
+            return 6
+        case .autoOffline:
+            return 7
+        case .readOnAction:
+            return 8
+        case .featuresFooter:
+            return 9
+        case .exceptionsHeader:
+            return 10
+        case .excludeAllChannels:
+            return 11
+        case .excludeAllGroups:
+            return 12
+        case .foldersRow:
+            return 13
+        case .exceptionsRow:
+            return 14
+        case .exceptionsFooter:
+            return 15
         }
     }
 
@@ -90,108 +118,166 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramGhostArguments
         switch self {
-        case let .aboutText(text), let .ghostReaderFooter(text), let .onlineMaskFooter(text), let .screenshotsFooter(text), let .securityFooter(text):
+        case let .masterFooter(text), let .featuresFooter(text), let .exceptionsFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .screenshotsHeader(text), let .securityHeader(text):
+        case let .featuresHeader(text), let .exceptionsHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .ghostReaderToggle(title, value):
+        case let .masterToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
-                arguments.toggleGhostReader(value)
+                arguments.toggleMaster(value)
             })
-        case let .onlineMaskToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
-                arguments.toggleOnlineMask(value)
+        case let .hideReadReceipts(title, value, enabled):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideReadReceipts(value)
             })
-        case let .screenshotProtectionBypass(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: arguments.toggleScreenshotProtectionBypass)
-        case let .hideChatOnScreenshots(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: arguments.toggleHideChatOnScreenshots)
-        case let .chatLock(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openChatLock)
+        case let .hideStoryViews(title, value, enabled):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideStoryViews(value)
+            })
+        case let .hideOnline(title, value, enabled):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideOnline(value)
+            })
+        case let .hideTyping(title, value, enabled):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideTyping(value)
+            })
+        case let .autoOffline(title, value, enabled):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleAutoOffline(value)
+            })
+        case let .readOnAction(title, value, enabled):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleReadOnAction(value)
+            })
+        case let .excludeAllChannels(title, value, enabled):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleExcludeAllChannels(value)
+            })
+        case let .excludeAllGroups(title, value, enabled):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleExcludeAllGroups(value)
+            })
+        case let .foldersRow(title, label, enabled):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openFolders()
+            })
+        case let .exceptionsRow(title, label, enabled):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openExceptions()
+            })
         }
     }
 }
 
-private func pampGramGhostEntries(settings: PampGramSettings) -> [PampGramGhostEntry] {
+private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, exceptionCount: Int) -> [PampGramGhostEntry] {
     var entries: [PampGramGhostEntry] = []
 
-    entries.append(.aboutText("Меняет то, что видят о вас другие. Включён может быть только один режим ниже."))
+    let on = settings.ghostModeEnabled
 
-    entries.append(.ghostReaderToggle("Нечиталка", settings.ghostReaderEnabled))
-    entries.append(.ghostReaderFooter("Скрывает прочтение, «в сети», набор текста и отправку файлов. У вас всё работает как обычно."))
+    entries.append(.masterToggle("Режим призрака", settings.ghostModeEnabled))
+    entries.append(.masterFooter("Когда включён, выбранные функции приватности будут активны. Всё меняет только то, что видят о вас другие — ничего чужого не читается и не сохраняется."))
 
-    entries.append(.onlineMaskToggle("Маскировка онлайна", settings.onlineMaskEnabled))
-    entries.append(.onlineMaskFooter("Держит статус «в сети», пока даёт iOS. Также включает приватность «Последний визит» → «Все» — иначе статус никто не увидит."))
+    entries.append(.featuresHeader("ФУНКЦИИ"))
+    entries.append(.hideReadReceipts("Не читать сообщения", settings.ghostHideReadReceipts, on))
+    entries.append(.hideStoryViews("Не читать истории", settings.ghostHideStoryViews, on))
+    entries.append(.hideOnline("Не отправлять «онлайн»", settings.ghostHideOnline, on))
+    entries.append(.hideTyping("Не отправлять «печатает»", settings.ghostHideTyping, on))
+    entries.append(.autoOffline("Автоматический «офлайн»", settings.ghostAutoOffline, on))
+    entries.append(.readOnAction("Читать при действиях", settings.ghostReadOnAction, on))
+    entries.append(.featuresFooter("Прочтения, истории и «печатает» скрываются пофайлово по каждому чату (учитывая исключения ниже). «Онлайн» и «офлайн» — общий статус аккаунта, к ним исключения не применяются. «Читать при действиях»: как только вы написали в чат, прочтения в нём снова отправляются — вы уже обозначили присутствие."))
 
-    entries.append(.screenshotsHeader("СКРИНШОТЫ И ЗАХВАТ ЭКРАНА"))
-    entries.append(.screenshotProtectionBypass("Обход защиты от скриншотов", settings.screenshotProtectionBypassEnabled))
-    entries.append(.hideChatOnScreenshots("Скрывать чат на скриншотах", settings.hideChatOnScreenshotsEnabled))
-    entries.append(.screenshotsFooter("Настройки захвата экрана для обычных облачных чатов."))
-
-    entries.append(.securityHeader("ЛОКАЛЬНАЯ ЗАЩИТА"))
-    entries.append(.chatLock("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
-    entries.append(.securityFooter("PIN-защита выбранных чатов хранится и проверяется локально на этом устройстве."))
+    entries.append(.exceptionsHeader("ИСКЛЮЧЕНИЯ"))
+    entries.append(.excludeAllChannels("Все каналы", settings.ghostExcludeAllChannels, on))
+    entries.append(.excludeAllGroups("Все группы", settings.ghostExcludeAllGroups, on))
+    entries.append(.foldersRow("Папки", folderCount == 0 ? "Не выбрано" : "\(folderCount)", on))
+    entries.append(.exceptionsRow("Добавить исключение", exceptionCount == 0 ? "" : "\(exceptionCount)", on))
+    entries.append(.exceptionsFooter("Режим призрака не действует в выбранных чатах, типах чатов или папках. Для папок учитываются чаты, добавленные в папку вручную."))
 
     return entries
 }
 
-/// The "Ghost" section (formerly the unimplemented "Приватность" placeholder): presence and
-/// activity concealment — the one part of PampGram that changes what OTHER people see, not
-/// just what this device shows its own owner. Still entirely client-side: nothing here reads
-/// or stores anyone else's data, it only withholds or overrides this account's own outgoing
-/// status signals.
+/// The "Ghost" section ("Режим призрака"): a master switch plus granular controls over what
+/// this account broadcasts about itself — read receipts, story views, online status, typing —
+/// and a set of exceptions (all channels, all groups, chat folders, individual chats) where
+/// none of it applies. Every option only ever withholds or overrides THIS account's own
+/// outgoing signals; nothing here reads or stores anyone else's data. All client-side.
 public func pampGramGhostSettingsController(context: AccountContext) -> ViewController {
-    var presentTooltipImpl: ((String) -> Void)?
     var pushControllerImpl: ((ViewController) -> Void)?
 
-    let arguments = PampGramGhostArguments(
-        toggleGhostReader: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.ghostReaderEnabled = value
-                if value {
-                    settings.onlineMaskEnabled = false
-                }
-                return settings
-            }).start()
-        },
-        toggleOnlineMask: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.onlineMaskEnabled = value
-                if value {
-                    settings.ghostReaderEnabled = false
-                }
-                return settings
-            }).start()
+    let updateSettings: (@escaping (PampGramSettings) -> PampGramSettings) -> Void = { f in
+        let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, f).start()
+    }
 
-            if value {
-                // The mask only works end to end if the "Last Seen & Online" privacy rule
-                // actually lets people see the status we're now broadcasting — with it
-                // restricted (e.g. "Nobody"), Telegram's own privacy engine hides the online
-                // status server-side regardless of what we send, and the mask would do
-                // nothing visible. Switching it to "Everybody" is what makes the toggle's own
-                // promise true, exactly like turning on the mask should.
-                let _ = context.engine.privacy.updateSelectiveAccountPrivacySettings(type: .presence, settings: .enableEveryone(disableFor: [:])).start()
-                presentTooltipImpl?("Настройка приватности «Последний визит и онлайн» переключена на «Все» — иначе маскировку никто не увидит.")
+    let arguments = PampGramGhostArguments(
+        toggleMaster: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.ghostModeEnabled = value
+                return settings
             }
         },
-        toggleScreenshotProtectionBypass: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+        toggleHideReadReceipts: { value in
+            updateSettings { settings in
                 var settings = settings
-                settings.screenshotProtectionBypassEnabled = value
+                settings.ghostHideReadReceipts = value
                 return settings
-            }).start()
+            }
         },
-        toggleHideChatOnScreenshots: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+        toggleHideStoryViews: { value in
+            updateSettings { settings in
                 var settings = settings
-                settings.hideChatOnScreenshotsEnabled = value
+                settings.ghostHideStoryViews = value
                 return settings
-            }).start()
+            }
         },
-        openChatLock: {
-            pushControllerImpl?(pampGramChatLockController(context: context))
+        toggleHideOnline: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.ghostHideOnline = value
+                return settings
+            }
+        },
+        toggleHideTyping: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.ghostHideTyping = value
+                return settings
+            }
+        },
+        toggleAutoOffline: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.ghostAutoOffline = value
+                return settings
+            }
+        },
+        toggleReadOnAction: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.ghostReadOnAction = value
+                return settings
+            }
+        },
+        toggleExcludeAllChannels: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.ghostExcludeAllChannels = value
+                return settings
+            }
+        },
+        toggleExcludeAllGroups: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.ghostExcludeAllGroups = value
+                return settings
+            }
+        },
+        openFolders: {
+            pushControllerImpl?(pampGramGhostFoldersController(context: context))
+        },
+        openExceptions: {
+            pushControllerImpl?(pampGramGhostExceptionsController(context: context))
         }
     )
 
@@ -203,7 +289,7 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
     |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
-            title: .text("Ghost"),
+            title: .text("Режим призрака"),
             leftNavigationButton: nil,
             rightNavigationButton: nil,
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),
@@ -211,7 +297,7 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramGhostEntries(settings: settings),
+            entries: pampGramGhostEntries(settings: settings, folderCount: settings.ghostExcludedFolderIds.count, exceptionCount: settings.ghostExcludedPeerIds.count),
             style: .blocks,
             animateChanges: true
         )
@@ -219,13 +305,8 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
     }
 
     let controller = ItemListController(context: context, state: signal)
-    pushControllerImpl = { [weak controller] c in controller?.push(c) }
-    presentTooltipImpl = { [weak controller] text in
-        guard let controller else {
-            return
-        }
-        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-        controller.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
+    pushControllerImpl = { [weak controller] c in
+        controller?.push(c)
     }
     return controller
 }

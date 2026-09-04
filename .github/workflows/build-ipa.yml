@@ -15,10 +15,8 @@ jobs:
         with:
           path: pampgram
 
-      # Telegram-iOS currently pins Xcode 26.2. Do not select the newest Xcode on the
-      # runner: release/WMO builds have crashed inside swift-frontend when compiled with a
-      # newer toolchain than the one pinned upstream. Select 26.2 explicitly and fail early
-      # if the runner image ever stops shipping it.
+      # Telegram-iOS pins Xcode 26.2. Keeping the runner on that exact toolchain avoids
+      # compiler crashes caused by mixing a newer Xcode with the upstream Bazel cache.
       - name: Select Xcode 26.2
         run: |
           set -euo pipefail
@@ -29,7 +27,6 @@ jobs:
             exit 1
           fi
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
-          echo "Selected developer directory: $(xcode-select -p)"
           xcodebuild -version
 
       - name: Check out Telegram-iOS
@@ -38,26 +35,19 @@ jobs:
             https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
 
       # mod/components/* are whole new Bazel packages, dropped in as-is under a single
-      # PampGram/ directory. The two patches only touch files that already exist upstream;
-      # keeping them separate lets the original mod patch and the six "Прочее" features
-      # evolve independently.
+      # PampGram/ directory; mod/telegram-ios.patch only touches files that already exist
+      # upstream. Keeping the two apart means editing our own Swift never requires
+      # regenerating the patch.
       - name: Apply the PampGram patch
         working-directory: telegram-ios
         run: |
           git apply --check ../pampgram/mod/telegram-ios.patch
           git apply ../pampgram/mod/telegram-ios.patch
-          git apply --check ../pampgram/mod/telegram-ios-features.patch
-          git apply ../pampgram/mod/telegram-ios-features.patch
-          # v8.1: both historical patches used to edit ChatInterfaceStateContextMenus.swift.
-          # The v8 base patch now owns the PampGram wrapper, so apply the remaining
-          # copy-protection integration semantically after both non-overlapping patches.
-          python3 ../pampgram/mod/apply-chat-context-features.py
           mkdir -p submodules/TelegramUI/Components/PampGram
           cp -R ../pampgram/mod/components/. submodules/TelegramUI/Components/PampGram/
-          # Replace the voice-note DSP implementation with the current PampGram override.
-          # Keeping this outside the large base patch makes audio fixes independent from
-          # upstream patch offsets and avoids accidentally reintroducing an older version.
-          cp ../pampgram/mod/overrides/PampGramVoiceChanger.swift submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
+          # The visual profile state is rendered in Telegram's profile screen by this
+          # anchor-checked post-patch, after the base PampGram patch is in place.
+          python3 ../pampgram/mod/apply-profile-visuals.py
           ls -1 submodules/TelegramUI/Components/PampGram
 
       # Signing, the whole story in one place.

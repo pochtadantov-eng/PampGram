@@ -1,31 +1,18 @@
 # PampGram
 
-PampGram — мод для Telegram-iOS. GitHub Actions скачивает актуальный Telegram-iOS, применяет патчи PampGram, копирует Swift/Bazel-компоненты и собирает device IPA.
+Мод для официального [Telegram-iOS](https://github.com/TelegramMessenger/Telegram-iOS)
+(форк собирается отдельно, здесь хранятся патчи и новые модули).
 
-## Разделы
+## Функции
 
-- **Подарки** — визуальные подарки, Stars/TON/рубли, покупка Stars, история/статистика, рейтинг, анонимный номер, коллекция/маркет.
-- **Чаты** — функции копирования/пересылки/автоудаления, удалённые и изменённые сообщения, локальные сообщения, перевод.
-- **Ghost** — privacy, скриншоты, screen capture/background и блокировка чатов.
-- **Геолокация** — выбор подменённой точки на карте.
-- **Голос / Медиа** — voice changer голосовых и передача файлов.
-- **Внешний вид** — пресеты и визуальные параметры интерфейса.
-- **Дополнительно** — блокировка рекламы и профильные настройки.
-- **Админ-панель / Статус** — подписки PampGram.
+- **Подарки** — локальные подарки, визуальные балансы Stars/TON/рублей, коллекция и
+  локальный маркет, а также история операций.
+- **Визуалы профиля** — «Визуальный +888» и визуальный рейтинг с уровнями 1–100 и
+  независимым выбором очков. Значения рисуются только в собственном профиле на этом
+  устройстве.
+- **Чаты и Ghost** — локальный визуальный редактор, сохранение удалённых сообщений и
+  настройки приватности клиента.
+- **Внешний вид** — экран пресетов и параметров PampGram; выбор иконки приложения
+  применяется сразу, остальные параметры сохраняются как локальный пресет интерфейса.
 
-Подробный список: `FEATURE-MAP-RU.md`.
-
-## Файлы сборки
-- `mod/telegram-ios.patch` — основной патч.
-- `mod/telegram-ios-features.patch` — дополнительные интеграции.
-- `mod/components/` — PampGramCore, PampGramSettingsUI и PhantomGiftKit.
-- `mod/overrides/PampGramVoiceChanger.swift` — актуальный DSP voice changer.
-
-Визуальные/локальные функции не создают реальные Telegram/Fragment/TON операции или права.
-
-## v8.2 build fix
-MapKit is now linked through a small `objc_library` dependency instead of the unsupported `sdk_frameworks` attribute on `swift_library`.
-
-## v8.4 build fix
-- GitHub Actions now selects Xcode 26.2 explicitly (the version pinned by Telegram-iOS).
-- Removed `--overrideXcodeVersion` and isolated the Bazel cache by Xcode version to avoid mixing 26.6 build artifacts.
+Полная карта разделов — в [FEATURES-RU.md](FEATURES-RU.md).

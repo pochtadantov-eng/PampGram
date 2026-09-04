@@ -65,7 +65,7 @@ private func pampGramInsertIncomingMessage(context: AccountContext, peerId: Engi
             forwardInfo: nil,
             authorId: peerId,
             text: text,
-            attributes: [PampGramLocalOnlyMessageAttribute(source: "visual-incoming")],
+            attributes: [],
             media: media
         )
         let insertedIds = transaction.addMessages([storeMessage], location: .Random)
@@ -90,7 +90,7 @@ private func pampGramInsertOutgoingMessage(context: AccountContext, peerId: Engi
             forwardInfo: nil,
             authorId: context.account.peerId,
             text: text,
-            attributes: [PampGramLocalOnlyMessageAttribute(source: "visual-outgoing")],
+            attributes: [],
             media: media
         )
         let insertedIds = transaction.addMessages([storeMessage], location: .Random)
@@ -375,23 +375,17 @@ public func pampGramPresentInsertText(context: AccountContext, peerId: EnginePee
     ), in: .window(.root))
 }
 
-
-/// Inserts exactly the text already typed by the user. This is the helper used by the
-/// send-button long-press actions: no prompt and no network send.
-public func pampGramInsertTypedText(context: AccountContext, peerId: EnginePeer.Id, text: String, incoming: Bool) {
-    let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !clean.isEmpty else { return }
-    let signal = incoming
-        ? pampGramInsertIncomingMessage(context: context, peerId: peerId, text: clean, media: [])
-        : pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: clean, media: [])
-    let _ = signal.start()
-}
-
-/// Creates a local channel-authored post for Fake Administrator mode. The channel peer is
-/// deliberately used as author and the message is marked local-only for the context-menu
-/// "Локально" label.
-public func pampGramInsertFakeAdminPost(context: AccountContext, peerId: EnginePeer.Id, text: String) {
-    let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !clean.isEmpty else { return }
-    let _ = pampGramInsertIncomingMessage(context: context, peerId: peerId, text: clean, media: []).start()
+/// Same as `pampGramPresentInsertText`, but takes the text directly instead of prompting for
+/// it — used by the send-button long-press menu, which already has the composed input text in
+/// hand and inserts it as a fake incoming/outgoing message in one tap.
+public func pampGramInsertTextDirect(context: AccountContext, peerId: EnginePeer.Id, text: String, incoming: Bool) {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+        return
+    }
+    let insert = incoming
+        ? pampGramInsertIncomingMessage(context: context, peerId: peerId, text: trimmed, media: [])
+        : pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: trimmed, media: [])
+    let _ = insert.start()
+    pampGramPresentTooltip(context: context, text: "Сообщение добавлено.")
 }

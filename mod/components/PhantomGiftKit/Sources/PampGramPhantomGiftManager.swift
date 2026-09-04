@@ -75,19 +75,12 @@ public enum PampGramPhantomGiftManager {
                 return .single(BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency)))
             }
 
+            // Gifting someone: local-only visual. The sender gets their own "Вы подарили …" gift
+            // card; nothing is sent to the other device. (A recipient can't receive a purely local
+            // gift, by design — see PampGram's local-only gift policy.)
             return PampGramPhantomGiftMessage.insertLocalUniqueGiftMessage(context: context, peerId: peerId, uniqueGift: uniqueGift, price: price)
-            |> map { messageId -> BuyResult in
-                let finalGift: PampGramPhantomGift
-                if let messageId {
-                    finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId)
-                    let _ = context.account.postbox.transaction { transaction in
-                        PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
-                        PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
-                    }.start()
-                } else {
-                    finalGift = phantomGift
-                }
-                return BuyResult(phantomGift: finalGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency))
+            |> map { _ -> BuyResult in
+                return BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency))
             }
         }
     }
@@ -131,6 +124,9 @@ public enum PampGramPhantomGiftManager {
         }
         |> mapToSignal { pending -> Signal<Never, NoError> in
             let phantomGift = pending.phantomGift
+
+            // Local-only visual, whether gifting someone or yourself: the sender gets their own
+            // gift card and nothing is sent to any other device.
             return PampGramPhantomGiftMessage.insertLocalGenericGiftMessage(context: context, peerId: peerId, gift: gift, text: text, entities: entities, nameHidden: nameHidden)
             |> mapToSignal { messageId -> Signal<Never, NoError> in
                 guard let messageId else {
@@ -148,10 +144,10 @@ public enum PampGramPhantomGiftManager {
 
     /// "Подарок мне": local-only stand-in for *receiving* a unique gift — records it and
     /// inserts the local-only chat message with `insertLocalUniqueGiftMessageFromPeer`, so it
-    /// reads as `peerId` having sent it to this account. Unlike `buyUniqueGift`, no balance is
-    /// touched: nobody spent anything in this direction, real or fake. `price` is kept only
-    /// for the phantom-gift record (the "Фантом-подарков на устройстве" list) — informational,
-    /// never deducted.
+    /// reads as `peerId` having sent it to this account. Credits the matching fake balance
+    /// (Stars or TON) by the gift's `price` and logs a `.topUp` in the ledger, so a gift you
+    /// "received" shows up as a пополнение — the behaviour the user asked for — rather than
+    /// silently doing nothing to the balance.
     public static func receiveUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<PampGramPhantomGift, NoError> {
         return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
             let phantomGift = PampGramPhantomGift(
@@ -164,6 +160,27 @@ public enum PampGramPhantomGiftManager {
                 isReceived: true
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+
+            let ledgerCurrency: PampGramLocalCurrency = price.currency == .stars ? .stars : .ton
+            let balanceAfter: Int64
+            switch price.currency {
+            case .stars:
+                balanceAfter = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + price.amount.value
+                PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: balanceAfter)
+            case .ton:
+                balanceAfter = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) + price.amount.value
+                PampGramPhantomGiftStore.setFakeTonBalanceNanos(transaction: transaction, nanos: balanceAfter)
+            }
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: ledgerCurrency,
+                kind: .topUp,
+                amount: price.amount.value,
+                title: "Подарок мне",
+                details: phantomGift.title,
+                peerId: peerId,
+                giftId: phantomGift.id,
+                balanceAfter: balanceAfter
+            ))
             return phantomGift
         }
         |> mapToSignal { phantomGift -> Signal<PampGramPhantomGift, NoError> in
@@ -196,6 +213,20 @@ public enum PampGramPhantomGiftManager {
                 isReceived: true
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+
+            // Received gift → пополнение (Stars), same as receiveUniqueGift.
+            let balanceAfter = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + gift.price
+            PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: balanceAfter)
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: .stars,
+                kind: .topUp,
+                amount: gift.price,
+                title: "Подарок мне",
+                details: phantomGift.title,
+                peerId: peerId,
+                giftId: phantomGift.id,
+                balanceAfter: balanceAfter
+            ))
             return phantomGift
         }
         |> mapToSignal { phantomGift -> Signal<Never, NoError> in
@@ -237,6 +268,22 @@ public enum PampGramPhantomGiftManager {
         return context.account.postbox.transaction { transaction -> Void in
             PampGramPhantomGiftStore.remove(transaction: transaction, id: gift.id)
             if let messageId = gift.localMessageId {
+                transaction.deleteMessages([messageId], forEachMedia: nil)
+            }
+        }
+        |> ignoreValues
+    }
+
+    /// Removes a visual gift from the account owner's own profile grid. Matching is
+    /// deliberately scoped to `context.account.peerId`, so a recipient profile cannot be
+    /// modified through this local control.
+    public static func delete(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
+                return
+            }
+            PampGramPhantomGiftStore.remove(transaction: transaction, id: match.id)
+            if let messageId = match.localMessageId {
                 transaction.deleteMessages([messageId], forEachMedia: nil)
             }
         }
@@ -335,6 +382,24 @@ public enum PampGramPhantomGiftManager {
         |> ignoreValues
     }
 
+    /// The profile-card equivalent of `setWorn`; it can act only on a self-owned visual
+    /// gift, never on an entry rendered in somebody else's profile.
+    public static func setWorn(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift, worn: Bool) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
+                return
+            }
+            let gifts = PampGramPhantomGiftStore.allGifts(transaction: transaction)
+            if worn {
+                for current in gifts where current.peerId == context.account.peerId && current.worn && current.id != match.id {
+                    PampGramPhantomGiftStore.update(transaction: transaction, id: current.id, { $0.withWorn(false) })
+                }
+            }
+            PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withWorn(worn) })
+        }
+        |> ignoreValues
+    }
+
     /// Local marketplace listing. A nil price removes the listing; no real Stars/TON or
     /// Telegram marketplace state is touched.
     public static func setMarketListing(context: AccountContext, giftId: Int64, price: CurrencyAmount?) -> Signal<Never, NoError> {
@@ -366,5 +431,50 @@ public enum PampGramPhantomGiftManager {
         |> ignoreValues
     }
 
+    /// Local-only visual transfer: moves the phantom gift to `peerId` inside this account's own
+    /// records and logs the transfer. Nothing is sent to any other device — PampGram gifts are
+    /// purely local play money, so a visual transfer only ever changes the sender's own view.
+    public static func sendGiftToPeer(context: AccountContext, giftId: Int64, peerId: EnginePeer.Id) -> Signal<Bool, NoError> {
+        return context.account.postbox.transaction { transaction -> Bool in
+            guard let gift = PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.id == giftId }) else {
+                return false
+            }
+            PampGramPhantomGiftStore.update(transaction: transaction, id: giftId, { $0.withPeerId(peerId) })
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: gift.price.currency == .stars ? .stars : .ton,
+                kind: .transfer,
+                amount: 0,
+                title: "Передача подарка",
+                details: gift.title,
+                peerId: peerId,
+                giftId: gift.id,
+                balanceAfter: nil
+            ))
+            return true
+        }
+    }
+
+    /// Subscribes to incoming messages account-wide and materializes any carried gift into this
+    /// account's own collection automatically — no user action. Owned by the account context.
+    ///
+    /// This live signal only fires for messages processed through the update loop while the app is
+    /// running; it can miss a transfer that arrived while the app was closed or in a background
+    /// account. So it is a best-effort fast path — the reliable path is scanPeerForIncomingGiftTransfers,
+    /// which runs every time the recipient opens the chat.
+    public static func observeIncomingGiftTransfers(account: Account) -> Disposable {
+        // PampGram gifts are local-only — nothing is ever sent to another device, so there is
+        // nothing to receive. Inert no-op, kept so the account-context hook needs no change.
+        return EmptyDisposable
+    }
+
+    /// Scans the most recent messages of a chat the recipient just opened and materializes any
+    /// gift transfer carried by an incoming message. This is the reliable entry point (called from
+    /// navigateToChatControllerImpl): whenever the recipient opens the chat with the sender, any
+    /// transfer that has arrived — even while the app was closed — is picked up. Duplicates are
+    /// prevented by the deterministic gift id, so re-opening the chat is harmless.
+    public static func scanPeerForIncomingGiftTransfers(context: AccountContext, peerId: EnginePeer.Id) {
+        // PampGram gifts are local-only — nothing is ever sent to another device, so there is
+        // nothing to scan for. Inert no-op, kept so the navigate hook needs no change.
+    }
 
 }

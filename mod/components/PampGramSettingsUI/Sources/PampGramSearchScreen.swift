@@ -1,125 +1,223 @@
 import Foundation
+import UIKit
 import Display
 import SwiftSignalKit
 import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import PampGramCore
 
-private enum PampGramSearchDestination: Int32 {
-    case gifts, messages, ghost, location, voiceMedia, appearance, additional, status
-}
-
-private struct PampGramSearchItem: Equatable {
+/// One searchable PampGram function: what it's called, a short description of what it does, and
+/// which section it lives in — plus how to open that section. `keywords` widens matching beyond
+/// the visible title (synonyms, English names) so the search "guesses" the section as closely as
+/// possible.
+private struct PampGramSearchItem {
     let title: String
-    let section: String
-    let detail: String
+    let subtitle: String
+    let sectionName: String
     let keywords: String
-    let destination: PampGramSearchDestination
-}
-
-private let pampGramSearchCatalog: [PampGramSearchItem] = [
-    .init(title: "Включить визуалку", section: "Подарки", detail: "Главный переключатель визуальных функций подарков", keywords: "подарки визуалка master", destination: .gifts),
-    .init(title: "Подарок ему", section: "Подарки", detail: "Визуальная отправка подарка", keywords: "от себя ему подарок вкладка", destination: .gifts),
-    .init(title: "Подарок мне", section: "Подарки", detail: "Подарок выглядит полученным от собеседника", keywords: "от него мне подарок вкладка", destination: .gifts),
-    .init(title: "Локальные звёзды", section: "Подарки", detail: "Локальный баланс Stars", keywords: "stars звезды баланс", destination: .gifts),
-    .init(title: "Локальные TON", section: "Подарки", detail: "Локальный баланс TON/GRAM", keywords: "ton gram тоны баланс", destination: .gifts),
-    .init(title: "Локальные рубли", section: "Подарки", detail: "Локальная карта для визуальной покупки Stars", keywords: "рубли карта купить звезды", destination: .gifts),
-    .init(title: "Рейтинг профиля", section: "Подарки", detail: "Визуальный рейтинг и баллы профиля", keywords: "рейтинг профиль баллы points rating", destination: .gifts),
-    .init(title: "Анонимный номер", section: "Подарки", detail: "Визуальный +888 номер, дата и цена покупки", keywords: "анонимный номер +888 ton fragment", destination: .gifts),
-    .init(title: "Коллекция и маркет", section: "Подарки", detail: "Закрепить, носить, скрыть, передать и выставить подарок", keywords: "маркет коллекция подарок продажа stars ton носить", destination: .gifts),
-    .init(title: "История Stars / TON / рублей", section: "Подарки", detail: "Покупки, пополнения, списания и статистика", keywords: "история операции статистика stars ton рубли пополнение", destination: .gifts),
-    .init(title: "Удалённые сообщения", section: "Чаты", detail: "Локальное сохранение удалённых сообщений", keywords: "антиудаление удаленные сообщения", destination: .messages),
-    .init(title: "Изменить визуально", section: "Чаты", detail: "Локальное изменение отображаемого текста", keywords: "редактор сообщение визуально", destination: .messages),
-    .init(title: "История изменений", section: "Чаты", detail: "Предыдущие локальные версии изменённых сообщений", keywords: "карандаш edit история изменения", destination: .messages),
-    .init(title: "Бесплатный перевод текста", section: "Чаты", detail: "Автоопределение языка и выбранный целевой язык", keywords: "translate перевод язык", destination: .messages),
-    .init(title: "Нечиталка", section: "Ghost", detail: "Управление локальными privacy-функциями", keywords: "ghost read прочитано", destination: .ghost),
-    .init(title: "Маскировка онлайна", section: "Ghost", detail: "Настройки отображения присутствия", keywords: "онлайн online ghost", destination: .ghost),
-    .init(title: "Иконка приложения", section: "Внешний вид", detail: "Выбор альтернативной иконки PampGram", keywords: "иконка значок цвет синяя", destination: .appearance),
-    .init(title: "Пресеты оформления", section: "Внешний вид", detail: "Standard / Glass / Compact", keywords: "preset glass compact внешний вид", destination: .appearance),
-    .init(title: "Пузыри и blur", section: "Внешний вид", detail: "Радиус, прозрачность и стекло", keywords: "bubble пузырь blur прозрачность", destination: .appearance),
-    .init(title: "OLED Black", section: "Внешний вид", detail: "Тёмный визуальный пресет", keywords: "oled black theme", destination: .appearance),
-    .init(title: "Обход защиты от копирования", section: "Чаты", detail: "Настройка копирования в обычных облачных чатах", keywords: "копировать copy защита", destination: .messages),
-    .init(title: "Добавлять от кого переслано", section: "Чаты", detail: "Показывать источник пересланного сообщения", keywords: "переслано forward автор", destination: .messages),
-    .init(title: "Отключить автоудаление", section: "Чаты", detail: "Локальная настройка исчезающих сообщений", keywords: "таймер исчезающие автоудаление", destination: .messages),
-    .init(title: "Обход защиты от скриншотов", section: "Ghost", detail: "Настройка скриншотов обычных чатов", keywords: "скрин screenshot защита", destination: .ghost),
-    .init(title: "Скрывать чат на скриншотах", section: "Ghost", detail: "Маска при захвате экрана", keywords: "скрин запись экран скрыть", destination: .ghost),
-    .init(title: "Блокировать рекламу", section: "Дополнительно", detail: "Скрытие sponsored-сообщений", keywords: "реклама ads sponsored", destination: .additional),
-    .init(title: "Настоящий ID профиля", section: "Дополнительно", detail: "Показывать реальный Telegram Peer ID", keywords: "id айди профиль", destination: .additional),
-    .init(title: "Скрыть мой номер", section: "Дополнительно", detail: "Убрать номер из собственного профиля локально", keywords: "телефон номер профиль скрыть", destination: .additional),
-    .init(title: "Изменение голоса", section: "Голос / Медиа", detail: "Пресеты для новых голосовых сообщений", keywords: "голос voice", destination: .voiceMedia),
-    .init(title: "Ускорение загрузки", section: "Голос / Медиа", detail: "Профиль параллельной загрузки", keywords: "upload скорость медиа", destination: .voiceMedia),
-    .init(title: "Ускорение скачивания", section: "Голос / Медиа", detail: "Профиль параллельного скачивания", keywords: "download скорость медиа", destination: .voiceMedia),
-    .init(title: "Фейковая геолокация", section: "Геолокация", detail: "Подмена выбранной точки при отправке", keywords: "гео location карта точка", destination: .location),
-    .init(title: "Блокировка чатов", section: "Ghost", detail: "Локальный PIN для выбранных чатов", keywords: "pin пароль lock защита", destination: .ghost)
-]
-
-private func pampGramSearchScore(_ item: PampGramSearchItem, query: String) -> Int {
-    let q = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-    if q.isEmpty { return 1 }
-    let title = item.title.lowercased()
-    let haystack = "\(title) \(item.section.lowercased()) \(item.detail.lowercased()) \(item.keywords.lowercased())"
-    if title == q { return 100 }
-    if title.hasPrefix(q) { return 80 }
-    if title.contains(q) { return 65 }
-    if haystack.contains(q) { return 50 }
-    let tokens = q.split(separator: " ").map(String.init)
-    let matches = tokens.filter { haystack.contains($0) }.count
-    return matches == 0 ? 0 : 20 + matches * 8
+    let open: () -> Void
 }
 
 private final class PampGramSearchArguments {
-    let update: (String) -> Void
-    let open: (PampGramSearchDestination) -> Void
-    init(update: @escaping (String) -> Void, open: @escaping (PampGramSearchDestination) -> Void) { self.update = update; self.open = open }
+    let updateQuery: (String) -> Void
+    let selectResult: (Int) -> Void
+
+    init(updateQuery: @escaping (String) -> Void, selectResult: @escaping (Int) -> Void) {
+        self.updateQuery = updateQuery
+        self.selectResult = selectResult
+    }
+}
+
+private enum PampGramSearchSection: Int32 {
+    case field
+    case results
 }
 
 private enum PampGramSearchEntry: ItemListNodeEntry {
-    case input(String)
-    case result(Int32, PampGramSearchItem)
+    case field(String)
     case empty(String)
-    var section: ItemListSectionId { return 0 }
-    var stableId: Int32 { switch self { case .input: return 0; case let .result(i, _): return 10 + i; case .empty: return 999 } }
-    static func <(lhs: Self, rhs: Self) -> Bool { lhs.stableId < rhs.stableId }
+    case result(Int, String, String, String)
+
+    var section: ItemListSectionId {
+        switch self {
+        case .field:
+            return PampGramSearchSection.field.rawValue
+        case .empty, .result:
+            return PampGramSearchSection.results.rawValue
+        }
+    }
+
+    var stableId: Int32 {
+        switch self {
+        case .field:
+            return 0
+        case .empty:
+            return 1
+        case let .result(index, _, _, _):
+            return 100 + Int32(index)
+        }
+    }
+
+    static func <(lhs: PampGramSearchEntry, rhs: PampGramSearchEntry) -> Bool {
+        return lhs.stableId < rhs.stableId
+    }
+
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramSearchArguments
         switch self {
-        case let .input(text):
-            return ItemListMultilineInputItem(presentationData: presentationData, systemStyle: .glass, text: text, placeholder: "Поиск функции или раздела", maxLength: ItemListMultilineInputItemTextLimit(value: 80, display: false), sectionId: 0, style: .blocks, capitalization: false, autocorrection: true, textUpdated: arguments.update)
-        case let .result(_, result):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: result.title, label: result.section, additionalDetailLabel: result.detail, sectionId: 0, style: .blocks, action: { arguments.open(result.destination) })
+        case let .field(text):
+            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: ""), text: text, placeholder: "Найти функцию или раздел", type: .regular(capitalization: false, autocorrection: false), clearType: .always, sectionId: self.section, textUpdated: { value in
+                arguments.updateQuery(value)
+            }, action: {})
         case let .empty(text):
-            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: 0)
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case let .result(index, title, subtitle, sectionName):
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                title: title,
+                titleFont: .bold,
+                label: sectionName,
+                additionalDetailLabel: subtitle,
+                sectionId: self.section,
+                style: .blocks,
+                action: {
+                    arguments.selectResult(index)
+                }
+            )
         }
     }
 }
 
-public func pampGramSearchController(context: AccountContext) -> ViewController {
-    let query = ValuePromise<String>("", ignoreRepeated: true)
-    var push: ((ViewController) -> Void)?
-    let arguments = PampGramSearchArguments(update: { query.set($0) }, open: { destination in
-        let controller: ViewController
-        switch destination {
-        case .gifts: controller = pampGramGiftsSettingsController(context: context)
-        case .messages: controller = pampGramMessagesSettingsController(context: context)
-        case .ghost: controller = pampGramGhostSettingsController(context: context)
-        case .location: controller = pampGramFakeLocationController(context: context)
-        case .voiceMedia: controller = pampGramVoiceMediaController(context: context)
-        case .appearance: controller = pampGramAppearanceController(context: context)
-        case .additional: controller = pampGramAdditionalSettingsController(context: context)
-        case .status: controller = pampGramStatusController(context: context)
-        }
-        push?(controller)
-    })
-    let signal = combineLatest(context.sharedContext.presentationData, query.get())
-    |> map { presentationData, text -> (ItemListControllerState, (ItemListNodeState, Any)) in
-        let ranked = pampGramSearchCatalog.map { ($0, pampGramSearchScore($0, query: text)) }.filter { $0.1 > 0 }.sorted { $0.1 > $1.1 }.prefix(text.isEmpty ? 8 : 12)
-        var entries: [PampGramSearchEntry] = [.input(text)]
-        if ranked.isEmpty { entries.append(.empty("Ничего похожего не найдено. Попробуй другое слово.")) }
-        else { for (index, pair) in ranked.enumerated() { entries.append(.result(Int32(index), pair.0)) } }
-        return (ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text("Поиск"), leftNavigationButton: nil, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back), animateChanges: false), (ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: entries, style: .blocks, animateChanges: true), arguments))
+private func pampGramSearchMatches(index: [PampGramSearchItem], query: String) -> [Int] {
+    let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if q.isEmpty {
+        // No query yet — show everything so the screen doubles as a full index.
+        return Array(index.indices)
     }
+    let terms = q.split(separator: " ").map(String.init)
+    var scored: [(Int, Int)] = []
+    for (i, item) in index.enumerated() {
+        let haystack = "\(item.title) \(item.subtitle) \(item.sectionName) \(item.keywords)".lowercased()
+        var score = 0
+        var matchedAll = true
+        for term in terms {
+            if let range = haystack.range(of: term) {
+                score += 1
+                if item.title.lowercased().hasPrefix(term) {
+                    score += 3
+                } else if haystack.distance(from: haystack.startIndex, to: range.lowerBound) < item.title.count {
+                    score += 1
+                }
+            } else {
+                matchedAll = false
+            }
+        }
+        if matchedAll {
+            scored.append((i, score))
+        }
+    }
+    scored.sort { $0.1 > $1.1 }
+    return scored.map { $0.0 }
+}
+
+/// "Поиск" — reached from the oval search row at the top of the hub. Type a function or a
+/// section and it fuzzily matches PampGram's whole feature index, showing each hit's section
+/// and what it does; tapping opens that section (the most specific screen the function lives in).
+public func pampGramSearchController(context: AccountContext) -> ViewController {
+    var pushControllerImpl: ((ViewController) -> Void)?
+    let queryPromise = ValuePromise<String>("", ignoreRepeated: true)
+
+    let openGifts: () -> Void = { pushControllerImpl?(pampGramGiftsSettingsController(context: context)) }
+    let openMessages: () -> Void = { pushControllerImpl?(pampGramMessagesSettingsController(context: context)) }
+    let openGhost: () -> Void = { pushControllerImpl?(pampGramGhostSettingsController(context: context)) }
+    let openAdditional: () -> Void = { pushControllerImpl?(pampGramAdditionalSettingsController(context: context)) }
+    let openStatus: () -> Void = { pushControllerImpl?(pampGramStatusController(context: context)) }
+    let openFakeLocation: () -> Void = { pushControllerImpl?(pampGramFakeLocationController(context: context)) }
+    let openChatLock: () -> Void = { pushControllerImpl?(pampGramChatLockController(context: context)) }
+    let openAppearance: () -> Void = { pushControllerImpl?(pampGramAppearanceController(context: context)) }
+    let openGiftMarket: () -> Void = { pushControllerImpl?(pampGramGiftMarketController(context: context)) }
+
+    let index: [PampGramSearchItem] = [
+        PampGramSearchItem(title: "Подарок ему", subtitle: "Визуальная отправка подарка, без списания Stars/TON", sectionName: "Подарки", keywords: "gift подарки маркет фантом", open: openGifts),
+        PampGramSearchItem(title: "Подарок мне", subtitle: "Подарок выглядит подаренным вам собеседником", sectionName: "Подарки", keywords: "от него gift получить", open: openGifts),
+        PampGramSearchItem(title: "Локальные звёзды", subtitle: "Показывать свой баланс звёзд вместо настоящего", sectionName: "Подарки", keywords: "stars баланс фантом деньги", open: openGifts),
+        PampGramSearchItem(title: "Локальные TON/GRAM", subtitle: "Показывать свой баланс TON/GRAM вместо настоящего", sectionName: "Подарки", keywords: "ton gram крипто баланс", open: openGifts),
+        PampGramSearchItem(title: "Локальные рубли", subtitle: "Локальная карта для покупки звёзд за рубли", sectionName: "Подарки", keywords: "рубли карта покупка звёзд", open: openGifts),
+        PampGramSearchItem(title: "История и статистика", subtitle: "Локальный журнал Stars/TON/рублей: пополнения, покупки, продажи", sectionName: "Подарки", keywords: "ledger история статистика пополнения покупки продажи журнал", open: openGifts),
+        PampGramSearchItem(title: "Маркет подарков", subtitle: "Локальный маркет: выставить и снять подарки", sectionName: "Подарки", keywords: "market маркет продать выставить подарки", open: openGiftMarket),
+        PampGramSearchItem(title: "Визуальный +888", subtitle: "Локально заменить свой номер в профиле", sectionName: "Подарки", keywords: "888 номер anonymous number профиль", open: openGifts),
+        PampGramSearchItem(title: "Визуальный рейтинг", subtitle: "Локальный рейтинг и очки в своём профиле", sectionName: "Подарки", keywords: "rating рейтинг очки уровень профиль", open: openGifts),
+        PampGramSearchItem(title: "Удалённые сообщения", subtitle: "Сохранять сообщения, удалённые собеседником", sectionName: "Чаты", keywords: "антиделит recover delete восстановление", open: openMessages),
+        PampGramSearchItem(title: "Изменить визуально", subtitle: "Локально править текст и подкладывать фейк-контент", sectionName: "Чаты", keywords: "visual edit фейк текст фото", open: openMessages),
+        PampGramSearchItem(title: "Режим призрака", subtitle: "Скрывать прочтение, онлайн, «печатает», истории", sectionName: "Ghost", keywords: "ghost призрак нечиталка онлайн typing", open: openGhost),
+        PampGramSearchItem(title: "Не читать сообщения", subtitle: "Не отправлять отметку о прочтении", sectionName: "Ghost", keywords: "прочтение read receipt галочки", open: openGhost),
+        PampGramSearchItem(title: "Не отправлять «онлайн»", subtitle: "Не показывать статус в сети", sectionName: "Ghost", keywords: "онлайн online статус", open: openGhost),
+        PampGramSearchItem(title: "Изменение голоса", subtitle: "Менять высоту голоса в голосовых сообщениях", sectionName: "Дополнительно", keywords: "voice голос голосовое питч", open: openAdditional),
+        PampGramSearchItem(title: "Ускорение загрузки/скачивания", subtitle: "Быстрее передавать файлы", sectionName: "Дополнительно", keywords: "speed скорость upload download турбо", open: openAdditional),
+        PampGramSearchItem(title: "Закрепить чаты ∞", subtitle: "Снять лимит на закреплённые чаты", sectionName: "Дополнительно", keywords: "pin закреп бесконечно pinned", open: openAdditional),
+        PampGramSearchItem(title: "Легальный премиум", subtitle: "Клиентские премиум-послабления", sectionName: "Дополнительно", keywords: "premium премиум подписка", open: openAdditional),
+        PampGramSearchItem(title: "Фейковая геолокация", subtitle: "Подменять геопозицию, в т.ч. в реальном времени", sectionName: "Дополнительно", keywords: "location геолокация карта gps live", open: openFakeLocation),
+        PampGramSearchItem(title: "Блокировка чатов", subtitle: "PIN на выбранные чаты", sectionName: "Дополнительно", keywords: "lock пин блокировка chat", open: openChatLock),
+        PampGramSearchItem(title: "Иконка приложения", subtitle: "Сменить иконку на домашнем экране", sectionName: "Статус", keywords: "icon иконка appearance", open: openStatus),
+        PampGramSearchItem(title: "Подписка (PRO/STANDARD)", subtitle: "Статус подписки и её обновление", sectionName: "Статус", keywords: "premium pro подписка обновить", open: openStatus),
+        PampGramSearchItem(title: "Внешний вид", subtitle: "Темы, иконки, интерфейс", sectionName: "Внешний вид", keywords: "appearance тема оформление", open: openAppearance)
+    ]
+
+    // The result actions live in `index`; dispatch through a closure that captures it.
+    let arguments = PampGramSearchArguments(
+        updateQuery: { value in
+            queryPromise.set(value)
+        },
+        selectResult: { i in
+            guard i >= 0 && i < index.count else {
+                return
+            }
+            index[i].open()
+        }
+    )
+
+    let signal = combineLatest(
+        context.sharedContext.presentationData,
+        queryPromise.get()
+    )
+    |> deliverOnMainQueue
+    |> map { presentationData, query -> (ItemListControllerState, (ItemListNodeState, Any)) in
+        let controllerState = ItemListControllerState(
+            presentationData: ItemListPresentationData(presentationData),
+            title: .text("Поиск"),
+            leftNavigationButton: nil,
+            rightNavigationButton: nil,
+            backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),
+            animateChanges: false
+        )
+
+        var entries: [PampGramSearchEntry] = []
+        entries.append(.field(query))
+        let matches = pampGramSearchMatches(index: index, query: query)
+        if matches.isEmpty {
+            entries.append(.empty("Ничего не найдено. Попробуйте другое слово — например «звёзды», «онлайн» или «геолокация»."))
+        } else {
+            for i in matches {
+                let item = index[i]
+                entries.append(.result(i, item.title, item.subtitle, item.sectionName))
+            }
+        }
+
+        let listState = ItemListNodeState(
+            presentationData: ItemListPresentationData(presentationData),
+            entries: entries,
+            style: .blocks,
+            animateChanges: true
+        )
+        return (controllerState, (listState, arguments))
+    }
+
     let controller = ItemListController(context: context, state: signal)
-    push = { [weak controller] c in controller?.push(c) }
+    pushControllerImpl = { [weak controller] c in
+        (controller?.navigationController as? NavigationController)?.pushViewController(c)
+    }
     return controller
 }

@@ -73,7 +73,6 @@
 ```
 mod/
   telegram-ios.patch       — правки в файлах, которые уже есть в upstream
-  telegram-ios-features.patch — правки для первых шести функций «Прочее»
   components/              — новые Bazel-пакеты, копируются как есть в
                              submodules/TelegramUI/Components/PampGram/
     PampGramCore/          — настройки и локальное хранилище (без UI-зависимостей)
@@ -94,15 +93,6 @@ mod/
   — строка «PampGram» в настройках и переход на её экран;
 - четыре `BUILD`-файла (Bazel).
 
-`telegram-ios-features.patch` добавляет первые шесть переключателей страницы «Прочее»:
-
-- обход защиты от копирования и пересылки в обычных облачных чатах;
-- сохранение имени отправителя при пересылке;
-- отключение локального автоудаления исчезающих сообщений;
-- обход защиты от скриншотов в обычных облачных чатах;
-- локальная маска чата во время записи экрана/фонового режима;
-- скрытие рекламных сообщений в истории чата.
-
 ## Как собрать
 
 Сборка идёт целиком в GitHub Actions, Mac не нужен: вкладка **Actions** → workflow
@@ -120,7 +110,6 @@ Apple ID уже на вашей стороне (Windows/Linux подходят, 
 git clone https://github.com/TelegramMessenger/Telegram-iOS.git
 cd Telegram-iOS
 git apply /путь/до/PampGram/mod/telegram-ios.patch
-git apply /путь/до/PampGram/mod/telegram-ios-features.patch
 mkdir -p submodules/TelegramUI/Components/PampGram
 cp -R /путь/до/PampGram/mod/components/. submodules/TelegramUI/Components/PampGram/
 ```

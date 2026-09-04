@@ -34,11 +34,11 @@ public enum PampGramVoicePreset: String, CaseIterable {
         }
     }
 
-    /// Playback-rate multiplier for the same unit — a small tempo shift alongside the pitch
-    /// one reads as a more distinct "voice" than pitch alone.
+    /// Playback-rate multiplier for the pitch unit. Kept at 1.0 for every preset on purpose:
+    /// any value ≠ 1.0 changes the message's tempo (and so its duration), which read as the
+    /// recording being sped up/slowed down. The presets change only pitch, never speed — the
+    /// message plays back at exactly its original length.
     public var rate: Float {
-        // Voice presets must never change message tempo. The voice changer now uses
-        // pitch-only processing and keeps playback speed at exactly 1.0.
         return 1.0
     }
 }
@@ -104,6 +104,33 @@ extension PampGramSpeedMode: Codable {
     }
 }
 
+/// In-memory, per-launch record of which peers this account has *actively* messaged in the
+/// current app session. Feeds the Ghost "Читать при действиях" option: once you've sent a
+/// message into a chat you've already revealed your presence there, so suppressing your read
+/// receipts for that one chat stops being useful — the receipt is allowed through again. Kept
+/// in memory on purpose (not in Postbox): it's a session-scoped signal, resets cleanly on
+/// relaunch, and never grows a persisted list. Read from the read-state push hook, written
+/// from the outgoing-message enqueue hook — both in the same app process.
+public final class PampGramGhostRuntime {
+    public static let shared = PampGramGhostRuntime()
+
+    private let actedPeerIds = Atomic<Set<Int64>>(value: Set())
+
+    private init() {}
+
+    public func markActed(peerId: Int64) {
+        let _ = self.actedPeerIds.modify { current in
+            var current = current
+            current.insert(peerId)
+            return current
+        }
+    }
+
+    public func hasActed(peerId: Int64) -> Bool {
+        return self.actedPeerIds.with { $0.contains(peerId) }
+    }
+}
+
 /// Every PampGram feature is a *local* one: it changes what this device shows its own
 /// owner, and nothing else. Nothing in this module — or in anything that reads it — sends
 /// data to Telegram, alters another account's state, touches real Stars or real Gifts, or
@@ -111,15 +138,6 @@ extension PampGramSpeedMode: Codable {
 /// a key range reserved for the mod, and are never synced to the account manager or to any
 /// server-backed preferences.
 public struct PampGramSettings: Codable, Equatable {
-    private enum CodingKeys: String, CodingKey {
-        case pampGramEnabled, phantomGiftsEnabled, fakeStarsBalance, fakeTonBalanceNanos, fakeStarsDisplayEnabled, fakeTonDisplayEnabled
-        case antiDeleteMessagesEnabled, ghostReaderEnabled, onlineMaskEnabled, antiDeleteExcludedPeerIds, visualEditEnabled, fromHimGiftsEnabled
-        case voiceChangerMessagesEnabled, voicePreset, uploadSpeedMode, downloadSpeedMode, fakeLocationEnabled, fakeLocationLatitude, fakeLocationLongitude
-        case chatLockEnabled, chatLockPin, lockedChatPeerIds, localRublesBalanceKopecks, localRublesPurchaseEnabled
-        case copyProtectionBypassEnabled, showForwardOriginEnabled, disableAutoDeleteEnabled, screenshotProtectionBypassEnabled, hideChatOnScreenshotsEnabled, adBlockEnabled
-    }
-    /// Global master switch. When off, every PampGram runtime feature reads as disabled, while the stored per-feature choices are preserved.
-    public var pampGramEnabled: Bool
     /// Shows the clearly-labelled "Фантом" tab inside the real gift-sending screen.
     public var phantomGiftsEnabled: Bool
     /// The mod's own play-money Stars counter, spent by Phantom Gifts. Completely unrelated
@@ -143,17 +161,49 @@ public struct PampGramSettings: Codable, Equatable {
     /// history instead of vanishing. Purely local: it never tells Telegram, or the person who
     /// deleted it, that a copy was kept.
     public var antiDeleteMessagesEnabled: Bool
-    /// "Нечиталка" (Ghost section): suppresses every outgoing activity signal this account
-    /// would otherwise send to the people it talks to — read receipts, online/last-seen,
-    /// typing, and recording/uploading indicators — while the local UI keeps working exactly
-    /// as normal (messages still show as read locally, badges still clear). Mutually
-    /// exclusive with `onlineMaskEnabled`: enabling one turns the other off, since "never
-    /// online" and "always online" can't both be true.
+    /// Legacy Ghost toggles, kept only so old stored settings still decode and can be
+    /// migrated. The Ghost section is now the granular `ghostMode*` set below; `init(from:)`
+    /// maps a previously-on `ghostReaderEnabled` into the new fields once. Nothing reads
+    /// these two directly any more.
     public var ghostReaderEnabled: Bool
-    /// "Маскировка онлайна" (Ghost section): the opposite of `ghostReaderEnabled`'s presence
-    /// half — keeps broadcasting "online" as persistently as the OS lets the app run, instead
-    /// of going offline when backgrounded. Mutually exclusive with `ghostReaderEnabled`.
     public var onlineMaskEnabled: Bool
+
+    /// "Режим призрака" master switch (Ghost section). When off, every `ghostMode*` feature
+    /// below is inert regardless of its own toggle — the section's single on/off gate, exactly
+    /// like the header switch in the screen. Each feature only suppresses *this* account's own
+    /// outgoing signals (read receipts, story views, typing, presence); nothing here reads or
+    /// stores anyone else's data.
+    public var ghostModeEnabled: Bool
+    /// "Не читать сообщения": withhold the outgoing "read up to here" sync that drives the
+    /// other side's read-receipt checkmarks. Local read state (badges, this device's own
+    /// "read" UI) is untouched. Honored per-peer through the exception set below.
+    public var ghostHideReadReceipts: Bool
+    /// "Не читать истории": withhold the outgoing "story seen" sync, so viewing someone's
+    /// story doesn't add this account to their viewer list. Honored per-peer.
+    public var ghostHideStoryViews: Bool
+    /// "Не отправлять «онлайн»": never broadcast an online presence, even while the app is
+    /// open in the foreground. Presence is a single global account signal, so this (and
+    /// `ghostAutoOffline`) are not per-peer — the exception set doesn't apply to them.
+    public var ghostHideOnline: Bool
+    /// "Не отправлять «печатает»": withhold every outgoing activity ping — typing, choosing a
+    /// sticker, recording voice/video, upload progress. Honored per-peer.
+    public var ghostHideTyping: Bool
+    /// "Автоматический «офлайн»": drop the background-online window — go offline the moment
+    /// the app leaves the foreground, instead of the usual short keep-alive. Global, like
+    /// `ghostHideOnline`.
+    public var ghostAutoOffline: Bool
+    /// "Читать при действиях": once you've sent a message into a chat this session (tracked in
+    /// `PampGramGhostRuntime`), stop hiding your read receipts *for that chat* — you've already
+    /// revealed you're there. Only relaxes `ghostHideReadReceipts`, nothing else.
+    public var ghostReadOnAction: Bool
+    /// Exceptions — "Все каналы": Ghost's per-peer suppression skips broadcast channels.
+    public var ghostExcludeAllChannels: Bool
+    /// Exceptions — "Все группы": Ghost's per-peer suppression skips groups/supergroups.
+    public var ghostExcludeAllGroups: Bool
+    /// Exceptions — "Папки": chat-folder ids whose explicitly-included chats Ghost skips.
+    public var ghostExcludedFolderIds: [Int32]
+    /// Exceptions — "Добавить исключение": individual chats Ghost skips.
+    public var ghostExcludedPeerIds: [PeerId]
     /// Chats excluded from "Восстановление удалённых сообщений": a message deleted by the
     /// other side in one of these chats is left alone (normal Telegram behavior), instead of
     /// being kept and shown like every other chat's deletions are. Checked by
@@ -195,6 +245,14 @@ public struct PampGramSettings: Codable, Equatable {
     public var chatLockEnabled: Bool
     public var chatLockPin: String
     public var lockedChatPeerIds: [PeerId]
+    /// "Закрепить чаты" (Дополнительно): bypass the client-side pinned-chats limit so more than
+    /// the usual 5/10 chats can be pinned. Client-side only — Telegram's server keeps its own
+    /// limit, so pins beyond it may not sync to other devices, but on this device they pin.
+    public var infinitePinsEnabled: Bool
+    /// "Легальный премиум" (Дополнительно): flip on the client-side-only premium unlocks that
+    /// Telegram never verifies server-side — a locally-shown Premium badge/status, premium
+    /// stickers & reactions in the picker, and the relaxed folder/pin client limits.
+    public var legalPremiumEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -202,26 +260,20 @@ public struct PampGramSettings: Codable, Equatable {
     /// nanotons: keeps arithmetic exact without floating point.
     public var localRublesBalanceKopecks: Int64
     public var localRublesPurchaseEnabled: Bool
-    /// Local copy-protection override for ordinary cloud chats. It does not decrypt secret
-    /// chats and does not change Telegram's server-side restriction.
-    public var copyProtectionBypassEnabled: Bool
-    /// Keeps the sender/origin visible when this device forwards a message.
-    public var showForwardOriginEnabled: Bool
-    /// Stops this device's managed disappearing-message cleanup from removing content.
-    public var disableAutoDeleteEnabled: Bool
-    /// Allows screenshots of ordinary chats that Telegram marks as copy-protected.
-    public var screenshotProtectionBypassEnabled: Bool
-    /// Covers this chat while the screen is being captured or the app is backgrounded.
-    public var hideChatOnScreenshotsEnabled: Bool
-    /// Removes Telegram ad messages from the local chat history UI.
-    public var adBlockEnabled: Bool
+    /// "Включить визуалку" — the on/off gate for the **Подарки** section's visual features only
+    /// (it lives at the top of the Gifts screen). When off, `PampGramCore.settings`/
+    /// `settingsSignal` report just the gift-visual features as disabled (via
+    /// `withGiftsVisualsOff()`) — the phantom "Подарок ему" tab, the "Подарок мне" tab, the fake
+    /// Stars/TON balance display, and the local-rubles star purchase — while every other section
+    /// keeps working. Stored values are preserved; the settings SCREENS read the raw value
+    /// (`rawSettings`/`rawSettingsSignal`) so they still show and edit the real state.
+    public var masterEnabled: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
 
     public static var defaultSettings: PampGramSettings {
         return PampGramSettings(
-            pampGramEnabled: true,
             phantomGiftsEnabled: true,
             fakeStarsBalance: defaultFakeStarsBalance,
             fakeTonBalanceNanos: defaultFakeTonBalanceNanos,
@@ -230,6 +282,17 @@ public struct PampGramSettings: Codable, Equatable {
             antiDeleteMessagesEnabled: true,
             ghostReaderEnabled: false,
             onlineMaskEnabled: false,
+            ghostModeEnabled: false,
+            ghostHideReadReceipts: false,
+            ghostHideStoryViews: false,
+            ghostHideOnline: false,
+            ghostHideTyping: false,
+            ghostAutoOffline: false,
+            ghostReadOnAction: false,
+            ghostExcludeAllChannels: false,
+            ghostExcludeAllGroups: false,
+            ghostExcludedFolderIds: [],
+            ghostExcludedPeerIds: [],
             antiDeleteExcludedPeerIds: [],
             visualEditEnabled: false,
             fromHimGiftsEnabled: false,
@@ -245,17 +308,13 @@ public struct PampGramSettings: Codable, Equatable {
             lockedChatPeerIds: [],
             localRublesBalanceKopecks: 0,
             localRublesPurchaseEnabled: false,
-            copyProtectionBypassEnabled: false,
-            showForwardOriginEnabled: false,
-            disableAutoDeleteEnabled: false,
-            screenshotProtectionBypassEnabled: false,
-            hideChatOnScreenshotsEnabled: false,
-            adBlockEnabled: false
+            infinitePinsEnabled: false,
+            legalPremiumEnabled: false,
+            masterEnabled: true
         )
     }
 
-    public init(pampGramEnabled: Bool, phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, copyProtectionBypassEnabled: Bool, showForwardOriginEnabled: Bool, disableAutoDeleteEnabled: Bool, screenshotProtectionBypassEnabled: Bool, hideChatOnScreenshotsEnabled: Bool, adBlockEnabled: Bool) {
-        self.pampGramEnabled = pampGramEnabled
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -264,6 +323,17 @@ public struct PampGramSettings: Codable, Equatable {
         self.antiDeleteMessagesEnabled = antiDeleteMessagesEnabled
         self.ghostReaderEnabled = ghostReaderEnabled
         self.onlineMaskEnabled = onlineMaskEnabled
+        self.ghostModeEnabled = ghostModeEnabled
+        self.ghostHideReadReceipts = ghostHideReadReceipts
+        self.ghostHideStoryViews = ghostHideStoryViews
+        self.ghostHideOnline = ghostHideOnline
+        self.ghostHideTyping = ghostHideTyping
+        self.ghostAutoOffline = ghostAutoOffline
+        self.ghostReadOnAction = ghostReadOnAction
+        self.ghostExcludeAllChannels = ghostExcludeAllChannels
+        self.ghostExcludeAllGroups = ghostExcludeAllGroups
+        self.ghostExcludedFolderIds = ghostExcludedFolderIds
+        self.ghostExcludedPeerIds = ghostExcludedPeerIds
         self.antiDeleteExcludedPeerIds = antiDeleteExcludedPeerIds
         self.visualEditEnabled = visualEditEnabled
         self.fromHimGiftsEnabled = fromHimGiftsEnabled
@@ -279,12 +349,9 @@ public struct PampGramSettings: Codable, Equatable {
         self.lockedChatPeerIds = lockedChatPeerIds
         self.localRublesBalanceKopecks = localRublesBalanceKopecks
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
-        self.copyProtectionBypassEnabled = copyProtectionBypassEnabled
-        self.showForwardOriginEnabled = showForwardOriginEnabled
-        self.disableAutoDeleteEnabled = disableAutoDeleteEnabled
-        self.screenshotProtectionBypassEnabled = screenshotProtectionBypassEnabled
-        self.hideChatOnScreenshotsEnabled = hideChatOnScreenshotsEnabled
-        self.adBlockEnabled = adBlockEnabled
+        self.infinitePinsEnabled = infinitePinsEnabled
+        self.legalPremiumEnabled = legalPremiumEnabled
+        self.masterEnabled = masterEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -293,7 +360,6 @@ public struct PampGramSettings: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = PampGramSettings.defaultSettings
-        self.pampGramEnabled = try container.decodeIfPresent(Bool.self, forKey: .pampGramEnabled) ?? defaults.pampGramEnabled
         self.phantomGiftsEnabled = try container.decodeIfPresent(Bool.self, forKey: .phantomGiftsEnabled) ?? defaults.phantomGiftsEnabled
         self.fakeStarsBalance = try container.decodeIfPresent(Int64.self, forKey: .fakeStarsBalance) ?? defaults.fakeStarsBalance
         self.fakeTonBalanceNanos = try container.decodeIfPresent(Int64.self, forKey: .fakeTonBalanceNanos) ?? defaults.fakeTonBalanceNanos
@@ -302,6 +368,41 @@ public struct PampGramSettings: Codable, Equatable {
         self.antiDeleteMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .antiDeleteMessagesEnabled) ?? defaults.antiDeleteMessagesEnabled
         self.ghostReaderEnabled = try container.decodeIfPresent(Bool.self, forKey: .ghostReaderEnabled) ?? defaults.ghostReaderEnabled
         self.onlineMaskEnabled = try container.decodeIfPresent(Bool.self, forKey: .onlineMaskEnabled) ?? defaults.onlineMaskEnabled
+
+        // Migration: the granular Ghost fields didn't exist before. When they're all absent
+        // (settings written by an older PampGram) but the old bundled "Нечиталка" was on, seed
+        // the new fields from it so the feature keeps working after the update instead of
+        // silently switching off. `ghostModeEnabled` being the marker key: present → new
+        // settings, honor them verbatim; absent → migrate from the legacy toggle.
+        if let ghostModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .ghostModeEnabled) {
+            self.ghostModeEnabled = ghostModeEnabled
+            self.ghostHideReadReceipts = try container.decodeIfPresent(Bool.self, forKey: .ghostHideReadReceipts) ?? defaults.ghostHideReadReceipts
+            self.ghostHideStoryViews = try container.decodeIfPresent(Bool.self, forKey: .ghostHideStoryViews) ?? defaults.ghostHideStoryViews
+            self.ghostHideOnline = try container.decodeIfPresent(Bool.self, forKey: .ghostHideOnline) ?? defaults.ghostHideOnline
+            self.ghostHideTyping = try container.decodeIfPresent(Bool.self, forKey: .ghostHideTyping) ?? defaults.ghostHideTyping
+            self.ghostAutoOffline = try container.decodeIfPresent(Bool.self, forKey: .ghostAutoOffline) ?? defaults.ghostAutoOffline
+            self.ghostReadOnAction = try container.decodeIfPresent(Bool.self, forKey: .ghostReadOnAction) ?? defaults.ghostReadOnAction
+        } else if self.ghostReaderEnabled {
+            self.ghostModeEnabled = true
+            self.ghostHideReadReceipts = true
+            self.ghostHideStoryViews = true
+            self.ghostHideOnline = true
+            self.ghostHideTyping = true
+            self.ghostAutoOffline = false
+            self.ghostReadOnAction = false
+        } else {
+            self.ghostModeEnabled = defaults.ghostModeEnabled
+            self.ghostHideReadReceipts = defaults.ghostHideReadReceipts
+            self.ghostHideStoryViews = defaults.ghostHideStoryViews
+            self.ghostHideOnline = defaults.ghostHideOnline
+            self.ghostHideTyping = defaults.ghostHideTyping
+            self.ghostAutoOffline = defaults.ghostAutoOffline
+            self.ghostReadOnAction = defaults.ghostReadOnAction
+        }
+        self.ghostExcludeAllChannels = try container.decodeIfPresent(Bool.self, forKey: .ghostExcludeAllChannels) ?? defaults.ghostExcludeAllChannels
+        self.ghostExcludeAllGroups = try container.decodeIfPresent(Bool.self, forKey: .ghostExcludeAllGroups) ?? defaults.ghostExcludeAllGroups
+        self.ghostExcludedFolderIds = try container.decodeIfPresent([Int32].self, forKey: .ghostExcludedFolderIds) ?? defaults.ghostExcludedFolderIds
+        self.ghostExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .ghostExcludedPeerIds) ?? defaults.ghostExcludedPeerIds
         self.antiDeleteExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .antiDeleteExcludedPeerIds) ?? defaults.antiDeleteExcludedPeerIds
         self.visualEditEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditEnabled) ?? defaults.visualEditEnabled
         self.fromHimGiftsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fromHimGiftsEnabled) ?? defaults.fromHimGiftsEnabled
@@ -317,12 +418,46 @@ public struct PampGramSettings: Codable, Equatable {
         self.lockedChatPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .lockedChatPeerIds) ?? defaults.lockedChatPeerIds
         self.localRublesBalanceKopecks = try container.decodeIfPresent(Int64.self, forKey: .localRublesBalanceKopecks) ?? defaults.localRublesBalanceKopecks
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
-        self.copyProtectionBypassEnabled = try container.decodeIfPresent(Bool.self, forKey: .copyProtectionBypassEnabled) ?? defaults.copyProtectionBypassEnabled
-        self.showForwardOriginEnabled = try container.decodeIfPresent(Bool.self, forKey: .showForwardOriginEnabled) ?? defaults.showForwardOriginEnabled
-        self.disableAutoDeleteEnabled = try container.decodeIfPresent(Bool.self, forKey: .disableAutoDeleteEnabled) ?? defaults.disableAutoDeleteEnabled
-        self.screenshotProtectionBypassEnabled = try container.decodeIfPresent(Bool.self, forKey: .screenshotProtectionBypassEnabled) ?? defaults.screenshotProtectionBypassEnabled
-        self.hideChatOnScreenshotsEnabled = try container.decodeIfPresent(Bool.self, forKey: .hideChatOnScreenshotsEnabled) ?? defaults.hideChatOnScreenshotsEnabled
-        self.adBlockEnabled = try container.decodeIfPresent(Bool.self, forKey: .adBlockEnabled) ?? defaults.adBlockEnabled
+        self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
+        self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
+        self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
+    }
+
+    /// A copy with just the **Подарки** section's visual features forced off (every stored value
+    /// preserved). Returned by `PampGramCore.settings`/`settingsSignal` while "Включить визуалку"
+    /// is off, so the gift visuals stop taking effect while nothing is lost and no other section
+    /// is touched.
+    public func withGiftsVisualsOff() -> PampGramSettings {
+        var settings = self
+        settings.phantomGiftsEnabled = false
+        settings.fromHimGiftsEnabled = false
+        settings.fakeStarsDisplayEnabled = false
+        settings.fakeTonDisplayEnabled = false
+        settings.localRublesPurchaseEnabled = false
+        return settings
+    }
+
+    /// Whether a peer is exempt from Ghost's per-peer suppression, given its type and the
+    /// folder ids it belongs to. Pure and primitive-typed on purpose: it's called from hooks
+    /// inside TelegramCore, which resolve `isChannel`/`isGroup`/`folderIds` from the peer and
+    /// the chat filters themselves — this module can't reference those TelegramCore types.
+    /// Presence (online/auto-offline) is global and never routed through here.
+    public func ghostExcludesPeer(peerId: PeerId?, isChannel: Bool, isGroup: Bool, folderIds: [Int32]) -> Bool {
+        if let peerId, self.ghostExcludedPeerIds.contains(peerId) {
+            return true
+        }
+        if isChannel && self.ghostExcludeAllChannels {
+            return true
+        }
+        if isGroup && self.ghostExcludeAllGroups {
+            return true
+        }
+        if !self.ghostExcludedFolderIds.isEmpty && !folderIds.isEmpty {
+            for folderId in folderIds where self.ghostExcludedFolderIds.contains(folderId) {
+                return true
+            }
+        }
+        return false
     }
 }
 
@@ -349,38 +484,41 @@ public enum PampGramPreferencesKeys {
 }
 
 public enum PampGramCore {
-    private static func rawSettings(transaction: Transaction) -> PampGramSettings {
+    /// The stored settings, verbatim — no gating. Used by the settings SCREENS that show/edit
+    /// gift-visual fields (so they see the real state) and by every write path.
+    public static func rawSettings(transaction: Transaction) -> PampGramSettings {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
-    /// The master visual switch belongs to the Gifts section only. Turning it off must not
-    /// silently disable unrelated Chat/Ghost/Location/Media features. Stored gift settings
-    /// remain untouched; only their effective runtime values are suppressed.
-    private static func effective(_ value: PampGramSettings) -> PampGramSettings {
-        guard !value.pampGramEnabled else { return value }
-        var value = value
-        value.phantomGiftsEnabled = false
-        value.fakeStarsDisplayEnabled = false
-        value.fakeTonDisplayEnabled = false
-        value.fromHimGiftsEnabled = false
-        value.localRublesPurchaseEnabled = false
-        return value
-    }
-
+    /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
+    /// визуалку" is off, only the gift-visual features read as disabled; every other section is
+    /// unaffected. Screens that need the real stored gift state use `rawSettings` instead.
     public static func settings(transaction: Transaction) -> PampGramSettings {
-        return self.effective(self.rawSettings(transaction: transaction))
+        let raw = self.rawSettings(transaction: transaction)
+        return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
     }
 
     public static func updateSettings(transaction: Transaction, _ f: (PampGramSettings) -> PampGramSettings) {
+        // Reads RAW so an edit never operates on the gifts-gated (all-off) view — otherwise
+        // toggling the gate back on, or changing any field while it's off, would persist zeros.
         let updated = f(self.rawSettings(transaction: transaction))
         transaction.setPreferencesEntry(key: PampGramPreferencesKeys.settings, value: PreferencesEntry(updated))
     }
 
-    /// Live settings, for screens that need to redraw when a value changes.
-    public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
+    /// Live raw settings, for the settings screens.
+    public static func rawSettingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return postbox.preferencesView(keys: [PampGramPreferencesKeys.settings])
         |> map { view -> PampGramSettings in
-            return self.effective(view.values[PampGramPreferencesKeys.settings]?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings)
+            return view.values[PampGramPreferencesKeys.settings]?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
+        }
+        |> distinctUntilChanged
+    }
+
+    /// Live gifts-gated settings, for feature effect/display code.
+    public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
+        return self.rawSettingsSignal(postbox: postbox)
+        |> map { raw -> PampGramSettings in
+            return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
         }
         |> distinctUntilChanged
     }
