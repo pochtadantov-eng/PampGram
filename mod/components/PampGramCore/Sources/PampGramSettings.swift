@@ -137,6 +137,42 @@ public final class PampGramGhostRuntime {
 /// bypasses a payment. Settings therefore live entirely in this account's own Postbox, in
 /// a key range reserved for the mod, and are never synced to the account manager or to any
 /// server-backed preferences.
+public enum PampGramFakeMovementMode: String, CaseIterable, Equatable {
+    case walking
+    case bicycle
+    case car
+
+    public var displayName: String {
+        switch self {
+        case .walking: return "Пешком"
+        case .bicycle: return "Велосипед"
+        case .car: return "Автомобиль"
+        }
+    }
+
+    public var metersPerSecond: Double {
+        switch self {
+        case .walking: return 1.4
+        case .bicycle: return 5.3
+        case .car: return 13.9
+        }
+    }
+}
+
+extension PampGramFakeMovementMode: Codable {
+    private enum CodingKeys: String, CodingKey { case value }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self = PampGramFakeMovementMode(rawValue: try container.decode(String.self, forKey: .value)) ?? .walking
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.rawValue, forKey: .value)
+    }
+}
+
 public struct PampGramSettings: Codable, Equatable {
     /// Shows the clearly-labelled "Фантом" tab inside the real gift-sending screen.
     public var phantomGiftsEnabled: Bool
@@ -238,6 +274,11 @@ public struct PampGramSettings: Codable, Equatable {
     public var fakeLocationEnabled: Bool
     public var fakeLocationLatitude: Double
     public var fakeLocationLongitude: Double
+    /// Animate fake live location along a route instead of keeping it stationary.
+    public var fakeLocationWalkingEnabled: Bool
+    public var fakeLocationMovementMode: PampGramFakeMovementMode
+    /// Semicolon-separated route points: "lat,lon;lat,lon;...". Empty uses an automatic loop.
+    public var fakeLocationRoute: String
     /// "Блокировка чатов" (Дополнительно): a single local PIN gating specific chats, checked
     /// once at `navigateToChatControllerImpl` before the real chat ever opens — not Telegram's
     /// own Secret Chats or app passcode, just an extra local step before this device shows one
@@ -303,6 +344,9 @@ public struct PampGramSettings: Codable, Equatable {
             fakeLocationEnabled: false,
             fakeLocationLatitude: 0,
             fakeLocationLongitude: 0,
+            fakeLocationWalkingEnabled: false,
+            fakeLocationMovementMode: .walking,
+            fakeLocationRoute: "",
             chatLockEnabled: false,
             chatLockPin: "",
             lockedChatPeerIds: [],
@@ -314,7 +358,7 @@ public struct PampGramSettings: Codable, Equatable {
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, fakeLocationWalkingEnabled: Bool, fakeLocationMovementMode: PampGramFakeMovementMode, fakeLocationRoute: String, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -344,6 +388,9 @@ public struct PampGramSettings: Codable, Equatable {
         self.fakeLocationEnabled = fakeLocationEnabled
         self.fakeLocationLatitude = fakeLocationLatitude
         self.fakeLocationLongitude = fakeLocationLongitude
+        self.fakeLocationWalkingEnabled = fakeLocationWalkingEnabled
+        self.fakeLocationMovementMode = fakeLocationMovementMode
+        self.fakeLocationRoute = fakeLocationRoute
         self.chatLockEnabled = chatLockEnabled
         self.chatLockPin = chatLockPin
         self.lockedChatPeerIds = lockedChatPeerIds
@@ -413,6 +460,9 @@ public struct PampGramSettings: Codable, Equatable {
         self.fakeLocationEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeLocationEnabled) ?? defaults.fakeLocationEnabled
         self.fakeLocationLatitude = try container.decodeIfPresent(Double.self, forKey: .fakeLocationLatitude) ?? defaults.fakeLocationLatitude
         self.fakeLocationLongitude = try container.decodeIfPresent(Double.self, forKey: .fakeLocationLongitude) ?? defaults.fakeLocationLongitude
+        self.fakeLocationWalkingEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeLocationWalkingEnabled) ?? defaults.fakeLocationWalkingEnabled
+        self.fakeLocationMovementMode = try container.decodeIfPresent(PampGramFakeMovementMode.self, forKey: .fakeLocationMovementMode) ?? defaults.fakeLocationMovementMode
+        self.fakeLocationRoute = try container.decodeIfPresent(String.self, forKey: .fakeLocationRoute) ?? defaults.fakeLocationRoute
         self.chatLockEnabled = try container.decodeIfPresent(Bool.self, forKey: .chatLockEnabled) ?? defaults.chatLockEnabled
         self.chatLockPin = try container.decodeIfPresent(String.self, forKey: .chatLockPin) ?? defaults.chatLockPin
         self.lockedChatPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .lockedChatPeerIds) ?? defaults.lockedChatPeerIds

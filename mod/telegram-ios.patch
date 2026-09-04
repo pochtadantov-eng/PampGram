@@ -16710,10 +16710,10 @@ index 47b32863..7daad004 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/LiveLocationManager/Sources/LiveLocationManager.swift b/submodules/LiveLocationManager/Sources/LiveLocationManager.swift
-index 4187f3b4..b036df0b 100644
+index 4187f3b4..499cac3f 100644
 --- a/submodules/LiveLocationManager/Sources/LiveLocationManager.swift
 +++ b/submodules/LiveLocationManager/Sources/LiveLocationManager.swift
-@@ -4,12 +4,20 @@ import SwiftSignalKit
+@@ -4,12 +4,24 @@ import SwiftSignalKit
  import CoreLocation
  import DeviceLocationManager
  import AccountContext
@@ -16731,11 +16731,15 @@ index 4187f3b4..b036df0b 100644
 +    // broadcast continuously shows the faked position. Cached from the settings signal so the
 +    // per-update path (`updateDeviceCoordinate`) stays synchronous.
 +    private var pampGramFakeCoordinate: (latitude: Double, longitude: Double)?
++    private var pampGramFakeWalkingEnabled = false
++    private var pampGramFakeMovementMode: PampGramFakeMovementMode = .walking
++    private var pampGramFakeRoute: String = ""
++    private var pampGramFakeWalkingStartTime: Double?
 +    private let pampGramSettingsDisposable = MetaDisposable()
      
      private let summaryManagerImpl: LiveLocationSummaryManagerImpl
      public var summaryManager: LiveLocationSummaryManager {
-@@ -53,6 +61,18 @@ public final class LiveLocationManagerImpl: LiveLocationManager {
+@@ -53,6 +65,27 @@ public final class LiveLocationManagerImpl: LiveLocationManager {
          
          self.summaryManagerImpl = LiveLocationSummaryManagerImpl(queue: self.queue, engine: engine, accountPeerId: engine.account.peerId)
  
@@ -16745,16 +16749,25 @@ index 4187f3b4..b036df0b 100644
 +                return
 +            }
 +            if settings.fakeLocationEnabled {
-+                strongSelf.pampGramFakeCoordinate = (latitude: settings.fakeLocationLatitude, longitude: settings.fakeLocationLongitude)
++                let newCoordinate = (latitude: settings.fakeLocationLatitude, longitude: settings.fakeLocationLongitude)
++                if strongSelf.pampGramFakeCoordinate?.latitude != newCoordinate.latitude || strongSelf.pampGramFakeCoordinate?.longitude != newCoordinate.longitude || strongSelf.pampGramFakeWalkingEnabled != settings.fakeLocationWalkingEnabled || strongSelf.pampGramFakeMovementMode != settings.fakeLocationMovementMode || strongSelf.pampGramFakeRoute != settings.fakeLocationRoute {
++                    strongSelf.pampGramFakeWalkingStartTime = ProcessInfo.processInfo.systemUptime
++                }
++                strongSelf.pampGramFakeCoordinate = newCoordinate
++                strongSelf.pampGramFakeWalkingEnabled = settings.fakeLocationWalkingEnabled
++                strongSelf.pampGramFakeMovementMode = settings.fakeLocationMovementMode
++                strongSelf.pampGramFakeRoute = settings.fakeLocationRoute
 +            } else {
 +                strongSelf.pampGramFakeCoordinate = nil
++                strongSelf.pampGramFakeWalkingEnabled = false
++                strongSelf.pampGramFakeWalkingStartTime = nil
 +            }
 +        }))
 +
          self.messagesDisposable = (self.engine.messages.activeLiveLocationMessages()
          |> deliverOn(self.queue)).start(next: { [weak self] message in
              if let strongSelf = self {
-@@ -228,7 +248,13 @@ public final class LiveLocationManagerImpl: LiveLocationManager {
+@@ -228,7 +261,76 @@ public final class LiveLocationManagerImpl: LiveLocationManager {
      
      private func updateDeviceCoordinate(_ coordinate: CLLocationCoordinate2D, accuracyRadius: Double, heading: Double?) {
          assert(self.queue.isCurrent())
@@ -16763,7 +16776,70 @@ index 4187f3b4..b036df0b 100644
 +        var coordinate = coordinate
 +        // "Фейковая геолокация": broadcast the faked coordinate for every live-location update.
 +        if let fake = self.pampGramFakeCoordinate {
-+            coordinate = CLLocationCoordinate2D(latitude: fake.latitude, longitude: fake.longitude)
++            if self.pampGramFakeWalkingEnabled {
++                // Route simulation. Three profiles use different nominal speeds and small,
++                // deterministic acceleration/deceleration waves so updates do not look robotic.
++                let elapsed = max(0.0, ProcessInfo.processInfo.systemUptime - (self.pampGramFakeWalkingStartTime ?? ProcessInfo.processInfo.systemUptime))
++                let baseSpeed = self.pampGramFakeMovementMode.metersPerSecond
++                let rampTime = self.pampGramFakeMovementMode == .walking ? 3.0 : (self.pampGramFakeMovementMode == .bicycle ? 6.0 : 10.0)
++                let variationA = self.pampGramFakeMovementMode == .car ? 0.11 : (self.pampGramFakeMovementMode == .bicycle ? 0.075 : 0.055)
++                let variationB = self.pampGramFakeMovementMode == .car ? 0.045 : (self.pampGramFakeMovementMode == .bicycle ? 0.035 : 0.025)
++                // Integral of a smooth speed curve: gradual acceleration plus gentle,
++                // deterministic pace changes. Distance always moves forward.
++                let rampDistance = baseSpeed * (elapsed - rampTime * (1.0 - exp(-elapsed / rampTime)))
++                let w1 = 2.0 * Double.pi / 29.0
++                let w2 = 2.0 * Double.pi / 11.0
++                let variationDistance = baseSpeed * (variationA / w1 * (1.0 - cos(w1 * elapsed)) + variationB / w2 * (1.0 - cos(w2 * elapsed)))
++                let travelled = max(0.0, rampDistance + variationDistance)
++                let start = CLLocationCoordinate2D(latitude: fake.latitude, longitude: fake.longitude)
++                var points: [CLLocationCoordinate2D] = [start]
++                points.append(contentsOf: self.pampGramFakeRoute.split(separator: ";").compactMap { raw in
++                    let parts = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
++                    guard parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) else { return nil }
++                    return CLLocationCoordinate2D(latitude: lat, longitude: lon)
++                })
++                if points.count < 2 {
++                    // Fallback loop around the chosen start point. Radius scales with mode.
++                    let radius = self.pampGramFakeMovementMode == .walking ? 120.0 : (self.pampGramFakeMovementMode == .bicycle ? 350.0 : 900.0)
++                    let angle = (travelled / radius).truncatingRemainder(dividingBy: Double.pi * 2.0)
++                    let north = radius * sin(angle)
++                    let east = radius * (cos(angle) - 1.0)
++                    let lonScale = max(0.01, cos(fake.latitude * Double.pi / 180.0))
++                    points = [CLLocationCoordinate2D(latitude: fake.latitude + north / 111_320.0, longitude: fake.longitude + east / (111_320.0 * lonScale))]
++                }
++                if points.count == 1 {
++                    coordinate = points[0]
++                } else {
++                    // Close custom routes back to the selected start point to avoid a teleport
++                    // when the route repeats. The fallback loop already consists of one point.
++                    if self.pampGramFakeRoute.isEmpty == false {
++                        points.append(start)
++                    }
++                    var lengths: [Double] = []
++                    var total = 0.0
++                    for i in 0..<(points.count - 1) {
++                        let a = CLLocation(latitude: points[i].latitude, longitude: points[i].longitude)
++                        let b = CLLocation(latitude: points[i + 1].latitude, longitude: points[i + 1].longitude)
++                        let d = max(0.5, b.distance(from: a)); lengths.append(d); total += d
++                    }
++                    var d = total > 0.0 ? travelled.truncatingRemainder(dividingBy: total) : 0.0
++                    var index = 0
++                    while index < lengths.count - 1 && d > lengths[index] { d -= lengths[index]; index += 1 }
++                    let t = min(1.0, max(0.0, d / lengths[index]))
++                    let a = points[index], b = points[index + 1]
++                    // Smoothstep reduces visibly abrupt acceleration at waypoint boundaries.
++                    let u = t * t * (3.0 - 2.0 * t)
++                    var lat = a.latitude + (b.latitude - a.latitude) * u
++                    var lon = a.longitude + (b.longitude - a.longitude) * u
++                    // Sub-meter deterministic drift resembles normal consumer GPS noise.
++                    let drift = self.pampGramFakeMovementMode == .car ? 1.2 : 0.7
++                    lat += sin(elapsed * 0.73) * drift / 111_320.0
++                    lon += cos(elapsed * 0.61) * drift / (111_320.0 * max(0.01, cos(lat * Double.pi / 180.0)))
++                    coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
++                }
++            } else {
++                coordinate = CLLocationCoordinate2D(latitude: fake.latitude, longitude: fake.longitude)
++            }
 +        }
 +
          let ids = self.broadcastToMessageIds
