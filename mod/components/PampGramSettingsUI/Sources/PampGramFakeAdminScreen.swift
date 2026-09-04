@@ -99,7 +99,7 @@ private enum PampGramFakeAdminEntry: ItemListNodeEntry {
                 systemStyle: .glass,
                 icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)),
                 title: title,
-                label: "Написать",
+                label: "Включён",
                 sectionId: self.section,
                 style: .blocks,
                 action: {
@@ -112,7 +112,7 @@ private enum PampGramFakeAdminEntry: ItemListNodeEntry {
 
 private func pampGramFakeAdminEntries(channelIds: [PeerId], peers: [PeerId: EnginePeer?]) -> [PampGramFakeAdminEntry] {
     var entries: [PampGramFakeAdminEntry] = []
-    entries.append(.aboutText("Фейк админ полностью локальный: вы визуально пишете пост в выбранный канал, и он виден только на этом устройстве. В сам канал ничего не отправляется, права и подписчики не меняются."))
+    entries.append(.aboutText("Фейк админ полностью локальный. Включите канал здесь, затем откройте его как обычно — внизу появится настоящее поле ввода, как у админа. Пишите любой пост прямо в канале: он виден только на этом устройстве, в сам канал ничего не отправляется, права и подписчики не меняются."))
     entries.append(.addChannel("Добавить канал"))
     entries.append(.channelsHeader("КАНАЛЫ С ФЕЙК-АДМИНОМ"))
     if channelIds.isEmpty {
@@ -131,25 +131,7 @@ private func pampGramFakeAdminEntries(channelIds: [PeerId], peers: [PeerId: Engi
 /// `Namespaces.Message.Local`), so it looks like you posted to the channel while nothing is sent
 /// and nobody else sees it. The set of enabled channels is stored in `PampGramFakeAdminStore`.
 public func pampGramFakeAdminController(context: AccountContext) -> ViewController {
-    var presentControllerImpl: ((ViewController) -> Void)?
     var presentInWindowImpl: ((ViewController) -> Void)?
-
-    let writePost: (PeerId, String) -> Void = { peerId, title in
-        presentControllerImpl?(promptController(
-            context: context,
-            text: "Пост в «\(title)»",
-            subtitle: "Текст появится как пост канала только на этом устройстве.",
-            value: "",
-            placeholder: "Текст поста",
-            characterLimit: 4096,
-            apply: { value in
-                guard let value else {
-                    return
-                }
-                pampGramInsertTextDirect(context: context, peerId: peerId, text: value, incoming: true)
-            }
-        ))
-    }
 
     let arguments = PampGramFakeAdminArguments(
         addChannel: {
@@ -208,10 +190,7 @@ public func pampGramFakeAdminController(context: AccountContext) -> ViewControll
             sheet.setItemGroups([
                 ActionSheetItemGroup(items: [
                     ActionSheetTextItem(title: title),
-                    ActionSheetButtonItem(title: "Написать пост", color: .accent, action: { [weak sheet] in
-                        sheet?.dismissAnimated()
-                        writePost(peerId, title)
-                    }),
+                    ActionSheetTextItem(title: "Откройте канал — внизу появится поле ввода, пишите пост прямо там."),
                     ActionSheetButtonItem(title: "Убрать из фейк-админа", color: .destructive, action: { [weak sheet] in
                         sheet?.dismissAnimated()
                         let _ = context.account.postbox.transaction { transaction in
@@ -266,9 +245,6 @@ public func pampGramFakeAdminController(context: AccountContext) -> ViewControll
     }
 
     let controller = ItemListController(context: context, state: signal)
-    presentControllerImpl = { [weak controller] c in
-        controller?.present(c, in: .window(.root))
-    }
     presentInWindowImpl = { [weak controller] c in
         controller?.present(c, in: .window(.root))
     }
