@@ -6,6 +6,15 @@ import SwiftSignalKit
 import AccountContext
 import PampGramCore
 
+/// A UIColor that resolves to `light` or `dark` depending on the viewer's interface style, so the
+/// look-alike sheet matches the real App Store sheet in both themes.
+private func pampGramDynamicColor(_ light: UIColor, _ dark: UIColor) -> UIColor {
+    if #available(iOS 13.0, *) {
+        return UIColor { trait in trait.userInterfaceStyle == .dark ? dark : light }
+    }
+    return light
+}
+
 /// The visual system-style purchase confirmation shown when a star package is tapped on Telegram's
 /// real "Купить звёзды" screen. Nothing here talks to StoreKit or the network: the real
 /// `StarsPurchaseScreen.buy(product:)` is intercepted (see the telegram-ios.patch hunk), this
@@ -136,29 +145,29 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
     private let dimView = UIView()
     private let sheet = UIView()
 
-    // Top-right "double-click the side button" callout (Face ID devices only).
+    // Top-right "double-click / press the side button" callout (Face ID devices only).
     private let calloutContainer = UIView()
     private let calloutLabel = UILabel()
     private let calloutChevrons = UIImageView()
 
-    // The whole middle content block (icon → name → developer → "Встроенная покупка" → card),
-    // centred between the header and the footer.
-    private let contentStack = UIStackView()
     private let iconView = UIView()
     private let iconGradient = CAGradientLayer()
     private let planeView = UIImageView()
 
     // Biometric footer: glyph + prompt, replaced by the spinner / checkmark / error indicator.
-    private let footerContainer = UIView()
     private let footerGlyph = UIImageView()
     private let footerLabel = UILabel()
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let resultIcon = UIImageView()
 
-    private let sheetBackground = UIColor(red: 0xed/255.0, green: 0xec/255.0, blue: 0xf2/255.0, alpha: 1.0)
-    private let sheetPrimary = UIColor(white: 0.02, alpha: 1.0)
-    private let sheetSecondary = UIColor(white: 0.44, alpha: 1.0)
-    private let successGreen = UIColor(red: 0x0a/255.0, green: 0x84/255.0, blue: 0xff/255.0, alpha: 1.0)
+    // Theme-aware palette (matches the real App Store sheet in both light and dark).
+    private let sheetBackground = pampGramDynamicColor(UIColor(red: 0xf2/255.0, green: 0xf2/255.0, blue: 0xf7/255.0, alpha: 1.0), UIColor(red: 0x1c/255.0, green: 0x1c/255.0, blue: 0x1e/255.0, alpha: 1.0))
+    private let cardBackground = pampGramDynamicColor(.white, UIColor(red: 0x2c/255.0, green: 0x2c/255.0, blue: 0x2e/255.0, alpha: 1.0))
+    private let closeBackground = pampGramDynamicColor(UIColor(red: 0xe3/255.0, green: 0xe3/255.0, blue: 0xe8/255.0, alpha: 1.0), UIColor(red: 0x3a/255.0, green: 0x3a/255.0, blue: 0x3c/255.0, alpha: 1.0))
+    private let primaryColor = pampGramDynamicColor(UIColor(white: 0.05, alpha: 1.0), .white)
+    private let secondaryColor = pampGramDynamicColor(UIColor(white: 0.55, alpha: 1.0), UIColor(white: 0.62, alpha: 1.0))
+    private let separatorColor = pampGramDynamicColor(UIColor(white: 0.0, alpha: 0.10), UIColor(white: 1.0, alpha: 0.14))
+    private let accentBlue = UIColor(red: 0x0a/255.0, green: 0x84/255.0, blue: 0xff/255.0, alpha: 1.0)
     private let errorRed = UIColor(red: 0xff/255.0, green: 0x3b/255.0, blue: 0x30/255.0, alpha: 1.0)
     private let telegramBlueTop = UIColor(red: 0x2a/255.0, green: 0xab/255.0, blue: 0xee/255.0, alpha: 1.0)
     private let telegramBlueBottom = UIColor(red: 0x22/255.0, green: 0x9e/255.0, blue: 0xd9/255.0, alpha: 1.0)
@@ -186,39 +195,38 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
 
         self.dimView.frame = self.view.bounds
         self.dimView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        self.dimView.backgroundColor = UIColor.black.withAlphaComponent(0.32)
+        self.dimView.backgroundColor = UIColor.black.withAlphaComponent(0.4)
         self.view.addSubview(self.dimView)
 
-        // The light "App Store" sheet.
+        // The "App Store" sheet.
         self.sheet.backgroundColor = self.sheetBackground
-        self.sheet.layer.cornerRadius = 39.0
+        self.sheet.layer.cornerRadius = 12.0
         self.sheet.layer.cornerCurve = .continuous
         self.sheet.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         self.sheet.clipsToBounds = true
         self.view.addSubview(self.sheet)
 
-        // Header: circular close button + centered "App Store" title.
+        // Header: "App Store" (left) + circular close button (right).
+        let titleLabel = UILabel()
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text = "App Store"
+        titleLabel.font = UIFont.systemFont(ofSize: 22.0, weight: .bold)
+        titleLabel.textColor = self.primaryColor
+        self.sheet.addSubview(titleLabel)
+
         let closeButton = UIButton(type: .system)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.backgroundColor = UIColor(white: 1.0, alpha: 1.0)
-        closeButton.layer.cornerRadius = 26.0
-        closeButton.tintColor = UIColor(white: 0.1, alpha: 1.0)
-        let closeConfig = UIImage.SymbolConfiguration(pointSize: 17.0, weight: .semibold)
+        closeButton.backgroundColor = self.closeBackground
+        closeButton.layer.cornerRadius = 15.0
+        closeButton.tintColor = self.secondaryColor
+        let closeConfig = UIImage.SymbolConfiguration(pointSize: 14.0, weight: .bold)
         closeButton.setImage(UIImage(systemName: "xmark", withConfiguration: closeConfig), for: .normal)
         closeButton.addTarget(self, action: #selector(self.cancelTapped), for: .touchUpInside)
         self.sheet.addSubview(closeButton)
 
-        let titleLabel = UILabel()
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = "App Store"
-        titleLabel.textAlignment = .center
-        titleLabel.font = UIFont.systemFont(ofSize: 22.0, weight: .bold)
-        titleLabel.textColor = self.sheetPrimary
-        self.sheet.addSubview(titleLabel)
-
         // App icon: a Telegram-style blue squircle with a white paper plane.
         self.iconView.translatesAutoresizingMaskIntoConstraints = false
-        self.iconView.layer.cornerRadius = 30.0
+        self.iconView.layer.cornerRadius = 13.0
         self.iconView.layer.cornerCurve = .continuous
         self.iconView.clipsToBounds = true
         self.iconGradient.colors = [self.telegramBlueTop.cgColor, self.telegramBlueBottom.cgColor]
@@ -228,183 +236,176 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.planeView.translatesAutoresizingMaskIntoConstraints = false
         self.planeView.contentMode = .scaleAspectFit
         self.planeView.tintColor = .white
-        let planeConfig = UIImage.SymbolConfiguration(pointSize: 52.0, weight: .medium)
+        let planeConfig = UIImage.SymbolConfiguration(pointSize: 30.0, weight: .medium)
         self.planeView.image = UIImage(systemName: "paperplane.fill", withConfiguration: planeConfig)
         self.iconView.addSubview(self.planeView)
+        self.sheet.addSubview(self.iconView)
 
-        let nameLabel = UILabel()
-        nameLabel.translatesAutoresizingMaskIntoConstraints = false
-        nameLabel.text = "Telegram"
-        nameLabel.textAlignment = .center
-        nameLabel.font = UIFont.systemFont(ofSize: 22.0, weight: .bold)
-        nameLabel.textColor = self.sheetPrimary
+        // Product line, developer + age badge, "In-App Purchase" — stacked to the right of the icon.
+        let productLabel = UILabel()
+        productLabel.translatesAutoresizingMaskIntoConstraints = false
+        productLabel.text = "\(self.count) Telegram Stars"
+        productLabel.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        productLabel.textColor = self.primaryColor
+        self.sheet.addSubview(productLabel)
 
         let developerLabel = UILabel()
         developerLabel.translatesAutoresizingMaskIntoConstraints = false
-        developerLabel.text = "Telegram FZ-LLC"
-        developerLabel.textAlignment = .center
-        developerLabel.font = UIFont.systemFont(ofSize: 16.0, weight: .regular)
-        developerLabel.textColor = self.sheetSecondary
+        developerLabel.text = "Telegram Messenger"
+        developerLabel.font = UIFont.systemFont(ofSize: 14.0, weight: .regular)
+        developerLabel.textColor = self.secondaryColor
+        self.sheet.addSubview(developerLabel)
 
-        let purchasesLabel = UILabel()
-        purchasesLabel.translatesAutoresizingMaskIntoConstraints = false
-        purchasesLabel.text = "Встроенная покупка"
-        purchasesLabel.textAlignment = .center
-        purchasesLabel.font = UIFont.systemFont(ofSize: 16.0, weight: .regular)
-        purchasesLabel.textColor = self.sheetSecondary
+        let ageBadge = UILabel()
+        ageBadge.translatesAutoresizingMaskIntoConstraints = false
+        ageBadge.text = " 13+ "
+        ageBadge.font = UIFont.systemFont(ofSize: 11.0, weight: .semibold)
+        ageBadge.textColor = self.secondaryColor
+        ageBadge.layer.borderWidth = 1.0
+        ageBadge.layer.borderColor = self.separatorColor.cgColor
+        ageBadge.layer.cornerRadius = 4.0
+        ageBadge.clipsToBounds = true
+        ageBadge.setContentHuggingPriority(.required, for: .horizontal)
+        ageBadge.setContentCompressionResistancePriority(.required, for: .horizontal)
+        self.sheet.addSubview(ageBadge)
 
-        // White purchase card: product line + hairline + price line.
+        let purchaseLabel = UILabel()
+        purchaseLabel.translatesAutoresizingMaskIntoConstraints = false
+        purchaseLabel.text = "In-App Purchase"
+        purchaseLabel.font = UIFont.systemFont(ofSize: 14.0, weight: .regular)
+        purchaseLabel.textColor = self.secondaryColor
+        self.sheet.addSubview(purchaseLabel)
+
+        // Purchase card: price + "One-time charge" + separator + account.
         let card = UIView()
         card.translatesAutoresizingMaskIntoConstraints = false
-        card.backgroundColor = .white
-        card.layer.cornerRadius = 18.0
+        card.backgroundColor = self.cardBackground
+        card.layer.cornerRadius = 12.0
         card.layer.cornerCurve = .continuous
+        self.sheet.addSubview(card)
 
-        let cardTitle = UILabel()
-        cardTitle.translatesAutoresizingMaskIntoConstraints = false
-        cardTitle.text = "\(self.count) звёзд"
-        cardTitle.font = UIFont.systemFont(ofSize: 19.0, weight: .semibold)
-        cardTitle.textColor = self.sheetPrimary
-        card.addSubview(cardTitle)
+        let priceLabel = UILabel()
+        priceLabel.translatesAutoresizingMaskIntoConstraints = false
+        priceLabel.text = self.priceText
+        priceLabel.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        priceLabel.textColor = self.primaryColor
+        card.addSubview(priceLabel)
+
+        let chargeLabel = UILabel()
+        chargeLabel.translatesAutoresizingMaskIntoConstraints = false
+        chargeLabel.text = "One-time charge"
+        chargeLabel.font = UIFont.systemFont(ofSize: 13.0, weight: .regular)
+        chargeLabel.textColor = self.secondaryColor
+        card.addSubview(chargeLabel)
 
         let cardSeparator = UIView()
         cardSeparator.translatesAutoresizingMaskIntoConstraints = false
-        cardSeparator.backgroundColor = UIColor(white: 0.0, alpha: 0.08)
+        cardSeparator.backgroundColor = self.separatorColor
         card.addSubview(cardSeparator)
 
-        let cardDetailLeft = UILabel()
-        cardDetailLeft.translatesAutoresizingMaskIntoConstraints = false
-        cardDetailLeft.text = "Telegram Stars"
-        cardDetailLeft.font = UIFont.systemFont(ofSize: 16.0, weight: .regular)
-        cardDetailLeft.textColor = self.sheetSecondary
-        card.addSubview(cardDetailLeft)
+        let accountLabel = UILabel()
+        accountLabel.translatesAutoresizingMaskIntoConstraints = false
+        accountLabel.text = "Account: ••••••••"
+        accountLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .regular)
+        accountLabel.textColor = self.secondaryColor
+        card.addSubview(accountLabel)
 
-        let cardDetailRight = UILabel()
-        cardDetailRight.translatesAutoresizingMaskIntoConstraints = false
-        cardDetailRight.text = self.priceText
-        cardDetailRight.font = UIFont.systemFont(ofSize: 16.0, weight: .semibold)
-        cardDetailRight.textColor = self.sheetPrimary
-        cardDetailRight.textAlignment = .right
-        cardDetailRight.setContentHuggingPriority(.required, for: .horizontal)
-        cardDetailRight.setContentCompressionResistancePriority(.required, for: .horizontal)
-        card.addSubview(cardDetailRight)
-
-        // Centered content block between header and footer.
-        self.contentStack.translatesAutoresizingMaskIntoConstraints = false
-        self.contentStack.axis = .vertical
-        self.contentStack.alignment = .fill
-        self.contentStack.spacing = 0.0
-        self.sheet.addSubview(self.contentStack)
-
-        let iconRow = UIView()
-        iconRow.translatesAutoresizingMaskIntoConstraints = false
-        iconRow.addSubview(self.iconView)
-        NSLayoutConstraint.activate([
-            self.iconView.centerXAnchor.constraint(equalTo: iconRow.centerXAnchor),
-            self.iconView.topAnchor.constraint(equalTo: iconRow.topAnchor),
-            self.iconView.bottomAnchor.constraint(equalTo: iconRow.bottomAnchor),
-            self.iconView.widthAnchor.constraint(equalToConstant: 96.0),
-            self.iconView.heightAnchor.constraint(equalToConstant: 96.0),
-            self.planeView.centerXAnchor.constraint(equalTo: self.iconView.centerXAnchor, constant: -1.0),
-            self.planeView.centerYAnchor.constraint(equalTo: self.iconView.centerYAnchor)
-        ])
-
-        self.contentStack.addArrangedSubview(iconRow)
-        self.contentStack.setCustomSpacing(16.0, after: iconRow)
-        self.contentStack.addArrangedSubview(nameLabel)
-        self.contentStack.setCustomSpacing(4.0, after: nameLabel)
-        self.contentStack.addArrangedSubview(developerLabel)
-        self.contentStack.setCustomSpacing(2.0, after: developerLabel)
-        self.contentStack.addArrangedSubview(purchasesLabel)
-        self.contentStack.setCustomSpacing(26.0, after: purchasesLabel)
-        self.contentStack.addArrangedSubview(card)
-
-        // Biometric footer.
-        self.footerContainer.translatesAutoresizingMaskIntoConstraints = false
-        self.sheet.addSubview(self.footerContainer)
+        // Biometric footer: glyph on top, prompt below (centered).
         self.footerGlyph.translatesAutoresizingMaskIntoConstraints = false
         self.footerGlyph.contentMode = .scaleAspectFit
-        self.footerContainer.addSubview(self.footerGlyph)
+        self.sheet.addSubview(self.footerGlyph)
         self.spinner.translatesAutoresizingMaskIntoConstraints = false
         self.spinner.hidesWhenStopped = true
-        self.spinner.color = self.sheetSecondary
-        self.footerContainer.addSubview(self.spinner)
+        self.spinner.color = self.secondaryColor
+        self.sheet.addSubview(self.spinner)
         self.resultIcon.translatesAutoresizingMaskIntoConstraints = false
         self.resultIcon.contentMode = .scaleAspectFit
         self.resultIcon.isHidden = true
-        self.footerContainer.addSubview(self.resultIcon)
+        self.sheet.addSubview(self.resultIcon)
         self.footerLabel.translatesAutoresizingMaskIntoConstraints = false
-        self.footerLabel.numberOfLines = 2
+        self.footerLabel.numberOfLines = 1
         self.footerLabel.textAlignment = .center
-        self.footerLabel.font = UIFont.systemFont(ofSize: 16.0, weight: .medium)
-        self.footerLabel.textColor = self.sheetPrimary
-        self.footerContainer.addSubview(self.footerLabel)
+        self.footerLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .regular)
+        self.footerLabel.textColor = self.primaryColor
+        self.sheet.addSubview(self.footerLabel)
 
-        // Top-right side-button callout (shown for Face ID devices in animateIn()).
+        // Top-right "press the side button twice" callout (shown for Face ID devices in animateIn()).
         self.calloutContainer.alpha = 0.0
         self.view.addSubview(self.calloutContainer)
-        self.calloutLabel.text = "Дважды нажмите\nбоковую кнопку"
+        self.calloutLabel.text = "Нажмите дважды\nдля оплаты"
         self.calloutLabel.numberOfLines = 2
         self.calloutLabel.textAlignment = .right
         self.calloutLabel.textColor = .white
-        self.calloutLabel.font = UIFont.systemFont(ofSize: 19.0, weight: .semibold)
+        self.calloutLabel.font = UIFont.systemFont(ofSize: 20.0, weight: .semibold)
         self.calloutLabel.translatesAutoresizingMaskIntoConstraints = false
         self.calloutContainer.addSubview(self.calloutLabel)
         self.calloutChevrons.translatesAutoresizingMaskIntoConstraints = false
         self.calloutChevrons.contentMode = .scaleAspectFit
         self.calloutChevrons.tintColor = .white
-        let chevronConfig = UIImage.SymbolConfiguration(pointSize: 26.0, weight: .bold)
+        let chevronConfig = UIImage.SymbolConfiguration(pointSize: 28.0, weight: .semibold)
         self.calloutChevrons.image = UIImage(systemName: "chevron.compact.right", withConfiguration: chevronConfig)
         self.calloutContainer.addSubview(self.calloutChevrons)
 
         NSLayoutConstraint.activate([
-            closeButton.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 22.0),
-            closeButton.topAnchor.constraint(equalTo: self.sheet.topAnchor, constant: 20.0),
-            closeButton.widthAnchor.constraint(equalToConstant: 52.0),
-            closeButton.heightAnchor.constraint(equalToConstant: 52.0),
-            titleLabel.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
-            titleLabel.centerXAnchor.constraint(equalTo: self.sheet.centerXAnchor),
-            titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: closeButton.trailingAnchor, constant: 8.0),
+            titleLabel.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
+            titleLabel.topAnchor.constraint(equalTo: self.sheet.topAnchor, constant: 20.0),
+            closeButton.trailingAnchor.constraint(equalTo: self.sheet.trailingAnchor, constant: -16.0),
+            closeButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            closeButton.widthAnchor.constraint(equalToConstant: 30.0),
+            closeButton.heightAnchor.constraint(equalToConstant: 30.0),
 
-            self.contentStack.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
-            self.contentStack.trailingAnchor.constraint(equalTo: self.sheet.trailingAnchor, constant: -20.0),
-            self.contentStack.topAnchor.constraint(greaterThanOrEqualTo: closeButton.bottomAnchor, constant: 12.0),
+            self.iconView.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
+            self.iconView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 22.0),
+            self.iconView.widthAnchor.constraint(equalToConstant: 58.0),
+            self.iconView.heightAnchor.constraint(equalToConstant: 58.0),
+            self.planeView.centerXAnchor.constraint(equalTo: self.iconView.centerXAnchor, constant: -1.0),
+            self.planeView.centerYAnchor.constraint(equalTo: self.iconView.centerYAnchor),
 
-            card.leadingAnchor.constraint(equalTo: self.contentStack.leadingAnchor),
-            card.trailingAnchor.constraint(equalTo: self.contentStack.trailingAnchor),
-            card.heightAnchor.constraint(equalToConstant: 92.0),
-            cardTitle.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18.0),
-            cardTitle.topAnchor.constraint(equalTo: card.topAnchor, constant: 16.0),
-            cardTitle.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18.0),
-            cardSeparator.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18.0),
-            cardSeparator.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18.0),
-            cardSeparator.topAnchor.constraint(equalTo: cardTitle.bottomAnchor, constant: 12.0),
+            productLabel.leadingAnchor.constraint(equalTo: self.iconView.trailingAnchor, constant: 14.0),
+            productLabel.topAnchor.constraint(equalTo: self.iconView.topAnchor, constant: 1.0),
+            productLabel.trailingAnchor.constraint(lessThanOrEqualTo: self.sheet.trailingAnchor, constant: -20.0),
+
+            developerLabel.leadingAnchor.constraint(equalTo: productLabel.leadingAnchor),
+            developerLabel.topAnchor.constraint(equalTo: productLabel.bottomAnchor, constant: 4.0),
+            ageBadge.leadingAnchor.constraint(equalTo: developerLabel.trailingAnchor, constant: 6.0),
+            ageBadge.centerYAnchor.constraint(equalTo: developerLabel.centerYAnchor),
+            ageBadge.heightAnchor.constraint(equalToConstant: 17.0),
+            ageBadge.trailingAnchor.constraint(lessThanOrEqualTo: self.sheet.trailingAnchor, constant: -20.0),
+
+            purchaseLabel.leadingAnchor.constraint(equalTo: productLabel.leadingAnchor),
+            purchaseLabel.topAnchor.constraint(equalTo: developerLabel.bottomAnchor, constant: 3.0),
+
+            card.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
+            card.trailingAnchor.constraint(equalTo: self.sheet.trailingAnchor, constant: -20.0),
+            card.topAnchor.constraint(equalTo: self.iconView.bottomAnchor, constant: 22.0),
+
+            priceLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
+            priceLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: 14.0),
+            chargeLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
+            chargeLabel.topAnchor.constraint(equalTo: priceLabel.bottomAnchor, constant: 2.0),
+            cardSeparator.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
+            cardSeparator.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16.0),
+            cardSeparator.topAnchor.constraint(equalTo: chargeLabel.bottomAnchor, constant: 12.0),
             cardSeparator.heightAnchor.constraint(equalToConstant: 1.0),
-            cardDetailLeft.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18.0),
-            cardDetailLeft.topAnchor.constraint(equalTo: cardSeparator.bottomAnchor, constant: 12.0),
-            cardDetailRight.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18.0),
-            cardDetailRight.centerYAnchor.constraint(equalTo: cardDetailLeft.centerYAnchor),
-            cardDetailRight.leadingAnchor.constraint(greaterThanOrEqualTo: cardDetailLeft.trailingAnchor, constant: 8.0),
+            accountLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
+            accountLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16.0),
+            accountLabel.topAnchor.constraint(equalTo: cardSeparator.bottomAnchor, constant: 12.0),
+            accountLabel.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -14.0),
 
-            self.footerContainer.centerXAnchor.constraint(equalTo: self.sheet.centerXAnchor),
-            self.footerContainer.leadingAnchor.constraint(greaterThanOrEqualTo: self.sheet.leadingAnchor, constant: 20.0),
-            self.footerContainer.trailingAnchor.constraint(lessThanOrEqualTo: self.sheet.trailingAnchor, constant: -20.0),
-            self.footerContainer.topAnchor.constraint(greaterThanOrEqualTo: self.contentStack.bottomAnchor, constant: 20.0),
-
-            self.footerGlyph.leadingAnchor.constraint(equalTo: self.footerContainer.leadingAnchor),
-            self.footerGlyph.centerYAnchor.constraint(equalTo: self.footerContainer.centerYAnchor),
-            self.footerGlyph.widthAnchor.constraint(equalToConstant: 30.0),
-            self.footerGlyph.heightAnchor.constraint(equalToConstant: 30.0),
+            self.footerGlyph.centerXAnchor.constraint(equalTo: self.sheet.centerXAnchor),
+            self.footerGlyph.widthAnchor.constraint(equalToConstant: 34.0),
+            self.footerGlyph.heightAnchor.constraint(equalToConstant: 34.0),
+            self.footerGlyph.topAnchor.constraint(greaterThanOrEqualTo: card.bottomAnchor, constant: 20.0),
             self.spinner.centerXAnchor.constraint(equalTo: self.footerGlyph.centerXAnchor),
             self.spinner.centerYAnchor.constraint(equalTo: self.footerGlyph.centerYAnchor),
             self.resultIcon.centerXAnchor.constraint(equalTo: self.footerGlyph.centerXAnchor),
             self.resultIcon.centerYAnchor.constraint(equalTo: self.footerGlyph.centerYAnchor),
-            self.resultIcon.widthAnchor.constraint(equalToConstant: 30.0),
-            self.resultIcon.heightAnchor.constraint(equalToConstant: 30.0),
-            self.footerLabel.leadingAnchor.constraint(equalTo: self.footerGlyph.trailingAnchor, constant: 10.0),
-            self.footerLabel.trailingAnchor.constraint(equalTo: self.footerContainer.trailingAnchor),
-            self.footerLabel.topAnchor.constraint(equalTo: self.footerContainer.topAnchor),
-            self.footerLabel.bottomAnchor.constraint(equalTo: self.footerContainer.bottomAnchor),
+            self.resultIcon.widthAnchor.constraint(equalToConstant: 34.0),
+            self.resultIcon.heightAnchor.constraint(equalToConstant: 34.0),
+            self.footerLabel.topAnchor.constraint(equalTo: self.footerGlyph.bottomAnchor, constant: 8.0),
+            self.footerLabel.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
+            self.footerLabel.trailingAnchor.constraint(equalTo: self.sheet.trailingAnchor, constant: -20.0),
+            self.footerLabel.bottomAnchor.constraint(equalTo: self.sheet.bottomAnchor, constant: -96.0),
 
             self.calloutLabel.topAnchor.constraint(equalTo: self.calloutContainer.topAnchor),
             self.calloutLabel.leadingAnchor.constraint(equalTo: self.calloutContainer.leadingAnchor),
@@ -423,15 +424,15 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
     }
 
     private func applyBiometryPrompt() {
-        let glyphConfig = UIImage.SymbolConfiguration(pointSize: 25.0, weight: .regular)
+        let glyphConfig = UIImage.SymbolConfiguration(pointSize: 30.0, weight: .regular)
         if self.isFaceID {
             self.footerGlyph.image = UIImage(systemName: "faceid", withConfiguration: glyphConfig)
-            self.footerGlyph.tintColor = self.sheetPrimary
-            self.footerLabel.text = "Подтвердите\nбоковой кнопкой"
+            self.footerGlyph.tintColor = self.accentBlue
+            self.footerLabel.text = "Подтвердите боковой кнопкой"
         } else {
             self.footerGlyph.image = UIImage(systemName: "touchid", withConfiguration: glyphConfig)
-            self.footerGlyph.tintColor = self.sheetPrimary
-            self.footerLabel.text = "Оплатите\nс помощью Touch ID"
+            self.footerGlyph.tintColor = self.accentBlue
+            self.footerLabel.text = "Оплатите с помощью Touch ID"
         }
     }
 
@@ -439,8 +440,7 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         super.viewDidLayoutSubviews()
 
         // Face ID devices have a notch / Dynamic Island → a large top safe-area inset.
-        let topInset = self.view.safeAreaInsets.top
-        let faceID = topInset > 24.0
+        let faceID = self.view.safeAreaInsets.top > 24.0
         if faceID != self.isFaceID {
             self.isFaceID = faceID
             self.applyBiometryPrompt()
@@ -448,12 +448,11 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
 
         let width = self.view.bounds.width
         let height = self.view.bounds.height
-        let sheetHeight = min(max(height * 0.62, 520.0), height - self.view.safeAreaInsets.top - 8.0)
+        let sheetHeight = min(max(height * 0.5, 430.0), height - self.view.safeAreaInsets.top - 8.0)
         // The extra 60pt keeps the bottom rounded corners off-screen below the home indicator.
         self.sheet.frame = CGRect(x: 0.0, y: height - sheetHeight, width: width, height: sheetHeight + 60.0)
         self.iconGradient.frame = self.iconView.bounds
 
-        // Position the side-button callout at the side-button height on the right edge.
         let calloutWidth: CGFloat = 260.0
         let calloutY = max(self.view.safeAreaInsets.top + 8.0, height * 0.16)
         self.calloutContainer.frame = CGRect(x: width - calloutWidth - 16.0, y: calloutY, width: calloutWidth, height: 60.0)
@@ -467,8 +466,6 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
             self.sheet.transform = .identity
         }, completion: nil)
 
-        // The side-button prompt only exists on Face ID devices; on Touch ID the footer already
-        // shows the fingerprint prompt and there is no side button to point at.
         if self.isFaceID {
             self.calloutContainer.transform = CGAffineTransform(translationX: 20.0, y: 0.0)
             UIView.animate(withDuration: 0.3, delay: 0.34, options: [.curveEaseOut], animations: {
@@ -513,22 +510,21 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.footerGlyph.isHidden = true
         self.spinner.startAnimating()
         self.footerLabel.text = "Оплата…"
-        self.footerLabel.textColor = self.sheetSecondary
+        self.footerLabel.textColor = self.secondaryColor
 
         self.attemptPayment({ [weak self] success in
             guard let self else {
                 return
             }
-            // A short beat so the spinner reads as "processing".
             Queue.mainQueue().after(0.6, {
                 self.spinner.stopAnimating()
-                let resultConfig = UIImage.SymbolConfiguration(pointSize: 30.0, weight: .regular)
+                let resultConfig = UIImage.SymbolConfiguration(pointSize: 34.0, weight: .regular)
                 if success {
                     self.resultIcon.image = UIImage(systemName: "checkmark.circle", withConfiguration: resultConfig)
-                    self.resultIcon.tintColor = self.successGreen
+                    self.resultIcon.tintColor = self.accentBlue
                     self.resultIcon.isHidden = false
                     self.footerLabel.text = "Готово"
-                    self.footerLabel.textColor = self.sheetPrimary
+                    self.footerLabel.textColor = self.primaryColor
                     Queue.mainQueue().after(0.9, {
                         self.onSuccess()
                         self.close()
@@ -537,7 +533,7 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
                     self.resultIcon.image = UIImage(systemName: "xmark.circle", withConfiguration: resultConfig)
                     self.resultIcon.tintColor = self.errorRed
                     self.resultIcon.isHidden = false
-                    self.footerLabel.text = "Платёж не выполнен.\nНедостаточно средств"
+                    self.footerLabel.text = "Платёж не выполнен. Недостаточно средств"
                     self.footerLabel.textColor = self.errorRed
                     Queue.mainQueue().after(1.7, {
                         self.onCancel()
