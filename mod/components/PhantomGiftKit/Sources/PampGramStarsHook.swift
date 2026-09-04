@@ -103,7 +103,6 @@ public enum PampGramStarsHook {
         let _ = (context.account.postbox.transaction { transaction -> Bool in
             var ok = true
             var starsAfter: Int64 = 0
-            var rublesAfter: Int64 = 0
             PampGramCore.updateSettings(transaction: transaction, { settings in
                 var settings = settings
                 if priceKopecks > 0 && settings.localRublesBalanceKopecks < priceKopecks {
@@ -115,26 +114,18 @@ public enum PampGramStarsHook {
                 }
                 settings.fakeStarsBalance += count
                 starsAfter = settings.fakeStarsBalance
-                rublesAfter = settings.localRublesBalanceKopecks
                 return settings
             })
             if ok {
-                if priceKopecks > 0 {
-                    PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
-                        currency: .rubles,
-                        kind: .purchase,
-                        amount: priceKopecks,
-                        title: "Покупка Stars",
-                        details: "\(count) звёзд",
-                        balanceAfter: rublesAfter
-                    ))
-                }
+                // Buying Stars for rubles is a Stars top-up (пополнение) in the Stars history —
+                // there is no separate rubles history.
+                let details = priceKopecks > 0 ? "Покупка звёзд за рубли" : "Покупка звёзд Telegram"
                 PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
                     currency: .stars,
                     kind: .topUp,
                     amount: count,
                     title: "Пополнение Stars",
-                    details: "Покупка звёзд Telegram",
+                    details: details,
                     balanceAfter: starsAfter
                 ))
             }

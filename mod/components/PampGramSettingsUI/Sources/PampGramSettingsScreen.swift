@@ -30,7 +30,6 @@ private final class PampGramSettingsArguments {
     let openCollectionMarket: () -> Void
     let openStarsLedger: () -> Void
     let openTonLedger: () -> Void
-    let openRublesLedger: () -> Void
 
     init(
         toggleVisual: @escaping (Bool) -> Void,
@@ -48,8 +47,7 @@ private final class PampGramSettingsArguments {
         openVisualRatingEditor: @escaping () -> Void,
         openCollectionMarket: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
-        openTonLedger: @escaping () -> Void,
-        openRublesLedger: @escaping () -> Void
+        openTonLedger: @escaping () -> Void
     ) {
         self.toggleVisual = toggleVisual
         self.togglePhantomGifts = togglePhantomGifts
@@ -67,7 +65,6 @@ private final class PampGramSettingsArguments {
         self.openCollectionMarket = openCollectionMarket
         self.openStarsLedger = openStarsLedger
         self.openTonLedger = openTonLedger
-        self.openRublesLedger = openRublesLedger
     }
 }
 
@@ -124,7 +121,6 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case ledgerHeader(String)
     case starsLedger(String, String)
     case tonLedger(String, String)
-    case rublesLedger(String, String)
     case ledgerFooter(String)
 
     case resetBalances(String)
@@ -155,7 +151,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.profileVisuals.rawValue
         case .collectionHeader, .collectionMarket, .collectionFooter:
             return PampGramSettingsSection.collectionMarket.rawValue
-        case .ledgerHeader, .starsLedger, .tonLedger, .rublesLedger, .ledgerFooter:
+        case .ledgerHeader, .starsLedger, .tonLedger, .ledgerFooter:
             return PampGramSettingsSection.ledger.rawValue
         case .resetBalances, .resetBalancesFooter:
             return PampGramSettingsSection.resetBalances.rawValue
@@ -195,7 +191,6 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .ledgerHeader: return 25
         case .starsLedger: return 26
         case .tonLedger: return 27
-        case .rublesLedger: return 28
         case .ledgerFooter: return 29
         case .resetBalances: return 30
         case .resetBalancesFooter: return 31
@@ -267,8 +262,6 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openStarsLedger)
         case let .tonLedger(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openTonLedger)
-        case let .rublesLedger(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openRublesLedger)
         case let .resetBalances(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.resetBalances()
@@ -441,8 +434,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.ledgerHeader("ИСТОРИЯ И СТАТИСТИКА"))
     entries.append(.starsLedger("Stars", "История · статистика"))
     entries.append(.tonLedger("TON", "История · статистика"))
-    entries.append(.rublesLedger("Рубли", "История · статистика"))
-    entries.append(.ledgerFooter("Покупки подарков, продажа, пополнения и ручные операции автоматически пересчитывают локальную статистику."))
+    entries.append(.ledgerFooter("Покупки за звёзды — списание, покупка звёзд и подарки себе — пополнение; для TON так же. Всё пересчитывается автоматически."))
 
     entries.append(.resetBalances("Сбросить балансы"))
     entries.append(.resetBalancesFooter("Возвращает оба счётчика к значениям по умолчанию."))
@@ -622,8 +614,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         openVisualRatingEditor: { presentRatingEditorImpl?() },
         openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
         openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },
-        openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) },
-        openRublesLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .rubles)) }
+        openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) }
     )
 
     let signal = combineLatest(
