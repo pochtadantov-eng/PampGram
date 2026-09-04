@@ -332,7 +332,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
     private func popSelf() {
         if let navigationController = self.navigationController as? NavigationController {
-            navigationController.popViewController(animated: true)
+            let _ = navigationController.popViewController(animated: true)
         } else {
             self.dismiss(animated: true, completion: nil)
         }
