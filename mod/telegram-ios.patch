@@ -20798,3 +20798,63 @@ diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/Tel
 +        }
 +        
          let _ = (self.shouldDivertMessagesToScheduled(messages: messages)
+--- a/submodules/TelegramCore/Sources/TelegramEngine/Messages/SponsoredMessages.swift
++++ b/submodules/TelegramCore/Sources/TelegramEngine/Messages/SponsoredMessages.swift
+@@ -1,6 +1,7 @@
+ import Foundation
+ import Postbox
+ import SwiftSignalKit
++import PampGramCore
+ 
+ extension TelegramEngine.Messages {
+     public func sponsoredMessages(peerId: PeerId) -> Signal<[Message], NoError> {
++        if PampGramCore.PampGramSettings.current.blockAds {
++            return .single([])
++        }
+         return self.account.postbox.transaction { transaction -> [Message] in
+--- a/submodules/TelegramCore/Sources/Engine/Peers/EnginePeer.swift
++++ b/submodules/TelegramCore/Sources/Engine/Peers/EnginePeer.swift
+@@ -1,5 +1,6 @@
+ import Foundation
+ import Postbox
++import PampGramCore
+ 
+ extension EnginePeer {
+     public var hasCopyProtection: Bool {
++        if PampGramCore.PampGramSettings.current.bypassCopyProtection {
++            return false
++        }
+         switch self {
+--- a/submodules/TelegramCore/Sources/SyncCore/SyncCore_Message.swift
++++ b/submodules/TelegramCore/Sources/SyncCore/SyncCore_Message.swift
+@@ -1,5 +1,6 @@
+ import Foundation
+ import Postbox
++import PampGramCore
+ 
+ extension Message {
+     public var effectiveMediaTTL: Int32? {
++        if PampGramCore.PampGramSettings.current.disableMediaTTL {
++            return nil
++        }
+         for attribute in self.attributes {
+--- a/submodules/ChatUI/Sources/ChatController.swift
++++ b/submodules/ChatUI/Sources/ChatController.swift
+@@ -1,6 +1,7 @@
+ import Foundation
+ import UIKit
+ import Display
++import PampGramCore
+ 
+ extension ChatController {
+     open override func viewWillAppear(_ animated: Bool) {
+@@ -20,6 +21,9 @@ extension ChatController {
+     }
+     
+     @objc private func userDidTakeScreenshot() {
++        if PampGramCore.PampGramSettings.current.bypassScreenshots {
++            return
++        }
+         self.notifyScreenshotTaken()
+     }
+ }
