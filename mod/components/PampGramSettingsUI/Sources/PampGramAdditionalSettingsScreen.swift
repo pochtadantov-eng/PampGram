@@ -20,12 +20,6 @@ private final class PampGramAdditionalArguments {
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
-    let toggleBypassCopy: (Bool) -> Void
-    let toggleKeepSender: (Bool) -> Void
-    let toggleDisableTTL: (Bool) -> Void
-    let toggleBypassScreenshots: (Bool) -> Void
-    let toggleHideChatScreenshot: (Bool) -> Void
-    let toggleBlockAds: (Bool) -> Void
 
     init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
@@ -208,19 +202,12 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.premiumFooter("«Закрепить чаты ∞» снимает лимит на количество закреплённых чатов. «Легальный премиум» включает клиентские премиум-послабления, которые Telegram не проверяет на сервере (лимиты закреплений и папок). Закрепления сверх серверного лимита действуют на этом устройстве и могут не синхронизироваться на другие."))
 
     entries.append(.extrasHeader("ЕЩЁ"))
-    entries.append(.extrasHeader("ФУНКЦИИ"))
-    entries.append(.voiceToggle("Обход защиты от копирования", settings.bypassCopyProtection))
-    entries.append(.voiceToggle("Добавлять от кого переслано", settings.keepForwardSender))
-    entries.append(.voiceToggle("Отключить автоудаление исчезающих", settings.disableMediaTTL))
-    entries.append(.voiceToggle("Обход защиты от скриншотов", settings.bypassScreenshots))
-    entries.append(.voiceToggle("Скрывать чат на скриншотах", settings.hideChatOnScreenshot))
-    entries.append(.voiceToggle("Блокировать рекламу", settings.blockAds))
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.fakeAdminRow("Фейк админ"))
     entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас."))
-    entries.append(.extrasHeader("ФУНКЦИИ"))
+
     return entries
 }
 
@@ -281,48 +268,6 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.voiceChangerMessagesEnabled = value
-                return settings
-            }).start()
-        },
-        toggleBypassCopy: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.bypassCopyProtection = value
-                return settings
-            }).start()
-        },
-        toggleKeepSender: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.keepForwardSender = value
-                return settings
-            }).start()
-        },
-        toggleDisableTTL: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.disableMediaTTL = value
-                return settings
-            }).start()
-        },
-        toggleBypassScreenshots: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.bypassScreenshots = value
-                return settings
-            }).start()
-        },
-        toggleHideChatScreenshot: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.hideChatOnScreenshot = value
-                return settings
-            }).start()
-        },
-        toggleBlockAds: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.blockAds = value
                 return settings
             }).start()
         },

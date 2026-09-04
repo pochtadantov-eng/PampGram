@@ -138,12 +138,6 @@ public final class PampGramGhostRuntime {
 /// a key range reserved for the mod, and are never synced to the account manager or to any
 /// server-backed preferences.
 public struct PampGramSettings: Codable, Equatable {
-    public var bypassCopyProtection: Bool = true
-    public var keepForwardSender: Bool = true
-    public var disableMediaTTL: Bool = true
-    public var bypassScreenshots: Bool = true
-    public var hideChatOnScreenshot: Bool = false
-    public var blockAds: Bool = true
     /// Shows the clearly-labelled "Фантом" tab inside the real gift-sending screen.
     public var phantomGiftsEnabled: Bool
     /// The mod's own play-money Stars counter, spent by Phantom Gifts. Completely unrelated
