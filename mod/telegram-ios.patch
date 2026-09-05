@@ -20802,3 +20802,111 @@ diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/Tel
 +        }
 +        
          let _ = (self.shouldDivertMessagesToScheduled(messages: messages)
+diff --git a/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift b/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift
+--- a/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift
++++ b/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift
+@@ -17,6 +17,7 @@
+ import ChatSendStarsScreen
+ import ChatMessageItemCommon
+ import ChatMessageItemView
++import PampGramCore
+ import ReactionSelectionNode
+ import AnimatedTextComponent
+ import PresentationDataUtils
+@@ -507,8 +508,22 @@
+                     }
+                 }
+                 
+-                let _ = self.context.engine.messages.sendStarsReaction(id: message.id, count: Int(amount), privacy: privacy).startStandalone()
+-                self.displayOrUpdateSendStarsUndo(messageId: message.id, count: Int(amount), privacy: privacy)
++                // PampGram: route the paid-reaction through the local fake-Stars ledger first;
++                // on .handled the real network call is skipped and the on-post counter grows
++                // locally via PampGramStarReactionStore.
++                let _ = (PampGramStarReactionHook.spend(postbox: self.context.account.postbox, peerId: message.id.peerId, messageId: message.id.id, count: Int64(amount), channelTitle: "")
++                |> deliverOnMainQueue).startStandalone(next: { [weak self] outcome in
++                    guard let self else { return }
++                    switch outcome {
++                    case .handled:
++                        self.displayOrUpdateSendStarsUndo(messageId: message.id, count: Int(amount), privacy: privacy)
++                    case .insufficientFunds:
++                        break
++                    case .notApplicable:
++                        let _ = self.context.engine.messages.sendStarsReaction(id: message.id, count: Int(amount), privacy: privacy).startStandalone()
++                        self.displayOrUpdateSendStarsUndo(messageId: message.id, count: Int(amount), privacy: privacy)
++                    }
++                })
+             })
+             |> deliverOnMainQueue).start(next: { [weak self] initialData in
+                 guard let self, let initialData else {
+diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
+--- a/submodules/TelegramUI/Sources/ChatController.swift
++++ b/submodules/TelegramUI/Sources/ChatController.swift
+@@ -1975,12 +1975,23 @@
+                                 return
+                             }
+                             
+-                            let _ = (strongSelf.context.engine.messages.sendStarsReaction(id: message.id, count: 1, privacy: nil)
+-                            |> deliverOnMainQueue).startStandalone(next: { privacy in
+-                                guard let strongSelf = self else {
+-                                    return
++                            // PampGram: quick-tap ⭐ = send 1 star. Route through the fake-Stars
++                            // ledger first; on .handled we skip the network call entirely.
++                            let _ = (PampGramStarReactionHook.spend(postbox: strongSelf.context.account.postbox, peerId: message.id.peerId, messageId: message.id.id, count: 1, channelTitle: "")
++                            |> deliverOnMainQueue).startStandalone(next: { [weak self] outcome in
++                                guard let strongSelf = self else { return }
++                                switch outcome {
++                                case .handled:
++                                    strongSelf.displayOrUpdateSendStarsUndo(messageId: message.id, count: 1, privacy: .default)
++                                case .insufficientFunds:
++                                    break
++                                case .notApplicable:
++                                    let _ = (strongSelf.context.engine.messages.sendStarsReaction(id: message.id, count: 1, privacy: nil)
++                                    |> deliverOnMainQueue).startStandalone(next: { [weak self] privacy in
++                                        guard let strongSelf = self else { return }
++                                        strongSelf.displayOrUpdateSendStarsUndo(messageId: message.id, count: 1, privacy: privacy)
++                                    })
+                                 }
+-                                strongSelf.displayOrUpdateSendStarsUndo(messageId: message.id, count: 1, privacy: privacy)
+                             })
+                         })
+                     } else {
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
+@@ -9,6 +9,7 @@
+ import AccountContext
+ import ChatMessageItemView
+ import ChatMessageItemCommon
++import PampGramCore
+ import ReactionSelectionNode
+ import EntityKeyboard
+ import TextNodeWithEntities
+@@ -490,12 +491,23 @@
+                                 return
+                             }
+                             
+-                            let _ = (strongSelf.context.engine.messages.sendStarsReaction(id: message.id, count: 1, privacy: nil)
+-                            |> deliverOnMainQueue).startStandalone(next: { privacy in
+-                                guard let strongSelf = self else {
+-                                    return
++                            // PampGram: quick-tap ⭐ = send 1 star. Route through the fake-Stars
++                            // ledger first; on .handled we skip the network call entirely.
++                            let _ = (PampGramStarReactionHook.spend(postbox: strongSelf.context.account.postbox, peerId: message.id.peerId, messageId: message.id.id, count: 1, channelTitle: "")
++                            |> deliverOnMainQueue).startStandalone(next: { [weak self] outcome in
++                                guard let strongSelf = self else { return }
++                                switch outcome {
++                                case .handled:
++                                    strongSelf.displayOrUpdateSendStarsUndo(messageId: message.id, count: 1, privacy: .default)
++                                case .insufficientFunds:
++                                    break
++                                case .notApplicable:
++                                    let _ = (strongSelf.context.engine.messages.sendStarsReaction(id: message.id, count: 1, privacy: nil)
++                                    |> deliverOnMainQueue).startStandalone(next: { [weak self] privacy in
++                                        guard let strongSelf = self else { return }
++                                        strongSelf.displayOrUpdateSendStarsUndo(messageId: message.id, count: 1, privacy: privacy)
++                                    })
+                                 }
+-                                strongSelf.displayOrUpdateSendStarsUndo(messageId: message.id, count: 1, privacy: privacy)
+                             })
+                         })
+                     } else {
