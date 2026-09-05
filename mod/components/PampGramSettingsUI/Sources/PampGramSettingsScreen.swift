@@ -421,7 +421,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.localRublesBalance("Рубли", formatRubles(kopecks: settings.localRublesBalanceKopecks)))
     entries.append(.localRublesFooter("Пока включено, кнопка «Пополнить» на экране звёзд открывает локальную оплату SberPay — списывает рубли и зачисляет визуальные Stars."))
 
-    entries.append(.profileVisualsHeader("ВИЗУАЛЫ ПРОФИЛЯ"))
+    entries.append(.profileVisualsHeader("ПРОФИЛЬ"))
     let visualNumberLabel = profileVisuals.anonymousNumberEnabled ? profileVisuals.anonymousNumber : "Настроить"
     entries.append(.visualNumberEditor("Визуальный +888", visualNumberLabel))
     let visualRatingLabel = profileVisuals.ratingEnabled ? "Уровень \(max(1, profileVisuals.ratingValue))" : "Настроить"
@@ -627,7 +627,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
     |> map { presentationData, settings, profileVisuals, phantomGifts -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
-            title: .text("Подарки"),
+            title: .text("Балансы/Подарки"),
             leftNavigationButton: nil,
             rightNavigationButton: nil,
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),

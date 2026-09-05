@@ -11,6 +11,8 @@ import PampGramCore
 
 private final class PampGramGhostArguments {
     let toggleMaster: (Bool) -> Void
+    let toggleScreenshotBypass: (Bool) -> Void
+    let toggleHideChatOnScreenshot: (Bool) -> Void
     let toggleHideReadReceipts: (Bool) -> Void
     let toggleHideStoryViews: (Bool) -> Void
     let toggleHideOnline: (Bool) -> Void
@@ -22,8 +24,10 @@ private final class PampGramGhostArguments {
     let openFolders: () -> Void
     let openExceptions: () -> Void
 
-    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void) {
+    init(toggleMaster: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleHideChatOnScreenshot: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void) {
         self.toggleMaster = toggleMaster
+        self.toggleScreenshotBypass = toggleScreenshotBypass
+        self.toggleHideChatOnScreenshot = toggleHideChatOnScreenshot
         self.toggleHideReadReceipts = toggleHideReadReceipts
         self.toggleHideStoryViews = toggleHideStoryViews
         self.toggleHideOnline = toggleHideOnline
@@ -48,6 +52,8 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     case masterFooter(String)
 
     case featuresHeader(String)
+    case screenshotBypass(String, Bool)
+    case hideChatOnScreenshot(String, Bool)
     case hideReadReceipts(String, Bool, Bool)
     case hideStoryViews(String, Bool, Bool)
     case hideOnline(String, Bool, Bool)
@@ -67,7 +73,7 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
         switch self {
         case .masterToggle, .masterFooter:
             return PampGramGhostSection.master.rawValue
-        case .featuresHeader, .hideReadReceipts, .hideStoryViews, .hideOnline, .hideTyping, .autoOffline, .readOnAction, .featuresFooter:
+        case .featuresHeader, .screenshotBypass, .hideChatOnScreenshot, .hideReadReceipts, .hideStoryViews, .hideOnline, .hideTyping, .autoOffline, .readOnAction, .featuresFooter:
             return PampGramGhostSection.features.rawValue
         case .exceptionsHeader, .excludeAllChannels, .excludeAllGroups, .foldersRow, .exceptionsRow, .exceptionsFooter:
             return PampGramGhostSection.exceptions.rawValue
@@ -82,32 +88,36 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return 1
         case .featuresHeader:
             return 2
-        case .hideReadReceipts:
+        case .screenshotBypass:
             return 3
-        case .hideStoryViews:
+        case .hideChatOnScreenshot:
             return 4
-        case .hideOnline:
+        case .hideReadReceipts:
             return 5
-        case .hideTyping:
+        case .hideStoryViews:
             return 6
-        case .autoOffline:
+        case .hideOnline:
             return 7
-        case .readOnAction:
+        case .hideTyping:
             return 8
-        case .featuresFooter:
+        case .autoOffline:
             return 9
-        case .exceptionsHeader:
+        case .readOnAction:
             return 10
-        case .excludeAllChannels:
+        case .featuresFooter:
             return 11
-        case .excludeAllGroups:
+        case .exceptionsHeader:
             return 12
-        case .foldersRow:
+        case .excludeAllChannels:
             return 13
-        case .exceptionsRow:
+        case .excludeAllGroups:
             return 14
-        case .exceptionsFooter:
+        case .foldersRow:
             return 15
+        case .exceptionsRow:
+            return 16
+        case .exceptionsFooter:
+            return 17
         }
     }
 
@@ -125,6 +135,14 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
         case let .masterToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleMaster(value)
+            })
+        case let .screenshotBypass(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleScreenshotBypass(value)
+            })
+        case let .hideChatOnScreenshot(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideChatOnScreenshot(value)
             })
         case let .hideReadReceipts(title, value, enabled):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
@@ -179,6 +197,8 @@ private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, 
     entries.append(.masterFooter("Когда включён, выбранные функции приватности будут активны. Всё меняет только то, что видят о вас другие — ничего чужого не читается и не сохраняется."))
 
     entries.append(.featuresHeader("ФУНКЦИИ"))
+    entries.append(.screenshotBypass("Обход защиты от скриншотов", settings.screenshotBypassEnabled))
+    entries.append(.hideChatOnScreenshot("Скрывать чат на скриншотах", settings.hideChatOnScreenshot))
     entries.append(.hideReadReceipts("Не читать сообщения", settings.ghostHideReadReceipts, on))
     entries.append(.hideStoryViews("Не читать истории", settings.ghostHideStoryViews, on))
     entries.append(.hideOnline("Не отправлять «онлайн»", settings.ghostHideOnline, on))
@@ -214,6 +234,20 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
             updateSettings { settings in
                 var settings = settings
                 settings.ghostModeEnabled = value
+                return settings
+            }
+        },
+        toggleScreenshotBypass: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.screenshotBypassEnabled = value
+                return settings
+            }
+        },
+        toggleHideChatOnScreenshot: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.hideChatOnScreenshot = value
                 return settings
             }
         },

@@ -226,7 +226,12 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
 
         self.dimView.frame = self.view.bounds
         self.dimView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        self.dimView.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        // The underlying "Купить звёзды" screen stays fully visible — no dim, no blur —
+        // so the callout reads as a hint floating over the star packages, not as a modal
+        // veil over a greyed-out page (which is what the App Store's real sheet does but
+        // is exactly what breaks the mock's illusion when the packages behind it are the
+        // whole point of the screen).
+        self.dimView.backgroundColor = .clear
         self.view.addSubview(self.dimView)
 
         // The "App Store" sheet.
@@ -341,18 +346,29 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         accountLabel.textColor = self.secondaryColor
         card.addSubview(accountLabel)
 
-        // Biometric footer: glyph on top, prompt below (centered).
+        // Side-button locator: a white 54pt pill with a dark inward-arrow glyph, inside
+        // the sheet under the account card. On Face ID iPhones (including the 17 Pro this
+        // is calibrated for) real Apple Pay's paid-content confirmation renders exactly
+        // this shape as the "press the side button to pay" cue; the prompt below matches
+        // the real string. On Touch ID iPhones the same slot renders the Touch ID glyph.
         self.footerGlyph.translatesAutoresizingMaskIntoConstraints = false
         self.footerGlyph.contentMode = .scaleAspectFit
+        self.footerGlyph.backgroundColor = .white
+        self.footerGlyph.layer.cornerRadius = 27.0
+        self.footerGlyph.layer.cornerCurve = .continuous
+        self.footerGlyph.clipsToBounds = true
         self.sheet.addSubview(self.footerGlyph)
+
         self.spinner.translatesAutoresizingMaskIntoConstraints = false
         self.spinner.hidesWhenStopped = true
-        self.spinner.color = self.secondaryColor
+        self.spinner.color = UIColor.black.withAlphaComponent(0.55)
         self.sheet.addSubview(self.spinner)
+
         self.resultIcon.translatesAutoresizingMaskIntoConstraints = false
         self.resultIcon.contentMode = .scaleAspectFit
         self.resultIcon.isHidden = true
         self.sheet.addSubview(self.resultIcon)
+
         self.footerLabel.translatesAutoresizingMaskIntoConstraints = false
         self.footerLabel.numberOfLines = 1
         self.footerLabel.textAlignment = .center
@@ -360,7 +376,9 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.footerLabel.textColor = self.primaryColor
         self.sheet.addSubview(self.footerLabel)
 
-        // Top-right "press the side button twice" callout (shown for Face ID devices in animateIn()).
+        // "Нажмите дважды / для оплаты" callout: two-line, right-aligned, sits just above
+        // the sheet's top edge on Face ID devices (positioned in `viewDidLayoutSubviews`).
+        // No chevrons — the sheet is what the eye is guided to, not the notch.
         self.calloutContainer.alpha = 0.0
         self.view.addSubview(self.calloutContainer)
         self.calloutLabel.text = "Нажмите дважды\nдля оплаты"
@@ -370,12 +388,7 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.calloutLabel.font = UIFont.systemFont(ofSize: 20.0, weight: .semibold)
         self.calloutLabel.translatesAutoresizingMaskIntoConstraints = false
         self.calloutContainer.addSubview(self.calloutLabel)
-        self.calloutChevrons.translatesAutoresizingMaskIntoConstraints = false
-        self.calloutChevrons.contentMode = .scaleAspectFit
-        self.calloutChevrons.tintColor = .white
-        let chevronConfig = UIImage.SymbolConfiguration(pointSize: 28.0, weight: .semibold)
-        self.calloutChevrons.image = UIImage(systemName: "chevron.compact.right", withConfiguration: chevronConfig)
-        self.calloutContainer.addSubview(self.calloutChevrons)
+        self.calloutChevrons.isHidden = true
 
         NSLayoutConstraint.activate([
             titleLabel.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
@@ -424,26 +437,23 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
             accountLabel.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -14.0),
 
             self.footerGlyph.centerXAnchor.constraint(equalTo: self.sheet.centerXAnchor),
-            self.footerGlyph.widthAnchor.constraint(equalToConstant: 34.0),
-            self.footerGlyph.heightAnchor.constraint(equalToConstant: 34.0),
-            self.footerGlyph.topAnchor.constraint(greaterThanOrEqualTo: card.bottomAnchor, constant: 20.0),
+            self.footerGlyph.widthAnchor.constraint(equalToConstant: 54.0),
+            self.footerGlyph.heightAnchor.constraint(equalToConstant: 54.0),
+            self.footerGlyph.topAnchor.constraint(equalTo: card.bottomAnchor, constant: 28.0),
             self.spinner.centerXAnchor.constraint(equalTo: self.footerGlyph.centerXAnchor),
             self.spinner.centerYAnchor.constraint(equalTo: self.footerGlyph.centerYAnchor),
             self.resultIcon.centerXAnchor.constraint(equalTo: self.footerGlyph.centerXAnchor),
             self.resultIcon.centerYAnchor.constraint(equalTo: self.footerGlyph.centerYAnchor),
-            self.resultIcon.widthAnchor.constraint(equalToConstant: 34.0),
-            self.resultIcon.heightAnchor.constraint(equalToConstant: 34.0),
-            self.footerLabel.topAnchor.constraint(equalTo: self.footerGlyph.bottomAnchor, constant: 8.0),
+            self.resultIcon.widthAnchor.constraint(equalToConstant: 54.0),
+            self.resultIcon.heightAnchor.constraint(equalToConstant: 54.0),
+            self.footerLabel.topAnchor.constraint(equalTo: self.footerGlyph.bottomAnchor, constant: 12.0),
             self.footerLabel.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
             self.footerLabel.trailingAnchor.constraint(equalTo: self.sheet.trailingAnchor, constant: -20.0),
-            self.footerLabel.bottomAnchor.constraint(equalTo: self.sheet.bottomAnchor, constant: -96.0),
 
             self.calloutLabel.topAnchor.constraint(equalTo: self.calloutContainer.topAnchor),
             self.calloutLabel.leadingAnchor.constraint(equalTo: self.calloutContainer.leadingAnchor),
-            self.calloutLabel.bottomAnchor.constraint(equalTo: self.calloutContainer.bottomAnchor),
-            self.calloutChevrons.leadingAnchor.constraint(equalTo: self.calloutLabel.trailingAnchor, constant: 6.0),
-            self.calloutChevrons.trailingAnchor.constraint(equalTo: self.calloutContainer.trailingAnchor),
-            self.calloutChevrons.centerYAnchor.constraint(equalTo: self.calloutContainer.centerYAnchor)
+            self.calloutLabel.trailingAnchor.constraint(equalTo: self.calloutContainer.trailingAnchor),
+            self.calloutLabel.bottomAnchor.constraint(equalTo: self.calloutContainer.bottomAnchor)
         ])
 
         // A double-tap anywhere confirms (matches the "press twice" cue); the X button cancels.
@@ -455,12 +465,20 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
     }
 
     private func applyBiometryPrompt() {
-        let glyphConfig = UIImage.SymbolConfiguration(pointSize: 30.0, weight: .regular)
         if self.isFaceID {
-            self.footerGlyph.image = UIImage(systemName: "faceid", withConfiguration: glyphConfig)
-            self.footerGlyph.tintColor = self.accentBlue
+            // Face ID phones (17 Pro included): a white pill with a small inward-arrow
+            // pointing at the physical side button — the same locator glyph iOS itself
+            // renders inside real Apple Pay's paid-content sheet on these devices.
+            let glyphConfig = UIImage.SymbolConfiguration(pointSize: 20.0, weight: .semibold)
+            self.footerGlyph.backgroundColor = .white
+            self.footerGlyph.image = UIImage(systemName: "arrow.left", withConfiguration: glyphConfig)
+            self.footerGlyph.tintColor = UIColor.black.withAlphaComponent(0.9)
             self.footerLabel.text = "Подтвердите боковой кнопкой"
         } else {
+            // Touch ID phones: the classic fingerprint glyph, blue on white, matching the
+            // real Touch ID confirmation sheet.
+            let glyphConfig = UIImage.SymbolConfiguration(pointSize: 32.0, weight: .regular)
+            self.footerGlyph.backgroundColor = .white
             self.footerGlyph.image = UIImage(systemName: "touchid", withConfiguration: glyphConfig)
             self.footerGlyph.tintColor = self.accentBlue
             self.footerLabel.text = "Оплатите с помощью Touch ID"
@@ -479,14 +497,21 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
 
         let width = self.view.bounds.width
         let height = self.view.bounds.height
-        let sheetHeight = min(max(height * 0.5, 430.0), height - self.view.safeAreaInsets.top - 8.0)
-        // The extra 60pt keeps the bottom rounded corners off-screen below the home indicator.
+        // Compact sheet like the real App Store paid-content sheet on Face ID phones —
+        // header + product row + price card + side-button locator + prompt, nothing more.
+        // 380pt fits all of that with breathing room; the extra 60pt keeps the bottom
+        // rounded corners off-screen below the home indicator.
+        let sheetHeight: CGFloat = 380.0
         self.sheet.frame = CGRect(x: 0.0, y: height - sheetHeight, width: width, height: sheetHeight + 60.0)
         self.iconGradient.frame = self.iconView.bounds
 
+        // Callout sits right above the sheet's top edge (with a 24pt breathing gap), pinned
+        // to the right — the visual "тап дважды, оплати" cue that leads the eye down to the
+        // sheet's Face ID glyph, not up to the notch.
         let calloutWidth: CGFloat = 260.0
-        let calloutY = max(self.view.safeAreaInsets.top + 8.0, height * 0.16)
-        self.calloutContainer.frame = CGRect(x: width - calloutWidth - 16.0, y: calloutY, width: calloutWidth, height: 60.0)
+        let calloutHeight: CGFloat = 60.0
+        let calloutY = max(self.view.safeAreaInsets.top + 8.0, self.sheet.frame.minY - calloutHeight - 24.0)
+        self.calloutContainer.frame = CGRect(x: width - calloutWidth - 16.0, y: calloutY, width: calloutWidth, height: calloutHeight)
     }
 
     func animateIn() {

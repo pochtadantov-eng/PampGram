@@ -260,6 +260,15 @@ public struct PampGramSettings: Codable, Equatable {
     /// nanotons: keeps arithmetic exact without floating point.
     public var localRublesBalanceKopecks: Int64
     public var localRublesPurchaseEnabled: Bool
+    /// "Обход защиты от скриншотов" (Режим призрака → ФУНКЦИИ): removes the client-side
+    /// secure-text-entry shield Telegram wraps around noforwards chats, protected channels,
+    /// stories, secret chats and view-once media, so system-level screenshots capture the
+    /// real content instead of a blank frame. Independent of `ghostModeEnabled`.
+    public var screenshotBypassEnabled: Bool
+    /// "Скрывать чат на скриншотах" (Режим призрака → ФУНКЦИИ): when the user takes a
+    /// screenshot, overlay the whole window with a short blur to keep chat content out
+    /// of the captured frame. Independent of `ghostModeEnabled`.
+    public var hideChatOnScreenshot: Bool
     /// "Включить визуалку" — the on/off gate for the **Подарки** section's visual features only
     /// (it lives at the top of the Gifts screen). When off, `PampGramCore.settings`/
     /// `settingsSignal` report just the gift-visual features as disabled (via
@@ -310,11 +319,13 @@ public struct PampGramSettings: Codable, Equatable {
             localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
+            screenshotBypassEnabled: false,
+            hideChatOnScreenshot: false,
             masterEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, screenshotBypassEnabled: Bool, hideChatOnScreenshot: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -351,6 +362,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
+        self.screenshotBypassEnabled = screenshotBypassEnabled
+        self.hideChatOnScreenshot = hideChatOnScreenshot
         self.masterEnabled = masterEnabled
     }
 
@@ -420,6 +433,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
+        self.screenshotBypassEnabled = try container.decodeIfPresent(Bool.self, forKey: .screenshotBypassEnabled) ?? defaults.screenshotBypassEnabled
+        self.hideChatOnScreenshot = try container.decodeIfPresent(Bool.self, forKey: .hideChatOnScreenshot) ?? defaults.hideChatOnScreenshot
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
     }
 
@@ -481,6 +496,7 @@ public enum PampGramPreferencesKeys {
     public static let appearance = key(900_600)
     public static let behavior = key(900_700)
     public static let fakeAdmin = key(900_800)
+    public static let starReactions = key(900_900)
 }
 
 public enum PampGramCore {

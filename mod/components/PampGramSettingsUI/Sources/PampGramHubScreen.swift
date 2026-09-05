@@ -111,7 +111,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 presentationData: presentationData,
                 systemStyle: .glass,
                 icon: generatePampGramSectionIcon(systemName: "gift.fill", backgroundColor: UIColor(rgb: 0x8e44ec)),
-                title: "Подарки",
+                title: "Балансы/Подарки",
                 titleFont: .bold,
                 label: "",
                 additionalDetailLabel: "Управление подарками и визуалами",

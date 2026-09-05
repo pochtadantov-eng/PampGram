@@ -8,9 +8,10 @@ import TelegramPresentationData
 import AccountContext
 import PampGramCore
 
-/// Local-only editor for the visual anonymous "+888" number — full-screen, "liquid glass" style.
-/// Writes into PampGram's Postbox preferences only on save; nothing here queries Fragment or changes
-/// Telegram's real phone number on the server.
+/// Local-only editor for the visual anonymous "+888" number. Full-screen, styled as plain
+/// Telegram grouped-list blocks so it reads like every other section of the app instead of a
+/// glassy outlier. Writes into PampGram's Postbox preferences only on save; nothing here queries
+/// Fragment or changes Telegram's real phone number on the server.
 private final class PampGramProfileNumberEditorController: ViewController, UITextFieldDelegate {
     private let context: AccountContext
     private let presentationData: PresentationData
@@ -255,19 +256,38 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
     private func makeDatePanel() -> UIView {
         let panel = PampGramGlass.makePanel(cornerRadius: 14.0)
-        panel.heightAnchor.constraint(equalToConstant: 50.0).isActive = true
+        panel.heightAnchor.constraint(equalToConstant: 54.0).isActive = true
         self.datePicker.datePickerMode = .date
         self.datePicker.maximumDate = Date()
         if #available(iOS 13.4, *) {
             self.datePicker.preferredDatePickerStyle = .compact
         }
+        self.datePicker.tintColor = self.primaryColor
         self.datePicker.translatesAutoresizingMaskIntoConstraints = false
         self.datePicker.addTarget(self, action: #selector(self.dateChanged), for: .valueChanged)
+
+        // Calendar glyph on the left, compact date pill centred in the panel. The pill sizes
+        // itself to its date text (UIDatePicker's compact style is intrinsic-width), so a
+        // plain centreX + centreY constraint keeps it visually balanced no matter how long
+        // the localised date string is.
+        let iconView = UIImageView()
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.contentMode = .scaleAspectFit
+        iconView.tintColor = self.secondaryColor
+        iconView.image = UIImage(systemName: "calendar", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18.0, weight: .regular))
+        panel.addSubview(iconView)
         panel.addSubview(self.datePicker)
+
         NSLayoutConstraint.activate([
-            self.datePicker.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 12.0),
+            iconView.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 16.0),
+            iconView.centerYAnchor.constraint(equalTo: panel.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 22.0),
+            iconView.heightAnchor.constraint(equalToConstant: 22.0),
+
+            self.datePicker.centerXAnchor.constraint(equalTo: panel.centerXAnchor),
             self.datePicker.centerYAnchor.constraint(equalTo: panel.centerYAnchor),
-            self.datePicker.trailingAnchor.constraint(lessThanOrEqualTo: panel.trailingAnchor, constant: -12.0)
+            self.datePicker.leadingAnchor.constraint(greaterThanOrEqualTo: iconView.trailingAnchor, constant: 8.0),
+            self.datePicker.trailingAnchor.constraint(lessThanOrEqualTo: panel.trailingAnchor, constant: -14.0)
         ])
         return panel
     }
@@ -322,8 +342,8 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         if state.anonymousNumberPriceTonNanos > 0 {
             self.tonField.text = self.trimDecimal(Double(state.anonymousNumberPriceTonNanos) / 1_000_000_000.0)
         }
-        if state.anonymousNumberPriceUsdCents > 0 {
-            self.usdField.text = self.trimDecimal(Double(state.anonymousNumberPriceUsdCents) / 100.0)
+        if state.anonymousNumberPriceUsdMicros > 0 {
+            self.usdField.text = self.trimDecimal(Double(state.anonymousNumberPriceUsdMicros) / 1_000_000.0)
         }
         self.showInProfile = state.anonymousNumberEnabled
         self.displaySwitch.isOn = self.showInProfile
@@ -437,7 +457,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         let finalNumber = number.isEmpty ? PampGramProfileVisualState.default.anonymousNumber : number
         let purchasedAt = Int32(self.datePicker.date.timeIntervalSince1970)
         let tonNanos = self.parseTonNanos(self.tonField.text)
-        let usdCents = self.parseUsdCents(self.usdField.text)
+        let usdMicros = self.parseUsdMicros(self.usdField.text)
         let shouldShow = self.showInProfile
         let _ = self.context.account.postbox.transaction { transaction -> Void in
             PampGramProfileVisualStore.update(transaction: transaction, { state in
@@ -445,7 +465,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
                 state.anonymousNumber = finalNumber
                 state.anonymousNumberPurchasedAt = purchasedAt
                 state.anonymousNumberPriceTonNanos = tonNanos
-                state.anonymousNumberPriceUsdCents = usdCents
+                state.anonymousNumberPriceUsdMicros = usdMicros
                 state.anonymousNumberEnabled = shouldShow
                 return state
             })
@@ -468,9 +488,13 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         if tonNanos > 0 {
             priceParts.append("💎 \(self.trimDecimal(Double(tonNanos) / 1_000_000_000.0))")
         }
-        let usdCents = self.parseUsdCents(self.usdField.text)
-        if usdCents > 0 {
-            priceParts.append(String(format: "$%.2f", Double(usdCents) / 100.0))
+        let usdMicros = self.parseUsdMicros(self.usdField.text)
+        if usdMicros > 0 {
+            // Preview keeps whatever precision the user typed (up to six decimals). The
+            // Fragment collectible sheet has its own 2-decimal formatter and will still
+            // round to cents there — that's a Telegram-side rendering choice, unrelated
+            // to what we store.
+            priceParts.append("$\(self.trimDecimal(Double(usdMicros) / 1_000_000.0))")
         }
         let priceText = priceParts.isEmpty ? "цена не указана" : priceParts.joined(separator: " · ")
         self.previewDetailsLabel.text = "Fragment · \(dateText)\n\(priceText)"
@@ -483,11 +507,13 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         return Int64((value * 1_000_000_000.0).rounded())
     }
 
-    private func parseUsdCents(_ text: String?) -> Int64 {
+    private func parseUsdMicros(_ text: String?) -> Int64 {
         guard let value = self.parseDecimal(text), value > 0 else {
             return 0
         }
-        return Int64((value * 100.0).rounded())
+        // Six decimal places, same unit-scaling as TON's nanos — anything the user can type
+        // into the field survives without a cent-rounding round-trip.
+        return Int64((value * 1_000_000.0).rounded())
     }
 
     private func parseDecimal(_ text: String?) -> Double? {

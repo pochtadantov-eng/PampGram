@@ -1,42 +1,44 @@
 import Foundation
 import UIKit
 
-/// Shared "liquid glass" building blocks for PampGram's full-screen editors. On iOS 26 these use the
-/// real `UIGlassEffect`; on older systems they fall back to a translucent material blur, so the same
-/// code gives a glassy, no-solid-color panel everywhere.
+/// Shared block-panel building blocks for PampGram's full-screen editors. Renders the same solid
+/// rounded card Telegram uses everywhere else (`itemBlocksBackgroundColor` on grouped-list rows) —
+/// used to be a `UIGlassEffect` / material blur, but the glassy look was too different from every
+/// other section, so both PampGram editors now share the plain block style. `UIColor`'s system
+/// grouped-background trait automatically follows light/dark and OLED theme changes at runtime,
+/// matching what a native Telegram row shows on the same device.
 public enum PampGramGlass {
-    /// A rounded translucent panel. Add content as subviews of the returned view — it sits above the
-    /// glass. The panel has no solid fill of its own.
+    /// A rounded solid-fill panel. Add content as subviews of the returned view.
     public static func makePanel(cornerRadius: CGFloat = 18.0) -> UIView {
         let container = UIView()
-        container.backgroundColor = .clear
+        container.backgroundColor = self.panelBackgroundColor()
         container.layer.cornerRadius = cornerRadius
         container.layer.cornerCurve = .continuous
         container.clipsToBounds = true
-
-        let effectView: UIVisualEffectView
-        if #available(iOS 26.0, *) {
-            let glass = UIGlassEffect(style: .regular)
-            glass.isInteractive = false
-            effectView = UIVisualEffectView(effect: glass)
-        } else {
-            effectView = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
-        }
-        effectView.translatesAutoresizingMaskIntoConstraints = false
-        effectView.isUserInteractionEnabled = false
-        container.addSubview(effectView)
-        NSLayoutConstraint.activate([
-            effectView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            effectView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            effectView.topAnchor.constraint(equalTo: container.topAnchor),
-            effectView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        ])
         return container
     }
 
-    /// A small round glass button (for the header back / close controls).
+    /// A small round header button (back / close controls). Same block fill as the panel, just
+    /// with a corner radius that makes it a full circle.
     public static func makeCircleButton(diameter: CGFloat) -> UIView {
         return makePanel(cornerRadius: diameter / 2.0)
+    }
+
+    /// The trait-aware "block row" fill: on iOS 13+ this resolves per-view (dark or light) via
+    /// `secondarySystemGroupedBackground`; the pre-13 fallback pins to the light block colour,
+    /// matching Telegram's own default in that era.
+    private static func panelBackgroundColor() -> UIColor {
+        if #available(iOS 13.0, *) {
+            return UIColor { trait in
+                switch trait.userInterfaceStyle {
+                case .dark:
+                    return UIColor(red: 0x1c/255.0, green: 0x1c/255.0, blue: 0x1e/255.0, alpha: 1.0)
+                default:
+                    return .white
+                }
+            }
+        }
+        return .white
     }
 }
 

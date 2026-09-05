@@ -214,7 +214,25 @@ public struct PampGramProfileVisualState: Codable, Equatable {
     public var anonymousNumber: String
     public var anonymousNumberPurchasedAt: Int32
     public var anonymousNumberPriceTonNanos: Int64
-    public var anonymousNumberPriceUsdCents: Int64
+    /// USD price of the visual anonymous number, in **micro-dollars** (1 USD = 1_000_000).
+    /// Same unit-scaling as `anonymousNumberPriceTonNanos` — an Int64 fine enough to hold
+    /// six decimal places without a Double round-trip. Old settings that only carried the
+    /// legacy `anonymousNumberPriceUsdCents` (Int64 cents, 2 decimals) still decode: on
+    /// upgrade we migrate `micros = cents * 10_000` once inside `init(from:)`, so no typed
+    /// value is silently truncated. Callers that need cents (e.g. Telegram's
+    /// `TelegramCollectibleItemInfo.currencyAmount`) read `anonymousNumberPriceUsdCents`
+    /// as a computed shim below.
+    public var anonymousNumberPriceUsdMicros: Int64
+
+    /// Legacy 2-decimal accessor. Kept as a **computed** property so every existing
+    /// call-site (the Fragment collectible-info patch, older code) still compiles and
+    /// still gets a cent value derived from the precise micros field, rounded to the
+    /// nearest cent. Setting it writes back to `anonymousNumberPriceUsdMicros`, so the
+    /// old init path (`state.anonymousNumberPriceUsdCents = X`) still works too.
+    public var anonymousNumberPriceUsdCents: Int64 {
+        get { return Int64((Double(self.anonymousNumberPriceUsdMicros) / 10_000.0).rounded()) }
+        set { self.anonymousNumberPriceUsdMicros = newValue * 10_000 }
+    }
 
     public static var `default`: PampGramProfileVisualState {
         return PampGramProfileVisualState(
@@ -225,11 +243,11 @@ public struct PampGramProfileVisualState: Codable, Equatable {
             anonymousNumber: "+888 0000 0000",
             anonymousNumberPurchasedAt: Int32(Date().timeIntervalSince1970),
             anonymousNumberPriceTonNanos: 0,
-            anonymousNumberPriceUsdCents: 0
+            anonymousNumberPriceUsdMicros: 0
         )
     }
 
-    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64, anonymousNumberPriceUsdCents: Int64) {
+    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64, anonymousNumberPriceUsdMicros: Int64) {
         self.ratingEnabled = ratingEnabled
         self.ratingValue = ratingValue
         self.ratingPoints = ratingPoints
@@ -237,7 +255,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumber = anonymousNumber
         self.anonymousNumberPurchasedAt = anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = anonymousNumberPriceTonNanos
-        self.anonymousNumberPriceUsdCents = anonymousNumberPriceUsdCents
+        self.anonymousNumberPriceUsdMicros = anonymousNumberPriceUsdMicros
     }
 
     public init(from decoder: Decoder) throws {
@@ -250,7 +268,44 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumber = try container.decodeIfPresent(String.self, forKey: .anonymousNumber) ?? defaults.anonymousNumber
         self.anonymousNumberPurchasedAt = try container.decodeIfPresent(Int32.self, forKey: .anonymousNumberPurchasedAt) ?? defaults.anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceTonNanos) ?? defaults.anonymousNumberPriceTonNanos
-        self.anonymousNumberPriceUsdCents = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceUsdCents) ?? defaults.anonymousNumberPriceUsdCents
+        // Prefer the new precise micros field; fall back to migrating the legacy cents field
+        // for settings written by any PampGram version older than this one.
+        if let micros = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceUsdMicros) {
+            self.anonymousNumberPriceUsdMicros = micros
+        } else if let cents = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceUsdCents) {
+            self.anonymousNumberPriceUsdMicros = cents * 10_000
+        } else {
+            self.anonymousNumberPriceUsdMicros = defaults.anonymousNumberPriceUsdMicros
+        }
+    }
+
+    // Explicit encoder: the compiler's synthesized one for this struct would only encode
+    // stored properties (i.e. `anonymousNumberPriceUsdMicros`), which is fine on its own —
+    // but keeping both keys in the coding-keys enum below means a stray `decodeIfPresent`
+    // for the legacy `anonymousNumberPriceUsdCents` on the next decode still finds nothing
+    // and takes the correct micros branch, exactly what we want.
+    private enum CodingKeys: String, CodingKey {
+        case ratingEnabled
+        case ratingValue
+        case ratingPoints
+        case anonymousNumberEnabled
+        case anonymousNumber
+        case anonymousNumberPurchasedAt
+        case anonymousNumberPriceTonNanos
+        case anonymousNumberPriceUsdMicros
+        case anonymousNumberPriceUsdCents
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.ratingEnabled, forKey: .ratingEnabled)
+        try container.encode(self.ratingValue, forKey: .ratingValue)
+        try container.encode(self.ratingPoints, forKey: .ratingPoints)
+        try container.encode(self.anonymousNumberEnabled, forKey: .anonymousNumberEnabled)
+        try container.encode(self.anonymousNumber, forKey: .anonymousNumber)
+        try container.encode(self.anonymousNumberPurchasedAt, forKey: .anonymousNumberPurchasedAt)
+        try container.encode(self.anonymousNumberPriceTonNanos, forKey: .anonymousNumberPriceTonNanos)
+        try container.encode(self.anonymousNumberPriceUsdMicros, forKey: .anonymousNumberPriceUsdMicros)
     }
 }
 
