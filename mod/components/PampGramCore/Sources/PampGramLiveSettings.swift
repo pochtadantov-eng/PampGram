@@ -49,6 +49,16 @@ public final class PampGramLiveSettings {
             self._screenshotBypassEnabled = settings.screenshotBypassEnabled
             self._hideChatOnScreenshot = settings.hideChatOnScreenshot
             self.lock.unlock()
+            // Mirror into UserDefaults so lower-level modules (TelegramCore, which cannot
+            // import PampGramCore because of the dependency direction) can consult the
+            // current flag state synchronously. Keys are namespaced under "pampgram.".
+            let defaults = UserDefaults.standard
+            defaults.set(settings.copyProtectionBypassEnabled, forKey: "pampgram.copyProtectionBypassEnabled")
+            defaults.set(settings.forwardKeepAuthorEnabled, forKey: "pampgram.forwardKeepAuthorEnabled")
+            defaults.set(settings.disableAutoDeleteEnabled, forKey: "pampgram.disableAutoDeleteEnabled")
+            defaults.set(settings.blockSponsoredMessagesEnabled, forKey: "pampgram.blockSponsoredMessagesEnabled")
+            defaults.set(settings.screenshotBypassEnabled, forKey: "pampgram.screenshotBypassEnabled")
+            defaults.set(settings.hideChatOnScreenshot, forKey: "pampgram.hideChatOnScreenshot")
         })
     }
 
