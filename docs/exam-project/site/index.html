@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="PampGram — мод для Telegram-iOS: локальные подарки, визуальный +888, Ghost-режим, пресеты внешнего вида и смена иконки." />
+  <meta name="theme-color" content="#0b0d17" />
+  <title>PampGram — визуальный мод для Telegram-iOS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<header class="site-header" id="top">
+  <div class="container header__row">
+    <a class="brand" href="#top" aria-label="PampGram — на главную">
+      <span class="brand__mark" aria-hidden="true">
+        <svg viewBox="0 0 40 40" width="34" height="34">
+          <defs>
+            <linearGradient id="lg-brand" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#7b5bff"/>
+              <stop offset="1" stop-color="#22c1ff"/>
+            </linearGradient>
+          </defs>
+          <rect x="1" y="1" width="38" height="38" rx="12" fill="url(#lg-brand)"/>
+          <path d="M11 27 L18 12 L23 22 L28 15 L30 27 Z" fill="#fff" opacity=".92"/>
+        </svg>
+      </span>
+      <span class="brand__text">PampGram</span>
+      <span class="brand__badge">v1.5.2</span>
+    </a>
+
+    <button class="nav-toggle" aria-label="Открыть меню" aria-expanded="false" aria-controls="site-nav">
+      <span></span><span></span><span></span>
+    </button>
+
+    <nav id="site-nav" class="site-nav" aria-label="Основное меню">
+      <ul class="site-nav__list">
+        <li><a href="#features">Функции</a></li>
+        <li><a href="#catalog">Каталог</a></li>
+        <li><a href="#compare">Сравнение</a></li>
+        <li><a href="#install">Установка</a></li>
+        <li><a href="#faq">FAQ</a></li>
+      </ul>
+      <a class="btn btn--primary btn--sm" href="#download">Скачать</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ═══════════════ HERO ═══════════════ -->
+<section class="hero">
+  <div class="container hero__row">
+    <div class="hero__copy">
+      <span class="chip">iOS · 15+ · TrollStore / AltStore</span>
+      <h1 class="hero__title">
+        Telegram, каким его <span class="grad">хочешь видеть ты</span>.
+      </h1>
+      <p class="hero__lead">
+        PampGram добавляет в Telegram-iOS локальные подарки, визуальный
+        номер <b>+888</b>, Ghost-режим, редактор рейтинга профиля и три
+        пресета внешнего вида. Всё локально: не трогает баланс, чаты и
+        права в оригинальном Telegram.
+      </p>
+
+      <div class="hero__cta">
+        <a class="btn btn--primary" href="#download">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path fill="currentColor" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/>
+          </svg>
+          Скачать .ipa
+        </a>
+        <a class="btn btn--ghost" href="#features">Посмотреть функции</a>
+      </div>
+
+      <ul class="hero__stats" role="list">
+        <li><b>32</b><span>модуля</span></li>
+        <li><b>4</b><span>пресета UI</span></li>
+        <li><b>100%</b><span>локально</span></li>
+        <li><b>0₽</b><span>подписки</span></li>
+      </ul>
+    </div>
+
+    <div class="hero__art" aria-hidden="true">
+      <div class="phone">
+        <div class="phone__notch"></div>
+        <div class="phone__screen">
+          <div class="chat">
+            <div class="chat__hdr">
+              <div class="chat__avatar">М</div>
+              <div>
+                <div class="chat__name">Маша</div>
+                <div class="chat__sub">был(а) недавно</div>
+              </div>
+            </div>
+            <div class="chat__body">
+              <div class="msg msg--in">Смотри что мне прислали 🎁</div>
+              <div class="msg msg--gift">
+                <div class="gift">
+                  <div class="gift__glow"></div>
+                  <div class="gift__ico">🎁</div>
+                  <div class="gift__meta">
+                    <b>Durov's Cap</b>
+                    <span>25 000 Stars · #0042</span>
+                  </div>
+                </div>
+              </div>
+              <div class="msg msg--out">визуалка? 😅</div>
+              <div class="msg msg--in">неа, коллекционная</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ ADVANTAGES ═══════════════ -->
+<section class="advantages" id="features">
+  <div class="container">
+    <header class="section-head">
+      <span class="section-head__eyebrow">Почему PampGram</span>
+      <h2>Всё, чего не хватало официальному клиенту</h2>
+      <p>Четыре больших блока: подарки, Ghost, внешний вид и приватность.
+        Каждый переключатель работает локально и не отправляет данные на
+        сервер.</p>
+    </header>
+
+    <ul class="adv-grid" role="list">
+      <li class="adv-card">
+        <div class="adv-card__ico" aria-hidden="true">🎁</div>
+        <h3>Локальные подарки</h3>
+        <p>Визуальные Stars, TON и рубли. Отправляй подарки, собирай
+          коллекцию, торгуй на локальном маркете — без реальных трат.</p>
+      </li>
+      <li class="adv-card">
+        <div class="adv-card__ico" aria-hidden="true">👻</div>
+        <h3>Ghost-режим</h3>
+        <p>Отключай прочтения, typing, «в сети», автоофлайн и исключения
+          по чатам. Anti-recall сохраняет удалённые сообщения.</p>
+      </li>
+      <li class="adv-card">
+        <div class="adv-card__ico" aria-hidden="true">🎨</div>
+        <h3>Внешний вид</h3>
+        <p>Пресеты Standard, Glass и Compact. Меняй иконку приложения
+          прямо из настроек и сохраняй свои схемы оформления.</p>
+      </li>
+      <li class="adv-card">
+        <div class="adv-card__ico" aria-hidden="true">🛡️</div>
+        <h3>Приватность</h3>
+        <p>Локальная блокировка чатов по Face ID, косметическое
+          редактирование звонков, визуальный +888 вместо реального номера.</p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════════ CATALOG ═══════════════ -->
+<section class="catalog" id="catalog">
+  <div class="container">
+    <header class="section-head section-head--split">
+      <div>
+        <span class="section-head__eyebrow">Каталог функций</span>
+        <h2>Модули, из которых собран PampGram</h2>
+      </div>
+      <div class="catalog__filter" role="tablist" aria-label="Фильтр по категории">
+        <button class="chip chip--tab is-active" data-filter="all" role="tab" aria-selected="true">Все</button>
+        <button class="chip chip--tab" data-filter="gifts" role="tab" aria-selected="false">Подарки</button>
+        <button class="chip chip--tab" data-filter="ghost" role="tab" aria-selected="false">Ghost</button>
+        <button class="chip chip--tab" data-filter="ui" role="tab" aria-selected="false">UI</button>
+      </div>
+    </header>
+
+    <ul class="cat-grid" role="list">
+
+      <li class="cat-card" data-cat="gifts">
+        <div class="cat-card__thumb cat-card__thumb--stars"></div>
+        <div class="cat-card__body">
+          <span class="tag">Подарки</span>
+          <h3>Визуальный баланс Stars</h3>
+          <p>Показывай любое количество Stars в собственном профиле.
+            Покупки за локальные рубли, история операций и коррекции.</p>
+          <div class="cat-card__meta">
+            <span>★ 4.9</span>
+            <span>· с v1.0</span>
+            <span>· локально</span>
+          </div>
+        </div>
+      </li>
+
+      <li class="cat-card" data-cat="gifts">
+        <div class="cat-card__thumb cat-card__thumb--ton"></div>
+        <div class="cat-card__body">
+          <span class="tag">Подарки</span>
+          <h3>TON-подарки и маркет</h3>
+          <p>Собирай визуальные NFT-подарки, закрепляй, скрывай, носи
+            на аватаре, обменивай через локальный маркет.</p>
+          <div class="cat-card__meta">
+            <span>★ 4.8</span>
+            <span>· с v1.2</span>
+          </div>
+        </div>
+      </li>
+
+      <li class="cat-card" data-cat="gifts">
+        <div class="cat-card__thumb cat-card__thumb--num"></div>
+        <div class="cat-card__body">
+          <span class="tag">Профиль</span>
+          <h3>Визуальный +888</h3>
+          <p>Один переключатель — и вместо реального номера в профиле
+            показывается «+888». Настоящий номер не копируется.</p>
+          <div class="cat-card__meta"><span>★ 5.0</span><span>· с v1.3</span></div>
+        </div>
+      </li>
+
+      <li class="cat-card" data-cat="ghost">
+        <div class="cat-card__thumb cat-card__thumb--ghost"></div>
+        <div class="cat-card__body">
+          <span class="tag">Ghost</span>
+          <h3>Anti-recall</h3>
+          <p>Локальное сохранение удалённых сообщений. Заметка о том,
+            что сообщение было удалено, остаётся только у тебя.</p>
+          <div class="cat-card__meta"><span>★ 4.9</span><span>· с v0.9</span></div>
+        </div>
+      </li>
+
+      <li class="cat-card" data-cat="ghost">
+        <div class="cat-card__thumb cat-card__thumb--eyes"></div>
+        <div class="cat-card__body">
+          <span class="tag">Ghost</span>
+          <h3>Отключение прочтений и typing</h3>
+          <p>Гибкие исключения по чатам и папкам. Автоофлайн через
+            заданный интервал бездействия.</p>
+          <div class="cat-card__meta"><span>★ 4.7</span><span>· с v0.7</span></div>
+        </div>
+      </li>
+
+      <li class="cat-card" data-cat="ui">
+        <div class="cat-card__thumb cat-card__thumb--glass"></div>
+        <div class="cat-card__body">
+          <span class="tag">Внешний вид</span>
+          <h3>Пресеты Standard / Glass / Compact</h3>
+          <p>Полностью меняют плотность списка чатов, стиль пузырей и
+            вид верхней панели. Свой пресет можно сохранить.</p>
+          <div class="cat-card__meta"><span>★ 4.8</span><span>· с v1.4</span></div>
+        </div>
+      </li>
+
+      <li class="cat-card" data-cat="ui">
+        <div class="cat-card__thumb cat-card__thumb--icon"></div>
+        <div class="cat-card__body">
+          <span class="tag">Внешний вид</span>
+          <h3>Смена иконки приложения</h3>
+          <p>Более 20 иконок, включая тематические (пасха, новый год,
+            день рождения Дурова). Меняется штатным механизмом iOS.</p>
+          <div class="cat-card__meta"><span>★ 4.6</span><span>· с v1.1</span></div>
+        </div>
+      </li>
+
+      <li class="cat-card" data-cat="ghost">
+        <div class="cat-card__thumb cat-card__thumb--lock"></div>
+        <div class="cat-card__body">
+          <span class="tag">Приватность</span>
+          <h3>Локальная блокировка чата</h3>
+          <p>Прячь выбранные чаты за Face ID / Touch ID / паролем.
+            Не влияет на серверную видимость.</p>
+          <div class="cat-card__meta"><span>★ 4.9</span><span>· с v1.2</span></div>
+        </div>
+      </li>
+
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════════ COMPARE (TABLE) ═══════════════ -->
+<section class="compare" id="compare">
+  <div class="container">
+    <header class="section-head">
+      <span class="section-head__eyebrow">Сравнение</span>
+      <h2>PampGram против других модов</h2>
+      <p>Проанализировано пять конкурентов из категории «модификации
+        Telegram». PampGram — единственный, кто закрывает все четыре
+        сценария сразу.</p>
+    </header>
+
+    <div class="table-wrap">
+      <table class="cmp">
+        <caption class="visually-hidden">Сравнение модификаций Telegram</caption>
+        <thead>
+          <tr>
+            <th scope="col">Функция</th>
+            <th scope="col">Nicegram</th>
+            <th scope="col">Swiftgram</th>
+            <th scope="col">Telegram X</th>
+            <th scope="col">MaterialGram</th>
+            <th scope="col">Ayugram</th>
+            <th scope="col" class="is-me">PampGram</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Визуальные подарки Stars/TON</th>
+            <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+            <td class="is-me">✔︎</td>
+          </tr>
+          <tr>
+            <th scope="row">Ghost-режим (прочтения / typing / онлайн)</th>
+            <td>частично</td><td>✔︎</td><td>—</td><td>✔︎</td><td>✔︎</td>
+            <td class="is-me">✔︎ полный</td>
+          </tr>
+          <tr>
+            <th scope="row">Anti-recall (сохранение удалённых)</th>
+            <td>—</td><td>—</td><td>—</td><td>—</td><td>✔︎</td>
+            <td class="is-me">✔︎</td>
+          </tr>
+          <tr>
+            <th scope="row">Смена иконки приложения</th>
+            <td>ограниченно</td><td>—</td><td>—</td><td>✔︎</td><td>—</td>
+            <td class="is-me">20+ иконок</td>
+          </tr>
+          <tr>
+            <th scope="row">Пресеты интерфейса</th>
+            <td>—</td><td>—</td><td>—</td><td>Material You</td><td>—</td>
+            <td class="is-me">Standard / Glass / Compact</td>
+          </tr>
+          <tr>
+            <th scope="row">Локальная блокировка чата</th>
+            <td>—</td><td>—</td><td>—</td><td>—</td><td>частично</td>
+            <td class="is-me">Face ID / пароль</td>
+          </tr>
+          <tr>
+            <th scope="row">Стоимость</th>
+            <td>подписка</td><td>бесплатно</td><td>бесплатно</td>
+            <td>бесплатно</td><td>донат</td>
+            <td class="is-me"><b>бесплатно</b></td>
+          </tr>
+          <tr>
+            <th scope="row">Платформа</th>
+            <td>iOS</td><td>iOS</td><td>iOS / Android</td>
+            <td>Android</td><td>Win / Linux / Android</td>
+            <td class="is-me">iOS 15+</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ INSTALL ═══════════════ -->
+<section class="install" id="install">
+  <div class="container install__row">
+    <div class="install__copy">
+      <span class="section-head__eyebrow">Установка</span>
+      <h2>Три шага до нового Telegram</h2>
+      <p>Не нужен джейлбрейк. Ставится через TrollStore, AltStore или
+        Sideloadly — выбирай удобный способ.</p>
+
+      <ol class="steps" role="list">
+        <li>
+          <span class="steps__num">1</span>
+          <div>
+            <h3>Скачай .ipa</h3>
+            <p>Актуальный релиз лежит на GitHub Releases, размер ~140 МБ.</p>
+          </div>
+        </li>
+        <li>
+          <span class="steps__num">2</span>
+          <div>
+            <h3>Открой в TrollStore / AltStore</h3>
+            <p>Нажми «Install» и подтверди подпись профилем разработчика.</p>
+          </div>
+        </li>
+        <li>
+          <span class="steps__num">3</span>
+          <div>
+            <h3>Авторизуйся в Telegram</h3>
+            <p>Первый запуск создаст локальную базу PampGram и не тронет
+              оригинальные данные.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+
+    <aside class="install__side" id="download">
+      <h3 class="install__side-title">Скачать v1.5.2</h3>
+      <p class="install__meta">Обновлено 5 сентября 2026 · iOS 15+ · arm64</p>
+
+      <div class="dl-list">
+        <a class="dl" href="#">
+          <span class="dl__ico">🧨</span>
+          <div><b>PampGram.ipa</b><span>для TrollStore · 138 МБ</span></div>
+        </a>
+        <a class="dl" href="#">
+          <span class="dl__ico">📦</span>
+          <div><b>PampGram-signed.ipa</b><span>для AltStore · 141 МБ</span></div>
+        </a>
+        <a class="dl" href="#">
+          <span class="dl__ico">🧰</span>
+          <div><b>Sources.zip</b><span>исходники модулей · 12 МБ</span></div>
+        </a>
+      </div>
+
+      <p class="install__hint">SHA-256 контрольные суммы — в описании
+        релиза на GitHub.</p>
+    </aside>
+  </div>
+</section>
+
+<!-- ═══════════════ SUBSCRIBE FORM ═══════════════ -->
+<section class="subscribe" id="subscribe">
+  <div class="container subscribe__row">
+    <div class="subscribe__copy">
+      <h2>Подпишись на релизы</h2>
+      <p>Раз в 2 недели присылаем письмо: что нового, что починили и что
+        поломали. Никакого спама, отписка в один клик.</p>
+
+      <ul class="checks" role="list">
+        <li>Анонс до публикации в канале</li>
+        <li>Список изменений одним письмом</li>
+        <li>Хеши файлов для проверки подписи</li>
+      </ul>
+    </div>
+
+    <form class="form" id="subscribe-form" novalidate>
+      <div class="form__row">
+        <label for="f-name">Как к тебе обращаться</label>
+        <input id="f-name" name="name" type="text" placeholder="Даня" required minlength="2" />
+      </div>
+      <div class="form__row">
+        <label for="f-mail">E-mail</label>
+        <input id="f-mail" name="email" type="email" placeholder="you@icloud.com" required />
+      </div>
+      <div class="form__row">
+        <label for="f-chan">Основной канал</label>
+        <select id="f-chan" name="channel" required>
+          <option value="">Выбери</option>
+          <option>Только e-mail</option>
+          <option>E-mail + Telegram-канал</option>
+          <option>E-mail + RSS</option>
+        </select>
+      </div>
+
+      <fieldset class="form__row form__row--fs">
+        <legend>Что интересует</legend>
+        <label class="chk"><input type="checkbox" name="topics" value="gifts" checked /> Подарки</label>
+        <label class="chk"><input type="checkbox" name="topics" value="ghost" /> Ghost</label>
+        <label class="chk"><input type="checkbox" name="topics" value="ui" /> Внешний вид</label>
+        <label class="chk"><input type="checkbox" name="topics" value="privacy" /> Приватность</label>
+      </fieldset>
+
+      <label class="chk chk--consent">
+        <input type="checkbox" name="consent" required />
+        Соглашаюсь на обработку данных по <a href="#">политике</a>.
+      </label>
+
+      <button class="btn btn--primary btn--full" type="submit">Подписаться</button>
+      <p class="form__status" id="form-status" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</section>
+
+<!-- ═══════════════ FAQ ═══════════════ -->
+<section class="faq" id="faq">
+  <div class="container">
+    <header class="section-head">
+      <span class="section-head__eyebrow">FAQ</span>
+      <h2>Частые вопросы</h2>
+    </header>
+
+    <div class="faq__list">
+      <details>
+        <summary>Забанят ли за PampGram аккаунт?</summary>
+        <p>Все «визуальные» функции работают только на устройстве и не
+          отправляют изменённые данные на сервер Telegram. Риск бана
+          сопоставим с использованием любого альтернативного клиента.</p>
+      </details>
+      <details>
+        <summary>Нужен ли джейлбрейк?</summary>
+        <p>Нет. Устанавливается через TrollStore, AltStore или Sideloadly.
+          Джейлбрейк не требуется.</p>
+      </details>
+      <details>
+        <summary>Что происходит с моей коллекцией подарков?</summary>
+        <p>Она хранится в локальной базе PampGram. При удалении
+          приложения коллекция удаляется вместе с ним.</p>
+      </details>
+      <details>
+        <summary>Можно ли пользоваться параллельно с обычным Telegram?</summary>
+        <p>Да. PampGram — отдельное приложение с собственным bundle-id,
+          не конфликтует с оригинальным клиентом.</p>
+      </details>
+      <details>
+        <summary>Есть ли открытый код?</summary>
+        <p>Модули PampGram и патчи публикуются на GitHub.
+          Форк Telegram-iOS собирается отдельно.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<footer class="site-footer">
+  <div class="container footer__row">
+    <div class="footer__brand">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40" width="28" height="28">
+            <rect x="1" y="1" width="38" height="38" rx="12" fill="url(#lg-brand)"/>
+            <path d="M11 27 L18 12 L23 22 L28 15 L30 27 Z" fill="#fff" opacity=".92"/>
+          </svg>
+        </span>
+        <span class="brand__text">PampGram</span>
+      </div>
+      <p>Мод для Telegram-iOS. Не аффилирован с Telegram FZ-LLC.</p>
+    </div>
+
+    <nav class="footer__nav" aria-label="Разделы сайта">
+      <div>
+        <h4>Продукт</h4>
+        <ul>
+          <li><a href="#features">Функции</a></li>
+          <li><a href="#catalog">Каталог</a></li>
+          <li><a href="#compare">Сравнение</a></li>
+          <li><a href="#install">Установка</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Ресурсы</h4>
+        <ul>
+          <li><a href="#">GitHub</a></li>
+          <li><a href="#">Telegram-канал</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#">Changelog</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Правовое</h4>
+        <ul>
+          <li><a href="#">Политика</a></li>
+          <li><a href="#">Условия</a></li>
+          <li><a href="#">Дисклеймер</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+
+  <div class="container footer__bar">
+    <span>© 2026 PampGram Team</span>
+    <span>Собрано с ♥ на Telegram-iOS</span>
+  </div>
+</footer>
+
+<script src="js/main.js"></script>
+</body>
+</html>
