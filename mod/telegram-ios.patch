@@ -20628,8 +20628,12 @@ index 9e0f9fb..c5a15d1 100644
              })
          }
          
-@@ -888,7 +892,7 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
-                         balance: state.starsState?.balance,
+@@ -888,7 +892,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+-                        balance: state.starsState?.balance,
++                        // PampGram: swap the top-right "Баланс" widget to the local fake Stars
++                        // balance while `fakeStarsDisplayEnabled` is on — the visual purchase
++                        // flow is a fake-Stars top-up, so the balance shown must match.
++                        balance: PampGramStarsHook.displayedStarsBalance(context: context.component.context, real: state.starsState?.balance),
                          options: context.component.options,
                          purpose: context.component.purpose,
 -                        selectedProductId: state.progressProduct?.storeProduct.id,

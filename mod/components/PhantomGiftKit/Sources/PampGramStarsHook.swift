@@ -62,7 +62,64 @@ private func pampGramFormatRubles(_ kopecks: Int64) -> String {
 /// The real biometric/side-button confirmation is handled by iOS in a separate secure process and
 /// cannot be summoned, detected, or intercepted by an app (a single side-button press just locks the
 /// device). So the actual confirmation gesture is a double-tap on the screen.
+/// Process-lifetime cache of PampGram's fake-Stars settings, kept warm by a shared
+/// signal subscription so every screen showing "Баланс" can pick the fake or the real
+/// balance synchronously in a single-line call, without threading its own disposable
+/// through the Component/CombinedComponent state class.
+///
+/// `PampGramStarsHook.displayedStarsBalance(context:real:)` is the public entry point:
+/// on first call for an account it starts the subscription; every later call reads the
+/// latest cached value with a plain lock, no I/O.
+private final class PampGramFakeBalanceCache {
+    static let shared = PampGramFakeBalanceCache()
+
+    private let lock = NSLock()
+    private var boundAccountId: Int64?
+    private var disposable: Disposable?
+    private var fakeStarsBalance: Int64 = 0
+    private var fakeStarsDisplayEnabled: Bool = false
+
+    private init() {}
+
+    func snapshot(context: AccountContext) -> (balance: Int64, enabled: Bool) {
+        let accountId = context.account.id.int64
+        self.lock.lock()
+        let alreadyBound = self.boundAccountId == accountId
+        self.lock.unlock()
+        if !alreadyBound {
+            let postbox = context.account.postbox
+            self.lock.lock()
+            self.disposable?.dispose()
+            self.boundAccountId = accountId
+            self.lock.unlock()
+            self.disposable = PampGramCore.settingsSignal(postbox: postbox).start(next: { [weak self] settings in
+                guard let self else { return }
+                self.lock.lock()
+                self.fakeStarsBalance = settings.fakeStarsBalance
+                self.fakeStarsDisplayEnabled = settings.fakeStarsDisplayEnabled
+                self.lock.unlock()
+            })
+        }
+        self.lock.lock()
+        let result = (self.fakeStarsBalance, self.fakeStarsDisplayEnabled)
+        self.lock.unlock()
+        return result
+    }
+}
+
 public enum PampGramStarsHook {
+    /// The Stars balance a UI widget should display: the local fake counter when
+    /// `fakeStarsDisplayEnabled` is on for this account, otherwise the real Stars balance
+    /// passed in. Reads a process-wide cache so a single line at the call site is enough —
+    /// no need to add a disposable to every screen showing "Баланс".
+    public static func displayedStarsBalance(context: AccountContext, real: StarsAmount?) -> StarsAmount? {
+        let snapshot = PampGramFakeBalanceCache.shared.snapshot(context: context)
+        if snapshot.enabled {
+            return StarsAmount(value: snapshot.balance, nanos: 0)
+        }
+        return real
+    }
+
     public static func presentFakeApplePay(context: AccountContext, count: Int64, priceText: String, priceKopecks: Int64, onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void) {
         Queue.mainQueue().async {
             guard let presenter = self.topViewController() else {
