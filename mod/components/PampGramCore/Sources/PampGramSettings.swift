@@ -260,6 +260,22 @@ public struct PampGramSettings: Codable, Equatable {
     /// nanotons: keeps arithmetic exact without floating point.
     public var localRublesBalanceKopecks: Int64
     public var localRublesPurchaseEnabled: Bool
+    /// "Обход защиты от копирования": lets the message-copy UI ignore Telegram's
+    /// `isCopyProtected` flag on a chat/channel, so text can be copied even from
+    /// noforwards peers. Purely client-side.
+    public var copyProtectionBypassEnabled: Bool
+    /// "Добавлять от кого переслано": on outgoing forwards from a peer that hid the
+    /// original sender (noforwards / hideAuthorship), force-include the "Forwarded
+    /// from …" header when the receiver renders the message.
+    public var forwardKeepAuthorEnabled: Bool
+    /// "Отключить автоудаление исчезающих": suppress the local TTL cleanup of
+    /// incoming messages. Server still deletes on its own timeline; this keeps a
+    /// copy in local Postbox after the local timer fires.
+    public var disableAutoDeleteEnabled: Bool
+    /// "Блокировать рекламу": drops Telegram's `channels.getSponsoredMessages`
+    /// results from the chat's rendered list, so sponsored posts disappear from
+    /// channels client-side.
+    public var blockSponsoredMessagesEnabled: Bool
     /// "Обход защиты от скриншотов" (Режим призрака → ФУНКЦИИ): removes the client-side
     /// secure-text-entry shield Telegram wraps around noforwards chats, protected channels,
     /// stories, secret chats and view-once media, so system-level screenshots capture the
@@ -319,13 +335,17 @@ public struct PampGramSettings: Codable, Equatable {
             localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
+            copyProtectionBypassEnabled: false,
+            forwardKeepAuthorEnabled: false,
+            disableAutoDeleteEnabled: false,
+            blockSponsoredMessagesEnabled: false,
             screenshotBypassEnabled: false,
             hideChatOnScreenshot: false,
             masterEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, screenshotBypassEnabled: Bool, hideChatOnScreenshot: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, copyProtectionBypassEnabled: Bool, forwardKeepAuthorEnabled: Bool, disableAutoDeleteEnabled: Bool, blockSponsoredMessagesEnabled: Bool, screenshotBypassEnabled: Bool, hideChatOnScreenshot: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -362,6 +382,10 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
+        self.copyProtectionBypassEnabled = copyProtectionBypassEnabled
+        self.forwardKeepAuthorEnabled = forwardKeepAuthorEnabled
+        self.disableAutoDeleteEnabled = disableAutoDeleteEnabled
+        self.blockSponsoredMessagesEnabled = blockSponsoredMessagesEnabled
         self.screenshotBypassEnabled = screenshotBypassEnabled
         self.hideChatOnScreenshot = hideChatOnScreenshot
         self.masterEnabled = masterEnabled
@@ -433,6 +457,10 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
+        self.copyProtectionBypassEnabled = try container.decodeIfPresent(Bool.self, forKey: .copyProtectionBypassEnabled) ?? defaults.copyProtectionBypassEnabled
+        self.forwardKeepAuthorEnabled = try container.decodeIfPresent(Bool.self, forKey: .forwardKeepAuthorEnabled) ?? defaults.forwardKeepAuthorEnabled
+        self.disableAutoDeleteEnabled = try container.decodeIfPresent(Bool.self, forKey: .disableAutoDeleteEnabled) ?? defaults.disableAutoDeleteEnabled
+        self.blockSponsoredMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .blockSponsoredMessagesEnabled) ?? defaults.blockSponsoredMessagesEnabled
         self.screenshotBypassEnabled = try container.decodeIfPresent(Bool.self, forKey: .screenshotBypassEnabled) ?? defaults.screenshotBypassEnabled
         self.hideChatOnScreenshot = try container.decodeIfPresent(Bool.self, forKey: .hideChatOnScreenshot) ?? defaults.hideChatOnScreenshot
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled

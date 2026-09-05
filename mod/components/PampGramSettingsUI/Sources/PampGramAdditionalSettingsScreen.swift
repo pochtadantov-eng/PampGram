@@ -20,8 +20,12 @@ private final class PampGramAdditionalArguments {
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
+    let toggleCopyBypass: (Bool) -> Void
+    let toggleForwardKeepAuthor: (Bool) -> Void
+    let toggleDisableAutoDelete: (Bool) -> Void
+    let toggleBlockAds: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleCopyBypass: @escaping (Bool) -> Void, toggleForwardKeepAuthor: @escaping (Bool) -> Void, toggleDisableAutoDelete: @escaping (Bool) -> Void, toggleBlockAds: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -32,11 +36,16 @@ private final class PampGramAdditionalArguments {
         self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
+        self.toggleCopyBypass = toggleCopyBypass
+        self.toggleForwardKeepAuthor = toggleForwardKeepAuthor
+        self.toggleDisableAutoDelete = toggleDisableAutoDelete
+        self.toggleBlockAds = toggleBlockAds
     }
 }
 
 private enum PampGramAdditionalSection: Int32 {
     case about
+    case protection
     case voice
     case speed
     case premium
@@ -45,6 +54,13 @@ private enum PampGramAdditionalSection: Int32 {
 
 private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case aboutText(String)
+
+    case protectionHeader(String)
+    case copyBypassToggle(String, Bool)
+    case forwardKeepAuthorToggle(String, Bool)
+    case disableAutoDeleteToggle(String, Bool)
+    case blockAdsToggle(String, Bool)
+    case protectionFooter(String)
 
     case voiceHeader(String)
     case voiceToggle(String, Bool)
@@ -72,6 +88,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return PampGramAdditionalSection.about.rawValue
+        case .protectionHeader, .copyBypassToggle, .forwardKeepAuthorToggle, .disableAutoDeleteToggle, .blockAdsToggle, .protectionFooter:
+            return PampGramAdditionalSection.protection.rawValue
         case .voiceHeader, .voiceToggle, .voicePresetRow, .voiceFooter:
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
@@ -87,42 +105,54 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return 0
-        case .voiceHeader:
+        case .protectionHeader:
             return 1
-        case .voiceToggle:
+        case .copyBypassToggle:
             return 2
-        case .voicePresetRow:
+        case .forwardKeepAuthorToggle:
             return 3
-        case .voiceFooter:
+        case .disableAutoDeleteToggle:
             return 4
-        case .speedHeader:
+        case .blockAdsToggle:
             return 5
-        case .uploadSpeedRow:
+        case .protectionFooter:
             return 6
-        case .downloadSpeedRow:
+        case .voiceHeader:
             return 7
-        case .speedFooter:
+        case .voiceToggle:
             return 8
-        case .premiumHeader:
+        case .voicePresetRow:
             return 9
-        case .infinitePinsToggle:
+        case .voiceFooter:
             return 10
-        case .legalPremiumToggle:
+        case .speedHeader:
             return 11
-        case .premiumFooter:
+        case .uploadSpeedRow:
             return 12
-        case .extrasHeader:
+        case .downloadSpeedRow:
             return 13
-        case .fakeLocationRow:
+        case .speedFooter:
             return 14
-        case .chatLockRow:
+        case .premiumHeader:
             return 15
-        case .callOverridesRow:
+        case .infinitePinsToggle:
             return 16
-        case .fakeAdminRow:
+        case .legalPremiumToggle:
             return 17
-        case .extrasFooter:
+        case .premiumFooter:
             return 18
+        case .extrasHeader:
+            return 19
+        case .fakeLocationRow:
+            return 20
+        case .chatLockRow:
+            return 21
+        case .callOverridesRow:
+            return 22
+        case .fakeAdminRow:
+            return 23
+        case .extrasFooter:
+            return 24
         }
     }
 
@@ -133,10 +163,26 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text), let .protectionFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text), let .protectionHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .copyBypassToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleCopyBypass(value)
+            })
+        case let .forwardKeepAuthorToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleForwardKeepAuthor(value)
+            })
+        case let .disableAutoDeleteToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleDisableAutoDelete(value)
+            })
+        case let .blockAdsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBlockAds(value)
+            })
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleInfinitePins(value)
@@ -185,6 +231,13 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     var entries: [PampGramAdditionalEntry] = []
 
     entries.append(.aboutText("Другие возможности PampGram: голос и скорость передачи файлов."))
+
+    entries.append(.protectionHeader("ЗАЩИТА"))
+    entries.append(.copyBypassToggle("Обход защиты от копирования", settings.copyProtectionBypassEnabled))
+    entries.append(.forwardKeepAuthorToggle("Добавлять от кого переслано", settings.forwardKeepAuthorEnabled))
+    entries.append(.disableAutoDeleteToggle("Отключить автоудаление исчезающих", settings.disableAutoDeleteEnabled))
+    entries.append(.blockAdsToggle("Блокировать рекламу", settings.blockSponsoredMessagesEnabled))
+    entries.append(.protectionFooter("Всё локально: копирование/скриншоты снимаются на клиенте, «Добавлять от кого переслано» подставляет исходного автора, автоудаление подавляется в вашем Postbox, реклама скрывается из ленты каналов."))
 
     entries.append(.voiceHeader("ИЗМЕНЕНИЕ ГОЛОСА"))
     entries.append(.voiceToggle("Изменять голос в сообщениях", settings.voiceChangerMessagesEnabled))
@@ -327,6 +380,34 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.legalPremiumEnabled = value
+                return settings
+            }).start()
+        },
+        toggleCopyBypass: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.copyProtectionBypassEnabled = value
+                return settings
+            }).start()
+        },
+        toggleForwardKeepAuthor: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.forwardKeepAuthorEnabled = value
+                return settings
+            }).start()
+        },
+        toggleDisableAutoDelete: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.disableAutoDeleteEnabled = value
+                return settings
+            }).start()
+        },
+        toggleBlockAds: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.blockSponsoredMessagesEnabled = value
                 return settings
             }).start()
         }

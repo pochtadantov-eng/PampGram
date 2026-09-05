@@ -20910,3 +20910,63 @@ diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContext
                              })
                          })
                      } else {
+diff --git a/submodules/TelegramUI/Sources/ChatHistoryListNode.swift b/submodules/TelegramUI/Sources/ChatHistoryListNode.swift
+--- a/submodules/TelegramUI/Sources/ChatHistoryListNode.swift
++++ b/submodules/TelegramUI/Sources/ChatHistoryListNode.swift
+@@ -4,6 +4,7 @@
+ import Display
+ import AsyncDisplayKit
+ import TelegramCore
++import PampGramCore
+ import TelegramPresentationData
+ import TelegramUIPreferences
+ import MediaResources
+@@ -922,7 +923,18 @@
+         } else {
+             adMessages = .single((nil, [], nil, nil))
+         }
+-        
++
++        // PampGram "Блокировать рекламу": drop the sponsored-message batch entirely while
++        // the toggle is on so the chat renders without ad rows. The live signal keeps the
++        // stream responsive to toggling from settings while the chat is on top.
++        adMessages = combineLatest(adMessages, PampGramCore.settingsSignal(postbox: context.account.postbox))
++        |> map { adState, pampSettings -> (interPostInterval: Int32?, messages: [Message], startDelay: Int32?, betweenDelay: Int32?) in
++            if pampSettings.blockSponsoredMessagesEnabled {
++                return (adState.interPostInterval, [], adState.startDelay, adState.betweenDelay)
++            }
++            return adState
++        }
++
+         let clientId = Atomic<Int32>(value: nextClientId)
+         self.clientId = clientId
+         nextClientId += 1
+diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+--- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
++++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+@@ -5,6 +5,7 @@
+ import Display
+ import UIKit
+ import SwiftSignalKit
++import PampGramCore
+ import MobileCoreServices
+ import TelegramVoip
+ import OverlayStatusController
+@@ -1331,7 +1332,16 @@
+             }
+         }
+         
+-        let isCopyProtected = chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()
++        // PampGram "Обход защиты от копирования": force `isCopyProtected` off client-side
++        // when the toggle is on, so the copy/save/translate/share/speak menu items and the
++        // text-selection actions become available on noforwards chats/channels.
++        PampGramLiveSettings.shared.bind(postbox: context.account.postbox, accountKey: context.account.peerId.toInt64())
++        let isCopyProtected: Bool
++        if PampGramLiveSettings.shared.copyProtectionBypassEnabled {
++            isCopyProtected = false
++        } else {
++            isCopyProtected = chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()
++        }
+         if !messageText.isEmpty || richMessageMarkdown != nil || (resourceAvailable && isImage) || diceEmoji != nil {
+             if !isExpired {
+                 if !isPoll {
