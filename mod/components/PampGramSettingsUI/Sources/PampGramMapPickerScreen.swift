@@ -46,6 +46,10 @@ private final class PampGramMapPickerControllerImpl: ViewController {
     override func loadDisplayNode() {
         self.displayNode = ViewControllerTracingNode()
         self.displayNode.backgroundColor = self.presentationData.theme.list.plainBackgroundColor
+        // Telegram's NavigationController drives swipe-back through its own gesture, not
+        // the system `interactivePopGestureRecognizer` — disable the internal one here so
+        // the map can only be dismissed via "Отмена" / "Готово".
+        self.displayNode.view.disablesInteractiveTransitionGestureRecognizer = true
 
         let mapView = MKMapView()
         mapView.showsUserLocation = false
@@ -63,19 +67,7 @@ private final class PampGramMapPickerControllerImpl: ViewController {
         self.displayNodeDidLoad()
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        // "Отмена" is the only way out — kill the swipe-from-left-edge pop gesture, so the
-        // fake-location target can't be accidentally discarded mid-drag on the map.
-        self.navigationController?.interactivePopGestureRecognizer?.isEnabled = false
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        self.navigationController?.interactivePopGestureRecognizer?.isEnabled = true
-    }
-
-    /// Custom "pin" for the fake-location picker — two balls on top, a shaft extending down
+/// Custom "pin" for the fake-location picker — two balls on top, a shaft extending down
     /// to the map centre, and a slit at the tip. Rendered with `UIGraphicsImageRenderer` in
     /// the theme's accent colour; the bottom tip is the point that lands on the target
     /// coordinate (`containerLayoutUpdated` positions the image accordingly).
