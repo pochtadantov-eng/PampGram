@@ -21,8 +21,10 @@ private final class PampGramGhostArguments {
     let toggleExcludeAllGroups: (Bool) -> Void
     let openFolders: () -> Void
     let openExceptions: () -> Void
+    let toggleBypassScreenshotProtection: (Bool) -> Void
+    let toggleHideChatOnScreenshot: (Bool) -> Void
 
-    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void) {
+    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void, toggleBypassScreenshotProtection: @escaping (Bool) -> Void, toggleHideChatOnScreenshot: @escaping (Bool) -> Void) {
         self.toggleMaster = toggleMaster
         self.toggleHideReadReceipts = toggleHideReadReceipts
         self.toggleHideStoryViews = toggleHideStoryViews
@@ -34,6 +36,8 @@ private final class PampGramGhostArguments {
         self.toggleExcludeAllGroups = toggleExcludeAllGroups
         self.openFolders = openFolders
         self.openExceptions = openExceptions
+        self.toggleBypassScreenshotProtection = toggleBypassScreenshotProtection
+        self.toggleHideChatOnScreenshot = toggleHideChatOnScreenshot
     }
 }
 
@@ -41,6 +45,7 @@ private enum PampGramGhostSection: Int32 {
     case master
     case features
     case exceptions
+    case screenshots
 }
 
 private enum PampGramGhostEntry: ItemListNodeEntry {
@@ -63,6 +68,11 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     case exceptionsRow(String, String, Bool)
     case exceptionsFooter(String)
 
+    case screenshotsHeader(String)
+    case bypassScreenshotProtection(String, Bool)
+    case hideChatOnScreenshot(String, Bool)
+    case screenshotsFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .masterToggle, .masterFooter:
@@ -71,6 +81,8 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return PampGramGhostSection.features.rawValue
         case .exceptionsHeader, .excludeAllChannels, .excludeAllGroups, .foldersRow, .exceptionsRow, .exceptionsFooter:
             return PampGramGhostSection.exceptions.rawValue
+        case .screenshotsHeader, .bypassScreenshotProtection, .hideChatOnScreenshot, .screenshotsFooter:
+            return PampGramGhostSection.screenshots.rawValue
         }
     }
 
@@ -108,6 +120,14 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return 14
         case .exceptionsFooter:
             return 15
+        case .screenshotsHeader:
+            return 16
+        case .bypassScreenshotProtection:
+            return 17
+        case .hideChatOnScreenshot:
+            return 18
+        case .screenshotsFooter:
+            return 19
         }
     }
 
@@ -118,10 +138,18 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramGhostArguments
         switch self {
-        case let .masterFooter(text), let .featuresFooter(text), let .exceptionsFooter(text):
+        case let .masterFooter(text), let .featuresFooter(text), let .exceptionsFooter(text), let .screenshotsFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .featuresHeader(text), let .exceptionsHeader(text):
+        case let .featuresHeader(text), let .exceptionsHeader(text), let .screenshotsHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .bypassScreenshotProtection(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBypassScreenshotProtection(value)
+            })
+        case let .hideChatOnScreenshot(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideChatOnScreenshot(value)
+            })
         case let .masterToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleMaster(value)
@@ -170,7 +198,7 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     }
 }
 
-private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, exceptionCount: Int) -> [PampGramGhostEntry] {
+private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, exceptionCount: Int, modFeatures: ModFeaturesSnapshot) -> [PampGramGhostEntry] {
     var entries: [PampGramGhostEntry] = []
 
     let on = settings.ghostModeEnabled
@@ -193,6 +221,11 @@ private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, 
     entries.append(.foldersRow("Папки", folderCount == 0 ? "Не выбрано" : "\(folderCount)", on))
     entries.append(.exceptionsRow("Добавить исключение", exceptionCount == 0 ? "" : "\(exceptionCount)", on))
     entries.append(.exceptionsFooter("Режим призрака не действует в выбранных чатах, типах чатов или папках. Для папок учитываются чаты, добавленные в папку вручную."))
+
+    entries.append(.screenshotsHeader("СКРИНШОТЫ"))
+    entries.append(.bypassScreenshotProtection("Обход защиты от скриншотов", modFeatures.bypassScreenshotProtection))
+    entries.append(.hideChatOnScreenshot("Скрывать чат на скриншотах", modFeatures.hideChatOnScreenshot))
+    entries.append(.screenshotsFooter("«Обход защиты» снимает блокировку системного скриншота в защищённых чатах и историях — Telegram не отправит уведомление собеседнику. «Скрывать чат» накладывает размытие на весь интерфейс в момент снятия скриншота, чтобы содержимое не попало в кадр."))
 
     return entries
 }
@@ -278,15 +311,22 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
         },
         openExceptions: {
             pushControllerImpl?(pampGramGhostExceptionsController(context: context))
+        },
+        toggleBypassScreenshotProtection: { value in
+            ModSettings.shared.bypassScreenshotProtection = value
+        },
+        toggleHideChatOnScreenshot: { value in
+            ModSettings.shared.hideChatOnScreenshot = value
         }
     )
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        modFeaturesSignal()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, modFeatures -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Режим призрака"),
@@ -297,7 +337,7 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramGhostEntries(settings: settings, folderCount: settings.ghostExcludedFolderIds.count, exceptionCount: settings.ghostExcludedPeerIds.count),
+            entries: pampGramGhostEntries(settings: settings, folderCount: settings.ghostExcludedFolderIds.count, exceptionCount: settings.ghostExcludedPeerIds.count, modFeatures: modFeatures),
             style: .blocks,
             animateChanges: true
         )

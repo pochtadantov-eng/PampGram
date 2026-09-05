@@ -17,13 +17,19 @@ private final class PampGramMessagesArguments {
     let toggleVisualEdit: (Bool) -> Void
     let openHistory: () -> Void
     let clearHistory: () -> Void
+    let toggleBypassCopyProtection: (Bool) -> Void
+    let toggleAlwaysKeepForwardAuthor: (Bool) -> Void
+    let toggleDisableAutoDelete: (Bool) -> Void
 
-    init(toggleAntiDelete: @escaping (Bool) -> Void, openExclusions: @escaping () -> Void, toggleVisualEdit: @escaping (Bool) -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void) {
+    init(toggleAntiDelete: @escaping (Bool) -> Void, openExclusions: @escaping () -> Void, toggleVisualEdit: @escaping (Bool) -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void, toggleBypassCopyProtection: @escaping (Bool) -> Void, toggleAlwaysKeepForwardAuthor: @escaping (Bool) -> Void, toggleDisableAutoDelete: @escaping (Bool) -> Void) {
         self.toggleAntiDelete = toggleAntiDelete
         self.openExclusions = openExclusions
         self.toggleVisualEdit = toggleVisualEdit
         self.openHistory = openHistory
         self.clearHistory = clearHistory
+        self.toggleBypassCopyProtection = toggleBypassCopyProtection
+        self.toggleAlwaysKeepForwardAuthor = toggleAlwaysKeepForwardAuthor
+        self.toggleDisableAutoDelete = toggleDisableAutoDelete
     }
 }
 
@@ -31,6 +37,7 @@ private enum PampGramMessagesSection: Int32 {
     case about
     case antiDelete
     case visualEdit
+    case protection
     case history
 }
 
@@ -43,6 +50,12 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
 
     case visualEditToggle(String, Bool)
     case visualEditFooter(String)
+
+    case protectionHeader(String)
+    case bypassCopyProtectionToggle(String, Bool)
+    case alwaysKeepForwardAuthorToggle(String, Bool)
+    case disableAutoDeleteToggle(String, Bool)
+    case protectionFooter(String)
 
     case historyHeader(String)
     case historyList(String, String)
@@ -57,6 +70,8 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return PampGramMessagesSection.antiDelete.rawValue
         case .visualEditToggle, .visualEditFooter:
             return PampGramMessagesSection.visualEdit.rawValue
+        case .protectionHeader, .bypassCopyProtectionToggle, .alwaysKeepForwardAuthorToggle, .disableAutoDeleteToggle, .protectionFooter:
+            return PampGramMessagesSection.protection.rawValue
         case .historyHeader, .historyList, .clearHistory, .historyFooter:
             return PampGramMessagesSection.history.rawValue
         }
@@ -76,14 +91,24 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return 4
         case .visualEditFooter:
             return 5
-        case .historyHeader:
+        case .protectionHeader:
             return 6
-        case .historyList:
+        case .bypassCopyProtectionToggle:
             return 7
-        case .clearHistory:
+        case .alwaysKeepForwardAuthorToggle:
             return 8
-        case .historyFooter:
+        case .disableAutoDeleteToggle:
             return 9
+        case .protectionFooter:
+            return 10
+        case .historyHeader:
+            return 11
+        case .historyList:
+            return 12
+        case .clearHistory:
+            return 13
+        case .historyFooter:
+            return 14
         }
     }
 
@@ -94,10 +119,22 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramMessagesArguments
         switch self {
-        case let .aboutText(text), let .antiDeleteFooter(text), let .visualEditFooter(text), let .historyFooter(text):
+        case let .aboutText(text), let .antiDeleteFooter(text), let .visualEditFooter(text), let .protectionFooter(text), let .historyFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .historyHeader(text):
+        case let .historyHeader(text), let .protectionHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .bypassCopyProtectionToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBypassCopyProtection(value)
+            })
+        case let .alwaysKeepForwardAuthorToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleAlwaysKeepForwardAuthor(value)
+            })
+        case let .disableAutoDeleteToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleDisableAutoDelete(value)
+            })
         case let .antiDeleteToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleAntiDelete(value)
@@ -122,7 +159,7 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
     }
 }
 
-private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: Int) -> [PampGramMessagesEntry] {
+private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: Int, modFeatures: ModFeaturesSnapshot) -> [PampGramMessagesEntry] {
     var entries: [PampGramMessagesEntry] = []
 
     entries.append(.aboutText("Работает только на этом устройстве, никому не сообщается."))
@@ -133,6 +170,12 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
 
     entries.append(.visualEditToggle("Изменить визуально", settings.visualEditEnabled))
     entries.append(.visualEditFooter("Добавляет в меню сообщения собеседника (зажать → PampGram) кнопку «Изменить визуально» — меняет текст только у вас."))
+
+    entries.append(.protectionHeader("ЗАЩИТА"))
+    entries.append(.bypassCopyProtectionToggle("Обход защиты от копирования", modFeatures.bypassCopyProtection))
+    entries.append(.alwaysKeepForwardAuthorToggle("Добавлять от кого переслано", modFeatures.alwaysKeepForwardAuthor))
+    entries.append(.disableAutoDeleteToggle("Отключить автоудаление исчезающих", modFeatures.disableAutoDelete))
+    entries.append(.protectionFooter("«Обход защиты от копирования» разрешает копирование текста в чатах с включённой защитой контента. «Добавлять от кого переслано» подшивает автора-источника при пересылке. «Отключить автоудаление» игнорирует таймер исчезающих сообщений — они остаются в чате у вас."))
 
     entries.append(.historyHeader("ИСТОРИЯ"))
     entries.append(.historyList("Восстановленные сообщения", "\(historyCount)"))
@@ -178,16 +221,26 @@ public func pampGramMessagesSettingsController(context: AccountContext) -> ViewC
             |> deliverOnMainQueue).start(completed: {
                 presentTooltipImpl?("История очищена.")
             })
+        },
+        toggleBypassCopyProtection: { value in
+            ModSettings.shared.bypassCopyProtection = value
+        },
+        toggleAlwaysKeepForwardAuthor: { value in
+            ModSettings.shared.alwaysKeepForwardAuthor = value
+        },
+        toggleDisableAutoDelete: { value in
+            ModSettings.shared.disableAutoDelete = value
         }
     )
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox),
-        PampGramDeletedMessageStore.allSignal(postbox: context.account.postbox)
+        PampGramDeletedMessageStore.allSignal(postbox: context.account.postbox),
+        modFeaturesSignal()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings, history -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, history, modFeatures -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Чаты"),
@@ -198,7 +251,7 @@ public func pampGramMessagesSettingsController(context: AccountContext) -> ViewC
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramMessagesEntries(settings: settings, historyCount: history.count),
+            entries: pampGramMessagesEntries(settings: settings, historyCount: history.count, modFeatures: modFeatures),
             style: .blocks,
             animateChanges: true
         )

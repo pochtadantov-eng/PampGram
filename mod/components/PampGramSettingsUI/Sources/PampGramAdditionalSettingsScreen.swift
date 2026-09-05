@@ -20,8 +20,9 @@ private final class PampGramAdditionalArguments {
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
+    let toggleBlockAds: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBlockAds: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -32,6 +33,7 @@ private final class PampGramAdditionalArguments {
         self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
+        self.toggleBlockAds = toggleBlockAds
     }
 }
 
@@ -40,6 +42,7 @@ private enum PampGramAdditionalSection: Int32 {
     case voice
     case speed
     case premium
+    case ads
     case extras
 }
 
@@ -61,6 +64,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case legalPremiumToggle(String, Bool)
     case premiumFooter(String)
 
+    case adsHeader(String)
+    case blockAdsToggle(String, Bool)
+    case adsFooter(String)
+
     case extrasHeader(String)
     case fakeLocationRow(String, String)
     case chatLockRow(String, String)
@@ -78,6 +85,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.speed.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
+        case .adsHeader, .blockAdsToggle, .adsFooter:
+            return PampGramAdditionalSection.ads.rawValue
         case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
@@ -111,18 +120,24 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 11
         case .premiumFooter:
             return 12
-        case .extrasHeader:
+        case .adsHeader:
             return 13
-        case .fakeLocationRow:
+        case .blockAdsToggle:
             return 14
-        case .chatLockRow:
+        case .adsFooter:
             return 15
-        case .callOverridesRow:
+        case .extrasHeader:
             return 16
-        case .fakeAdminRow:
+        case .fakeLocationRow:
             return 17
-        case .extrasFooter:
+        case .chatLockRow:
             return 18
+        case .callOverridesRow:
+            return 19
+        case .fakeAdminRow:
+            return 20
+        case .extrasFooter:
+            return 21
         }
     }
 
@@ -133,10 +148,14 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .adsFooter(text), let .extrasFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .adsHeader(text), let .extrasHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .blockAdsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "hand.raised.slash.fill", backgroundColor: UIColor(rgb: 0xff453a)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBlockAds(value)
+            })
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleInfinitePins(value)
@@ -181,7 +200,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     }
 }
 
-private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramAdditionalEntry] {
+private func pampGramAdditionalEntries(settings: PampGramSettings, modFeatures: ModFeaturesSnapshot) -> [PampGramAdditionalEntry] {
     var entries: [PampGramAdditionalEntry] = []
 
     entries.append(.aboutText("Другие возможности PampGram: голос и скорость передачи файлов."))
@@ -200,6 +219,10 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
     entries.append(.legalPremiumToggle("Легальный премиум", settings.legalPremiumEnabled))
     entries.append(.premiumFooter("«Закрепить чаты ∞» снимает лимит на количество закреплённых чатов. «Легальный премиум» включает клиентские премиум-послабления, которые Telegram не проверяет на сервере (лимиты закреплений и папок). Закрепления сверх серверного лимита действуют на этом устройстве и могут не синхронизироваться на другие."))
+
+    entries.append(.adsHeader("РЕКЛАМА"))
+    entries.append(.blockAdsToggle("Блокировать рекламу", modFeatures.blockAds))
+    entries.append(.adsFooter("Скрывает спонсорские сообщения в каналах и результатах поиска только у вас."))
 
     entries.append(.extrasHeader("ЕЩЁ"))
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
@@ -329,15 +352,19 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                 settings.legalPremiumEnabled = value
                 return settings
             }).start()
+        },
+        toggleBlockAds: { value in
+            ModSettings.shared.blockAds = value
         }
     )
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        modFeaturesSignal()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, modFeatures -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Дополнительно"),
@@ -348,7 +375,7 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramAdditionalEntries(settings: settings),
+            entries: pampGramAdditionalEntries(settings: settings, modFeatures: modFeatures),
             style: .blocks,
             animateChanges: true
         )

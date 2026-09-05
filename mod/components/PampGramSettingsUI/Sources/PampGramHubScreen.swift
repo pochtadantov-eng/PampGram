@@ -268,7 +268,7 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
     return "https://t.me/\(pampGramSupportUsername)?text=\(encoded)"
 }
 
-private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, isAdmin: Bool) -> [PampGramHubEntry] {
+private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, modFeatures: ModFeaturesSnapshot, isAdmin: Bool) -> [PampGramHubEntry] {
     let toggles = [
         settings.phantomGiftsEnabled,
         settings.fakeStarsDisplayEnabled,
@@ -280,7 +280,8 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
         settings.visualEditEnabled,
         settings.ghostModeEnabled
     ]
-    let activeCount = toggles.filter { $0 }.count
+    let activeCount = toggles.filter { $0 }.count + modFeatures.activeCount
+    let totalCount = toggles.count + ModFeaturesSnapshot.totalCount
     var entries: [PampGramHubEntry] = [
         .hero,
         .search,
@@ -293,7 +294,7 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
     if isAdmin {
         entries.append(.admin)
     }
-    entries.append(.status(activeCount, toggles.count))
+    entries.append(.status(activeCount, totalCount))
     entries.append(.team)
     return entries
 }
@@ -302,6 +303,10 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
 /// features (gifts/balances, message history, and whatever future PampGram screens need) each
 /// get their own page instead of piling into a single scroll.
 public func pampGramSettingsController(context: AccountContext) -> ViewController {
+    // Первое открытие PampGram-настроек регистрирует screenshot observer и другие
+    // runtime-хуки защитных функций — дальше синглтон живёт до завершения процесса.
+    activateModFeatures()
+
     var pushControllerImpl: ((ViewController) -> Void)?
     var presentControllerImpl: ((ViewController) -> Void)?
     var navigationControllerImpl: (() -> NavigationController?)?
@@ -416,10 +421,11 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox),
-        PampGramProfileVisualStore.signal(postbox: context.account.postbox)
+        PampGramProfileVisualStore.signal(postbox: context.account.postbox),
+        modFeaturesSignal()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings, profileVisuals -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, profileVisuals, modFeatures -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("PampGram"),
@@ -430,7 +436,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramHubEntries(settings: settings, profileVisuals: profileVisuals, isAdmin: isAdmin),
+            entries: pampGramHubEntries(settings: settings, profileVisuals: profileVisuals, modFeatures: modFeatures, isAdmin: isAdmin),
             style: .blocks,
             animateChanges: true
         )
