@@ -162,9 +162,10 @@ replace_once(
 """,
     """        #endif
 
-        // The preference is intentionally used only for the account owner's ordinary
-        // profile. Settings and every remote profile continue showing Telegram data.
-        let isUsingVisualRating = self.isMyProfile && !isSettings && pampGramProfileVisuals.ratingEnabled
+        // Own profile and the Settings tab both show the local visual rating when it is
+        // enabled — Settings is still the account owner looking at their own account. Every
+        // remote profile continues to show Telegram's real rating.
+        let isUsingVisualRating = self.isMyProfile && pampGramProfileVisuals.ratingEnabled
         let visualRating: TelegramStarRating?
         if isUsingVisualRating {
             let level = Int32(max(Int64(1), min(Int64(100), pampGramProfileVisuals.ratingValue)))
