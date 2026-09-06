@@ -20977,27 +20977,6 @@ diff --git a/submodules/TelegramCore/Sources/State/PendingMessageManager.swift b
                  let sendMessageRequest: Signal<Api.Updates, MTRpcError>
                  if isForward {
                      if messages.contains(where: { $0.0.groupingKey != nil }) {
-diff --git a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
---- a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
-+++ b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
-@@ -82,10 +82,13 @@
-                     // PampGram "Отключить автоудаление исчезающих": when the flag is on
-                     // (mirrored to UserDefaults by PampGramLiveSettings because TelegramCore
-                     // cannot import PampGramCore), leave the message alone — it stays in
--                    // Postbox past its TTL. The timestamp-based attribute is not cleared,
--                    // so if the user flips the flag off later the next observation cycle
--                    // will process the message normally.
-+                    // Postbox past its TTL, and the timestamp-based attribute is also
-+                    // cleared so the observation cycle does not spin on this entry again.
-+                    // Toggling the flag off later will not resurrect the TTL on messages
-+                    // that already passed their expiry while it was on — a fair trade for
-+                    // avoiding a busy loop.
-                     if UserDefaults.standard.bool(forKey: "pampgram.disableAutoDeleteEnabled") {
-+                        transaction.clearTimestampBasedAttribute(id: entry.messageId, tag: tag)
-                         return
-                     }
-                     Logger.shared.log("Autoremove", "Performing autoremove for \(entry.messageId), isRemove: \(isRemove)")
-diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -2521,6 +2521,11 @@
@@ -21133,3 +21112,25 @@ diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/Telegr
 +        }
 +    }
 +}
+diff --git a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
+--- a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
++++ b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
+@@ -79,6 +79,18 @@
+                 let signal = Signal<Void, NoError>.complete()
+                 |> suspendAwareDelay(delay, queue: Queue.concurrentDefaultQueue())
+                 |> then(postbox.transaction { transaction -> Void in
++                    // PampGram "Отключить автоудаление исчезающих": when the flag is on
++                    // (mirrored to UserDefaults by PampGramLiveSettings because TelegramCore
++                    // cannot import PampGramCore), leave the message alone — it stays in
++                    // Postbox past its TTL, and the timestamp-based attribute is also
++                    // cleared so the observation cycle does not spin on this entry again.
++                    // Toggling the flag off later will not resurrect the TTL on messages
++                    // that already passed their expiry while it was on — a fair trade for
++                    // avoiding a busy loop.
++                    if UserDefaults.standard.bool(forKey: "pampgram.disableAutoDeleteEnabled") {
++                        transaction.clearTimestampBasedAttribute(id: entry.messageId, tag: tag)
++                        return
++                    }
+                     Logger.shared.log("Autoremove", "Performing autoremove for \(entry.messageId), isRemove: \(isRemove)")
+ 
+                     if let message = transaction.getMessage(entry.messageId) {
