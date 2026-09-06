@@ -20941,35 +20941,6 @@ diff --git a/submodules/TelegramUI/Sources/ChatHistoryListNode.swift b/submodule
          let clientId = Atomic<Int32>(value: nextClientId)
          self.clientId = clientId
          nextClientId += 1
-diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
---- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-+++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-@@ -5,6 +5,7 @@
- import Display
- import UIKit
- import SwiftSignalKit
-+import PampGramCore
- import MobileCoreServices
- import TelegramVoip
- import OverlayStatusController
-@@ -1331,7 +1332,16 @@
-             }
-         }
-         
--        let isCopyProtected = chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()
-+        // PampGram "Обход защиты от копирования": force `isCopyProtected` off client-side
-+        // when the toggle is on, so the copy/save/translate/share/speak menu items and the
-+        // text-selection actions become available on noforwards chats/channels.
-+        PampGramLiveSettings.shared.bind(postbox: context.account.postbox, accountKey: context.account.peerId.toInt64())
-+        let isCopyProtected: Bool
-+        if PampGramLiveSettings.shared.copyProtectionBypassEnabled {
-+            isCopyProtected = false
-+        } else {
-+            isCopyProtected = chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()
-+        }
-         if !messageText.isEmpty || richMessageMarkdown != nil || (resourceAvailable && isImage) || diceEmoji != nil {
-             if !isExpired {
-                 if !isPoll {
 diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift b/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift
 --- a/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift
 +++ b/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift
@@ -21033,25 +21004,6 @@ diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/Telegr
          let _ = voipTokenPromise.get().start(next: { token in
              self.voipDeviceToken.set(.single(token))
          })
-diff --git a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
---- a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
-+++ b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
-@@ -79,6 +79,15 @@
-                 let signal = Signal<Void, NoError>.complete()
-                 |> suspendAwareDelay(delay, queue: Queue.concurrentDefaultQueue())
-                 |> then(postbox.transaction { transaction -> Void in
-+                    // PampGram "Отключить автоудаление исчезающих": when the flag is on
-+                    // (mirrored to UserDefaults by PampGramLiveSettings because TelegramCore
-+                    // cannot import PampGramCore), leave the message alone — it stays in
-+                    // Postbox past its TTL. The timestamp-based attribute is not cleared,
-+                    // so if the user flips the flag off later the next observation cycle
-+                    // will process the message normally.
-+                    if UserDefaults.standard.bool(forKey: "pampgram.disableAutoDeleteEnabled") {
-+                        return
-+                    }
-                     Logger.shared.log("Autoremove", "Performing autoremove for \(entry.messageId), isRemove: \(isRemove)")
- 
-                     if let message = transaction.getMessage(entry.messageId) {
 diff --git a/submodules/TelegramCore/Sources/State/PendingMessageManager.swift b/submodules/TelegramCore/Sources/State/PendingMessageManager.swift
 --- a/submodules/TelegramCore/Sources/State/PendingMessageManager.swift
 +++ b/submodules/TelegramCore/Sources/State/PendingMessageManager.swift
@@ -21071,3 +21023,58 @@ diff --git a/submodules/TelegramCore/Sources/State/PendingMessageManager.swift b
                  let sendMessageRequest: Signal<Api.Updates, MTRpcError>
                  if isForward {
                      if messages.contains(where: { $0.0.groupingKey != nil }) {
+diff --git a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
+--- a/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
++++ b/submodules/TelegramCore/Sources/State/ManagedAutoremoveMessageOperations.swift
+@@ -82,10 +82,13 @@
+                     // PampGram "Отключить автоудаление исчезающих": when the flag is on
+                     // (mirrored to UserDefaults by PampGramLiveSettings because TelegramCore
+                     // cannot import PampGramCore), leave the message alone — it stays in
+-                    // Postbox past its TTL. The timestamp-based attribute is not cleared,
+-                    // so if the user flips the flag off later the next observation cycle
+-                    // will process the message normally.
++                    // Postbox past its TTL, and the timestamp-based attribute is also
++                    // cleared so the observation cycle does not spin on this entry again.
++                    // Toggling the flag off later will not resurrect the TTL on messages
++                    // that already passed their expiry while it was on — a fair trade for
++                    // avoiding a busy loop.
+                     if UserDefaults.standard.bool(forKey: "pampgram.disableAutoDeleteEnabled") {
++                        transaction.clearTimestampBasedAttribute(id: entry.messageId, tag: tag)
+                         return
+                     }
+                     Logger.shared.log("Autoremove", "Performing autoremove for \(entry.messageId), isRemove: \(isRemove)")
+diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+--- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
++++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+@@ -2521,6 +2521,11 @@
+         var isCopyProtected = false
+         var isShareProtected = false
+         var isExternalShareProtected = false
++        // PampGram "Обход защиты от копирования": force all three protect flags off for
++        // this pass so Save/Share/ExternalShare items are inserted into optionsMap for
++        // noforwards peers too. Read via UserDefaults because this file is deep in
++        // TelegramUI, well below the PampGramCore-owning layer.
++        let pampGramForceCopyBypass = UserDefaults.standard.bool(forKey: "pampgram.copyProtectionBypassEnabled")
+         
+         var setTag = false
+         var commonTags: Set<MessageReaction.Reaction>?
+@@ -2800,6 +2805,19 @@
+             }
+         }
+                 
++        if pampGramForceCopyBypass {
++            // PampGram: promote the copy-family options (share/save/save-to-camera-roll)
++            // back into every message's option set so a bypassed noforwards chat still
++            // shows the actions the UI would otherwise trim out.
++            for id in optionsMap.keys {
++                optionsMap[id]!.insert(.forward)
++                optionsMap[id]!.insert(.externalShare)
++            }
++            isCopyProtected = false
++            isShareProtected = false
++            isExternalShareProtected = false
++        }
++
+         if !optionsMap.isEmpty {
+             var reducedOptions = optionsMap.values.first!
+             for value in optionsMap.values {
