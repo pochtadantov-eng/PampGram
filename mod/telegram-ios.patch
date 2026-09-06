@@ -20958,52 +20958,6 @@ diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEng
              return _internal_addSecretChatMessageScreenshot(account: self.account, peerId: peerId)
              |> ignoreValues
          }
-diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/TelegramUI/Sources/AppDelegate.swift
---- a/submodules/TelegramUI/Sources/AppDelegate.swift
-+++ b/submodules/TelegramUI/Sources/AppDelegate.swift
-@@ -324,7 +324,41 @@
-     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-         precondition(!testIsLaunched)
-         testIsLaunched = true
--        
-+
-+        // PampGram "Скрывать чат на скриншотах": on every system screenshot, if the flag
-+        // (mirrored to UserDefaults by PampGramLiveSettings) is on, drop a full-window
-+        // dark blur for ~600ms so the captured frame does not include chat content. Also
-+        // fires for pending Cowork sessions/dev builds — the flag being off is the safe
-+        // default.
-+        NotificationCenter.default.addObserver(forName: UIApplication.userDidTakeScreenshotNotification, object: nil, queue: .main) { _ in
-+            guard UserDefaults.standard.bool(forKey: "pampgram.hideChatOnScreenshot") else { return }
-+            var target: UIWindow?
-+            if #available(iOS 13.0, *) {
-+                for scene in UIApplication.shared.connectedScenes {
-+                    if let ws = scene as? UIWindowScene {
-+                        target = ws.windows.first(where: { $0.isKeyWindow }) ?? target
-+                    }
-+                }
-+            }
-+            if target == nil {
-+                target = UIApplication.shared.windows.first(where: { $0.isKeyWindow })
-+            }
-+            guard let window = target else { return }
-+            let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
-+            blur.frame = window.bounds
-+            blur.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-+            blur.alpha = 0.0
-+            blur.isUserInteractionEnabled = false
-+            window.addSubview(blur)
-+            UIView.animate(withDuration: 0.15, animations: { blur.alpha = 1.0 }, completion: { _ in
-+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: {
-+                    UIView.animate(withDuration: 0.3, animations: { blur.alpha = 0.0 }, completion: { _ in
-+                        blur.removeFromSuperview()
-+                    })
-+                })
-+            })
-+        }
-+
-         let _ = voipTokenPromise.get().start(next: { token in
-             self.voipDeviceToken.set(.single(token))
-         })
 diff --git a/submodules/TelegramCore/Sources/State/PendingMessageManager.swift b/submodules/TelegramCore/Sources/State/PendingMessageManager.swift
 --- a/submodules/TelegramCore/Sources/State/PendingMessageManager.swift
 +++ b/submodules/TelegramCore/Sources/State/PendingMessageManager.swift
@@ -21078,3 +21032,104 @@ diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift 
          if !optionsMap.isEmpty {
              var reducedOptions = optionsMap.values.first!
              for value in optionsMap.values {
+diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/TelegramUI/Sources/AppDelegate.swift
+--- a/submodules/TelegramUI/Sources/AppDelegate.swift
++++ b/submodules/TelegramUI/Sources/AppDelegate.swift
+@@ -324,7 +324,26 @@
+     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+         precondition(!testIsLaunched)
+         testIsLaunched = true
+-        
++
++        // PampGram "Скрывать чат на скриншотах": iOS delivers
++        // userDidTakeScreenshotNotification AFTER the capture, so a reactive blur can't
++        // hide anything from the saved screenshot — the frame is already in Photos. The
++        // only working technique is the UITextField-secureTextEntry layer trick: reparent
++        // the app's window layer into a private "text canvas" layer that iOS excludes
++        // from screen captures. Then every screenshot taken while the mod is running
++        // comes out fully black. Applied once at launch to every UIWindow the app owns.
++        // Layer surgery — reversing it safely mid-flight is not supported by UIKit, so
++        // toggling the setting OFF only takes effect on next app restart.
++        //
++        // The install runs on the main queue slightly after didFinishLaunching so the
++        // application's real window has time to be created and attached to the scene.
++        DispatchQueue.main.async {
++            installPampGramScreenshotShieldIfNeeded()
++        }
++        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
++            installPampGramScreenshotShieldIfNeeded()
++        }
++
+         let _ = voipTokenPromise.get().start(next: { token in
+             self.voipDeviceToken.set(.single(token))
+         })
+@@ -3320,12 +3339,67 @@
+ 
+ final class UpdateSettings: Codable, Equatable {
+     let url: String?
+-    
++
+     init(url: String?) {
+         self.url = url
+     }
+-    
++
+     static func ==(lhs: UpdateSettings, rhs: UpdateSettings) -> Bool {
+         return lhs.url == rhs.url
+     }
+ }
++
++// MARK: - PampGram screenshot shield
++// Windows already given a secure-canvas layer are tagged so a second install pass on
++// didBecomeActive doesn't reparent the same layer twice (double reparent yields a black
++// screen on the app itself, not just in screenshots).
++private var pampGramShieldedWindows = NSHashTable<UIWindow>.weakObjects()
++
++/// Wraps every currently-attached UIWindow's `layer` inside a hidden UITextField's
++/// private secure-canvas layer so system screenshots capture nothing but black for
++/// everything inside that window. Idempotent per window: a shielded window is tracked
++/// weakly and skipped on later calls. Safe when the flag is off — the function returns
++/// before touching any layer. Runs only on the main thread.
++func installPampGramScreenshotShieldIfNeeded() {
++    assert(Thread.isMainThread)
++    guard UserDefaults.standard.bool(forKey: "pampgram.hideChatOnScreenshot") else {
++        return
++    }
++    var windows: [UIWindow] = []
++    if #available(iOS 13.0, *) {
++        for scene in UIApplication.shared.connectedScenes {
++            if let ws = scene as? UIWindowScene {
++                windows.append(contentsOf: ws.windows)
++            }
++        }
++    }
++    if windows.isEmpty {
++        windows = UIApplication.shared.windows
++    }
++    for window in windows {
++        if pampGramShieldedWindows.contains(window) {
++            continue
++        }
++        let textField = UITextField()
++        textField.isSecureTextEntry = true
++        textField.isUserInteractionEnabled = false
++        textField.translatesAutoresizingMaskIntoConstraints = false
++        window.addSubview(textField)
++        NSLayoutConstraint.activate([
++            textField.centerXAnchor.constraint(equalTo: window.centerXAnchor),
++            textField.centerYAnchor.constraint(equalTo: window.centerYAnchor)
++        ])
++        // The private "canvas" layer inside the secure text field is the one iOS excludes
++        // from screen captures. Reparent the window's own layer as a sublayer of it, and
++        // graft the field's layer above the window's normal superlayer so the field stays
++        // inside the render tree. If iOS ever changes the internal sublayer layout the
++        // guard just leaves the window unshielded rather than crashing.
++        if let canvas = textField.layer.sublayers?.first {
++            window.layer.superlayer?.addSublayer(textField.layer)
++            canvas.addSublayer(window.layer)
++            pampGramShieldedWindows.add(window)
++        } else {
++            textField.removeFromSuperview()
++        }
++    }
++}
