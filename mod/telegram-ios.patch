@@ -19996,7 +19996,7 @@ index 07cef5bb..57ff7a74 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,87 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,92 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -20037,6 +20037,11 @@ index 07cef5bb..57ff7a74 100644
 +                return generateTintedImage(image: UIImage(systemName: "pencil"), color: theme.actionSheet.primaryTextColor)
 +            }, iconSource: nil, action: { _, f in
 +                f(.dismissWithoutContent)
++                // If the chat's own keyboard is up, dismiss it the same way stock flows do
++                // (e.g. opening a link) before pushing — otherwise the visual-edit screen's
++                // text field renders underneath the still-open chat keyboard instead of the
++                // keyboard going away and the edit screen taking its place.
++                (controllerInteraction?.chatControllerNode() as? ChatControllerNode)?.dismissInput()
 +                controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
 +            })))
 +            // "Текст от собеседника"/"Текст от меня" moved out of this message menu onto the
