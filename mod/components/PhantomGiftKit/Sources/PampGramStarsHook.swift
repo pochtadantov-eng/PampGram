@@ -99,37 +99,39 @@ public enum PampGramStarsHook {
     /// Settles the purchase against the local ruble wallet. Calls `completion(true)` and credits the
     /// fake Stars balance when the balance covers `priceKopecks` (or the price is unknown / 0), and
     /// `completion(false)` without any change when it does not.
+    ///
+    /// Both halves of the purchase go through `PampGramLocalLedgerStore.addAndApply`, so a
+    /// paid purchase always leaves *two* matching rows behind — a "Списание" in the rubles
+    /// history for the card and a "Пополнение" in the Stars history for the balance — instead
+    /// of only the Stars side being visible. Both writes happen in the same Postbox
+    /// transaction as everything else PampGram persists, so they're on disk (and survive an
+    /// app relaunch) the moment this transaction commits.
     public static func attemptPayment(context: AccountContext, count: Int64, priceKopecks: Int64, completion: @escaping (Bool) -> Void) {
         let _ = (context.account.postbox.transaction { transaction -> Bool in
-            var ok = true
-            var starsAfter: Int64 = 0
-            PampGramCore.updateSettings(transaction: transaction, { settings in
-                var settings = settings
-                if priceKopecks > 0 && settings.localRublesBalanceKopecks < priceKopecks {
-                    ok = false
-                    return settings
+            if priceKopecks > 0 {
+                let currentRubles = PampGramCore.rawSettings(transaction: transaction).localRublesBalanceKopecks
+                if currentRubles < priceKopecks {
+                    return false
                 }
-                if priceKopecks > 0 {
-                    settings.localRublesBalanceKopecks -= priceKopecks
-                }
-                settings.fakeStarsBalance += count
-                starsAfter = settings.fakeStarsBalance
-                return settings
-            })
-            if ok {
-                // Buying Stars for rubles is a Stars top-up (пополнение) in the Stars history —
-                // there is no separate rubles history.
-                let details = priceKopecks > 0 ? "Покупка звёзд за рубли" : "Покупка звёзд Telegram"
-                PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
-                    currency: .stars,
-                    kind: .topUp,
-                    amount: count,
-                    title: "Пополнение Stars",
-                    details: details,
-                    balanceAfter: starsAfter
-                ))
+                let _ = PampGramLocalLedgerStore.addAndApply(
+                    transaction: transaction,
+                    currency: .rubles,
+                    kind: .debit,
+                    amount: -priceKopecks,
+                    title: "Оплата Stars",
+                    details: "Списание с локальной карты"
+                )
             }
-            return ok
+            let details = priceKopecks > 0 ? "Покупка звёзд за рубли" : "Покупка звёзд Telegram"
+            let _ = PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
+                currency: .stars,
+                kind: .topUp,
+                amount: count,
+                title: "Пополнение Stars",
+                details: details
+            )
+            return true
         }
         |> deliverOnMainQueue).start(next: { ok in
             if ok {

@@ -504,8 +504,9 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                         let _ = context.account.postbox.transaction { transaction -> Void in
                             let current = PampGramCore.rawSettings(transaction: transaction).fakeStarsBalance
                             let delta = stars - current
-                            PampGramCore.updateSettings(transaction: transaction, { settings in var settings = settings; settings.fakeStarsBalance = stars; return settings })
-                            if delta != 0 { PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .stars, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", balanceAfter: stars)) }
+                            if delta != 0 {
+                                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса")
+                            }
                         }.start()
                     }
                 ))
@@ -529,8 +530,9 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                         let _ = context.account.postbox.transaction { transaction -> Void in
                             let current = PampGramCore.rawSettings(transaction: transaction).fakeTonBalanceNanos
                             let delta = nanos - current
-                            PampGramCore.updateSettings(transaction: transaction, { settings in var settings = settings; settings.fakeTonBalanceNanos = nanos; return settings })
-                            if delta != 0 { PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .ton, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", balanceAfter: nanos)) }
+                            if delta != 0 {
+                                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .ton, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса")
+                            }
                         }.start()
                     }
                 ))
