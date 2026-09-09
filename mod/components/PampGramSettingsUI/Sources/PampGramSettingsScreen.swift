@@ -15,6 +15,7 @@ import PhantomGiftKit
 
 private final class PampGramSettingsArguments {
     let toggleVisual: (Bool) -> Void
+    let toggleHideIcon: (Bool) -> Void
     let togglePhantomGifts: (Bool) -> Void
     let toggleFakeStarsDisplay: (Bool) -> Void
     let toggleFakeTonDisplay: (Bool) -> Void
@@ -33,6 +34,7 @@ private final class PampGramSettingsArguments {
 
     init(
         toggleVisual: @escaping (Bool) -> Void,
+        toggleHideIcon: @escaping (Bool) -> Void,
         togglePhantomGifts: @escaping (Bool) -> Void,
         toggleFakeStarsDisplay: @escaping (Bool) -> Void,
         toggleFakeTonDisplay: @escaping (Bool) -> Void,
@@ -50,6 +52,7 @@ private final class PampGramSettingsArguments {
         openTonLedger: @escaping () -> Void
     ) {
         self.toggleVisual = toggleVisual
+        self.toggleHideIcon = toggleHideIcon
         self.togglePhantomGifts = togglePhantomGifts
         self.toggleFakeStarsDisplay = toggleFakeStarsDisplay
         self.toggleFakeTonDisplay = toggleFakeTonDisplay
@@ -86,6 +89,9 @@ private enum PampGramSettingsSection: Int32 {
 private enum PampGramSettingsEntry: ItemListNodeEntry {
     case visualToggle(Bool)
     case visualFooter(String)
+
+    case hideIconToggle(Bool)
+    case hideIconFooter(String)
 
     case aboutText(String)
 
@@ -133,7 +139,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 
     var section: ItemListSectionId {
         switch self {
-        case .visualToggle, .visualFooter:
+        case .visualToggle, .visualFooter, .hideIconToggle, .hideIconFooter:
             return PampGramSettingsSection.visual.rawValue
         case .aboutText:
             return PampGramSettingsSection.about.rawValue
@@ -164,6 +170,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         switch self {
         case .visualToggle: return -2
         case .visualFooter: return -1
+        case .hideIconToggle: return -4
+        case .hideIconFooter: return -3
         case .aboutText: return 1
         case .phantomGiftsHeader: return 2
         case .phantomGiftsToggle: return 3
@@ -213,6 +221,12 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
                 arguments.toggleVisual(value)
             })
         case let .visualFooter(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case let .hideIconToggle(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Скрыть иконку в настройках", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideIcon(value)
+            })
+        case let .hideIconFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
@@ -397,6 +411,9 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.visualToggle(settings.masterEnabled))
     entries.append(.visualFooter(settings.masterEnabled ? "Визуальные функции подарков включены. Выключи — и вкладки «Подарок мне»/«Подарок ему» и локальные балансы перестанут действовать, но настройки сохранятся." : "Визуалка подарков выключена: вкладки и локальные балансы не работают. Включи, чтобы вернуть всё как было. Остальные разделы PampGram это не затрагивает."))
 
+    entries.append(.hideIconToggle(settings.hideIconInSettings))
+    entries.append(.hideIconFooter("Скрывает строку «PampGram» из настроек. Чтобы вернуться сюда — зажми «Помощь»."))
+
     entries.append(.aboutText("Все значения в этом разделе сохраняются только на устройстве. Ниже находятся две настройки визуального номера и рейтинга профиля."))
 
     entries.append(.phantomGiftsHeader("ВИЗУАЛЬНЫЕ ПОДАРКИ"))
@@ -462,6 +479,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.masterEnabled = value
+                return settings
+            }).start()
+        },
+        toggleHideIcon: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.hideIconInSettings = value
                 return settings
             }).start()
         },
