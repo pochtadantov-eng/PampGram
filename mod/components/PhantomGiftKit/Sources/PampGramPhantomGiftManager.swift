@@ -32,10 +32,17 @@ public enum PampGramPhantomGiftManager {
     /// `GiftViewBuyGift.swift` checks and alerts *before* ever calling this.
     public static func buyUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<BuyResult, NoError> {
         return context.account.postbox.transaction { transaction -> PendingBuy in
+            // `uniqueGift` is read straight off a real resale-market listing (that's how it was
+            // found to "buy"), so its own `resellAmounts` is still non-empty — left as-is, the
+            // real, unmodified grid card component reads that field directly and would paint a
+            // green "Продажа" ribbon on this gift forever, on this profile and on every profile
+            // it's later transferred to, regardless of PampGram's own market listing being off.
+            // Same cleanup `insertLocalUniqueGiftMessage` already applies to the chat message.
+            let ownedGift = PampGramPhantomGiftMessage.fakedOwnership(of: uniqueGift, newOwnerPeerId: peerId)
             let phantomGift = PampGramPhantomGift(
                 id: Int64.random(in: 1...Int64.max),
                 peerId: peerId,
-                gift: .unique(uniqueGift),
+                gift: .unique(ownedGift),
                 price: price,
                 date: Int32(Date().timeIntervalSince1970),
                 localMessageId: nil
@@ -137,10 +144,12 @@ public enum PampGramPhantomGiftManager {
     /// silently doing nothing to the balance.
     public static func receiveUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<PampGramPhantomGift, NoError> {
         return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
+            // Same resale-listing cleanup as `buyUniqueGift` — see its comment.
+            let ownedGift = PampGramPhantomGiftMessage.fakedOwnership(of: uniqueGift, newOwnerPeerId: peerId)
             let phantomGift = PampGramPhantomGift(
                 id: Int64.random(in: 1...Int64.max),
                 peerId: peerId,
-                gift: .unique(uniqueGift),
+                gift: .unique(ownedGift),
                 price: price,
                 date: Int32(Date().timeIntervalSince1970),
                 localMessageId: nil,
