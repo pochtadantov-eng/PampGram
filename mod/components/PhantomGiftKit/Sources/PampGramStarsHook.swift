@@ -253,6 +253,7 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         let closeConfig = UIImage.SymbolConfiguration(pointSize: 14.0, weight: .bold)
         closeButton.setImage(UIImage(systemName: "xmark", withConfiguration: closeConfig), for: .normal)
         closeButton.addTarget(self, action: #selector(self.cancelTapped), for: .touchUpInside)
+        self.addPressFeedback(to: closeButton)
         self.sheet.addSubview(closeButton)
 
         // App icon: a Telegram-style blue squircle with a white paper plane.
@@ -451,7 +452,58 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         doubleTap.numberOfTapsRequired = 2
         self.view.addGestureRecognizer(doubleTap)
 
+        // Immediate touch-down/up feedback on the purchase card so the confirm gesture feels like
+        // pressing a real button, not just a silent double-tap.
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(self.cardPressChanged(_:)))
+        press.minimumPressDuration = 0.0
+        press.cancelsTouchesInView = false
+        card.addGestureRecognizer(press)
+        self.pressableCard = card
+
         self.applyBiometryPrompt()
+    }
+
+    private var pressableCard: UIView?
+
+    /// Adds a spring-based scale + fade press animation to `button`, so every tappable control in
+    /// this sheet reacts immediately and smoothly instead of only on the eventual `touchUpInside`.
+    private func addPressFeedback(to button: UIButton) {
+        button.addTarget(self, action: #selector(self.buttonPressDown(_:)), for: .touchDown)
+        button.addTarget(self, action: #selector(self.buttonPressUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+    }
+
+    @objc private func buttonPressDown(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.18, delay: 0.0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+            sender.transform = CGAffineTransform(scaleX: 0.88, y: 0.88)
+            sender.alpha = 0.7
+        }, completion: nil)
+    }
+
+    @objc private func buttonPressUp(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.32, delay: 0.0, usingSpringWithDamping: 0.55, initialSpringVelocity: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+            sender.transform = .identity
+            sender.alpha = 1.0
+        }, completion: nil)
+    }
+
+    @objc private func cardPressChanged(_ gesture: UILongPressGestureRecognizer) {
+        guard let card = self.pressableCard, !self.finished else {
+            return
+        }
+        switch gesture.state {
+        case .began:
+            UIView.animate(withDuration: 0.2, delay: 0.0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+                card.transform = CGAffineTransform(scaleX: 0.97, y: 0.97)
+                card.alpha = 0.9
+            }, completion: nil)
+        case .ended, .cancelled, .failed:
+            UIView.animate(withDuration: 0.35, delay: 0.0, usingSpringWithDamping: 0.55, initialSpringVelocity: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+                card.transform = .identity
+                card.alpha = 1.0
+            }, completion: nil)
+        default:
+            break
+        }
     }
 
     private func applyBiometryPrompt() {
