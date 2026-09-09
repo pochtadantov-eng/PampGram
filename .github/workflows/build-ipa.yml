@@ -48,6 +48,7 @@ jobs:
           # The visual profile state is rendered in Telegram's profile screen by this
           # anchor-checked post-patch, after the base PampGram patch is in place.
           python3 ../pampgram/mod/apply-profile-visuals.py
+          python3 ../pampgram/mod/apply-ad-blocking.py
           ls -1 submodules/TelegramUI/Components/PampGram
 
       # Signing, the whole story in one place.

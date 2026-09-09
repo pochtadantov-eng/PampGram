@@ -20,8 +20,10 @@ private final class PampGramAdditionalArguments {
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
+    let toggleHideChatOnScreenshot: (Bool) -> Void
+    let toggleBlockAds: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleHideChatOnScreenshot: @escaping (Bool) -> Void, toggleBlockAds: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -32,6 +34,8 @@ private final class PampGramAdditionalArguments {
         self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
+        self.toggleHideChatOnScreenshot = toggleHideChatOnScreenshot
+        self.toggleBlockAds = toggleBlockAds
     }
 }
 
@@ -66,6 +70,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case chatLockRow(String, String)
     case callOverridesRow(String)
     case fakeAdminRow(String)
+    case hideChatOnScreenshotToggle(String, Bool)
+    case blockAdsToggle(String, Bool)
     case extrasFooter(String)
 
     var section: ItemListSectionId {
@@ -78,7 +84,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.speed.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideChatOnScreenshotToggle, .blockAdsToggle, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -121,8 +127,12 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 16
         case .fakeAdminRow:
             return 17
-        case .extrasFooter:
+        case .hideChatOnScreenshotToggle:
             return 18
+        case .blockAdsToggle:
+            return 19
+        case .extrasFooter:
+            return 20
         }
     }
 
@@ -177,6 +187,14 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openFakeAdmin()
             })
+        case let .hideChatOnScreenshotToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideChatOnScreenshot(value)
+            })
+        case let .blockAdsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "nosign", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBlockAds(value)
+            })
         }
     }
 }
@@ -206,7 +224,9 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.fakeAdminRow("Фейк админ"))
-    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас."))
+    entries.append(.hideChatOnScreenshotToggle("Скрыть чат при скриншоте", settings.hideChatOnScreenshot))
+    entries.append(.blockAdsToggle("Блокировать рекламу", settings.blockAds))
+    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Скрыть чат» кратковременно размывает экран при скриншоте. «Блокировать рекламу» фильтрует спонсорские сообщения."))
 
     return entries
 }
@@ -327,6 +347,20 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.legalPremiumEnabled = value
+                return settings
+            }).start()
+        },
+        toggleHideChatOnScreenshot: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.hideChatOnScreenshot = value
+                return settings
+            }).start()
+        },
+        toggleBlockAds: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.blockAds = value
                 return settings
             }).start()
         }
