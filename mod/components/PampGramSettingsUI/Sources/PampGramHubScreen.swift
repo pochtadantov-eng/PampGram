@@ -414,48 +414,6 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         }
     })
 
-    // Activation gate: the admin's own account is auto-activated the first time it opens the
-    // hub (no key needed for the account that hands keys out). Everyone else's locally-cached
-    // `licenseActivated` flag is the fast path — set once by a successful redeem and never
-    // cleared, so a normal open never waits on the network. Only when it's still false do we
-    // ask the server (covers a reinstall, which wipes the local flag along with the rest of
-    // Postbox but not the server's own record of this account having redeemed a key already)
-    // before falling back to the activation screen.
-    let _ = (context.account.postbox.transaction { transaction -> Bool in
-        let raw = PampGramCore.rawSettings(transaction: transaction)
-        if raw.licenseActivated {
-            return true
-        }
-        if isAdmin {
-            PampGramCore.updateSettings(transaction: transaction, { settings in
-                var settings = settings
-                settings.licenseActivated = true
-                return settings
-            })
-            return true
-        }
-        return false
-    }
-    |> deliverOnMainQueue).start(next: { activated in
-        if activated {
-            return
-        }
-        let _ = (PampGramSubscriptionAPI.fetchLicenseStatus(userId: selfAccountId)
-        |> deliverOnMainQueue).start(next: { licensed in
-            if licensed {
-                let _ = context.account.postbox.transaction { transaction in
-                    PampGramCore.updateSettings(transaction: transaction, { settings in
-                        var settings = settings
-                        settings.licenseActivated = true
-                        return settings
-                    })
-                }.start()
-            } else {
-                pampGramPresentActivationScreen(context: context, onActivated: {})
-            }
-        })
-    })
-
     // Refreshes `cachedIsProSubscriber` — the tier itself only ever comes from a live network
     // call (`fetchTier`), but "Закрепить чаты"'s pin-count cap needs to read it synchronously
     // inside a Postbox transaction (see `TogglePeerChatPinned.swift`), so this is the closest
