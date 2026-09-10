@@ -456,6 +456,26 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         })
     })
 
+    // Refreshes `cachedIsProSubscriber` — the tier itself only ever comes from a live network
+    // call (`fetchTier`), but "Закрепить чаты"'s pin-count cap needs to read it synchronously
+    // inside a Postbox transaction (see `TogglePeerChatPinned.swift`), so this is the closest
+    // thing to "live" that spot can use. Same one-shot-per-open pattern as the checks above;
+    // at most one tab-open stale, same trade-off `PampGramStatusScreen.swift` already accepts
+    // for its own PRO badge.
+    let _ = (PampGramSubscriptionAPI.fetchTier(userId: selfAccountId)
+    |> deliverOnMainQueue).start(next: { tier in
+        let _ = context.account.postbox.transaction { transaction in
+            let isPro = tier == .pro
+            if PampGramCore.rawSettings(transaction: transaction).cachedIsProSubscriber != isPro {
+                PampGramCore.updateSettings(transaction: transaction, { settings in
+                    var settings = settings
+                    settings.cachedIsProSubscriber = isPro
+                    return settings
+                })
+            }
+        }.start()
+    })
+
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox),

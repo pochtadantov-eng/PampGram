@@ -279,6 +279,17 @@ public struct PampGramSettings: Codable, Equatable {
     /// free by whoever it was actually sold to still does nothing until *that* Telegram account
     /// redeems its own key.
     public var licenseActivated: Bool
+    /// Local cache of whether `PampGramSubscriptionAPI.fetchTier` last reported `.pro` for this
+    /// account. Refreshed opportunistically whenever the PampGram tab opens (see
+    /// `PampGramHubScreen.swift`) — a plain `Bool`, not the `PampGramSubscriptionTier` enum
+    /// itself, because that type's `Codable` conformance is the plain synthesized one (needed
+    /// for decoding the server's JSON response) and would hit the same
+    /// `PostboxEncoder`/`PostboxDecoder` `singleValueContainer` crash `PampGramVoicePreset`'s
+    /// doc comment warns about if stored here directly. Exists so code that needs the tier
+    /// synchronously inside a Postbox transaction (the "Закрепить чаты" pin-count cap in
+    /// `TogglePeerChatPinned.swift`, which can't await a network call) has *something* to read,
+    /// at the cost of it being at most one tab-open stale.
+    public var cachedIsProSubscriber: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -323,11 +334,12 @@ public struct PampGramSettings: Codable, Equatable {
             legalPremiumEnabled: false,
             masterEnabled: true,
             hideIconInSettings: false,
-            licenseActivated: false
+            licenseActivated: false,
+            cachedIsProSubscriber: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, hideIconInSettings: Bool, licenseActivated: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, hideIconInSettings: Bool, licenseActivated: Bool, cachedIsProSubscriber: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -367,6 +379,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.masterEnabled = masterEnabled
         self.hideIconInSettings = hideIconInSettings
         self.licenseActivated = licenseActivated
+        self.cachedIsProSubscriber = cachedIsProSubscriber
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -438,6 +451,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
         self.hideIconInSettings = try container.decodeIfPresent(Bool.self, forKey: .hideIconInSettings) ?? defaults.hideIconInSettings
         self.licenseActivated = try container.decodeIfPresent(Bool.self, forKey: .licenseActivated) ?? defaults.licenseActivated
+        self.cachedIsProSubscriber = try container.decodeIfPresent(Bool.self, forKey: .cachedIsProSubscriber) ?? defaults.cachedIsProSubscriber
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value

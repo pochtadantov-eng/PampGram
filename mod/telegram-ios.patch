@@ -17504,7 +17504,7 @@ index 66242579..6c77a8c0 100644
          return inputSecretChat(postbox: postbox, peerId: peerId)
          |> mapToSignal { inputPeer -> Signal<PeerReadState, PeerReadStateValidationError> in
 diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift b/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
-index aa11e522..635ebf1f 100644
+index aa11e52..5d044de 100644
 --- a/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
 +++ b/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
 @@ -1,6 +1,7 @@
@@ -17522,17 +17522,17 @@ index aa11e522..635ebf1f 100644
 -        let isPremium = transaction.getPeer(accountPeerId)?.isPremium ?? false
 -        
 +        let pampGramSettings = PampGramCore.settings(transaction: transaction)
-+        // "Закрепить чаты" / "Легальный премиум": treat the account as premium for the purpose
-+        // of this client-side limit check, so more than the usual number of chats/folder chats
-+        // can be pinned. Client-side only — the server keeps its own limit for what actually
-+        // syncs, but the pin goes through locally.
-+        let pampGramUnlimitedPins = pampGramSettings.infinitePinsEnabled || pampGramSettings.legalPremiumEnabled
-+        let isPremium = (transaction.getPeer(accountPeerId)?.isPremium ?? false) || pampGramUnlimitedPins
++        // "Легальный премиум": simulate real Telegram Premium for every client-side limit this
++        // function derives from `isPremium` below (the pin count included) — unless "Закрепить
++        // чаты" overrides that count with its own flat cap just below. "Закрепить чаты" no
++        // longer pretends this account is Premium itself; it sets its own number instead,
++        // independent of both real and "Легальный премиум"-simulated status.
++        let isPremium = (transaction.getPeer(accountPeerId)?.isPremium ?? false) || pampGramSettings.legalPremiumEnabled
 +
          let appConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self) ?? .defaultValue
          let userLimitsConfiguration = UserLimitsConfiguration(appConfiguration: appConfiguration, isPremium: isPremium)
          
-@@ -49,13 +56,17 @@ func _internal_toggleItemPinned(postbox: Postbox, accountPeerId: PeerId, locatio
+@@ -49,13 +56,19 @@ func _internal_toggleItemPinned(postbox: Postbox, accountPeerId: PeerId, locatio
                  additionalCount = 1
              }
              
@@ -17544,9 +17544,11 @@ index aa11e522..635ebf1f 100644
                  limitCount = Int(userLimitsConfiguration.maxArchivedPinnedChatCount)
              }
 -            
-+            // "Закрепить чаты": no client-side ceiling at all when on.
-+            if pampGramUnlimitedPins {
-+                limitCount = Int.max
++            // "Закрепить чаты": a flat PampGram-subscription cap, independent of real or
++            // "Легальный премиум"-simulated Telegram Premium — 15 pinned chats without
++            // PampGram PRO, 30 with it (see PampGramSettings.cachedIsProSubscriber).
++            if pampGramSettings.infinitePinsEnabled {
++                limitCount = pampGramSettings.cachedIsProSubscriber ? 30 : 15
 +            }
 +
              let count = sameKind.count + additionalCount
