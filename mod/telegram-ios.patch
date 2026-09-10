@@ -18867,7 +18867,7 @@ index ef6fe4b4..9409b119 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
-index e1c98a1a..b94501ec 100644
+index e1c98a1..454a2b5 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 @@ -26,6 +26,7 @@ import UndoUI
@@ -18921,75 +18921,27 @@ index e1c98a1a..b94501ec 100644
              let isFirstTime = self.starsProducts == nil
              let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
              self.statusPromise.set(.single(PeerInfoStatusData(text: presentationData.strings.SharedMedia_GiftCount(state.count ?? 0), isActivity: true, key: .gifts)))
-@@ -251,7 +279,54 @@ final class GiftsListView: UIView {
+@@ -251,7 +278,7 @@ final class GiftsListView: UIView {
      deinit {
          self.dataDisposable?.dispose()
      }
 -        
 +
-+    // PampGram: the local-only stand-in for tapping a real gift card into GiftViewScreen —
-+    // same three actions (Pin, Hide/Show, Sell) the long-press menu offers for a Phantom
-+    // Gift, reached instead from a plain tap, entirely local (never calls
-+    // `ProfileGiftsContext` or the network).
-+    private func pampGramPresentPhantomGiftActions(product: ProfileGiftsContext.State.StarGift, presentationData: PresentationData) {
-+        let context = self.context
-+        let title: String
-+        switch product.gift {
-+        case let .generic(gift):
-+            title = gift.title ?? "Gift"
-+        case let .unique(gift):
-+            title = gift.title
-+        }
-+        let sheet = ActionSheetController(presentationData: presentationData)
-+        var items: [ActionSheetItem] = [ActionSheetTextItem(title: title)]
-+
-+        items.append(ActionSheetButtonItem(title: product.pinnedToTop ? presentationData.strings.PeerInfo_Gifts_Context_Unpin : presentationData.strings.PeerInfo_Gifts_Context_Pin, color: .accent, action: { [weak sheet, weak self] in
-+            sheet?.dismissAnimated()
-+            let _ = PampGramPhantomGiftManager.setPinnedToTop(context: context, matching: product, pinnedToTop: !product.pinnedToTop).start()
-+            self?.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: !product.pinnedToTop ? presentationData.strings.PeerInfo_Gifts_ToastPinned_Text : presentationData.strings.PeerInfo_Gifts_ToastUnpinned_Text, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
-+        }))
-+
-+        items.append(ActionSheetButtonItem(title: product.savedToProfile ? presentationData.strings.PeerInfo_Gifts_Context_Hide : presentationData.strings.PeerInfo_Gifts_Context_Show, color: .accent, action: { [weak sheet, weak self] in
-+            sheet?.dismissAnimated()
-+            let added = !product.savedToProfile
-+            let _ = PampGramPhantomGiftManager.setSavedToProfile(context: context, matching: product, savedToProfile: added).start()
-+            let text = added ? presentationData.strings.Gift_Displayed_NewText : presentationData.strings.Gift_Hidden_NewText
-+            self?.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
-+        }))
-+
-+        items.append(ActionSheetButtonItem(title: presentationData.strings.Gift_Convert_Convert, color: .destructive, action: { [weak sheet, weak self] in
-+            sheet?.dismissAnimated()
-+            let _ = PampGramPhantomGiftManager.sell(context: context, matching: product).start()
-+            self?.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: presentationData.strings.Gift_Convert_Success_Title, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
-+        }))
-+
-+        sheet.setItemGroups([
-+            ActionSheetItemGroup(items: items),
-+            ActionSheetItemGroup(items: [
-+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-+                    sheet?.dismissAnimated()
-+                })
-+            ])
-+        ])
-+        self.parentController?.present(sheet, in: .window(.root))
-+    }
-+
      func item(at point: CGPoint) -> (AnyHashable, ComponentView<Empty>)? {
          for (id, visibleItem) in self.starsItems {
              if let view = visibleItem.1.view, view.frame.contains(point), let reference = visibleItem.0, self.isCollection || self.pinnedReferences.contains(reference) {
-@@ -591,10 +666,18 @@ final class GiftsListView: UIView {
-                                             self.reorderedReferences = reorderedReferences
+@@ -592,9 +619,17 @@ final class GiftsListView: UIView {
                                          }
                                      }
-+                                } else if product.reference == nil {
-+                                    // PampGram: this card is one of this device's own Phantom
-+                                    // Gifts — GiftViewScreen is built entirely around real,
-+                                    // server-tracked gifts (transfer/export/upgrade, all real
-+                                    // network actions), so it's never opened for one of these;
-+                                    // the same Pin/Hide/Sell actions the long-press menu offers
-+                                    // are just as reachable from here instead.
-+                                    self.pampGramPresentPhantomGiftActions(product: product, presentationData: presentationData)
                                  } else {
++                                    // PampGram: a Phantom Gift (`product.reference == nil`)
++                                    // opens the same real GiftViewScreen as any other card —
++                                    // every action inside it (pin/sell/transfer/etc.) is gated
++                                    // on a non-nil `arguments.reference` internally, so it just
++                                    // renders read-only for one of these; Pin/Hide are still
++                                    // reachable from the long-press menu (PeerInfoGiftsPaneNode),
++                                    // and Sell from "Коллекция и маркет" in PampGram's own
++                                    // settings (PampGramGiftMarketScreen.swift).
                                      let allSubjects: [GiftViewScreen.Subject] = (self.starsProducts ?? []).map { .profileGift(self.peerId, $0) }
                                      let index = self.starsProducts?.firstIndex(where: { $0 == product }) ?? 0
 -                                    
