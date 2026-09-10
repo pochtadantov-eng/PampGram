@@ -18652,7 +18652,7 @@ index 09315ffb..a3aed400 100644
          "//submodules/TelegramUI/Components/TextLoadingEffect",
          "//submodules/TelegramUI/Components/TextProcessingScreen",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
-index fd01930f..a0496a3c 100644
+index fd01930..5ad8e11 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 @@ -113,6 +113,7 @@ import PeerMessagesMediaPlaylist
@@ -18688,7 +18688,7 @@ index fd01930f..a0496a3c 100644
      let activeActionDisposable = MetaDisposable()
      let resolveUrlDisposable = MetaDisposable()
      let toggleShouldChannelMessagesSignaturesDisposable = MetaDisposable()
-@@ -2654,9 +2664,22 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -2654,9 +2664,23 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
                  }
              })
          }
@@ -18702,6 +18702,7 @@ index fd01930f..a0496a3c 100644
 +                return
 +            }
 +            self.pampGramSettings = settings
++            self.headerNode.pampGramHideOwnPhone = settings.hideOwnPhoneNumber
 +            self.requestLayout(animated: false)
 +        })
      }
@@ -18712,15 +18713,68 @@ index fd01930f..a0496a3c 100644
          self.dataDisposable?.dispose()
          self.hiddenMediaDisposable?.dispose()
          self.activeActionDisposable.dispose()
-@@ -5479,7 +5502,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -5479,7 +5503,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
              insets.left += sectionInset
              insets.right += sectionInset
              
 -            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile)
-+            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile)
++            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber)
              
              contentHeight += headerHeight
              if !((self.isSettings || self.isMyProfile) && self.state.isEditing) {
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift
+index fdfd1ce..b1482ac 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift
+@@ -92,6 +92,11 @@ final class PeerInfoHeaderNode: ASDisplayNode {
+     private var threadData: MessageHistoryThreadData?
+     private var isSearching: Bool = false
+     private var avatarSize: CGFloat?
++
++    // PampGram: "Скрыть номер телефона" — when set, the Settings-screen header subtitle
++    // omits the phone number (username, if any, is kept). Set by PeerInfoScreen.swift from
++    // its live-cached PampGramSettings, same pattern as pampGramSettings on PeerInfoScreenNode.
++    var pampGramHideOwnPhone: Bool = false
+     
+     private let isOpenedFromChat: Bool
+     private let isSettings: Bool
+@@ -1236,10 +1241,10 @@ final class PeerInfoHeaderNode: ASDisplayNode {
+             smallTitleAttributes = MultiScaleTextState.Attributes(font: Font.medium(28.0), color: .white, shadowColor: titleShadowColor)
+             
+             if self.isSettings, case let .user(user) = peer {
+-                var subtitle = formatPhoneNumber(context: self.context, number: user.phone ?? "")
+-                
++                var subtitle = self.pampGramHideOwnPhone ? "" : formatPhoneNumber(context: self.context, number: user.phone ?? "")
++
+                 if let mainUsername = user.addressName, !mainUsername.isEmpty {
+-                    subtitle = "\(subtitle) • @\(mainUsername)"
++                    subtitle = subtitle.isEmpty ? "@\(mainUsername)" : "\(subtitle) • @\(mainUsername)"
+                 }
+                 subtitleStringText = subtitle
+                 subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: .white)
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
+index 80b7f20..ddfdf9a 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
+@@ -46,7 +46,8 @@ func infoItems(
+     callMessages: [EngineMessage],
+     chatLocation: ChatLocation,
+     isOpenedFromChat: Bool,
+-    isMyProfile: Bool
++    isMyProfile: Bool,
++    pampGramHideOwnPhone: Bool = false
+ ) -> [(AnyHashable, [PeerInfoScreenItem])] {
+     guard let data = data else {
+         return []
+@@ -155,7 +156,7 @@ func infoItems(
+             ))
+         }
+         
+-        if let phone = user.phone {
++        if let phone = user.phone, !(pampGramHideOwnPhone && user.id == context.account.peerId) {
+             let formattedPhone = formatPhoneNumber(context: context, number: phone)
+             let label: String
+             if formattedPhone.hasPrefix("+888 ") {
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 index 806e652a..af17fef0 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
