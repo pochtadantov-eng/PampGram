@@ -89,6 +89,40 @@ curl "https://pampgram-subs.<поддомен>.workers.dev/status?id=123"
 # {"tier":"pro"}
 ```
 
+## Ключи активации (при продаже файла)
+
+`/grant` выше требует, чтобы ты уже знал Telegram-аккаунт человека — годится, когда выдаёшь
+подписку вручную. При продаже самого файла мода это не работает: покупатель может переслать
+файл кому угодно бесплатно, и без привязки к конкретному аккаунту ничего этому не мешает.
+
+Ключ решает это иначе: генерируется один раз, активирует **все** функции мода, но только на том
+Telegram-аккаунте, который первым его введёт. Экран «Введи ключ» появляется у каждого, кто ещё
+не активировал мод — сгенерировать ключ и переслать его покупателю можно прямо в приложении:
+**PampGram → Админ-панель → Ключи активации → Сгенерировать ключ** (копируется в буфer
+автоматически). Дальше это уже не про сервер — как передать ключ покупателю (в переписке, при
+продаже) решаешь сам.
+
+```sh
+curl -X POST "https://pampgram-subs.<поддомен>.workers.dev/keys/generate" \
+  -H "content-type: application/json" \
+  -d '{"token":"<твой ADMIN_TOKEN>","tier":"standard"}'
+# {"key":"PMP-XXXXX-XXXXX-XXXXX-XXXXX","tier":"standard"}
+
+curl -X POST "https://pampgram-subs.<поддомен>.workers.dev/keys/redeem" \
+  -H "content-type: application/json" \
+  -d '{"key":"PMP-XXXXX-XXXXX-XXXXX-XXXXX","id":123}'
+# {"ok":true,"tier":"standard"}
+
+# Тот же ключ с другого id — уже не сработает:
+curl -X POST "https://pampgram-subs.<поддомен>.workers.dev/keys/redeem" \
+  -H "content-type: application/json" \
+  -d '{"key":"PMP-XXXXX-XXXXX-XXXXX-XXXXX","id":456}'
+# {"error":"already used"}
+```
+
+Твой собственный админ-аккаунт активируется автоматически при первом открытии вкладки PampGram
+— ключ для себя вводить не нужно.
+
 ## Важно про токен
 
 `ADMIN_TOKEN` существует в двух местах: как секрет Cloudflare (`wrangler
