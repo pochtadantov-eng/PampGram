@@ -288,6 +288,13 @@ public struct PampGramSettings: Codable, Equatable {
     /// already have it (or view it through Telegram's own privacy settings) are unaffected;
     /// this only stops PampGram's own device from showing it back to its owner.
     public var hideOwnPhoneNumber: Bool
+    /// "Фейковый номер телефона": free-form text shown in place of the real number, same two
+    /// spots as `hideOwnPhoneNumber` (Settings header subtitle, "Мой профиль" phone row) —
+    /// purely local, same as every other PampGram display override. Empty means off. When
+    /// both this and `hideOwnPhoneNumber` are set, this one wins: showing a chosen fake
+    /// number is a stronger statement than hiding the row outright, so there's never a case
+    /// where the two fight over the same row.
+    public var fakePhoneNumber: String
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -333,11 +340,12 @@ public struct PampGramSettings: Codable, Equatable {
             masterEnabled: true,
             hideIconInSettings: false,
             cachedIsProSubscriber: false,
-            hideOwnPhoneNumber: false
+            hideOwnPhoneNumber: false,
+            fakePhoneNumber: ""
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, hideIconInSettings: Bool, cachedIsProSubscriber: Bool, hideOwnPhoneNumber: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, hideIconInSettings: Bool, cachedIsProSubscriber: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -378,6 +386,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.hideIconInSettings = hideIconInSettings
         self.cachedIsProSubscriber = cachedIsProSubscriber
         self.hideOwnPhoneNumber = hideOwnPhoneNumber
+        self.fakePhoneNumber = fakePhoneNumber
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -450,6 +459,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.hideIconInSettings = try container.decodeIfPresent(Bool.self, forKey: .hideIconInSettings) ?? defaults.hideIconInSettings
         self.cachedIsProSubscriber = try container.decodeIfPresent(Bool.self, forKey: .cachedIsProSubscriber) ?? defaults.cachedIsProSubscriber
         self.hideOwnPhoneNumber = try container.decodeIfPresent(Bool.self, forKey: .hideOwnPhoneNumber) ?? defaults.hideOwnPhoneNumber
+        self.fakePhoneNumber = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumber) ?? defaults.fakePhoneNumber
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value

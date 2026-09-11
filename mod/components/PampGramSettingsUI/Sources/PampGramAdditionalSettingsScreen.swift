@@ -7,6 +7,7 @@ import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import PromptUI
 import PampGramCore
 
 private final class PampGramAdditionalArguments {
@@ -21,8 +22,9 @@ private final class PampGramAdditionalArguments {
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
     let toggleHideOwnPhone: (Bool) -> Void
+    let openFakePhoneNumber: () -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -34,6 +36,7 @@ private final class PampGramAdditionalArguments {
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
         self.toggleHideOwnPhone = toggleHideOwnPhone
+        self.openFakePhoneNumber = openFakePhoneNumber
     }
 }
 
@@ -69,6 +72,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case callOverridesRow(String)
     case fakeAdminRow(String)
     case hideOwnPhoneToggle(String, Bool)
+    case fakePhoneNumberRow(String, String)
     case extrasFooter(String)
 
     var section: ItemListSectionId {
@@ -81,7 +85,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.speed.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .fakePhoneNumberRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -126,8 +130,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 17
         case .hideOwnPhoneToggle:
             return 18
-        case .extrasFooter:
+        case .fakePhoneNumberRow:
             return 19
+        case .extrasFooter:
+            return 20
         }
     }
 
@@ -186,6 +192,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "phone.down.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleHideOwnPhone(value)
             })
+        case let .fakePhoneNumberRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "phone.badge.plus", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openFakePhoneNumber()
+            })
         }
     }
 }
@@ -216,7 +226,8 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.fakeAdminRow("Фейк админ"))
     entries.append(.hideOwnPhoneToggle("Скрыть номер телефона", settings.hideOwnPhoneNumber))
-    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Скрыть номер телефона» убирает ваш номер из настроек и из «Моего профиля» — только на этом устройстве, на другие ваши номер по-прежнему виден по настройкам приватности Telegram."))
+    entries.append(.fakePhoneNumberRow("Фейковый номер телефона", settings.fakePhoneNumber.isEmpty ? "Выключено" : settings.fakePhoneNumber))
+    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Скрыть номер телефона» и «Фейковый номер телефона» меняют, что видно в настройках и в «Моём профиле», — на другие ваш настоящий номер по-прежнему виден по настройкам приватности Telegram. Если задан фейковый номер, он показывается вместо скрытия."))
 
     return entries
 }
@@ -346,6 +357,26 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                 settings.hideOwnPhoneNumber = value
                 return settings
             }).start()
+        },
+        openFakePhoneNumber: {
+            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Фейковый номер телефона",
+                    subtitle: "Показывается вместо настоящего — в настройках и в «Моём профиле». Пусто — выключено.",
+                    value: settings.fakePhoneNumber,
+                    placeholder: "+1 234 567 89 00",
+                    characterLimit: 32,
+                    apply: { value in
+                        let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                            var settings = settings
+                            settings.fakePhoneNumber = trimmed
+                            return settings
+                        }).start()
+                    }
+                ))
+            })
         }
     )
 
