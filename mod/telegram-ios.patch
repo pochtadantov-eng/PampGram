@@ -17922,7 +17922,7 @@ index 7e874b3f..28817174 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
-index 0db09aed..67af292c 100644
+index 0db09ae..8e3959e 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 @@ -39,6 +39,8 @@ import GlassBarButtonComponent
@@ -18058,7 +18058,26 @@ index 0db09aed..67af292c 100644
                      guard let self, let controller = self.environment?.controller(), let navigationController = controller.navigationController as? NavigationController else {
                          return
                      }
-@@ -663,7 +705,34 @@ private final class GiftSetupScreenComponent: Component {
+@@ -585,7 +627,17 @@ private final class GiftSetupScreenComponent: Component {
+                             controllers.append(chatController)
+                         }
+                         navigationController.setViewControllers(controllers, animated: true)
+-                        
++
++                        // PampGram: real Telegram only plays this confetti burst for gifts sent
++                        // to a channel (the branch above) — a regular gift to a person gets none,
++                        // even though the channel branch already proves the visual reads fine
++                        // for a "regular" (non-unique) StarGift. Extending it here to the same
++                        // person-to-person send, for a mid-range 15...100 Stars price, so those
++                        // gifts get the same little celebration instead of nothing.
++                        if case .starGift = component.subject, (15...100).contains(finalPrice) {
++                            navigationController.view.addSubview(ConfettiView(frame: navigationController.view.bounds))
++                        }
++
+                         if case let .starGift(starGift, _) = component.subject, let perUserLimit = starGift.perUserLimit {
+                             Queue.mainQueue().after(0.5) {
+                                 let remains = max(0, perUserLimit.remains - 1)
+@@ -663,7 +715,34 @@ private final class GiftSetupScreenComponent: Component {
                  })
              }
              
@@ -18094,7 +18113,7 @@ index 0db09aed..67af292c 100644
                  let _ = (self.optionsPromise.get()
                  |> filter { $0 != nil }
                  |> take(1)
-@@ -684,7 +753,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -684,7 +763,7 @@ private final class GiftSetupScreenComponent: Component {
                              }
                              self.inProgress = true
                              self.state?.updated()
@@ -18103,7 +18122,7 @@ index 0db09aed..67af292c 100644
                              starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
                              let _ = (starsContext.onUpdate
                              |> deliverOnMainQueue).start(next: {
-@@ -1481,7 +1550,8 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1481,7 +1560,8 @@ private final class GiftSetupScreenComponent: Component {
                                          let storeController = component.context.sharedContext.makeGiftStoreController(
                                              context: component.context,
                                              peerId: component.peerId,
@@ -18113,7 +18132,7 @@ index 0db09aed..67af292c 100644
                                          )
                                          controller.push(storeController)
                                      }
-@@ -2111,15 +2181,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
+@@ -2111,15 +2191,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
          peerId: EnginePeer.Id,
          subject: Subject,
          auctionAcquiredGifts: Signal<[GiftAuctionAcquiredGift], NoError>? = nil,
