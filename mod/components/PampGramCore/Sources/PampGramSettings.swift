@@ -295,6 +295,14 @@ public struct PampGramSettings: Codable, Equatable {
     /// number is a stronger statement than hiding the row outright, so there's never a case
     /// where the two fight over the same row.
     public var fakePhoneNumber: String
+    /// Whether this account has redeemed a one-time activation key
+    /// (`server/pampgram-subs-worker`'s `/keys/redeem`). Until it has, `PampGramCore.settings`/
+    /// `settingsSignal` report every mod feature as off (`withEverythingOff()`) regardless of
+    /// its own stored toggle, and the PampGram tab shows the "enter your key" screen instead of
+    /// the hub — see `PampGramHubScreen.swift`. Exists so a copy of the mod file handed out for
+    /// free by whoever it was actually sold to still does nothing until *that* Telegram account
+    /// redeems its own key.
+    public var licenseActivated: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -341,11 +349,12 @@ public struct PampGramSettings: Codable, Equatable {
             hideIconInSettings: false,
             cachedIsProSubscriber: false,
             hideOwnPhoneNumber: false,
-            fakePhoneNumber: ""
+            fakePhoneNumber: "",
+            licenseActivated: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, hideIconInSettings: Bool, cachedIsProSubscriber: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, hideIconInSettings: Bool, cachedIsProSubscriber: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, licenseActivated: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -387,6 +396,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.cachedIsProSubscriber = cachedIsProSubscriber
         self.hideOwnPhoneNumber = hideOwnPhoneNumber
         self.fakePhoneNumber = fakePhoneNumber
+        self.licenseActivated = licenseActivated
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -460,6 +470,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.cachedIsProSubscriber = try container.decodeIfPresent(Bool.self, forKey: .cachedIsProSubscriber) ?? defaults.cachedIsProSubscriber
         self.hideOwnPhoneNumber = try container.decodeIfPresent(Bool.self, forKey: .hideOwnPhoneNumber) ?? defaults.hideOwnPhoneNumber
         self.fakePhoneNumber = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumber) ?? defaults.fakePhoneNumber
+        self.licenseActivated = try container.decodeIfPresent(Bool.self, forKey: .licenseActivated) ?? defaults.licenseActivated
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -473,6 +484,29 @@ public struct PampGramSettings: Codable, Equatable {
         settings.fakeStarsDisplayEnabled = false
         settings.fakeTonDisplayEnabled = false
         settings.localRublesPurchaseEnabled = false
+        return settings
+    }
+
+    /// A copy with every mod feature forced off, not just the gift-visuals subset
+    /// `withGiftsVisualsOff()` covers (every stored value still preserved). Returned by
+    /// `PampGramCore.settings`/`settingsSignal` whenever `licenseActivated` is false, so an
+    /// unlicensed copy of the mod does nothing beyond showing the activation-key screen — same
+    /// "stored values survive, only the effective view is neutered" contract, just wider.
+    public func withEverythingOff() -> PampGramSettings {
+        var settings = self.withGiftsVisualsOff()
+        settings.antiDeleteMessagesEnabled = false
+        settings.ghostModeEnabled = false
+        settings.ghostHideReadReceipts = false
+        settings.ghostHideStoryViews = false
+        settings.ghostHideOnline = false
+        settings.ghostHideTyping = false
+        settings.ghostAutoOffline = false
+        settings.visualEditEnabled = false
+        settings.voiceChangerMessagesEnabled = false
+        settings.fakeLocationEnabled = false
+        settings.chatLockEnabled = false
+        settings.infinitePinsEnabled = false
+        settings.legalPremiumEnabled = false
         return settings
     }
 
@@ -529,12 +563,21 @@ public enum PampGramCore {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
+    /// The gating `settings`/`settingsSignal` share: unlicensed (see `licenseActivated`) wins
+    /// over everything else and neuters the whole mod; otherwise falls through to the existing
+    /// "Включить визуалку" gate, unchanged.
+    private static func effectiveSettings(from raw: PampGramSettings) -> PampGramSettings {
+        if !raw.licenseActivated {
+            return raw.withEverythingOff()
+        }
+        return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+    }
+
     /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
     /// визуалку" is off, only the gift-visual features read as disabled; every other section is
     /// unaffected. Screens that need the real stored gift state use `rawSettings` instead.
     public static func settings(transaction: Transaction) -> PampGramSettings {
-        let raw = self.rawSettings(transaction: transaction)
-        return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+        return self.effectiveSettings(from: self.rawSettings(transaction: transaction))
     }
 
     public static func updateSettings(transaction: Transaction, _ f: (PampGramSettings) -> PampGramSettings) {
@@ -557,7 +600,7 @@ public enum PampGramCore {
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return self.rawSettingsSignal(postbox: postbox)
         |> map { raw -> PampGramSettings in
-            return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+            return self.effectiveSettings(from: raw)
         }
         |> distinctUntilChanged
     }
