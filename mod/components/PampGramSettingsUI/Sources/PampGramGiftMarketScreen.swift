@@ -22,20 +22,32 @@ private func pampGramGiftPriceText(_ price: CurrencyAmount?) -> String {
 
 private final class PampGramGiftMarketArguments {
     let openGift: (PampGramPhantomGift) -> Void
-    init(openGift: @escaping (PampGramPhantomGift) -> Void) { self.openGift = openGift }
+    let buyGift: () -> Void
+    init(openGift: @escaping (PampGramPhantomGift) -> Void, buyGift: @escaping () -> Void) {
+        self.openGift = openGift
+        self.buyGift = buyGift
+    }
 }
 
 private enum PampGramGiftMarketEntry: ItemListNodeEntry {
+    case buyGift(String)
     case about(String)
     case header(String)
     case gift(Int32, PampGramPhantomGift)
     case empty(String)
     case footer(String)
-    var section: ItemListSectionId { return self.stableId == 0 ? 0 : 1 }
+    var section: ItemListSectionId {
+        switch self {
+        case .buyGift: return 0
+        case .about: return 1
+        case .header, .gift, .empty, .footer: return 2
+        }
+    }
     var stableId: Int32 {
         switch self {
-        case .about: return 0
-        case .header: return 1
+        case .buyGift: return 0
+        case .about: return 1
+        case .header: return 2
         case let .gift(index, _): return 10 + index
         case .empty: return 9000
         case .footer: return 9001
@@ -46,6 +58,10 @@ private enum PampGramGiftMarketEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let a = arguments as! PampGramGiftMarketArguments
         switch self {
+        case let .buyGift(title):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                a.buyGift()
+            })
         case let .about(text), let .empty(text), let .footer(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .header(text):
@@ -71,6 +87,7 @@ private enum PampGramGiftMarketEntry: ItemListNodeEntry {
 
 public func pampGramGiftMarketController(context: AccountContext) -> ViewController {
     var present: ((ViewController) -> Void)?
+    var push: ((ViewController) -> Void)?
 
     func setMarketPrice(gift: PampGramPhantomGift, currency: CurrencyAmount.Currency) {
         present?(promptController(context: context, text: currency == .stars ? "Цена в Stars" : "Цена в TON", subtitle: "Локальная цена на визуальном маркете PampGram.", value: "", placeholder: currency == .stars ? "500" : "50", characterLimit: 24, apply: { value in
@@ -127,6 +144,24 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
         present?(selectionController)
     }
 
+    func buyGiftForSelf() {
+        // Real Telegram never shows "Отправить подарок" on your own profile (the action
+        // buttons are empty whenever isMyProfile/isSettings), so this is the only entry point
+        // into the real gift catalog/resale market targeting yourself. Reusing it verbatim —
+        // same screen, same "Все" tab — means the existing sendFake/buyUniqueGift plumbing
+        // (already used by "Подарок ему"/"Подарок мне") is all that's needed: with peerId set
+        // to this account, a purchase there already stores the phantom gift under this
+        // account's own id, which is exactly what shows it on this profile.
+        let giftsController = context.sharedContext.makeGiftOptionsController(
+            context: context,
+            peerId: context.account.peerId,
+            premiumOptions: [],
+            hasBirthday: false,
+            completion: nil
+        )
+        push?(giftsController)
+    }
+
     let args = PampGramGiftMarketArguments(openGift: { gift in
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
         let sheet = ActionSheetController(presentationData: presentationData)
@@ -171,13 +206,15 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
             ActionSheetItemGroup(items: [ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in sheet?.dismissAnimated() })])
         ])
         present?(sheet)
+    }, buyGift: {
+        buyGiftForSelf()
     })
 
     let signal = combineLatest(context.sharedContext.presentationData, PampGramPhantomGiftStore.allGiftsSignal(context: context))
     |> deliverOnMainQueue
     |> map { presentationData, gifts -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let active = gifts.filter { $0.soldDate == nil }
-        var entries: [PampGramGiftMarketEntry] = [.about("Управление визуальной коллекцией: профиль, закрепление, ношение, передача и локальный маркет. Никаких реальных операций Telegram/TON здесь нет."), .header("КОЛЛЕКЦИЯ")]
+        var entries: [PampGramGiftMarketEntry] = [.buyGift("Купить подарок"), .about("Управление визуальной коллекцией: профиль, закрепление, ношение, передача и локальный маркет. Никаких реальных операций Telegram/TON здесь нет."), .header("КОЛЛЕКЦИЯ")]
         if active.isEmpty { entries.append(.empty("Визуальных подарков пока нет.")) }
         else { for (i, gift) in active.enumerated() { entries.append(.gift(Int32(i), gift)) } }
         entries.append(.footer("Подарок, купленный себе через визуальный маркет, автоматически появляется в этой коллекции и может быть добавлен в профиль."))
@@ -188,5 +225,6 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
     }
     let controller = ItemListController(context: context, state: signal)
     present = { [weak controller] c in controller?.present(c, in: .window(.root)) }
+    push = { [weak controller] c in controller?.push(c) }
     return controller
 }
