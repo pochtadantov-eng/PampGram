@@ -14,6 +14,9 @@ private struct VisualChatMessage {
     let isIncoming: Bool
     let text: String?
     let media: [Media]?
+    var emojiReactions: [String] = []
+    var isOneTimeView: Bool = false
+    var isPersistentOneTime: Bool = false
 
     static func textMessage(isIncoming: Bool, text: String) -> VisualChatMessage {
         return VisualChatMessage(
@@ -159,6 +162,42 @@ public class PampGramVisualChatMenuController: ViewController {
         )
         buttonStackView.addArrangedSubview(addTheirVoiceButton)
 
+        // Button: Add sticker from me
+        let addMyStickerButton = self.createButton(
+            title: "🎨 Стикер от меня",
+            action: { [weak self] in
+                self?.presentAddStickerMenu(incoming: false)
+            }
+        )
+        buttonStackView.addArrangedSubview(addMyStickerButton)
+
+        // Button: Add sticker from interlocutor
+        let addTheirStickerButton = self.createButton(
+            title: "🌟 Стикер собеседника",
+            action: { [weak self] in
+                self?.presentAddStickerMenu(incoming: true)
+            }
+        )
+        buttonStackView.addArrangedSubview(addTheirStickerButton)
+
+        // Button: Manage reactions
+        let manageReactionsButton = self.createButton(
+            title: "😊 Добавить реакции",
+            action: { [weak self] in
+                self?.presentAddReactionsMenu()
+            }
+        )
+        buttonStackView.addArrangedSubview(manageReactionsButton)
+
+        // Button: Toggle persistent one-time
+        let persistentOneTimeButton = self.createButton(
+            title: "🔐 Одноразовые (сохранение)",
+            action: { [weak self] in
+                self?.presentOneTimePersistentMenu()
+            }
+        )
+        buttonStackView.addArrangedSubview(persistentOneTimeButton)
+
         // Button: Send all messages
         let sendButton = self.createSendButton(
             title: "✅ Отправить",
@@ -257,6 +296,93 @@ public class PampGramVisualChatMenuController: ViewController {
                 let _ = self?.messages.modify { $0.append(message) }
             }
         )
+    }
+
+    private func presentAddStickerMenu(incoming: Bool) {
+        pampGramVisualChatPresentInsertSticker(
+            context: self.context,
+            peerId: self.peerId,
+            isIncoming: incoming,
+            onStickerAdded: { [weak self] media in
+                let message = VisualChatMessage.mediaMessage(isIncoming: incoming, media: [media])
+                let _ = self?.messages.modify { $0.append(message) }
+            }
+        )
+    }
+
+    private func presentAddReactionsMenu() {
+        guard let topController = pampGramTopController(context: self.context) else {
+            return
+        }
+
+        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+        let emojiSheet = ActionSheetController(presentationData: presentationData)
+
+        let commonEmojis = ["👍", "❤️", "😂", "😮", "😢", "😡", "🔥", "👏", "🙏", "💯", "✨", "🎉"]
+
+        var items: [ActionSheetItem] = [
+            ActionSheetTextItem(title: "Выберите эмодзи для последнего сообщения")
+        ]
+
+        for emoji in commonEmojis {
+            items.append(ActionSheetButtonItem(title: emoji, color: .accent, action: { [weak self, weak emojiSheet] in
+                emojiSheet?.dismissAnimated()
+                self?.messages.modify { messages in
+                    if !messages.isEmpty {
+                        messages[messages.count - 1].emojiReactions.append(emoji)
+                    }
+                }
+            }))
+        }
+
+        items.append(ActionSheetItemGroup(items: [
+            ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak emojiSheet] in
+                emojiSheet?.dismissAnimated()
+            })
+        ]))
+
+        emojiSheet.setItemGroups(items)
+        topController.present(emojiSheet, in: .window(.root))
+    }
+
+    private func presentOneTimePersistentMenu() {
+        guard let topController = pampGramTopController(context: self.context) else {
+            return
+        }
+
+        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+        let persistentSheet = ActionSheetController(presentationData: presentationData)
+
+        persistentSheet.setItemGroups([
+            ActionSheetItemGroup(items: [
+                ActionSheetTextItem(title: "Применить к последнему сообщению"),
+                ActionSheetButtonItem(title: "🔐 Одноразовое (обычное)", color: .accent, action: { [weak self, weak persistentSheet] in
+                    persistentSheet?.dismissAnimated()
+                    self?.messages.modify { messages in
+                        if !messages.isEmpty {
+                            messages[messages.count - 1].isOneTimeView = true
+                            messages[messages.count - 1].isPersistentOneTime = false
+                        }
+                    }
+                }),
+                ActionSheetButtonItem(title: "💾 Одноразовое (сохраняется)", color: .accent, action: { [weak self, weak persistentSheet] in
+                    persistentSheet?.dismissAnimated()
+                    self?.messages.modify { messages in
+                        if !messages.isEmpty {
+                            messages[messages.count - 1].isOneTimeView = true
+                            messages[messages.count - 1].isPersistentOneTime = true
+                        }
+                    }
+                })
+            ]),
+            ActionSheetItemGroup(items: [
+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak persistentSheet] in
+                    persistentSheet?.dismissAnimated()
+                })
+            ])
+        ])
+
+        topController.present(persistentSheet, in: .window(.root))
     }
 
     private func sendAllMessages() {
@@ -548,6 +674,72 @@ private func pampGramVisualChatPersistFile(data: Data, suggestedExtension: Strin
 
 private func pampGramTopUIViewController(context: AccountContext) -> UIViewController? {
     return (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController
+}
+
+// MARK: - Sticker Support
+
+@available(iOS 14.0, *)
+private var pampGramVisualChatActiveStickerPickerDelegate: PampGramVisualChatStickerPickerDelegate?
+
+@available(iOS 14.0, *)
+private final class PampGramVisualChatStickerPickerDelegate: NSObject, PHPickerViewControllerDelegate {
+    var completion: ((UIImage?) -> Void)?
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let result = results.first, result.itemProvider.canLoadObject(ofClass: UIImage.self) else {
+            self.completion?(nil)
+            return
+        }
+        result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
+            let image = object as? UIImage
+            DispatchQueue.main.async {
+                self?.completion?(image)
+            }
+        }
+    }
+}
+
+@available(iOS 14.0, *)
+private func pampGramVisualChatPresentInsertSticker(
+    context: AccountContext,
+    peerId: EnginePeer.Id,
+    isIncoming: Bool,
+    onStickerAdded: @escaping (Media) -> Void
+) {
+    guard let presentingController = pampGramTopUIViewController(context: context) else {
+        return
+    }
+
+    let delegate = PampGramVisualChatStickerPickerDelegate()
+    pampGramVisualChatActiveStickerPickerDelegate = delegate
+    delegate.completion = { image in
+        pampGramVisualChatActiveStickerPickerDelegate = nil
+        guard let image, let data = image.pngData() else {
+            return
+        }
+        guard let path = pampGramVisualChatPersistFile(data: data, suggestedExtension: "png") else {
+            return
+        }
+        let pixelSize: CGSize
+        if let cgImage = image.cgImage {
+            pixelSize = CGSize(width: cgImage.width, height: cgImage.height)
+        } else {
+            pixelSize = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
+        }
+        let resource = LocalFileReferenceMediaResource(localFilePath: path, randomId: Int64.random(in: Int64.min...Int64.max), isUniquelyReferencedTemporaryFile: false, size: Int64(data.count))
+        let representation = TelegramMediaImageRepresentation(dimensions: PixelDimensions(pixelSize), resource: resource, progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false)
+        let media = TelegramMediaImage(imageId: MediaId(namespace: Namespaces.Media.LocalImage, id: Int64.random(in: Int64.min...Int64.max)), representations: [representation], immediateThumbnailData: nil, reference: nil, partialReference: nil, flags: [])
+
+        onStickerAdded(media)
+    }
+
+    var configuration = PHPickerConfiguration(photoLibrary: .shared())
+    configuration.filter = .images
+    configuration.selectionLimit = 1
+    let picker = PHPickerViewController(configuration: configuration)
+    picker.delegate = delegate
+    presentingController.present(picker, animated: true, completion: nil)
 }
 
 /// Public API to present the visual chat menu
