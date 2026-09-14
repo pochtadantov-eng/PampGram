@@ -303,6 +303,15 @@ public struct PampGramSettings: Codable, Equatable {
     /// free by whoever it was actually sold to still does nothing until *that* Telegram account
     /// redeems its own key.
     public var licenseActivated: Bool
+    /// "Защита от краш-стикеров" (Ghost): watches every incoming sticker account-wide
+    /// (`PampGramCrashStickerGuard`) and, for one whose file metadata falls well outside real
+    /// Telegram's own sticker limits — the pattern a deliberately malformed "crash" sticker
+    /// exploiting a rendering bug would show — deletes it locally before it can be opened and
+    /// blocks whoever sent it. A heuristic on file size/dimensions, not a guarantee: it can
+    /// only catch stickers that are already anomalous by the numbers, never a new exploit that
+    /// hides inside an otherwise ordinary-looking file. Off by default since it acts (delete +
+    /// block) without asking first.
+    public var crashStickerProtectionEnabled: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -350,11 +359,12 @@ public struct PampGramSettings: Codable, Equatable {
             cachedIsProSubscriber: false,
             hideOwnPhoneNumber: false,
             fakePhoneNumber: "",
-            licenseActivated: false
+            licenseActivated: false,
+            crashStickerProtectionEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, hideIconInSettings: Bool, cachedIsProSubscriber: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, licenseActivated: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, hideIconInSettings: Bool, cachedIsProSubscriber: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, licenseActivated: Bool, crashStickerProtectionEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -397,6 +407,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.hideOwnPhoneNumber = hideOwnPhoneNumber
         self.fakePhoneNumber = fakePhoneNumber
         self.licenseActivated = licenseActivated
+        self.crashStickerProtectionEnabled = crashStickerProtectionEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -471,6 +482,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.hideOwnPhoneNumber = try container.decodeIfPresent(Bool.self, forKey: .hideOwnPhoneNumber) ?? defaults.hideOwnPhoneNumber
         self.fakePhoneNumber = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumber) ?? defaults.fakePhoneNumber
         self.licenseActivated = try container.decodeIfPresent(Bool.self, forKey: .licenseActivated) ?? defaults.licenseActivated
+        self.crashStickerProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .crashStickerProtectionEnabled) ?? defaults.crashStickerProtectionEnabled
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -507,6 +519,7 @@ public struct PampGramSettings: Codable, Equatable {
         settings.chatLockEnabled = false
         settings.infinitePinsEnabled = false
         settings.legalPremiumEnabled = false
+        settings.crashStickerProtectionEnabled = false
         return settings
     }
 
