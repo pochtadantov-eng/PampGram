@@ -59,28 +59,17 @@ public enum PampGramPhantomGiftStore {
         })
     }
 
+    /// Read-only. There is deliberately no matching setter here: every change to this balance
+    /// must go through `PampGramLocalLedgerStore.addAndApply`, so a spend or top-up can never
+    /// happen without a matching row in the local history explaining it (see that function's
+    /// doc comment).
     public static func fakeStarsBalance(transaction: Transaction) -> Int64 {
         return PampGramCore.settings(transaction: transaction).fakeStarsBalance
     }
 
-    public static func setFakeStarsBalance(transaction: Transaction, stars: Int64) {
-        PampGramCore.updateSettings(transaction: transaction, { settings in
-            var settings = settings
-            settings.fakeStarsBalance = stars
-            return settings
-        })
-    }
-
+    /// Read-only, same reasoning as `fakeStarsBalance`.
     public static func fakeTonBalanceNanos(transaction: Transaction) -> Int64 {
         return PampGramCore.settings(transaction: transaction).fakeTonBalanceNanos
-    }
-
-    public static func setFakeTonBalanceNanos(transaction: Transaction, nanos: Int64) {
-        PampGramCore.updateSettings(transaction: transaction, { settings in
-            var settings = settings
-            settings.fakeTonBalanceNanos = nanos
-            return settings
-        })
     }
 
     /// Live fake balance, for display (e.g. the "⭐ 50 000" label in the composer).

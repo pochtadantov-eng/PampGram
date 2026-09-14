@@ -12,6 +12,14 @@ public enum PampGramSubscriptionTier: String, Codable {
     case pro
 }
 
+/// What redeeming an activation key came back as — see `PampGramSubscriptionAPI.redeemKey`.
+public enum PampGramKeyRedeemResult {
+    case success(PampGramSubscriptionTier)
+    case alreadyUsed
+    case invalidKey
+    case networkError
+}
+
 /// The PampGram hub sections an admin can ban independently of a full-account ban. Raw values
 /// are the server's own section keys — see `server/pampgram-subs-worker/src/index.js`.
 public enum PampGramBanSection: String, Codable, CaseIterable {
@@ -125,6 +133,112 @@ public enum PampGramSubscriptionAPI {
                 task.cancel()
             }
         }
+    }
+
+    private struct LicenseStatusResponse: Decodable {
+        let licensed: Bool
+    }
+
+    /// Whether `userId` has redeemed an activation key, as the server sees it. Never fails
+    /// outward, same contract as `fetchTier`/`fetchBanStatus`: any network or decode problem
+    /// resolves to `false` — the caller (the hub screen) only ever *shows* the activation
+    /// screen off the back of an explicit server answer, never because a request happened to
+    /// fail; the locally-cached `PampGramSettings.licenseActivated` flag, once set to true, is
+    /// never cleared by this call coming back false.
+    public static func fetchLicenseStatus(userId: Int64) -> Signal<Bool, NoError> {
+        return Signal { subscriber in
+            guard let url = URL(string: "\(baseURL)/license-status?id=\(userId)") else {
+                subscriber.putNext(false)
+                subscriber.putCompletion()
+                return EmptyDisposable
+            }
+            let task = URLSession.shared.dataTask(with: url) { data, _, _ in
+                var licensed = false
+                if let data, let decoded = try? JSONDecoder().decode(LicenseStatusResponse.self, from: data) {
+                    licensed = decoded.licensed
+                }
+                subscriber.putNext(licensed)
+                subscriber.putCompletion()
+            }
+            task.resume()
+            return ActionDisposable {
+                task.cancel()
+            }
+        }
+    }
+
+    private struct RedeemKeyRequestBody: Encodable {
+        let key: String
+        let id: Int64
+    }
+
+    private struct RedeemKeyResponse: Decodable {
+        let ok: Bool?
+        let tier: String?
+        let error: String?
+    }
+
+    /// Redeems a one-time activation key for `userId` — the buyer's own action, no admin token
+    /// involved. First account to redeem a given key keeps it; every other account trying the
+    /// same key afterwards gets `.alreadyUsed`. On `.success`, the caller is expected to set
+    /// `PampGramSettings.licenseActivated = true` (see `PampGramActivationScreen.swift`) — this
+    /// call only talks to the server, it never touches local storage itself.
+    public static func redeemKey(key: String, userId: Int64, completion: @escaping (PampGramKeyRedeemResult) -> Void) {
+        guard let url = URL(string: "\(baseURL)/keys/redeem") else {
+            completion(.networkError)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(RedeemKeyRequestBody(key: key, id: userId))
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let result: PampGramKeyRedeemResult
+            let statusCode = (response as? HTTPURLResponse)?.statusCode
+            let decoded = data.flatMap { try? JSONDecoder().decode(RedeemKeyResponse.self, from: $0) }
+            if error != nil || (statusCode == nil && decoded == nil) {
+                result = .networkError
+            } else if decoded?.ok == true {
+                result = .success(decoded?.tier.flatMap(PampGramSubscriptionTier.init(rawValue:)) ?? .standard)
+            } else if statusCode == 409 {
+                result = .alreadyUsed
+            } else {
+                result = .invalidKey
+            }
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }.resume()
+    }
+
+    private struct GenerateKeyRequestBody: Encodable {
+        let token: String
+        let tier: String
+    }
+
+    private struct GenerateKeyResponse: Decodable {
+        let key: String?
+    }
+
+    /// Admin-only: mints one new, unused activation key for the given tier. Returns `nil` on
+    /// any failure (bad token, network problem, server error) rather than a partial key.
+    public static func generateKey(tier: PampGramSubscriptionTier, adminToken: String, completion: @escaping (String?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/keys/generate") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: tier.rawValue))
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            let key = data.flatMap { try? JSONDecoder().decode(GenerateKeyResponse.self, from: $0) }?.key
+            DispatchQueue.main.async {
+                completion(key)
+            }
+        }.resume()
     }
 
     /// Admin-only: sets `userId`'s tier on the server. Called only from the admin screen,

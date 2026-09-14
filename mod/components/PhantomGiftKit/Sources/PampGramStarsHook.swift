@@ -99,37 +99,39 @@ public enum PampGramStarsHook {
     /// Settles the purchase against the local ruble wallet. Calls `completion(true)` and credits the
     /// fake Stars balance when the balance covers `priceKopecks` (or the price is unknown / 0), and
     /// `completion(false)` without any change when it does not.
+    ///
+    /// Both halves of the purchase go through `PampGramLocalLedgerStore.addAndApply`, so a
+    /// paid purchase always leaves *two* matching rows behind — a "Списание" in the rubles
+    /// history for the card and a "Пополнение" in the Stars history for the balance — instead
+    /// of only the Stars side being visible. Both writes happen in the same Postbox
+    /// transaction as everything else PampGram persists, so they're on disk (and survive an
+    /// app relaunch) the moment this transaction commits.
     public static func attemptPayment(context: AccountContext, count: Int64, priceKopecks: Int64, completion: @escaping (Bool) -> Void) {
         let _ = (context.account.postbox.transaction { transaction -> Bool in
-            var ok = true
-            var starsAfter: Int64 = 0
-            PampGramCore.updateSettings(transaction: transaction, { settings in
-                var settings = settings
-                if priceKopecks > 0 && settings.localRublesBalanceKopecks < priceKopecks {
-                    ok = false
-                    return settings
+            if priceKopecks > 0 {
+                let currentRubles = PampGramCore.rawSettings(transaction: transaction).localRublesBalanceKopecks
+                if currentRubles < priceKopecks {
+                    return false
                 }
-                if priceKopecks > 0 {
-                    settings.localRublesBalanceKopecks -= priceKopecks
-                }
-                settings.fakeStarsBalance += count
-                starsAfter = settings.fakeStarsBalance
-                return settings
-            })
-            if ok {
-                // Buying Stars for rubles is a Stars top-up (пополнение) in the Stars history —
-                // there is no separate rubles history.
-                let details = priceKopecks > 0 ? "Покупка звёзд за рубли" : "Покупка звёзд Telegram"
-                PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
-                    currency: .stars,
-                    kind: .topUp,
-                    amount: count,
-                    title: "Пополнение Stars",
-                    details: details,
-                    balanceAfter: starsAfter
-                ))
+                let _ = PampGramLocalLedgerStore.addAndApply(
+                    transaction: transaction,
+                    currency: .rubles,
+                    kind: .debit,
+                    amount: -priceKopecks,
+                    title: "Оплата Stars",
+                    details: "Списание с локальной карты"
+                )
             }
-            return ok
+            let details = priceKopecks > 0 ? "Покупка звёзд за рубли" : "Покупка звёзд Telegram"
+            let _ = PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
+                currency: .stars,
+                kind: .topUp,
+                amount: count,
+                title: "Пополнение Stars",
+                details: details
+            )
+            return true
         }
         |> deliverOnMainQueue).start(next: { ok in
             if ok {
@@ -253,6 +255,7 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         let closeConfig = UIImage.SymbolConfiguration(pointSize: 14.0, weight: .bold)
         closeButton.setImage(UIImage(systemName: "xmark", withConfiguration: closeConfig), for: .normal)
         closeButton.addTarget(self, action: #selector(self.cancelTapped), for: .touchUpInside)
+        self.addPressFeedback(to: closeButton)
         self.sheet.addSubview(closeButton)
 
         // App icon: a Telegram-style blue squircle with a white paper plane.
@@ -451,7 +454,58 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         doubleTap.numberOfTapsRequired = 2
         self.view.addGestureRecognizer(doubleTap)
 
+        // Immediate touch-down/up feedback on the purchase card so the confirm gesture feels like
+        // pressing a real button, not just a silent double-tap.
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(self.cardPressChanged(_:)))
+        press.minimumPressDuration = 0.0
+        press.cancelsTouchesInView = false
+        card.addGestureRecognizer(press)
+        self.pressableCard = card
+
         self.applyBiometryPrompt()
+    }
+
+    private var pressableCard: UIView?
+
+    /// Adds a spring-based scale + fade press animation to `button`, so every tappable control in
+    /// this sheet reacts immediately and smoothly instead of only on the eventual `touchUpInside`.
+    private func addPressFeedback(to button: UIButton) {
+        button.addTarget(self, action: #selector(self.buttonPressDown(_:)), for: .touchDown)
+        button.addTarget(self, action: #selector(self.buttonPressUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+    }
+
+    @objc private func buttonPressDown(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.18, delay: 0.0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+            sender.transform = CGAffineTransform(scaleX: 0.88, y: 0.88)
+            sender.alpha = 0.7
+        }, completion: nil)
+    }
+
+    @objc private func buttonPressUp(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.32, delay: 0.0, usingSpringWithDamping: 0.55, initialSpringVelocity: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+            sender.transform = .identity
+            sender.alpha = 1.0
+        }, completion: nil)
+    }
+
+    @objc private func cardPressChanged(_ gesture: UILongPressGestureRecognizer) {
+        guard let card = self.pressableCard, !self.finished else {
+            return
+        }
+        switch gesture.state {
+        case .began:
+            UIView.animate(withDuration: 0.2, delay: 0.0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+                card.transform = CGAffineTransform(scaleX: 0.97, y: 0.97)
+                card.alpha = 0.9
+            }, completion: nil)
+        case .ended, .cancelled, .failed:
+            UIView.animate(withDuration: 0.35, delay: 0.0, usingSpringWithDamping: 0.55, initialSpringVelocity: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+                card.transform = .identity
+                card.alpha = 1.0
+            }, completion: nil)
+        default:
+            break
+        }
     }
 
     private func applyBiometryPrompt() {

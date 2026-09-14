@@ -15,13 +15,15 @@ import PampGramCore
 private final class PampGramAdminArguments {
     let setAdminToken: () -> Void
     let grantSubscription: () -> Void
+    let generateKey: () -> Void
     let banFull: () -> Void
     let banSection: () -> Void
     let openBannedList: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, generateKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
+        self.generateKey = generateKey
         self.banFull = banFull
         self.banSection = banSection
         self.openBannedList = openBannedList
@@ -32,6 +34,7 @@ private enum PampGramAdminSection: Int32 {
     case about
     case token
     case grant
+    case keys
     case ban
 }
 
@@ -44,6 +47,10 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
 
     case grantAction(String, Bool)
     case grantFooter(String)
+
+    case keysHeader(String)
+    case generateKeyAction(String, Bool)
+    case keysFooter(String)
 
     case banHeader(String)
     case banFullAction(String, Bool)
@@ -59,6 +66,8 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return PampGramAdminSection.token.rawValue
         case .grantAction, .grantFooter:
             return PampGramAdminSection.grant.rawValue
+        case .keysHeader, .generateKeyAction, .keysFooter:
+            return PampGramAdminSection.keys.rawValue
         case .banHeader, .banFullAction, .banSectionAction, .unbanAction, .banFooter:
             return PampGramAdminSection.ban.rawValue
         }
@@ -78,16 +87,22 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 4
         case .grantFooter:
             return 5
-        case .banHeader:
+        case .keysHeader:
             return 6
-        case .banFullAction:
+        case .generateKeyAction:
             return 7
-        case .banSectionAction:
+        case .keysFooter:
             return 8
-        case .unbanAction:
+        case .banHeader:
             return 9
-        case .banFooter:
+        case .banFullAction:
             return 10
+        case .banSectionAction:
+            return 11
+        case .unbanAction:
+            return 12
+        case .banFooter:
+            return 13
         }
     }
 
@@ -104,6 +119,12 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let (.grantAction(lhsTitle, lhsEnabled), .grantAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.grantFooter(lhsText), .grantFooter(rhsText)):
+            return lhsText == rhsText
+        case let (.keysHeader(lhsText), .keysHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.generateKeyAction(lhsTitle, lhsEnabled), .generateKeyAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.keysFooter(lhsText), .keysFooter(rhsText)):
             return lhsText == rhsText
         case let (.banHeader(lhsText), .banHeader(rhsText)):
             return lhsText == rhsText
@@ -127,9 +148,9 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdminArguments
         switch self {
-        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .banFooter(text):
+        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .keysFooter(text), let .banFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .tokenHeader(text), let .banHeader(text):
+        case let .tokenHeader(text), let .keysHeader(text), let .banHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .tokenRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
@@ -138,6 +159,10 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let .grantAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.grantSubscription()
+            })
+        case let .generateKeyAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.generateKey()
             })
         case let .banFullAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -343,6 +368,43 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                 ))
             })
         },
+        generateKey: {
+            requireAdminToken { adminToken in
+                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+
+                let apply: (PampGramSubscriptionTier) -> Void = { tier in
+                    PampGramSubscriptionAPI.generateKey(tier: tier, adminToken: adminToken) { key in
+                        guard let key else {
+                            presentTooltipImpl?("Не получилось — проверь, что бэкенд задеплоен, baseURL заполнен, а токен совпадает с ADMIN_TOKEN на сервере.")
+                            return
+                        }
+                        UIPasteboard.general.string = key
+                        presentTooltipImpl?("Ключ скопирован: \(key)\nОтправь его покупателю — сработает один раз, на первом аккаунте, который его введёт.")
+                    }
+                }
+
+                let sheet = ActionSheetController(presentationData: presentationData)
+                sheet.setItemGroups([
+                    ActionSheetItemGroup(items: [
+                        ActionSheetTextItem(title: "Тариф для нового ключа"),
+                        ActionSheetButtonItem(title: "STANDARD", color: .accent, action: { [weak sheet] in
+                            sheet?.dismissAnimated()
+                            apply(.standard)
+                        }),
+                        ActionSheetButtonItem(title: "PRO", color: .accent, action: { [weak sheet] in
+                            sheet?.dismissAnimated()
+                            apply(.pro)
+                        })
+                    ]),
+                    ActionSheetItemGroup(items: [
+                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                            sheet?.dismissAnimated()
+                        })
+                    ])
+                ])
+                presentControllerImpl?(sheet)
+            }
+        },
         banFull: {
             requireAdminToken { adminToken in
                 presentControllerImpl?(promptController(
@@ -426,6 +488,9 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .tokenFooter("Секрет для авторизации на сервере — задаётся один раз, хранится только на этом устройстве."),
             .grantAction("Выдать подписку", adminToken != nil),
             .grantFooter("Меняет тариф человека на всех его устройствах — это единственная функция PampGram, которая обращается к серверу, а не хранит всё локально."),
+            .keysHeader("КЛЮЧИ АКТИВАЦИИ"),
+            .generateKeyAction("Сгенерировать ключ", adminToken != nil),
+            .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются."),
             .banHeader("ДОСТУП"),
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),

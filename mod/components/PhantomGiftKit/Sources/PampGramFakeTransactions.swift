@@ -2,6 +2,7 @@ import Foundation
 import TelegramCore
 import SwiftSignalKit
 import AccountContext
+import PampGramCore
 
 /// Turns this device's Phantom Gifts into rows for the real Stars/TON transaction-history
 /// screen. Deliberately never touches `StarsContext`/`StarsTransactionsContext` — merging
@@ -20,12 +21,34 @@ public extension PampGramPhantomGiftStore {
     /// - A credit when a gift already in the profile was later sold (`soldDate != nil`).
     static func fakeTransactionsSignal(context: AccountContext, ton: Bool, mode: StarsTransactionsContext.Mode) -> Signal<[StarsContext.State.Transaction], NoError> {
         let currency: CurrencyAmount.Currency = ton ? .ton : .stars
+        let ledgerCurrency: PampGramLocalCurrency = ton ? .ton : .stars
         let selfPeerId = context.account.peerId
 
-        return self.allGiftsSignal(context: context)
-        |> mapToSignal { gifts -> Signal<[StarsContext.State.Transaction], NoError> in
+        return combineLatest(self.allGiftsSignal(context: context), PampGramLocalLedgerStore.signal(postbox: context.account.postbox))
+        |> mapToSignal { gifts, operations -> Signal<[StarsContext.State.Transaction], NoError> in
             let relevant = gifts.filter { $0.price.currency == currency && !$0.isReceived }
-            if relevant.isEmpty {
+
+            // Ledger rows with no matching gift record — Stars bought with the local ruble
+            // card (PampGramStarsHook), and manual balance corrections from the settings
+            // screen — so a spend/top-up never goes missing from the real Stars/TON history
+            // just because it didn't come from a gift purchase. Every gift-derived row below
+            // carries a `giftId`, so filtering those out here never duplicates one.
+            let ledgerTransactions: [StarsContext.State.Transaction] = operations
+                .filter { $0.currency == ledgerCurrency && $0.giftId == nil }
+                .map { operation in
+                    self.fakeTransaction(
+                        id: "pampgram_ledger_\(operation.id)",
+                        flags: [],
+                        amount: StarsAmount(value: operation.amount, nanos: 0),
+                        currency: currency,
+                        date: operation.date,
+                        peer: .appStore,
+                        title: operation.title,
+                        starGift: nil
+                    )
+                }
+
+            if relevant.isEmpty && ledgerTransactions.isEmpty {
                 return .single([])
             }
             let peerIds = Array(Set(relevant.map { $0.peerId }))
@@ -62,7 +85,7 @@ public extension PampGramPhantomGiftStore {
                         amount: StarsAmount(value: -gift.price.amount.value, nanos: -gift.price.amount.nanos),
                         currency: currency,
                         date: gift.date,
-                        peer: peer,
+                        peer: .peer(peer),
                         title: nil,
                         starGift: gift.gift
                     ))
@@ -74,7 +97,7 @@ public extension PampGramPhantomGiftStore {
                             amount: gift.price.amount,
                             currency: currency,
                             date: gift.date,
-                            peer: peer,
+                            peer: .peer(peer),
                             title: gift.title,
                             starGift: nil
                         ))
@@ -87,12 +110,14 @@ public extension PampGramPhantomGiftStore {
                             amount: gift.price.amount,
                             currency: currency,
                             date: soldDate,
-                            peer: peer,
+                            peer: .peer(peer),
                             title: gift.title,
                             starGift: gift.gift
                         ))
                     }
                 }
+
+                transactions.append(contentsOf: ledgerTransactions)
 
                 switch mode {
                 case .all:
@@ -108,13 +133,13 @@ public extension PampGramPhantomGiftStore {
         }
     }
 
-    private static func fakeTransaction(id: String, flags: StarsContext.State.Transaction.Flags, amount: StarsAmount, currency: CurrencyAmount.Currency, date: Int32, peer: EnginePeer, title: String?, starGift: StarGift?) -> StarsContext.State.Transaction {
+    private static func fakeTransaction(id: String, flags: StarsContext.State.Transaction.Flags, amount: StarsAmount, currency: CurrencyAmount.Currency, date: Int32, peer: StarsContext.State.Transaction.Peer, title: String?, starGift: StarGift?) -> StarsContext.State.Transaction {
         return StarsContext.State.Transaction(
             flags: flags,
             id: id,
             count: CurrencyAmount(amount: amount, currency: currency),
             date: date,
-            peer: .peer(peer),
+            peer: peer,
             title: title,
             description: nil,
             photo: nil,
