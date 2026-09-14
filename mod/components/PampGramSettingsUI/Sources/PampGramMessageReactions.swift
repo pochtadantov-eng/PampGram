@@ -1,145 +1,110 @@
 import Foundation
+import UIKit
+import Display
 import Postbox
 import TelegramCore
 import SwiftSignalKit
+import TelegramPresentationData
 import AccountContext
 
 /**
- PampGramMessageReactions — реакции эмодзи на сообщения
- ======================================================
+ PampGramMessageReactions — эмодзи-реакция на любое сообщение
+ =============================================================
 
- Позволяет добавлять эмодзи-реакции к любому сообщению (текст, фото, голос, стикер).
- Реакции сохраняются локально и видны только на этом устройстве.
+ В отличие от первой версии этого файла (хранившей реакции отдельно в
+ UserDefaults, откуда их никто и никогда не читал для отображения),
+ реакция пишется прямо в `ReactionsMessageAttribute` самого сообщения
+ через `transaction.updateMessage` — тот же локальный-only приём, что и
+ у "Изменить текст" (PampGramVisualEditScreen.swift). Стоковый рендеринг
+ Telegram уже умеет рисовать этот атрибут как обычные пилюли реакций под
+ сообщением, так что ничего в отрисовке бабла патчить не нужно — эмодзи
+ просто появляется, как будто кто-то отреагировал по-настоящему.
+ Работает одинаково для текста, фото, голосового и стикера — атрибут не
+ зависит от типа медиа.
  */
 
-struct MessageReaction {
-    let emoji: String
-    let messageId: MessageId
-    let addedAt: Date
+/// Добавляет/убирает `emoji` в списке реакций сообщения (сохраняя все
+/// остальные существующие реакции, включая настоящие, если они есть).
+public func pampGramToggleMessageReaction(context: AccountContext, messageId: MessageId, emoji: String) {
+    let _ = context.account.postbox.transaction { transaction -> Void in
+        transaction.updateMessage(messageId, update: { currentMessage -> PostboxUpdateMessage in
+            let existingAttribute = currentMessage.attributes.compactMap { $0 as? ReactionsMessageAttribute }.first
+            var reactions = existingAttribute?.reactions ?? []
+            if let index = reactions.firstIndex(where: { $0.value == .builtin(emoji) }) {
+                reactions.remove(at: index)
+            } else {
+                reactions.append(MessageReaction(value: .builtin(emoji), count: 1, chosenOrder: 0))
+            }
 
-    var key: String {
-        return "\(messageId.peerId.namespace)_\(messageId.id)_\(emoji)"
-    }
+            let newAttribute = ReactionsMessageAttribute(
+                canViewList: existingAttribute?.canViewList ?? true,
+                isTags: existingAttribute?.isTags ?? false,
+                reactions: reactions,
+                recentPeers: existingAttribute?.recentPeers ?? [],
+                topPeers: existingAttribute?.topPeers ?? []
+            )
+            var attributes = currentMessage.attributes.filter { !($0 is ReactionsMessageAttribute) }
+            attributes.append(newAttribute)
+
+            let updatedMessage = StoreMessage(
+                id: messageId,
+                customStableId: currentMessage.customStableId,
+                globallyUniqueId: currentMessage.globallyUniqueId,
+                groupingKey: currentMessage.groupingKey,
+                threadId: currentMessage.threadId,
+                timestamp: currentMessage.timestamp,
+                flags: StoreMessageFlags(currentMessage.flags),
+                tags: currentMessage.tags,
+                globalTags: currentMessage.globalTags,
+                localTags: currentMessage.localTags,
+                forwardInfo: currentMessage.forwardInfo.map(StoreMessageForwardInfo.init),
+                authorId: currentMessage.author?.id,
+                text: currentMessage.text,
+                attributes: attributes,
+                media: currentMessage.media
+            )
+            return .update(updatedMessage)
+        })
+    }.start()
 }
 
-private let messageReactionsStorageKey = "PampGram.MessageReactions"
-
-private var messageReactionsStore: [String: MessageReaction] = {
-    if let data = UserDefaults.standard.data(forKey: messageReactionsStorageKey),
-       let decoded = try? JSONDecoder().decode([String: MessageReaction].self, from: data) {
-        return decoded
-    }
-    return [:]
-}()
-
-/// Добавляет реакцию к сообщению
-public func pampGramAddMessageReaction(
-    messageId: MessageId,
-    emoji: String
-) {
-    let reaction = MessageReaction(
-        emoji: emoji,
-        messageId: messageId,
-        addedAt: Date()
-    )
-
-    messageReactionsStore[reaction.key] = reaction
-    saveReactions()
-}
-
-/// Удаляет реакцию со сообщения
-public func pampGramRemoveMessageReaction(
-    messageId: MessageId,
-    emoji: String
-) {
-    let key = "\(messageId.peerId.namespace)_\(messageId.id)_\(emoji)"
-    messageReactionsStore.removeValue(forKey: key)
-    saveReactions()
-}
-
-/// Получает все реакции для сообщения
-public func pampGramGetMessageReactions(messageId: MessageId) -> [String] {
-    return messageReactionsStore.values
-        .filter { $0.messageId == messageId }
-        .map { $0.emoji }
-}
-
-/// Проверяет есть ли реакция на сообщении
-public func pampGramHasMessageReaction(messageId: MessageId, emoji: String) -> Bool {
-    let key = "\(messageId.peerId.namespace)_\(messageId.id)_\(emoji)"
-    return messageReactionsStore[key] != nil
-}
-
-/// Получает все реакции
-public func pampGramGetAllMessageReactions() -> [MessageReaction] {
-    return Array(messageReactionsStore.values)
-}
-
-/// Переключает реакцию (добавляет или удаляет)
-public func pampGramToggleMessageReaction(messageId: MessageId, emoji: String) {
-    if pampGramHasMessageReaction(messageId: messageId, emoji: emoji) {
-        pampGramRemoveMessageReaction(messageId: messageId, emoji: emoji)
-    } else {
-        pampGramAddMessageReaction(messageId: messageId, emoji: emoji)
-    }
-}
-
-/// Удаляет все реакции со сообщения
-public func pampGramClearMessageReactions(messageId: MessageId) {
-    let reactionsToRemove = messageReactionsStore.values
-        .filter { $0.messageId == messageId }
-        .map { $0.key }
-
-    for key in reactionsToRemove {
-        messageReactionsStore.removeValue(forKey: key)
-    }
-
-    saveReactions()
-}
-
-/// Сохраняет реакции в UserDefaults
-private func saveReactions() {
-    if let encoded = try? JSONEncoder().encode(messageReactionsStore) {
-        UserDefaults.standard.set(encoded, forKey: messageReactionsStorageKey)
-    }
-}
-
-/// Получает популярные эмодзи
+/// Часто используемые эмодзи для быстрого выбора в пикере.
 public func pampGramGetPopularEmojis() -> [String] {
     return [
         "👍", "❤️", "😂", "😮", "😢", "😡", "🔥", "👏", "🙏", "💯",
-        "✨", "🎉", "🎈", "🎁", "🌹", "💐", "⭐", "💫", "🌟", "💥",
-        "😍", "😘", "😌", "😎", "🤔", "🤨", "😏", "😋", "😜", "🤣",
-        "🥰", "😇", "🤗", "😏", "💩", "👻", "🤐", "😈", "🤡", "🎭"
+        "✨", "🎉", "🎈", "🎁", "🌹", "😍", "😘", "🤔", "😏", "🤣"
     ]
 }
 
-// Codable conformance
-extension MessageReaction: Codable {
-    enum CodingKeys: String, CodingKey {
-        case emoji
-        case peerId
-        case messageId
-        case addedAt
+/// "PampGram" → "Поставить реакцию": ActionSheet со списком эмодзи, каждый
+/// тап сразу переключает эту реакцию на сообщении и закрывает лист. Ищет
+/// свой собственный top controller (тот же приём, что и остальные
+/// pampGramPresent*-функции), так что вызывающему не нужно передавать
+/// presenting controller явно.
+public func pampGramPresentReactionPicker(context: AccountContext, messageId: MessageId) {
+    guard let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController else {
+        return
+    }
+    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+    let sheet = ActionSheetController(presentationData: presentationData)
+
+    var buttons: [ActionSheetItem] = [
+        ActionSheetTextItem(title: "Реакция на сообщение")
+    ]
+    for emoji in pampGramGetPopularEmojis() {
+        buttons.append(ActionSheetButtonItem(title: emoji, color: .accent, action: { [weak sheet] in
+            sheet?.dismissAnimated()
+            pampGramToggleMessageReaction(context: context, messageId: messageId, emoji: emoji)
+        }))
     }
 
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let emoji = try container.decode(String.self, forKey: .emoji)
-        let peerIdValue = try container.decode(Int64.self, forKey: .peerId)
-        let messageIdValue = try container.decode(Int32.self, forKey: .messageId)
-        let addedAt = try container.decode(Date.self, forKey: .addedAt)
-
-        self.emoji = emoji
-        self.messageId = MessageId(peerId: PeerId(peerIdValue), namespace: Namespaces.Message.Local, id: messageIdValue)
-        self.addedAt = addedAt
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(emoji, forKey: .emoji)
-        try container.encode(messageId.peerId.toInt64(), forKey: .peerId)
-        try container.encode(messageId.id, forKey: .messageId)
-        try container.encode(addedAt, forKey: .addedAt)
-    }
+    sheet.setItemGroups([
+        ActionSheetItemGroup(items: buttons),
+        ActionSheetItemGroup(items: [
+            ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+            })
+        ])
+    ])
+    topController.present(sheet, in: .window(.root))
 }

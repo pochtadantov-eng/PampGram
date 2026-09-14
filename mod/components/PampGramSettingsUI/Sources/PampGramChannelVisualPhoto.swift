@@ -522,9 +522,11 @@ public func pampGramPresentChannelVisualPhotoMenu(context: AccountContext, chann
         return
     }
 
+    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
     let photoController = PampGramChannelVisualPhotoController(context: context, channelId: channelId)
-    let navigationController = NavigationController(rootViewController: photoController)
-    topController.present(navigationController, in: .window(.root))
+    let navigationController = NavigationController(mode: .single, theme: NavigationControllerTheme(presentationTheme: presentationData.theme))
+    navigationController.viewControllers = [photoController]
+    topController.present(navigationController, animated: true, completion: nil)
 }
 
 // MARK: - Helper Functions

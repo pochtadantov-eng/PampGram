@@ -19906,7 +19906,7 @@ index a1a8f61d..8d28620c 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5bb..57ff7a74 100644
+index 07cef5bb..f0f2929a 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -19920,7 +19920,7 @@ index 07cef5bb..57ff7a74 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,87 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,107 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -19996,6 +19996,26 @@ index 07cef5bb..57ff7a74 100644
 +            }, iconSource: nil, action: { _, f in
 +                f(.dismissWithoutContent)
 +                pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
++            })))
++            subItems.append(.action(ContextMenuActionItem(text: "Поставить реакцию", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "face.smiling"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                pampGramPresentReactionPicker(context: context, messageId: message.id)
++            })))
++            subItems.append(.action(ContextMenuActionItem(text: "Сохранить одноразовое", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "lock.open"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
++            })))
++            subItems.append(.action(ContextMenuActionItem(text: "Визуальное фото в канал", textColor: .primary, icon: { theme in
++                return generateTintedImage(image: UIImage(systemName: "camera"), color: theme.actionSheet.primaryTextColor)
++            }, iconSource: nil, action: { _, f in
++                f(.dismissWithoutContent)
++                if #available(iOS 14.0, *) {
++                    pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
++                }
 +            })))
 +            c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
 +        })), at: 0)

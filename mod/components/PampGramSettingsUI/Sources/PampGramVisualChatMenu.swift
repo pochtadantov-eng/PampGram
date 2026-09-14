@@ -757,7 +757,9 @@ public func pampGramPresentVisualChatMenu(context: AccountContext, peerId: Engin
     guard let topController = pampGramTopController(context: context) else {
         return
     }
+    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
     let menuController = PampGramVisualChatMenuController(context: context, peerId: peerId)
-    let navigationController = NavigationController(rootViewController: menuController)
-    topController.present(navigationController, in: .window(.root))
+    let navigationController = NavigationController(mode: .single, theme: NavigationControllerTheme(presentationTheme: presentationData.theme))
+    navigationController.viewControllers = [menuController]
+    topController.present(navigationController, animated: true, completion: nil)
 }

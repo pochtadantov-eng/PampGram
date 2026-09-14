@@ -199,18 +199,18 @@ import TelegramCore
  ИСПОЛЬЗОВАНИЕ API
  ==================
 
- Реакции:
+ Реакции (уже подключено в меню сообщения "PampGram" → "Поставить
+ реакцию" — см. ChatInterfaceStateContextMenus.swift):
  ```swift
- pampGramAddMessageReaction(messageId: messageId, emoji: "👍")
- pampGramGetMessageReactions(messageId: messageId)
- pampGramToggleMessageReaction(messageId: messageId, emoji: "❤️")
+ pampGramPresentReactionPicker(context: context, messageId: messageId)
+ pampGramToggleMessageReaction(context: context, messageId: messageId, emoji: "❤️")
  ```
 
- Одноразовые сообщения:
+ Одноразовые сообщения (то же меню, пункт "Сохранить одноразовое"):
  ```swift
  pampGramSaveOneTimeMessage(context: context, messageId: messageId, isPersistent: true)
  pampGramGetOneTimeMessages()
- pampGramMakeOneTimeMessagePersistent(context: context, messageId: messageId)
+ pampGramGetOneTimeMessageInfo(messageId: messageId)
  ```
  */
 
