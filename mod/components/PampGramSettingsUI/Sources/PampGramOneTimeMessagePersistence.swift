@@ -63,7 +63,7 @@ private func pampGramRemoveOneTimeDestructFlag(
 ) {
     let _ = context.account.postbox.transaction { transaction -> Void in
         transaction.updateMessage(messageId, update: { currentMessage -> PostboxUpdateMessage in
-            var attributes = currentMessage.attributes.filter { !($0 is AutoremoveTimeoutMessageAttribute) }
+            let attributes = currentMessage.attributes.filter { !($0 is AutoremoveTimeoutMessageAttribute) }
 
             let updatedMessage = StoreMessage(
                 id: messageId,
@@ -139,10 +139,7 @@ public func pampGramRestoreOneTimeMessage(
     messageId: MessageId
 ) -> Signal<Bool, NoError> {
     return context.account.postbox.transaction { transaction -> Bool in
-        if let message = transaction.getMessage(messageId) {
-            return true
-        }
-        return false
+        return transaction.getMessage(messageId) != nil
     }
 }
 

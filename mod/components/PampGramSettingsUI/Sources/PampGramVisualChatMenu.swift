@@ -228,7 +228,6 @@ public class PampGramVisualChatMenuController: ViewController {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
         button.addTarget(self, action: #selector(self.buttonTapped(_:)), for: .touchUpInside)
-        button.tag = Int(bitPattern: ObjectIdentifier(action as! AnyObject).hashValue)
         objc_setAssociatedObject(button, &actionKey, action, .OBJC_ASSOCIATION_COPY_NONATOMIC)
         return button
     }
@@ -259,6 +258,24 @@ public class PampGramVisualChatMenuController: ViewController {
         self.dismiss()
     }
 
+    private func appendMessage(_ message: VisualChatMessage) {
+        let _ = self.messages.modify { messages in
+            var messages = messages
+            messages.append(message)
+            return messages
+        }
+    }
+
+    private func updateLastMessage(_ update: (inout VisualChatMessage) -> Void) {
+        let _ = self.messages.modify { messages in
+            var messages = messages
+            if !messages.isEmpty {
+                update(&messages[messages.count - 1])
+            }
+            return messages
+        }
+    }
+
     private func presentAddTextMenu(incoming: Bool) {
         let controller = pampGramVisualChatTextInputController(
             context: self.context,
@@ -266,7 +283,7 @@ public class PampGramVisualChatMenuController: ViewController {
             isIncoming: incoming,
             onTextAdded: { [weak self] text in
                 let message = VisualChatMessage.textMessage(isIncoming: incoming, text: text)
-                let _ = self?.messages.modify { $0.append(message) }
+                self?.appendMessage(message)
                 self?.dismiss()
             }
         )
@@ -280,7 +297,7 @@ public class PampGramVisualChatMenuController: ViewController {
             isIncoming: incoming,
             onPhotoAdded: { [weak self] media in
                 let message = VisualChatMessage.mediaMessage(isIncoming: incoming, media: [media])
-                let _ = self?.messages.modify { $0.append(message) }
+                self?.appendMessage(message)
             }
         )
     }
@@ -293,7 +310,7 @@ public class PampGramVisualChatMenuController: ViewController {
             asVoice: true,
             onFileAdded: { [weak self] media in
                 let message = VisualChatMessage.mediaMessage(isIncoming: incoming, media: [media])
-                let _ = self?.messages.modify { $0.append(message) }
+                self?.appendMessage(message)
             }
         )
     }
@@ -305,7 +322,7 @@ public class PampGramVisualChatMenuController: ViewController {
             isIncoming: incoming,
             onStickerAdded: { [weak self] media in
                 let message = VisualChatMessage.mediaMessage(isIncoming: incoming, media: [media])
-                let _ = self?.messages.modify { $0.append(message) }
+                self?.appendMessage(message)
             }
         )
     }
@@ -320,28 +337,25 @@ public class PampGramVisualChatMenuController: ViewController {
 
         let commonEmojis = ["👍", "❤️", "😂", "😮", "😢", "😡", "🔥", "👏", "🙏", "💯", "✨", "🎉"]
 
-        var items: [ActionSheetItem] = [
+        var mainGroupItems: [ActionSheetItem] = [
             ActionSheetTextItem(title: "Выберите эмодзи для последнего сообщения")
         ]
 
         for emoji in commonEmojis {
-            items.append(ActionSheetButtonItem(title: emoji, color: .accent, action: { [weak self, weak emojiSheet] in
+            mainGroupItems.append(ActionSheetButtonItem(title: emoji, color: .accent, action: { [weak self, weak emojiSheet] in
                 emojiSheet?.dismissAnimated()
-                self?.messages.modify { messages in
-                    if !messages.isEmpty {
-                        messages[messages.count - 1].emojiReactions.append(emoji)
-                    }
-                }
+                self?.updateLastMessage { $0.emojiReactions.append(emoji) }
             }))
         }
 
-        items.append(ActionSheetItemGroup(items: [
-            ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak emojiSheet] in
-                emojiSheet?.dismissAnimated()
-            })
-        ]))
-
-        emojiSheet.setItemGroups(items)
+        emojiSheet.setItemGroups([
+            ActionSheetItemGroup(items: mainGroupItems),
+            ActionSheetItemGroup(items: [
+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak emojiSheet] in
+                    emojiSheet?.dismissAnimated()
+                })
+            ])
+        ])
         topController.present(emojiSheet, in: .window(.root))
     }
 
@@ -358,20 +372,16 @@ public class PampGramVisualChatMenuController: ViewController {
                 ActionSheetTextItem(title: "Применить к последнему сообщению"),
                 ActionSheetButtonItem(title: "🔐 Одноразовое (обычное)", color: .accent, action: { [weak self, weak persistentSheet] in
                     persistentSheet?.dismissAnimated()
-                    self?.messages.modify { messages in
-                        if !messages.isEmpty {
-                            messages[messages.count - 1].isOneTimeView = true
-                            messages[messages.count - 1].isPersistentOneTime = false
-                        }
+                    self?.updateLastMessage {
+                        $0.isOneTimeView = true
+                        $0.isPersistentOneTime = false
                     }
                 }),
                 ActionSheetButtonItem(title: "💾 Одноразовое (сохраняется)", color: .accent, action: { [weak self, weak persistentSheet] in
                     persistentSheet?.dismissAnimated()
-                    self?.messages.modify { messages in
-                        if !messages.isEmpty {
-                            messages[messages.count - 1].isOneTimeView = true
-                            messages[messages.count - 1].isPersistentOneTime = true
-                        }
+                    self?.updateLastMessage {
+                        $0.isOneTimeView = true
+                        $0.isPersistentOneTime = true
                     }
                 })
             ]),
