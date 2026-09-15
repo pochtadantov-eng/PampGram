@@ -465,7 +465,6 @@ private func pampGramVisualChatTextInputController(
     isIncoming: Bool,
     onTextAdded: @escaping (String) -> Void
 ) -> ViewController {
-    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
     return promptController(
         context: context,
         text: isIncoming ? "Текст собеседника" : "Текст от меня",
