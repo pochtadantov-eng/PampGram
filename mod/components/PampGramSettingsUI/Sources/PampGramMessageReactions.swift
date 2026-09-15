@@ -48,7 +48,7 @@ public func pampGramToggleMessageReaction(context: AccountContext, messageId: Me
 
             let updatedMessage = StoreMessage(
                 id: messageId,
-                customStableId: currentMessage.customStableId,
+                customStableId: nil,
                 globallyUniqueId: currentMessage.globallyUniqueId,
                 groupingKey: currentMessage.groupingKey,
                 threadId: currentMessage.threadId,

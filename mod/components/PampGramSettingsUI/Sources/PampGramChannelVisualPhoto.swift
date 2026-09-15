@@ -10,6 +10,8 @@ import AccountContext
 import PampGramCore
 import Photos
 import PhotosUI
+import UndoUI
+import PromptUI
 
 /**
  PampGramChannelVisualPhoto - визуальные фото в каналах с ограничениями
@@ -20,13 +22,13 @@ import PhotosUI
  */
 
 /// Метаданные о визуальном фото в канале
-struct ChannelVisualPhoto {
-    let id: UUID
-    let channelId: EnginePeer.Id
-    let imagePath: String
-    let timestamp: Date
-    let caption: String?
-    let dimensions: CGSize
+public struct ChannelVisualPhoto {
+    public let id: UUID
+    public let channelId: EnginePeer.Id
+    public let imagePath: String
+    public let timestamp: Date
+    public let caption: String?
+    public let dimensions: CGSize
 }
 
 private let channelVisualPhotosKey = "PampGram.ChannelVisualPhotos"
@@ -199,6 +201,7 @@ public class PampGramChannelVisualPhotoController: ViewController {
     }
 
     private func presentPhotoPickerWithCaption() {
+        guard #available(iOS 14.0, *) else { return }
         presentChannelPhotoPickerWithCaption(
             context: self.context,
             channelId: self.channelId,

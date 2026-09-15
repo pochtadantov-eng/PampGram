@@ -8,6 +8,12 @@ import TelegramPresentationData
 import ItemListUI
 import AccountContext
 import PampGramCore
+import Photos
+import PhotosUI
+import UniformTypeIdentifiers
+import AVFoundation
+import UndoUI
+import PromptUI
 
 private struct VisualChatMessage {
     let id: UUID
@@ -291,6 +297,7 @@ public class PampGramVisualChatMenuController: ViewController {
     }
 
     private func presentAddPhotoMenu(incoming: Bool) {
+        guard #available(iOS 14.0, *) else { return }
         pampGramVisualChatPresentInsertPhoto(
             context: self.context,
             peerId: self.peerId,
@@ -303,6 +310,7 @@ public class PampGramVisualChatMenuController: ViewController {
     }
 
     private func presentAddVoiceMenu(incoming: Bool) {
+        guard #available(iOS 14.0, *) else { return }
         pampGramVisualChatPresentInsertFile(
             context: self.context,
             peerId: self.peerId,
@@ -316,6 +324,7 @@ public class PampGramVisualChatMenuController: ViewController {
     }
 
     private func presentAddStickerMenu(incoming: Bool) {
+        guard #available(iOS 14.0, *) else { return }
         pampGramVisualChatPresentInsertSticker(
             context: self.context,
             peerId: self.peerId,

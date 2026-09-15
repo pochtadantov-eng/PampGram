@@ -26,11 +26,11 @@ import AccountContext
  функция может сохранить то, что телефон уже успел скачать, — не больше.
  */
 
-struct OneTimeMessageMetadata {
-    let messageId: MessageId
-    let isPersistent: Bool
-    let savedFilePath: String?
-    let savedAt: Date
+public struct OneTimeMessageMetadata {
+    public let messageId: MessageId
+    public let isPersistent: Bool
+    public let savedFilePath: String?
+    public let savedAt: Date
 }
 
 private let oneTimeMessageStorageKey = "PampGram.OneTimeMessages"
@@ -104,7 +104,7 @@ private func pampGramRemoveOneTimeDestructFlag(context: AccountContext, messageI
             let attributes = currentMessage.attributes.filter { !($0 is AutoremoveTimeoutMessageAttribute) }
             let updatedMessage = StoreMessage(
                 id: messageId,
-                customStableId: currentMessage.customStableId,
+                customStableId: nil,
                 globallyUniqueId: currentMessage.globallyUniqueId,
                 groupingKey: currentMessage.groupingKey,
                 threadId: currentMessage.threadId,

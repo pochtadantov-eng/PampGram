@@ -215,7 +215,7 @@ public extension ChatLocation {
         // Эта логика должна быть в ChatController.swift
         // Здесь просто пример структуры
         switch self {
-        case .peer(let peerId):
+        case .peer:
             // Проверить ограничения для этого peer'а
             return true  // Default - можно загружать
         default:
