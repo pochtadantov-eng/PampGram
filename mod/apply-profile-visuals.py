@@ -76,6 +76,8 @@ replace_once(
                 return
             }
             self.pampGramSettings = settings
+            self.headerNode.pampGramHideOwnPhone = settings.hideOwnPhoneNumber
+            self.headerNode.pampGramFakePhoneNumber = settings.fakePhoneNumber
             self.requestLayout(animated: false)
         })
     }
@@ -88,6 +90,8 @@ replace_once(
                 return
             }
             self.pampGramSettings = settings
+            self.headerNode.pampGramHideOwnPhone = settings.hideOwnPhoneNumber
+            self.headerNode.pampGramFakePhoneNumber = settings.fakePhoneNumber
             self.requestLayout(animated: false)
         })
 
@@ -122,9 +126,9 @@ replace_once(
 replace_once(
     screen_path,
     "pass visuals to profile items",
-    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile)
+    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber)
 """,
-    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramProfileVisuals: self.pampGramProfileVisuals)
+    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber, pampGramProfileVisuals: self.pampGramProfileVisuals)
 """,
 )
 
@@ -239,13 +243,17 @@ replace_once(
     "accept profile-visual state",
     """    chatLocation: ChatLocation,
     isOpenedFromChat: Bool,
-    isMyProfile: Bool
+    isMyProfile: Bool,
+    pampGramHideOwnPhone: Bool = false,
+    pampGramFakePhoneNumber: String = ""
 ) -> [(AnyHashable, [PeerInfoScreenItem])] {
 """,
     """    chatLocation: ChatLocation,
     isOpenedFromChat: Bool,
     isMyProfile: Bool,
-    pampGramProfileVisuals: PampGramProfileVisualState
+    pampGramHideOwnPhone: Bool = false,
+    pampGramFakePhoneNumber: String = "",
+    pampGramProfileVisuals: PampGramProfileVisualState = PampGramProfileVisualState.default
 ) -> [(AnyHashable, [PeerInfoScreenItem])] {
 """,
 )
@@ -253,7 +261,15 @@ replace_once(
 replace_once(
     profile_items_path,
     "replace the own-profile phone number locally",
-    """        if let phone = user.phone {
+    """        if user.id == context.account.peerId, !pampGramFakePhoneNumber.isEmpty {
+            items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemPhoneNumber, label: presentationData.strings.ContactInfo_PhoneLabelMobile, text: pampGramFakePhoneNumber, textColor: .accent, action: { node, progress in
+                interaction.openPhone(pampGramFakePhoneNumber, node, nil, progress)
+            }, longTapAction: nil, contextAction: { node, gesture, _ in
+                interaction.openPhone(pampGramFakePhoneNumber, node, gesture, nil)
+            }, requestLayout: { animated in
+                interaction.requestLayout(animated)
+            }))
+        } else if let phone = user.phone, !(pampGramHideOwnPhone && user.id == context.account.peerId) {
             let formattedPhone = formatPhoneNumber(context: context, number: phone)
             let label: String
             if formattedPhone.hasPrefix(\"+888 \") {
@@ -270,57 +286,65 @@ replace_once(
             }))
         }
 """,
-    """        if let phone = user.phone {
-            // This is a local presentation choice for the account owner's profile.
-            // It never changes Telegram's phone number on the server.
-            if isMyProfile && pampGramProfileVisuals.anonymousNumberEnabled {
-                let visualNumber = pampGramProfileVisuals.anonymousNumber
-                items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(
-                    id: ItemPhoneNumber,
-                    label: presentationData.strings.UserInfo_AnonymousNumberLabel,
-                    text: visualNumber,
-                    textColor: .accent,
-                    action: { _, _ in
-                        // Local-only: opens Telegram's real collectible-number sheet, seeded with the
-                        // visual number's fake purchase details. Nothing is fetched from Fragment or
-                        // the server — the initial data is built entirely from local PampGram state.
-                        let digits = String(visualNumber.filter { $0.isNumber })
-                        let info = TelegramCollectibleItemInfo(
-                            subject: .phoneNumber(visualNumber),
-                            purchaseDate: pampGramProfileVisuals.anonymousNumberPurchasedAt,
-                            currency: "USD",
-                            currencyAmount: pampGramProfileVisuals.anonymousNumberPriceUsdCents,
-                            cryptoCurrency: "TON",
-                            cryptoCurrencyAmount: pampGramProfileVisuals.anonymousNumberPriceTonNanos,
-                            url: "https://fragment.com/number/\\(digits)"
-                        )
-                        let initialData = CollectibleItemInfoScreen.pampGramLocalInitialData(peer: EnginePeer(user), subject: .phoneNumber(visualNumber), info: info)
-                        interaction.getController()?.push(CollectibleItemInfoScreen(context: context, initialData: initialData))
-                    },
-                    longTapAction: { _ in
-                        UIPasteboard.general.string = visualNumber
-                    },
-                    contextAction: nil,
-                    requestLayout: { animated in
-                        interaction.requestLayout(animated)
-                    }
-                ))
-            } else {
-                let formattedPhone = formatPhoneNumber(context: context, number: phone)
-                let label: String
-                if formattedPhone.hasPrefix(\"+888 \") {
-                    label = presentationData.strings.UserInfo_AnonymousNumberLabel
-                } else {
-                    label = presentationData.strings.ContactInfo_PhoneLabelMobile
-                }
-                items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemPhoneNumber, label: label, text: formattedPhone, textColor: .accent, action: { node, progress in
-                    interaction.openPhone(phone, node, nil, progress)
-                }, longTapAction: nil, contextAction: { node, gesture, _ in
-                    interaction.openPhone(phone, node, gesture, nil)
-                }, requestLayout: { animated in
+    """        // Priority when viewing the account owner's own profile: the Fragment-style
+        // visual "+888" number (its own fuller purchase-details UI) first, then PampGram's
+        // plain fake-number override, then hiding outright — each a purely local
+        // presentation choice that never changes Telegram's real phone number.
+        if isMyProfile, pampGramProfileVisuals.anonymousNumberEnabled {
+            let visualNumber = pampGramProfileVisuals.anonymousNumber
+            items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(
+                id: ItemPhoneNumber,
+                label: presentationData.strings.UserInfo_AnonymousNumberLabel,
+                text: visualNumber,
+                textColor: .accent,
+                action: { _, _ in
+                    // Local-only: opens Telegram's real collectible-number sheet, seeded with the
+                    // visual number's fake purchase details. Nothing is fetched from Fragment or
+                    // the server — the initial data is built entirely from local PampGram state.
+                    let digits = String(visualNumber.filter { $0.isNumber })
+                    let info = TelegramCollectibleItemInfo(
+                        subject: .phoneNumber(visualNumber),
+                        purchaseDate: pampGramProfileVisuals.anonymousNumberPurchasedAt,
+                        currency: "USD",
+                        currencyAmount: pampGramProfileVisuals.anonymousNumberPriceUsdCents,
+                        cryptoCurrency: "TON",
+                        cryptoCurrencyAmount: pampGramProfileVisuals.anonymousNumberPriceTonNanos,
+                        url: "https://fragment.com/number/\\(digits)"
+                    )
+                    let initialData = CollectibleItemInfoScreen.pampGramLocalInitialData(peer: EnginePeer(user), subject: .phoneNumber(visualNumber), info: info)
+                    interaction.getController()?.push(CollectibleItemInfoScreen(context: context, initialData: initialData))
+                },
+                longTapAction: { _ in
+                    UIPasteboard.general.string = visualNumber
+                },
+                contextAction: nil,
+                requestLayout: { animated in
                     interaction.requestLayout(animated)
-                }))
+                }
+            ))
+        } else if user.id == context.account.peerId, !pampGramFakePhoneNumber.isEmpty {
+            items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemPhoneNumber, label: presentationData.strings.ContactInfo_PhoneLabelMobile, text: pampGramFakePhoneNumber, textColor: .accent, action: { node, progress in
+                interaction.openPhone(pampGramFakePhoneNumber, node, nil, progress)
+            }, longTapAction: nil, contextAction: { node, gesture, _ in
+                interaction.openPhone(pampGramFakePhoneNumber, node, gesture, nil)
+            }, requestLayout: { animated in
+                interaction.requestLayout(animated)
+            }))
+        } else if let phone = user.phone, !(pampGramHideOwnPhone && user.id == context.account.peerId) {
+            let formattedPhone = formatPhoneNumber(context: context, number: phone)
+            let label: String
+            if formattedPhone.hasPrefix(\"+888 \") {
+                label = presentationData.strings.UserInfo_AnonymousNumberLabel
+            } else {
+                label = presentationData.strings.ContactInfo_PhoneLabelMobile
             }
+            items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemPhoneNumber, label: label, text: formattedPhone, textColor: .accent, action: { node, progress in
+                interaction.openPhone(phone, node, nil, progress)
+            }, longTapAction: nil, contextAction: { node, gesture, _ in
+                interaction.openPhone(phone, node, gesture, nil)
+            }, requestLayout: { animated in
+                interaction.requestLayout(animated)
+            }))
         }
 """,
 )

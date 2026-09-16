@@ -155,8 +155,62 @@ public func pampGramGateSection(context: AccountContext, section: PampGramBanSec
         } else if let reason = status.full ?? status.reason(for: section) {
             pampGramPresentBannedScreen(context: context, reason: reason)
         } else {
-            openReal()
+            pampGramCheckActivation(context: context, onActivated: openReal)
         }
+    })
+}
+
+/// Local-first check for `PampGramSettings.licenseActivated`, run as the last step of both
+/// gates below (after version/ban already passed) — restored from the activation-key system
+/// that used to gate only the hub's own open. Folding it into these shared gates instead
+/// extends it to the two entry points (message long-press menu, attachment-button long-press)
+/// that didn't exist yet when activation was originally built, matching what its own docs
+/// already promise: "every PampGram install refuses to do anything… until its own account
+/// redeems one" — `PampGramCore.settings`/`settingsSignal` already neuter every feature via
+/// `withEverythingOff()` while unlicensed, this just keeps the navigation honest to match.
+/// The admin's own account auto-activates (no key needed for the account that hands keys out);
+/// everyone else's locally-cached flag is the fast path once set, so a normal open never waits
+/// on the network — only when it's still false do we ask the server (covers a reinstall, which
+/// wipes Postbox but not the server's own record of this account having redeemed a key already)
+/// before falling back to the activation screen.
+private func pampGramCheckActivation(context: AccountContext, onActivated: @escaping () -> Void) {
+    let selfAccountId = context.account.peerId.id._internalGetInt64Value()
+    let isAdmin = selfAccountId == PampGramSubscriptionAPI.adminAccountId
+    let _ = (context.account.postbox.transaction { transaction -> Bool in
+        let raw = PampGramCore.rawSettings(transaction: transaction)
+        if raw.licenseActivated {
+            return true
+        }
+        if isAdmin {
+            PampGramCore.updateSettings(transaction: transaction, { settings in
+                var settings = settings
+                settings.licenseActivated = true
+                return settings
+            })
+            return true
+        }
+        return false
+    }
+    |> deliverOnMainQueue).start(next: { activatedLocally in
+        if activatedLocally {
+            onActivated()
+            return
+        }
+        let _ = (PampGramSubscriptionAPI.fetchLicenseStatus(userId: selfAccountId)
+        |> deliverOnMainQueue).start(next: { licensed in
+            if licensed {
+                let _ = context.account.postbox.transaction { transaction in
+                    PampGramCore.updateSettings(transaction: transaction, { settings in
+                        var settings = settings
+                        settings.licenseActivated = true
+                        return settings
+                    })
+                }.start()
+                onActivated()
+            } else {
+                pampGramPresentActivationScreen(context: context, onActivated: onActivated)
+            }
+        })
     })
 }
 
@@ -176,7 +230,7 @@ public func pampGramGateFullAccess(context: AccountContext, onAllowed: @escaping
         } else if let reason = status.full {
             pampGramPresentBannedScreen(context: context, reason: reason)
         } else {
-            onAllowed()
+            pampGramCheckActivation(context: context, onActivated: onAllowed)
         }
     })
 }

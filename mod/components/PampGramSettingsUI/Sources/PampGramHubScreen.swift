@@ -402,7 +402,36 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         }
     )
 
-    let isAdmin = context.account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId
+    let selfAccountId = context.account.peerId.id._internalGetInt64Value()
+    let isAdmin = selfAccountId == PampGramSubscriptionAPI.adminAccountId
+
+    // Ban and activation are both checked once, before the hub is ever pushed — see
+    // pampGramPresentHub/pampGramGateFullAccess in PampGramBannedScreen.swift. Checking them
+    // again in here, after the hub's own content is already being built, is exactly the
+    // open-then-correct race that function's doc comment explains: the earlier version of this
+    // block did that (and, separately, presented the activation screen on top of an already-open
+    // hub instead of before it), so it's gone from here rather than duplicated.
+    //
+    // Refreshes `cachedIsProSubscriber` — the tier itself only ever comes from a live network
+    // call (`fetchTier`), but "Закрепить чаты"'s pin-count cap needs to read it synchronously
+    // inside a Postbox transaction (see `TogglePeerChatPinned.swift`), so this is the closest
+    // thing to "live" that spot can use. One-shot per open; at most one tab-open stale, same
+    // trade-off `PampGramStatusScreen.swift` already accepts for its own PRO badge. This one
+    // isn't a gate (nothing here decides whether the hub is reachable), so it stays here rather
+    // than moving upstream with the ban/activation checks.
+    let _ = (PampGramSubscriptionAPI.fetchTier(userId: selfAccountId)
+    |> deliverOnMainQueue).start(next: { tier in
+        let _ = context.account.postbox.transaction { transaction in
+            let isPro = tier == .pro
+            if PampGramCore.rawSettings(transaction: transaction).cachedIsProSubscriber != isPro {
+                PampGramCore.updateSettings(transaction: transaction, { settings in
+                    var settings = settings
+                    settings.cachedIsProSubscriber = isPro
+                    return settings
+                })
+            }
+        }.start()
+    })
 
     let signal = combineLatest(
         context.sharedContext.presentationData,

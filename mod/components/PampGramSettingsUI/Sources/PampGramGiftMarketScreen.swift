@@ -151,6 +151,11 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
                 sheet?.dismissAnimated()
                 let _ = PampGramPhantomGiftManager.setWorn(context: context, giftId: gift.id, worn: !gift.worn).start()
             }))
+            items.append(ActionSheetButtonItem(title: "Продать", color: .destructive, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                let _ = PampGramPhantomGiftManager.sell(context: context, matching: gift.asProfileGift).start()
+                present?(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок продан, стоимость зачислена на баланс.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }))
+            }))
         }
         items.append(ActionSheetButtonItem(title: "Выставить за Stars", color: .accent, action: { [weak sheet] in sheet?.dismissAnimated(); setMarketPrice(gift: gift, currency: .stars) }))
         items.append(ActionSheetButtonItem(title: "Выставить за TON", color: .accent, action: { [weak sheet] in sheet?.dismissAnimated(); setMarketPrice(gift: gift, currency: .ton) }))

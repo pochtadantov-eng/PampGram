@@ -7,11 +7,22 @@
  * Telegram account id — no messages, no chat content, nothing else ever passes through here.
  *
  * Storage: a single Workers KV namespace (binding SUBS).
- *   key "sub:<id>"     -> "pro" | "standard"
- *   key "ban:<id>"     -> JSON { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
- *   key "min_version"  -> "<integer>" (single global value, not per-account)
+ *   key "sub:<id>"       -> "pro" | "standard"
+ *   key "ban:<id>"       -> JSON { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
+ *   key "min_version"    -> "<integer>" (single global value, not per-account)
+ *   key "key:<KEY>"      -> JSON { "tier": "standard"|"pro", "usedBy": "<id>"|null, "usedAt": <ms>|null, "createdAt": <ms> }
+ *   key "licensed:<id>"  -> "1" (present at all means licensed — same "absent means the
+ *                          nothing-going-on default" posture as the other keys)
  * Same posture throughout: a key that would only ever store the "nothing going on" value is
  * deleted instead of written, so the store only ever holds actual overrides.
+ *
+ * Activation keys exist because a *file* sale (send the .ipa/mod once, no further contact) has
+ * no way to stop the buyer forwarding that same file to someone else for free — unlike `/grant`,
+ * which the admin re-runs by hand per buyer and so never actually needed a key. A key minted by
+ * `/keys/generate` is good for exactly one `/keys/redeem` (first Telegram account id to submit
+ * it wins); every PampGram install refuses to do anything beyond showing the "enter your key"
+ * screen until its own account redeems one, so a copy of the file without a key redeemed for
+ * *that specific account* stays inert no matter how many people end up with it.
  *
  * Routes:
  *   GET  /status?id=<telegram account id>
@@ -73,10 +84,50 @@
  *     Admin-only — backs the admin panel's "Разбанить" screen. Token goes in the body rather
  *     than a query string, same reasoning as /grant: never put the secret somewhere that ends
  *     up in a server log line.
+ *
+ *   GET  /license-status?id=<telegram account id>
+ *     -> { "licensed": true|false }
+ *     Public, same posture as /status — every install checks its own account on opening the
+ *     PampGram tab (and after a reinstall, since that wipes the local on-device copy of this
+ *     flag) to know whether to show the hub or the "enter your key" screen.
+ *
+ *   POST /keys/generate
+ *     body: { "token": "<ADMIN_TOKEN>", "tier": "standard" | "pro" (optional, default "standard") }
+ *     -> { "key": "PMP-XXXXX-XXXXX-XXXXX-XXXXX", "tier": "standard" | "pro" }
+ *     Admin-only. Mints one new, unused key and returns it — the admin copies it out and sends
+ *     it to whoever just bought the mod. Never returns an already-issued key twice.
+ *
+ *   POST /keys/redeem
+ *     body: { "key": "<key>", "id": <telegram account id> }
+ *     -> { "ok": true, "tier": "standard" | "pro" } | { "error": "invalid key" | "already used" }
+ *     Public — called by the buyer's own app, not the admin. First account id to redeem a given
+ *     key wins it permanently (`key:<KEY>.usedBy`); every later attempt with the same key, from
+ *     any other account, is rejected with "already used". Redeeming again from the *same*
+ *     account that already holds the key is a harmless no-op success (covers a retried request
+ *     after a dropped response) rather than an error. Sets "licensed:<id>" so /license-status
+ *     reports true from then on, and additionally grants the "sub:<id>" tier if the key was
+ *     minted as "pro".
  */
 
 const ALLOWED_TIERS = new Set(["standard", "pro"]);
 const ALLOWED_SECTIONS = new Set(["gifts", "messages", "ghost"]);
+// No 0/O/1/I/L — the whole point of a key is that a human reads it off a chat message and
+// (occasionally) types it by hand, so ambiguous-looking characters aren't worth the entropy.
+const KEY_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+function generateActivationKey() {
+	const groups = [];
+	for (let g = 0; g < 4; g++) {
+		const random = new Uint8Array(5);
+		crypto.getRandomValues(random);
+		let group = "";
+		for (let i = 0; i < 5; i++) {
+			group += KEY_ALPHABET[random[i] % KEY_ALPHABET.length];
+		}
+		groups.push(group);
+	}
+	return `PMP-${groups.join("-")}`;
+}
 
 function jsonResponse(body, status = 200) {
 	return new Response(JSON.stringify(body), {
@@ -303,6 +354,98 @@ async function handleBannedList(request, env) {
 	return jsonResponse({ users });
 }
 
+async function handleLicenseStatus(request, env) {
+	const url = new URL(request.url);
+	const id = url.searchParams.get("id");
+	if (!isValidAccountId(id)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	const stored = await env.SUBS.get(`licensed:${id}`);
+	return jsonResponse({ licensed: stored === "1" });
+}
+
+async function handleGenerateKey(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { token, tier } = payload ?? {};
+	if (!isAuthorized(token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	const keyTier = tier === "pro" ? "pro" : "standard";
+
+	// Collision odds are negligible (33^20 keyspace) — checked anyway, since a generated key
+	// is only useful if nothing else could already be holding it.
+	let key = null;
+	for (let attempt = 0; attempt < 5 && key === null; attempt++) {
+		const candidate = generateActivationKey();
+		const existing = await env.SUBS.get(`key:${candidate}`);
+		if (!existing) {
+			key = candidate;
+		}
+	}
+	if (key === null) {
+		return jsonResponse({ error: "failed to generate a unique key" }, 500);
+	}
+
+	await env.SUBS.put(`key:${key}`, JSON.stringify({ tier: keyTier, usedBy: null, usedAt: null, createdAt: Date.now() }));
+	return jsonResponse({ key, tier: keyTier });
+}
+
+async function handleRedeemKey(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { key, id } = payload ?? {};
+	const idString = typeof id === "number" ? String(id) : id;
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	if (typeof key !== "string" || key.trim().length === 0) {
+		return jsonResponse({ error: "invalid key" }, 400);
+	}
+	const normalizedKey = key.trim().toUpperCase();
+
+	const stored = await env.SUBS.get(`key:${normalizedKey}`);
+	if (!stored) {
+		return jsonResponse({ error: "invalid key" }, 404);
+	}
+	let record;
+	try {
+		record = JSON.parse(stored);
+	} catch {
+		return jsonResponse({ error: "invalid key" }, 404);
+	}
+
+	if (record.usedBy) {
+		if (record.usedBy === idString) {
+			// Retrying a request that already succeeded (e.g. a dropped response) — confirm
+			// rather than error, and make sure the license flag actually got set.
+			await env.SUBS.put(`licensed:${idString}`, "1");
+			return jsonResponse({ ok: true, tier: record.tier });
+		}
+		return jsonResponse({ error: "already used" }, 409);
+	}
+
+	record.usedBy = idString;
+	record.usedAt = Date.now();
+	await env.SUBS.put(`key:${normalizedKey}`, JSON.stringify(record));
+	await env.SUBS.put(`licensed:${idString}`, "1");
+	if (record.tier === "pro") {
+		await env.SUBS.put(`sub:${idString}`, "pro");
+	}
+
+	return jsonResponse({ ok: true, tier: record.tier });
+}
+
 export default {
 	async fetch(request, env) {
 		const url = new URL(request.url);
@@ -330,6 +473,15 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/banned-list") {
 			return handleBannedList(request, env);
+		}
+		if (request.method === "GET" && url.pathname === "/license-status") {
+			return handleLicenseStatus(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/keys/generate") {
+			return handleGenerateKey(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/keys/redeem") {
+			return handleRedeemKey(request, env);
 		}
 		return jsonResponse({ error: "not found" }, 404);
 	},

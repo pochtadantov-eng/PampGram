@@ -156,7 +156,20 @@ public enum PampGramLocalLedgerStore {
     /// Adds an operation and applies its amount to the matching local balance in one Postbox
     /// transaction. Positive amounts credit, negative amounts debit. The operation receives
     /// the exact balance-after value so the history remains useful even after later edits.
-    public static func addAndApply(transaction: Transaction, currency: PampGramLocalCurrency, kind: PampGramLocalOperationKind, amount: Int64, title: String, details: String = "", peerId: PeerId? = nil, giftId: Int64? = nil) {
+    /// Returns the resulting balance, since callers (a purchase's "remaining balance", a
+    /// gift's post-purchase state) usually need it right away.
+    ///
+    /// This is the **only** place that changes `fakeStarsBalance`/`fakeTonBalanceNanos`/
+    /// `localRublesBalanceKopecks` — every spend or top-up funnels through here so a balance
+    /// change can never happen without an entry in the same local journal explaining it. Both
+    /// live in the same `PreferencesEntry`-backed Postbox transaction, so they're written and
+    /// persisted to disk atomically: nothing but an explicit "Очистить историю"/"Сбросить
+    /// балансы" action in the settings/ledger screens ever removes a row, and neither survives
+    /// only in memory — an app relaunch, or flipping "Включить визуалку"/"Показывать фейковый
+    /// баланс" (which only change what's *displayed*, never what's stored), leaves every past
+    /// operation and the balance it produced exactly as it was.
+    @discardableResult
+    public static func addAndApply(transaction: Transaction, currency: PampGramLocalCurrency, kind: PampGramLocalOperationKind, amount: Int64, title: String, details: String = "", peerId: PeerId? = nil, giftId: Int64? = nil) -> Int64 {
         var balanceAfter: Int64 = 0
         PampGramCore.updateSettings(transaction: transaction, { settings in
             var settings = settings
@@ -174,6 +187,7 @@ public enum PampGramLocalLedgerStore {
             return settings
         })
         self.add(transaction: transaction, operation: PampGramLocalOperation(currency: currency, kind: kind, amount: amount, title: title, details: details, peerId: peerId, giftId: giftId, balanceAfter: balanceAfter))
+        return balanceAfter
     }
 
     public static func currentBalance(transaction: Transaction, currency: PampGramLocalCurrency) -> Int64 {
