@@ -550,7 +550,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                             let current = PampGramCore.rawSettings(transaction: transaction).fakeStarsBalance
                             let delta = stars - current
                             if delta != 0 {
-                                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса")
+                                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", visibleInRealHistory: false)
                             }
                         }.start()
                     }
@@ -576,7 +576,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                             let current = PampGramCore.rawSettings(transaction: transaction).fakeTonBalanceNanos
                             let delta = nanos - current
                             if delta != 0 {
-                                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .ton, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса")
+                                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .ton, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", visibleInRealHistory: false)
                             }
                         }.start()
                     }
@@ -627,8 +627,8 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                             let current = PampGramCore.rawSettings(transaction: transaction)
                             let starsDelta = PampGramSettings.defaultFakeStarsBalance - current.fakeStarsBalance
                             let tonDelta = PampGramSettings.defaultFakeTonBalanceNanos - current.fakeTonBalanceNanos
-                            if starsDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: starsDelta > 0 ? .credit : .debit, amount: starsDelta, title: "Сброс баланса Stars") }
-                            if tonDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .ton, kind: tonDelta > 0 ? .credit : .debit, amount: tonDelta, title: "Сброс баланса TON") }
+                            if starsDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: starsDelta > 0 ? .credit : .debit, amount: starsDelta, title: "Сброс баланса Stars", visibleInRealHistory: false) }
+                            if tonDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .ton, kind: tonDelta > 0 ? .credit : .debit, amount: tonDelta, title: "Сброс баланса TON", visibleInRealHistory: false) }
                         }.start()
                         presentTooltipImpl?("Локальные балансы сброшены.")
                     }),

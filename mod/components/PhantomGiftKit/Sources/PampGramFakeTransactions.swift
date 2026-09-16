@@ -28,13 +28,17 @@ public extension PampGramPhantomGiftStore {
         |> mapToSignal { gifts, operations -> Signal<[StarsContext.State.Transaction], NoError> in
             let relevant = gifts.filter { $0.price.currency == currency && !$0.isReceived }
 
-            // Ledger rows with no matching gift record — Stars bought with the local ruble
-            // card (PampGramStarsHook), and manual balance corrections from the settings
-            // screen — so a spend/top-up never goes missing from the real Stars/TON history
-            // just because it didn't come from a gift purchase. Every gift-derived row below
-            // carries a `giftId`, so filtering those out here never duplicates one.
+            // Ledger rows with no matching gift record — e.g. Stars bought with the local
+            // ruble card (PampGramStarsHook) — so a spend/top-up never goes missing from the
+            // real Stars/TON history just because it didn't come from a gift purchase. Every
+            // gift-derived row below carries a `giftId`, so filtering those out here never
+            // duplicates one. `visibleInRealHistory == false` opts a row out of this real-feed
+            // mirror entirely — used for raw balance overwrites (manual edit in Settings,
+            // "Сбросить балансы") that never happened as an actual transaction anywhere, so
+            // they'd otherwise show up here mislabeled as an App Store top-up. Those rows still
+            // show in PampGram's own ledger screen, which reads straight from the store.
             let ledgerTransactions: [StarsContext.State.Transaction] = operations
-                .filter { $0.currency == ledgerCurrency && $0.giftId == nil }
+                .filter { $0.currency == ledgerCurrency && $0.giftId == nil && $0.visibleInRealHistory != false }
                 .map { operation in
                     self.fakeTransaction(
                         id: "pampgram_ledger_\(operation.id)",
