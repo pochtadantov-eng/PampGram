@@ -19404,7 +19404,7 @@ index 04768a76..fa75dce2 100644
              self.environment = environment
              
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-index 87c58b5f..78a3939e 100644
+index 87c58b5f..672a8c07 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 @@ -25,6 +25,8 @@ import ItemListUI
@@ -19522,7 +19522,27 @@ index 87c58b5f..78a3939e 100644
                              currency: component.starsContext.ton ? .ton : .stars,
                              rate: nil,
                              actionTitle: component.starsContext.ton ? environment.strings.Ton_WithdrawViaFragment : (withdrawAvailable ? environment.strings.Stars_Intro_BuyShort : environment.strings.Stars_Intro_Buy),
-@@ -1084,12 +1121,14 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1051,8 +1088,18 @@ final class StarsTransactionsScreenComponent: Component {
+             }
+             
+             let initialTransactions = self.starsState?.transactions ?? []
++            // The panel (and its three "Все операции"/incoming/outgoing tabs) used to be built
++            // only when the REAL account already had at least one real transaction — reasonable
++            // for stock Telegram, but it means a TON/GRAM balance with zero real ad-revenue
++            // payouts (the overwhelmingly common case) never gets a panel at all, so PampGram's
++            // fake-transaction overlay (`StarsTransactionsListPanelComponent`'s own
++            // `pampGramFakeItems` merge — it doesn't care whether the real list is empty) never
++            // gets anywhere to render into. Building the panel whenever the fake balance display
++            // is on for this screen's currency closes that gap without changing anything for an
++            // account that already has real transactions, or for a screen with the toggle off.
++            let pampGramHasFakeOverlay = component.starsContext.ton ? self.pampGramSettings.fakeTonDisplayEnabled : self.pampGramSettings.fakeStarsDisplayEnabled
+             var panelItems: [StarsTransactionsPanelContainerComponent.Item] = []
+-            if !initialTransactions.isEmpty {
++            if !initialTransactions.isEmpty || pampGramHasFakeOverlay {
+                 let allTransactionsContext: StarsTransactionsContext
+                 if let current = self.allTransactionsContext {
+                     allTransactionsContext = current
+@@ -1084,12 +1131,14 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: allTransactionsContext,
                          isAccount: true,
@@ -19538,7 +19558,7 @@ index 87c58b5f..78a3939e 100644
                  panelItems.append(StarsTransactionsPanelContainerComponent.Item(
                      id: "incoming",
                      title: environment.strings.Stars_Intro_Incoming,
-@@ -1097,12 +1136,14 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1097,12 +1146,14 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: incomingTransactionsContext,
                          isAccount: true,
@@ -19554,7 +19574,7 @@ index 87c58b5f..78a3939e 100644
                  panelItems.append(StarsTransactionsPanelContainerComponent.Item(
                      id: "outgoing",
                      title: environment.strings.Stars_Intro_Outgoing,
-@@ -1110,6 +1151,8 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1110,6 +1161,8 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: outgoingTransactionsContext,
                          isAccount: true,
@@ -19563,7 +19583,7 @@ index 87c58b5f..78a3939e 100644
                          action: { transaction in
                              component.openTransaction(transaction)
                          }
-@@ -1324,35 +1367,56 @@ public final class StarsTransactionsScreen: ViewControllerComponentContainer {
+@@ -1324,35 +1377,56 @@ public final class StarsTransactionsScreen: ViewControllerComponentContainer {
              guard let self else {
                  return
              }
