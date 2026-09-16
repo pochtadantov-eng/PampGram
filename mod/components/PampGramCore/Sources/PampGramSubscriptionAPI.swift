@@ -90,7 +90,7 @@ public enum PampGramSubscriptionAPI {
     public static let adminAccountId: Int64 = 8557314630
 
     /// The deployed `server/pampgram-subs-worker/` instance (see its README).
-    private static let baseURL = "https://pampgram-subs.pampgram-pochtadantov.workers.dev"
+    private static let baseURL = "https://pampgram.pochtadantov.workers.dev"
 
     private struct StatusResponse: Decodable {
         let tier: String
