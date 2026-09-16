@@ -1,13 +1,15 @@
 import Foundation
 import UIKit
+import AVFoundation
 import Display
 import SwiftSignalKit
 import AccountContext
 import PampGramCore
 
 /// The screen a banned account sees instead of a gated section (or the whole hub, for a full
-/// ban) — a closing-padlock animation, the fixed headline the admin panel always uses, and the
-/// admin's own free-text reason underneath. Plain UIKit presented modally, same reasoning as
+/// ban) — a continuously animating padlock, the fixed headline the admin panel always uses, the
+/// admin's own free-text reason underneath in its own row, and a looping original chime for as
+/// long as the screen stays open. Plain UIKit presented modally, same reasoning as
 /// `PampGramIconPickerScreen.swift`: this replaces a pushed screen entirely rather than sitting
 /// inside Telegram's own navigation stack, so there's no Display `ViewController` contract to
 /// satisfy here.
@@ -17,8 +19,12 @@ private final class PampGramBannedViewController: UIViewController {
     private let lockContainer = UIView()
     private let lockImageView = UIImageView()
     private let titleLabel = UILabel()
+    private let reasonContainer = UIView()
     private let reasonLabel = UILabel()
     private let closeButton = UIButton(type: .system)
+
+    private var isLockOpen = true
+    private var audioPlayer: AVAudioPlayer?
 
     init(reason: String) {
         self.reason = reason
@@ -45,19 +51,23 @@ private final class PampGramBannedViewController: UIViewController {
         self.lockImageView.contentMode = .scaleAspectFit
         self.lockContainer.addSubview(self.lockImageView)
 
-        self.titleLabel.text = "Временно недоступно для вашего устройства"
+        self.titleLabel.text = "Вы были заблокированы в нашем моде по причине, указанной ниже. Если хотите вернуть доступ — пожалуйста, свяжитесь с владельцем."
         self.titleLabel.font = UIFont.systemFont(ofSize: 20.0, weight: .semibold)
         self.titleLabel.textColor = .white
         self.titleLabel.textAlignment = .center
         self.titleLabel.numberOfLines = 0
         self.view.addSubview(self.titleLabel)
 
+        self.reasonContainer.backgroundColor = UIColor(white: 1.0, alpha: 0.08)
+        self.reasonContainer.layer.cornerRadius = 12.0
+        self.view.addSubview(self.reasonContainer)
+
         self.reasonLabel.text = "Причина: \(self.reason)"
-        self.reasonLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .regular)
-        self.reasonLabel.textColor = UIColor(white: 1.0, alpha: 0.6)
+        self.reasonLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .medium)
+        self.reasonLabel.textColor = UIColor(white: 1.0, alpha: 0.85)
         self.reasonLabel.textAlignment = .center
         self.reasonLabel.numberOfLines = 0
-        self.view.addSubview(self.reasonLabel)
+        self.reasonContainer.addSubview(self.reasonLabel)
 
         self.closeButton.setTitle("Закрыть", for: .normal)
         self.closeButton.setTitleColor(UIColor(rgb: 0x8e44ec), for: .normal)
@@ -65,7 +75,14 @@ private final class PampGramBannedViewController: UIViewController {
         self.closeButton.addTarget(self, action: #selector(self.closePressed), for: .touchUpInside)
         self.view.addSubview(self.closeButton)
 
-        self.playLockAnimation()
+        self.lockContainer.transform = CGAffineTransform(scaleX: 0.7, y: 0.7)
+        UIView.animate(withDuration: 0.35, delay: 0.0, usingSpringWithDamping: 0.65, initialSpringVelocity: 0.3, options: [], animations: {
+            self.lockContainer.transform = .identity
+        }, completion: { _ in
+            self.scheduleLockToggle()
+        })
+
+        self.startChime()
     }
 
     override func viewDidLayoutSubviews() {
@@ -83,41 +100,116 @@ private final class PampGramBannedViewController: UIViewController {
         let titleSize = self.titleLabel.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude))
         self.titleLabel.frame = CGRect(x: (width - textWidth) / 2.0, y: self.lockContainer.frame.maxY + 24.0, width: textWidth, height: titleSize.height)
 
-        let reasonSize = self.reasonLabel.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude))
-        self.reasonLabel.frame = CGRect(x: (width - textWidth) / 2.0, y: self.titleLabel.frame.maxY + 12.0, width: textWidth, height: reasonSize.height)
+        let reasonTextWidth = textWidth - 32.0
+        let reasonSize = self.reasonLabel.sizeThatFits(CGSize(width: reasonTextWidth, height: .greatestFiniteMagnitude))
+        let reasonContainerHeight = reasonSize.height + 24.0
+        self.reasonContainer.frame = CGRect(x: (width - textWidth) / 2.0, y: self.titleLabel.frame.maxY + 16.0, width: textWidth, height: reasonContainerHeight)
+        self.reasonLabel.frame = CGRect(x: 16.0, y: 12.0, width: reasonTextWidth, height: reasonSize.height)
 
         self.closeButton.sizeToFit()
         self.closeButton.frame = CGRect(x: (width - self.closeButton.frame.width) / 2.0, y: self.view.bounds.height - self.view.safeAreaInsets.bottom - 60.0, width: self.closeButton.frame.width, height: 44.0)
     }
 
-    /// Padlock opens on appear, then snaps shut with a small overshoot pulse — "closing", not
-    /// just "appearing", since that's specifically what was asked for.
-    private func playLockAnimation() {
-        self.lockContainer.transform = CGAffineTransform(scaleX: 0.7, y: 0.7)
-        UIView.animate(withDuration: 0.35, delay: 0.0, usingSpringWithDamping: 0.65, initialSpringVelocity: 0.3, options: [], animations: {
-            self.lockContainer.transform = .identity
-        }, completion: nil)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
-            guard let self else {
+    /// Keeps re-scheduling itself for as long as the screen is on screen — `self.view.window`
+    /// goes nil the moment this controller is dismissed, which naturally breaks the chain instead
+    /// of needing an explicit "stop" flag.
+    private func scheduleLockToggle() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in
+            guard let self, self.view.window != nil else {
                 return
             }
-            UIView.transition(with: self.lockImageView, duration: 0.25, options: .transitionCrossDissolve, animations: {
-                self.lockImageView.image = UIImage(systemName: "lock.fill")?.withRenderingMode(.alwaysTemplate)
-            }, completion: { _ in
-                UIView.animate(withDuration: 0.15, animations: {
-                    self.lockImageView.transform = CGAffineTransform(scaleX: 1.15, y: 1.15)
-                }, completion: { _ in
-                    UIView.animate(withDuration: 0.15) {
-                        self.lockImageView.transform = .identity
-                    }
-                })
-            })
+            self.toggleLockIcon()
+            self.scheduleLockToggle()
         }
     }
 
+    private func toggleLockIcon() {
+        self.isLockOpen.toggle()
+        let iconName = self.isLockOpen ? "lock.open.fill" : "lock.fill"
+        UIView.transition(with: self.lockImageView, duration: 0.25, options: .transitionCrossDissolve, animations: {
+            self.lockImageView.image = UIImage(systemName: iconName)?.withRenderingMode(.alwaysTemplate)
+        }, completion: nil)
+        UIView.animate(withDuration: 0.15, animations: {
+            self.lockImageView.transform = CGAffineTransform(scaleX: 1.15, y: 1.15)
+        }, completion: { _ in
+            UIView.animate(withDuration: 0.15) {
+                self.lockImageView.transform = .identity
+            }
+        })
+    }
+
+    /// A short original chime (two synthesized sine tones, not a real recording — see the
+    /// doc comment above) rendered once to a temp `.caf` file and looped for as long as the
+    /// screen stays open. `AVAudioFile`/`AVAudioPCMBuffer` write raw PCM straight to disk, no
+    /// external encoder needed since `.caf` is native to `AVAudioFile`.
+    private func startChime() {
+        guard let fileURL = PampGramBannedViewController.synthesizeChime() else {
+            return
+        }
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setActive(true, options: [])
+        guard let player = try? AVAudioPlayer(contentsOf: fileURL) else {
+            return
+        }
+        player.numberOfLoops = -1
+        player.volume = 0.5
+        player.play()
+        self.audioPlayer = player
+    }
+
+    private func stopChime() {
+        self.audioPlayer?.stop()
+        self.audioPlayer = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+    }
+
+    private static func synthesizeChime() -> URL? {
+        let sampleRate: Double = 44100.0
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false) else {
+            return nil
+        }
+        let fileURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pampgram_banned_chime.caf")
+        guard let file = try? AVAudioFile(forWriting: fileURL, settings: format.settings) else {
+            return nil
+        }
+
+        // Two short notes with a silent tail, so the loop reads as a gentle "ding-dong" chime
+        // rather than a harsh buzzer repeating back to back.
+        let notes: [(frequency: Double, duration: Double)] = [
+            (frequency: 659.25, duration: 0.32),
+            (frequency: 523.25, duration: 0.5),
+            (frequency: 0.0, duration: 0.6)
+        ]
+        for note in notes {
+            let frameCount = AVAudioFrameCount(note.duration * sampleRate)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+                continue
+            }
+            buffer.frameLength = frameCount
+            if let channelData = buffer.floatChannelData?[0] {
+                for frame in 0..<Int(frameCount) {
+                    if note.frequency == 0.0 {
+                        channelData[frame] = 0.0
+                        continue
+                    }
+                    let t = Double(frame) / sampleRate
+                    let envelope = exp(-t * 3.5)
+                    channelData[frame] = Float(sin(2.0 * Double.pi * note.frequency * t) * envelope * 0.4)
+                }
+            }
+            try? file.write(from: buffer)
+        }
+        return fileURL
+    }
+
     @objc private func closePressed() {
+        self.stopChime()
         self.dismiss(animated: true, completion: nil)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        self.stopChime()
     }
 }
 
