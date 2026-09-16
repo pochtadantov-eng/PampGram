@@ -195,7 +195,6 @@ import TelegramCore
 
  Можно комбинировать с:
  - Эмодзи-реакциями на фото (pampGramAddMessageReaction)
- - Визуальной переиской (pampGramPresentVisualChatMenu)
  - Фото от собеседника (как в личных чатах)
 
  ПРИМЕЧАНИЕ О ОГРАНИЧЕНИЯХ
