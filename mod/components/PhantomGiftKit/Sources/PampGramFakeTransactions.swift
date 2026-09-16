@@ -14,11 +14,13 @@ import PampGramCore
 /// off later — only the gift records themselves (never cleared by a toggle) decide what
 /// shows here.
 public extension PampGramPhantomGiftStore {
-    /// - A debit for every gift actually bought/sent (`!isReceived`) — "Подарок мне"/"От
-    ///   него" gifts never appear here, matching that nothing was ever charged for them.
-    /// - A matching credit, same date, when that gift's `peerId` is this account's own —
+    /// - A credit for every gift "received" from someone (`isReceived`, the "Подарок мне"/
+    ///   "От него" flow) — shows as a top-up, `peer` being whoever supposedly sent it.
+    /// - A debit for every gift actually bought/sent (`!isReceived`).
+    /// - A matching credit, same date, when a *sent* gift's `peerId` is this account's own —
     ///   sending a gift to yourself shows up both as the payment and as it "arriving".
-    /// - A credit when a gift already in the profile was later sold (`soldDate != nil`).
+    /// - A credit when a gift already in the profile was later sold (`soldDate != nil`),
+    ///   whether it was originally bought or received.
     static func fakeTransactionsSignal(context: AccountContext, ton: Bool, mode: StarsTransactionsContext.Mode) -> Signal<[StarsContext.State.Transaction], NoError> {
         let currency: CurrencyAmount.Currency = ton ? .ton : .stars
         let ledgerCurrency: PampGramLocalCurrency = ton ? .ton : .stars
@@ -26,7 +28,7 @@ public extension PampGramPhantomGiftStore {
 
         return combineLatest(self.allGiftsSignal(context: context), PampGramLocalLedgerStore.signal(postbox: context.account.postbox))
         |> mapToSignal { gifts, operations -> Signal<[StarsContext.State.Transaction], NoError> in
-            let relevant = gifts.filter { $0.price.currency == currency && !$0.isReceived }
+            let relevant = gifts.filter { $0.price.currency == currency }
 
             // Ledger rows with no matching gift record — e.g. Stars bought with the local
             // ruble card (PampGramStarsHook) — so a spend/top-up never goes missing from the
@@ -79,32 +81,45 @@ public extension PampGramPhantomGiftStore {
                         isUnique = false
                     }
 
-                    var debitFlags: StarsContext.State.Transaction.Flags = [.isGift]
-                    if isUnique {
-                        debitFlags.insert(.isStarGiftResale)
-                    }
-                    transactions.append(self.fakeTransaction(
-                        id: "pampgram_\(gift.id)_debit",
-                        flags: debitFlags,
-                        amount: StarsAmount(value: -gift.price.amount.value, nanos: -gift.price.amount.nanos),
-                        currency: currency,
-                        date: gift.date,
-                        peer: .peer(peer),
-                        title: nil,
-                        starGift: gift.gift
-                    ))
-
-                    if gift.peerId == selfPeerId {
+                    if gift.isReceived {
                         transactions.append(self.fakeTransaction(
-                            id: "pampgram_\(gift.id)_credit",
+                            id: "pampgram_\(gift.id)_received",
                             flags: [.isGift],
                             amount: gift.price.amount,
                             currency: currency,
                             date: gift.date,
                             peer: .peer(peer),
                             title: gift.title,
-                            starGift: nil
+                            starGift: gift.gift
                         ))
+                    } else {
+                        var debitFlags: StarsContext.State.Transaction.Flags = [.isGift]
+                        if isUnique {
+                            debitFlags.insert(.isStarGiftResale)
+                        }
+                        transactions.append(self.fakeTransaction(
+                            id: "pampgram_\(gift.id)_debit",
+                            flags: debitFlags,
+                            amount: StarsAmount(value: -gift.price.amount.value, nanos: -gift.price.amount.nanos),
+                            currency: currency,
+                            date: gift.date,
+                            peer: .peer(peer),
+                            title: nil,
+                            starGift: gift.gift
+                        ))
+
+                        if gift.peerId == selfPeerId {
+                            transactions.append(self.fakeTransaction(
+                                id: "pampgram_\(gift.id)_credit",
+                                flags: [.isGift],
+                                amount: gift.price.amount,
+                                currency: currency,
+                                date: gift.date,
+                                peer: .peer(peer),
+                                title: gift.title,
+                                starGift: nil
+                            ))
+                        }
                     }
 
                     if let soldDate = gift.soldDate {
