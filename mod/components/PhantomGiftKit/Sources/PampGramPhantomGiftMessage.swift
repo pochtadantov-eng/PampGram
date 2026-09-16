@@ -204,7 +204,7 @@ public enum PampGramPhantomGiftMessage {
             count: starCount,
             cryptoCurrency: nil,
             cryptoAmount: nil,
-            transactionId: "pampgram_topup_\(Int64.random(in: 1...Int64.max))"
+            transactionId: "\(Int64.random(in: 1...Int64.max))"
         ))
     }
 
