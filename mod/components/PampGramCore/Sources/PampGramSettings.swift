@@ -576,13 +576,12 @@ public enum PampGramCore {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
-    /// The gating `settings`/`settingsSignal` share: unlicensed (see `licenseActivated`) wins
-    /// over everything else and neuters the whole mod; otherwise falls through to the existing
-    /// "Включить визуалку" gate, unchanged.
+    /// The gating `settings`/`settingsSignal` share: "Включить визуалку" neuters just the
+    /// gift-visual fields, unchanged. Standard vs Premium is no longer a settings-wide gate —
+    /// Standard is the normal, fully-functional default tier, not an "inactive" state; Premium
+    /// only widens which HUB SECTIONS are reachable at all (see `pampGramGateTier` in
+    /// PampGramHubScreen.swift), so there's nothing left for this layer to neuter based on tier.
     private static func effectiveSettings(from raw: PampGramSettings) -> PampGramSettings {
-        if !raw.licenseActivated {
-            return raw.withEverythingOff()
-        }
         return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
     }
 

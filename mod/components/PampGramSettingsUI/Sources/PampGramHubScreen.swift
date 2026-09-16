@@ -308,8 +308,11 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
 
     let arguments = PampGramHubArguments(
         openGifts: {
-            pampGramGateSection(context: context, section: .gifts) {
-                pushControllerImpl?(pampGramGiftsSettingsController(context: context))
+            guard let push = pushControllerImpl else { return }
+            pampGramGateTier(context: context, push: push) {
+                pampGramGateSection(context: context, section: .gifts) {
+                    push(pampGramGiftsSettingsController(context: context))
+                }
             }
         },
         openMessages: {
@@ -323,7 +326,10 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
             }
         },
         openAppearance: {
-            pushControllerImpl?(pampGramAppearanceController(context: context))
+            guard let push = pushControllerImpl else { return }
+            pampGramGateTier(context: context, push: push) {
+                push(pampGramAppearanceController(context: context))
+            }
         },
         openAdditional: {
             pushControllerImpl?(pampGramAdditionalSettingsController(context: context))
@@ -335,7 +341,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
             pushControllerImpl?(pampGramStatusController(context: context))
         },
         openAbout: {
-            pushControllerImpl?(pampGramAboutController(context: context))
+            pushControllerImpl?(pampGramSubscriptionController(context: context))
         },
         openSearch: {
             pushControllerImpl?(pampGramSearchController(context: context))

@@ -130,15 +130,32 @@ public func pampGramSearchController(context: AccountContext) -> ViewController 
     var pushControllerImpl: ((ViewController) -> Void)?
     let queryPromise = ValuePromise<String>("", ignoreRepeated: true)
 
-    let openGifts: () -> Void = { pushControllerImpl?(pampGramGiftsSettingsController(context: context)) }
+    let openGifts: () -> Void = {
+        guard let push = pushControllerImpl else { return }
+        pampGramGateTier(context: context, push: push) {
+            pampGramGateSection(context: context, section: .gifts) {
+                push(pampGramGiftsSettingsController(context: context))
+            }
+        }
+    }
     let openMessages: () -> Void = { pushControllerImpl?(pampGramMessagesSettingsController(context: context)) }
     let openGhost: () -> Void = { pushControllerImpl?(pampGramGhostSettingsController(context: context)) }
     let openAdditional: () -> Void = { pushControllerImpl?(pampGramAdditionalSettingsController(context: context)) }
     let openStatus: () -> Void = { pushControllerImpl?(pampGramStatusController(context: context)) }
     let openFakeLocation: () -> Void = { pushControllerImpl?(pampGramFakeLocationController(context: context)) }
     let openChatLock: () -> Void = { pushControllerImpl?(pampGramChatLockController(context: context)) }
-    let openAppearance: () -> Void = { pushControllerImpl?(pampGramAppearanceController(context: context)) }
-    let openGiftMarket: () -> Void = { pushControllerImpl?(pampGramGiftMarketController(context: context)) }
+    let openAppearance: () -> Void = {
+        guard let push = pushControllerImpl else { return }
+        pampGramGateTier(context: context, push: push) {
+            push(pampGramAppearanceController(context: context))
+        }
+    }
+    let openGiftMarket: () -> Void = {
+        guard let push = pushControllerImpl else { return }
+        pampGramGateTier(context: context, push: push) {
+            push(pampGramGiftMarketController(context: context))
+        }
+    }
 
     let index: [PampGramSearchItem] = [
         PampGramSearchItem(title: "Подарок ему", subtitle: "Визуальная отправка подарка, без списания Stars/TON", sectionName: "Подарки", keywords: "gift подарки маркет фантом", open: openGifts),
