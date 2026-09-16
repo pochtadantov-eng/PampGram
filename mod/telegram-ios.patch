@@ -18730,7 +18730,7 @@ index fd01930f..a0496a3c 100644
              contentHeight += headerHeight
              if !((self.isSettings || self.isMyProfile) && self.state.isEditing) {
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
-index 806e652a..af17fef0 100644
+index 806e652a..a073b01a 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 @@ -15,6 +15,7 @@ import TelegramPresentationData
@@ -18746,7 +18746,7 @@ index 806e652a..af17fef0 100644
          case .powerSaving:
              push(energySavingSettingsScreen(context: self.context))
 +        case .pampGram:
-+            push(pampGramSettingsController(context: self.context))
++            pampGramPresentHub(context: self.context, push: push)
          case .businessSetup:
              guard let controller = self.controller, !controller.presentAccountFrozenInfoIfNeeded() else {
                  return
@@ -19906,7 +19906,7 @@ index a1a8f61d..8d28620c 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5bb..f0f2929a 100644
+index 07cef5bb..87e92e4f 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -19920,7 +19920,7 @@ index 07cef5bb..f0f2929a 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,107 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,120 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -19949,8 +19949,16 @@ index 07cef5bb..f0f2929a 100644
 +        newList.insert(.separator, at: 0)
 +        newList.insert(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
 +            return pampGramSettingsIcon(size: 24.0)
-+        }, iconSource: nil, action: { c, _ in
-+            var subItems: [ContextMenuItem] = []
++        }, iconSource: nil, action: { c, f in
++            // A full ban blocks this entry point too, not just the hub — checked before the
++            // submenu is built at all, so a banned account never sees "Изменить текст"/"Отправить
++            // фото"/etc. even for a moment. Not banned is the overwhelmingly common case and pays
++            // a round trip to the ban-status endpoint for it, same trade-off pampGramGateSection
++            // and pampGramGateFullAccess already make.
++            let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
++            |> deliverOnMainQueue).start(next: { status in
++                guard let reason = status.full else {
++                    var subItems: [ContextMenuItem] = []
 +            subItems.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Common_Back, textColor: .primary, icon: { theme in
 +                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Back"), color: theme.actionSheet.primaryTextColor)
 +            }, iconSource: nil, iconPosition: .left, action: { c, _ in
@@ -20018,6 +20026,11 @@ index 07cef5bb..f0f2929a 100644
 +                }
 +            })))
 +            c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
++                    return
++                }
++                f(.dismissWithoutContent)
++                pampGramPresentBannedScreen(context: context, reason: reason)
++            })
 +        })), at: 0)
 +        items.content = .list(newList)
 +        return items
@@ -20832,7 +20845,7 @@ index 9ccc3492..4a23f4b6 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift b/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift
-index 826bdb40..4ce00921 100644
+index 826bdb40..d55bc428 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift
 @@ -59,6 +59,8 @@ import ChatRecordingPreviewInputPanelNode
@@ -20858,7 +20871,7 @@ index 826bdb40..4ce00921 100644
          self.sendActionButtons.sendButtonLongPressed = { [weak self] node, gesture in
              self?.interfaceInteraction?.displaySendMessageOptions(node, gesture)
          }
-@@ -5647,7 +5654,25 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
+@@ -5647,7 +5654,30 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
              self.displayAttachmentMenu()
          }
      }
@@ -20872,14 +20885,19 @@ index 826bdb40..4ce00921 100644
 +            return
 +        }
 +        self.hapticFeedback.impact(.medium)
-+        let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox)
-+        |> take(1)
-+        |> deliverOnMainQueue).startStandalone(next: { settings in
-+            guard settings.visualEditEnabled else {
-+                return
-+            }
-+            pampGramPresentVisualChatMenu(context: context, peerId: peerId)
-+        })
++        // A full ban blocks the attachment-menu entry point too: checked before the
++        // visualEditEnabled settings signal even resolves, so a banned account can't reach the
++        // visual chat menu through this gesture no matter what its local settings say.
++        pampGramGateFullAccess(context: context) {
++            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox)
++            |> take(1)
++            |> deliverOnMainQueue).startStandalone(next: { settings in
++                guard settings.visualEditEnabled else {
++                    return
++                }
++                pampGramPresentVisualChatMenu(context: context, peerId: peerId)
++            })
++        }
 +    }
 +
      @objc func searchLayoutClearButtonPressed() {

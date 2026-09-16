@@ -128,22 +128,42 @@ public func pampGramPresentBannedScreen(context: AccountContext, reason: String)
     presentingController.present(PampGramBannedViewController(reason: reason), animated: true, completion: nil)
 }
 
-/// Opens `openReal` immediately — never waits on the network — and checks this account's ban
-/// status for `section` in parallel; if the admin has banned the whole account or just this
-/// section, the lock screen is presented right on top a moment later. The overwhelmingly
-/// common case (not banned) used to pay for a round trip to the ban-status endpoint before the
-/// section would even open, which on a slow or flaky connection reads as the whole tap having
-/// done nothing — this way navigation is instant and only the rare banned case pays for the
-/// check, exactly like the hub's own full-ban check already works. Shared by every navigation
-/// point that can reach a gated section — the hub's own rows and "Статус"'s mirror of the same
-/// rows both call this rather than pushing straight through.
+/// Checks this account's ban status for `section` FIRST and only calls `openReal` if neither
+/// the whole account nor this section is banned; a banned account sees the lock screen instead
+/// and `openReal` never runs, so there is no window where the real section is reachable while
+/// the check is still in flight. (An earlier version opened the section immediately and only
+/// corrected course once the check came back — on top of the real section rather than instead
+/// of it, so dismissing the lock screen left the banned section fully usable underneath. Ban
+/// enforcement that can be raced by a fast tap isn't enforcement.) The one real cost is that
+/// every open — including the overwhelmingly common not-banned case — now pays for a round trip
+/// to the ban-status endpoint before the section appears; `fetchBanStatus` never fails outward
+/// (any network problem resolves to "not banned" rather than erroring), so a flaky connection
+/// costs a beat of latency, never a false lockout. Shared by every navigation point that can
+/// reach a gated section — the hub's own rows and "Статус"'s mirror of the same rows both call
+/// this rather than pushing straight through.
 public func pampGramGateSection(context: AccountContext, section: PampGramBanSection, openReal: @escaping () -> Void) {
-    openReal()
-
     let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
     |> deliverOnMainQueue).start(next: { status in
         if let reason = status.full ?? status.reason(for: section) {
             pampGramPresentBannedScreen(context: context, reason: reason)
+        } else {
+            openReal()
+        }
+    })
+}
+
+/// Same before-not-after gate as `pampGramGateSection`, but for entry points that aren't tied
+/// to one section — a full ban blocks these outright, a section ban doesn't apply since none of
+/// them are scoped to a single section. Used to gate opening the hub itself and the two PampGram
+/// entry points that live entirely outside the hub (message long-press menu, attachment-button
+/// long-press) so a full ban actually reaches every way into PampGram, not just the hub.
+public func pampGramGateFullAccess(context: AccountContext, onAllowed: @escaping () -> Void) {
+    let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
+    |> deliverOnMainQueue).start(next: { status in
+        if let reason = status.full {
+            pampGramPresentBannedScreen(context: context, reason: reason)
+        } else {
+            onAllowed()
         }
     })
 }

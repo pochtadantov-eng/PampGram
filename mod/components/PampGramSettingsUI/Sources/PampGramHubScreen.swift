@@ -404,15 +404,6 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
 
     let isAdmin = context.account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId
 
-    // A full ban blocks the hub itself, not just its sections — checked once per open rather
-    // than on every redraw, same one-shot pattern as pampGramGateSection.
-    let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
-    |> deliverOnMainQueue).start(next: { status in
-        if let reason = status.full {
-            pampGramPresentBannedScreen(context: context, reason: reason)
-        }
-    })
-
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox),
@@ -448,4 +439,16 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         return controller?.navigationController as? NavigationController
     }
     return controller
+}
+
+/// The only way the hub should ever be reached — checks a full ban BEFORE building or pushing
+/// the hub at all, instead of pushing it and correcting course once the check comes back (that
+/// pattern is exactly what let a banned account use the hub for a moment before the lock screen
+/// caught up, same bug `pampGramGateSection` used to have). A banned account never sees the hub
+/// push happen, so "Закрыть" on the lock screen leaves them exactly where they tapped from —
+/// Settings — with nothing to pop back out of.
+public func pampGramPresentHub(context: AccountContext, push: @escaping (ViewController) -> Void) {
+    pampGramGateFullAccess(context: context) {
+        push(pampGramSettingsController(context: context))
+    }
 }
