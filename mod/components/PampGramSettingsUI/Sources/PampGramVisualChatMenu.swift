@@ -18,7 +18,8 @@ import PromptUI
 
 /// The paperclip long-press menu: builds a whole fake conversation — any mix of text, photos,
 /// stickers, voice notes and files, tagged per item as "я" or "собеседник" — then drops the
-/// whole thing into the real chat at once, in order, once "Отправить" is tapped. Nothing here
+/// whole thing into the real chat at once, in order, once "Готово" is tapped and confirmed.
+/// Nothing here
 /// is presented as a standalone `NavigationController` (that was the earlier version's bug —
 /// see the removed `PampGramVisualChatMenuController: ViewController` below). An ad-hoc
 /// `NavigationController` that's never laid out through this app's real `Window`/`WindowHost`
@@ -442,24 +443,24 @@ private enum PampGramVisualChatEntry: ItemListNodeEntry {
 }
 
 private final class PampGramVisualChatArguments {
-    let changeInterlocutor: () -> Void
+    let toggleRole: () -> Void
     let addText: () -> Void
     let addPhoto: () -> Void
     let addSticker: () -> Void
     let addVoice: () -> Void
     let addFile: () -> Void
     let openMessageActions: (Int) -> Void
-    let sendAll: () -> Void
+    let confirmSendAll: () -> Void
 
-    init(changeInterlocutor: @escaping () -> Void, addText: @escaping () -> Void, addPhoto: @escaping () -> Void, addSticker: @escaping () -> Void, addVoice: @escaping () -> Void, addFile: @escaping () -> Void, openMessageActions: @escaping (Int) -> Void, sendAll: @escaping () -> Void) {
-        self.changeInterlocutor = changeInterlocutor
+    init(toggleRole: @escaping () -> Void, addText: @escaping () -> Void, addPhoto: @escaping () -> Void, addSticker: @escaping () -> Void, addVoice: @escaping () -> Void, addFile: @escaping () -> Void, openMessageActions: @escaping (Int) -> Void, confirmSendAll: @escaping () -> Void) {
+        self.toggleRole = toggleRole
         self.addText = addText
         self.addPhoto = addPhoto
         self.addSticker = addSticker
         self.addVoice = addVoice
         self.addFile = addFile
         self.openMessageActions = openMessageActions
-        self.sendAll = sendAll
+        self.confirmSendAll = confirmSendAll
     }
 }
 
@@ -497,6 +498,17 @@ private func pampGramVisualChatMenuController(context: AccountContext, peerId: E
         setInterlocutor(PampGramVisualChatInterlocutor(id: peer.id, displayName: peer.compactDisplayTitle))
     })
 
+    // Which role new content gets added as — toggled by the top-left button, read directly
+    // (not asked per add) by every "add …" action below. Defaults to "собеседник" since that's
+    // the overwhelmingly common case for fake content (see `PampGramFakeContentInsert.swift`'s
+    // photo/file/call inserts, which only ever author as the other side at all).
+    let activeRoleState = Atomic<Bool>(value: true)
+    let activeRolePromise = ValuePromise<Bool>(true, ignoreRepeated: false)
+    func toggleActiveRole() {
+        let updated = activeRoleState.modify { !$0 }
+        activeRolePromise.set(updated)
+    }
+
     let appendDraft: (Bool, PampGramVisualChatContent) -> Void = { isIncoming, content in
         let interlocutor = interlocutorState.with { $0 }
         let ordinal = ordinalCounter.modify { $0 + 1 }
@@ -511,170 +523,146 @@ private func pampGramVisualChatMenuController(context: AccountContext, peerId: E
         mutateDrafts { $0.append(draft) }
     }
 
-    let presentRoleChoice: (@escaping (Bool) -> Void) -> Void = { onChosen in
-        guard let topController = pampGramVisualChatTopController(context: context) else {
-            return
+    func performSendAll(_ allDrafts: [PampGramVisualChatDraft]) {
+        let baseTimestamp = Int32(Date().timeIntervalSince1970)
+        for (index, draft) in allDrafts.enumerated() {
+            let timestamp = baseTimestamp + Int32(index)
+            let text: String
+            let media: [Media]
+            switch draft.content {
+            case let .text(value):
+                text = value
+                media = []
+            case let .photo(value):
+                text = ""
+                media = [value]
+            case let .sticker(value):
+                text = ""
+                media = [value]
+            case let .voice(value, _):
+                text = ""
+                media = [value]
+            case let .file(value, _):
+                text = ""
+                media = [value]
+            }
+            let reaction = draft.reaction
+            let insert = pampGramVisualChatInsertMessage(context: context, chatPeerId: peerId, authorId: draft.authorId, isIncoming: draft.isIncoming, timestamp: timestamp, text: text, media: media)
+            let _ = (insert |> deliverOnMainQueue).start(next: { messageId in
+                if let messageId, let reaction {
+                    pampGramToggleMessageReaction(context: context, messageId: messageId, emoji: reaction)
+                }
+            })
         }
-        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-        let interlocutorName = interlocutorState.with { $0 }.displayName
-        let sheet = ActionSheetController(presentationData: presentationData)
-        sheet.setItemGroups([
-            ActionSheetItemGroup(items: [
-                ActionSheetTextItem(title: "От кого сообщение?"),
-                ActionSheetButtonItem(title: "Я", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    onChosen(false)
-                }),
-                ActionSheetButtonItem(title: interlocutorName, color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    onChosen(true)
-                })
-            ]),
-            ActionSheetItemGroup(items: [
-                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                })
-            ])
-        ])
-        topController.present(sheet, in: .window(.root))
+        mutateDrafts { $0.removeAll() }
+        presentTooltipImpl?("Визуальная переписка отправлена в чат.")
+        popImpl?()
     }
 
     let arguments = PampGramVisualChatArguments(
-        changeInterlocutor: {
+        toggleRole: {
+            toggleActiveRole()
+        },
+        addText: {
+            let isIncoming = activeRoleState.with { $0 }
             guard let topController = pampGramVisualChatTopController(context: context) else {
                 return
             }
             topController.present(promptController(
                 context: context,
-                text: "Сменить собеседника",
-                subtitle: "Юзернейм (без @) — все следующие сообщения «от собеседника» будут от его лица. Уже добавленные сообщения не изменятся.",
+                text: isIncoming ? "Текст собеседника" : "Текст от меня",
+                subtitle: "Добавится в конец переписки",
                 value: "",
-                placeholder: "username",
-                characterLimit: 64,
+                placeholder: "Введите текст...",
+                characterLimit: 4096,
                 apply: { value in
-                    guard var value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+                    guard let text = value?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
                         return
                     }
-                    if value.hasPrefix("@") {
-                        value.removeFirst()
-                    }
-                    let _ = (context.engine.peers.resolvePeerByName(name: value, referrer: nil)
-                    |> deliverOnMainQueue).start(next: { result in
-                        guard case let .result(peer) = result, let peer else {
-                            presentTooltipImpl?("Пользователь «\(value)» не найден.")
-                            return
-                        }
-                        setInterlocutor(PampGramVisualChatInterlocutor(id: peer.id, displayName: peer.compactDisplayTitle))
-                        presentTooltipImpl?("Собеседник изменён на \(peer.compactDisplayTitle).")
-                    })
+                    appendDraft(isIncoming, .text(text))
                 }
             ), in: .window(.root))
-        },
-        addText: {
-            presentRoleChoice { isIncoming in
-                guard let topController = pampGramVisualChatTopController(context: context) else {
-                    return
-                }
-                topController.present(promptController(
-                    context: context,
-                    text: isIncoming ? "Текст собеседника" : "Текст от меня",
-                    subtitle: "Добавится в конец переписки",
-                    value: "",
-                    placeholder: "Введите текст...",
-                    characterLimit: 4096,
-                    apply: { value in
-                        guard let text = value?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-                            return
-                        }
-                        appendDraft(isIncoming, .text(text))
-                    }
-                ), in: .window(.root))
-            }
         },
         addPhoto: {
             guard #available(iOS 14.0, *) else {
                 return
             }
-            presentRoleChoice { isIncoming in
-                pampGramVisualChatPresentImagePicker(context: context) { media in
-                    appendDraft(isIncoming, .photo(media))
-                }
+            let isIncoming = activeRoleState.with { $0 }
+            pampGramVisualChatPresentImagePicker(context: context) { media in
+                appendDraft(isIncoming, .photo(media))
             }
         },
         addSticker: {
             guard #available(iOS 14.0, *) else {
                 return
             }
-            presentRoleChoice { isIncoming in
-                pampGramVisualChatPresentImagePicker(context: context) { media in
-                    appendDraft(isIncoming, .sticker(media))
-                }
+            let isIncoming = activeRoleState.with { $0 }
+            pampGramVisualChatPresentImagePicker(context: context) { media in
+                appendDraft(isIncoming, .sticker(media))
             }
         },
         addVoice: {
-            presentRoleChoice { isIncoming in
-                guard let topController = pampGramVisualChatTopController(context: context) else {
+            let isIncoming = activeRoleState.with { $0 }
+            guard let topController = pampGramVisualChatTopController(context: context) else {
+                return
+            }
+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+            let sheet = ActionSheetController(presentationData: presentationData)
+            let addSilent: (Int) -> Void = { duration in
+                guard let media = pampGramVisualChatBuildSilentVoiceMedia(durationSeconds: duration) else {
+                    presentTooltipImpl?("Не получилось создать голосовое.")
                     return
                 }
-                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-                let sheet = ActionSheetController(presentationData: presentationData)
-                let addSilent: (Int) -> Void = { duration in
-                    guard let media = pampGramVisualChatBuildSilentVoiceMedia(durationSeconds: duration) else {
-                        presentTooltipImpl?("Не получилось создать голосовое.")
-                        return
-                    }
-                    appendDraft(isIncoming, .voice(media, durationSeconds: duration))
-                }
-                sheet.setItemGroups([
-                    ActionSheetItemGroup(items: [
-                        ActionSheetTextItem(title: "Голосовое сообщение"),
-                        ActionSheetButtonItem(title: "Тишина, 3 сек", color: .accent, action: { [weak sheet] in
-                            sheet?.dismissAnimated()
-                            addSilent(3)
-                        }),
-                        ActionSheetButtonItem(title: "Тишина, 5 сек", color: .accent, action: { [weak sheet] in
-                            sheet?.dismissAnimated()
-                            addSilent(5)
-                        }),
-                        ActionSheetButtonItem(title: "Тишина, 10 сек", color: .accent, action: { [weak sheet] in
-                            sheet?.dismissAnimated()
-                            addSilent(10)
-                        }),
-                        ActionSheetButtonItem(title: "Выбрать аудиофайл", color: .accent, action: { [weak sheet] in
-                            sheet?.dismissAnimated()
-                            guard #available(iOS 14.0, *) else {
-                                return
-                            }
-                            pampGramVisualChatPresentFilePicker(context: context, asVoice: true) { media, _ in
-                                var duration = 0
-                                if let mediaFile = media as? TelegramMediaFile {
-                                    for attribute in mediaFile.attributes {
-                                        if case let .Audio(_, dur, _, _, _) = attribute {
-                                            duration = dur
-                                        }
+                appendDraft(isIncoming, .voice(media, durationSeconds: duration))
+            }
+            sheet.setItemGroups([
+                ActionSheetItemGroup(items: [
+                    ActionSheetTextItem(title: "Голосовое сообщение"),
+                    ActionSheetButtonItem(title: "Тишина, 3 сек", color: .accent, action: { [weak sheet] in
+                        sheet?.dismissAnimated()
+                        addSilent(3)
+                    }),
+                    ActionSheetButtonItem(title: "Тишина, 5 сек", color: .accent, action: { [weak sheet] in
+                        sheet?.dismissAnimated()
+                        addSilent(5)
+                    }),
+                    ActionSheetButtonItem(title: "Тишина, 10 сек", color: .accent, action: { [weak sheet] in
+                        sheet?.dismissAnimated()
+                        addSilent(10)
+                    }),
+                    ActionSheetButtonItem(title: "Выбрать аудиофайл", color: .accent, action: { [weak sheet] in
+                        sheet?.dismissAnimated()
+                        guard #available(iOS 14.0, *) else {
+                            return
+                        }
+                        pampGramVisualChatPresentFilePicker(context: context, asVoice: true) { media, _ in
+                            var duration = 0
+                            if let mediaFile = media as? TelegramMediaFile {
+                                for attribute in mediaFile.attributes {
+                                    if case let .Audio(_, dur, _, _, _) = attribute {
+                                        duration = dur
                                     }
                                 }
-                                appendDraft(isIncoming, .voice(media, durationSeconds: duration))
                             }
-                        })
-                    ]),
-                    ActionSheetItemGroup(items: [
-                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-                            sheet?.dismissAnimated()
-                        })
-                    ])
+                            appendDraft(isIncoming, .voice(media, durationSeconds: duration))
+                        }
+                    })
+                ]),
+                ActionSheetItemGroup(items: [
+                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                        sheet?.dismissAnimated()
+                    })
                 ])
-                topController.present(sheet, in: .window(.root))
-            }
+            ])
+            topController.present(sheet, in: .window(.root))
         },
         addFile: {
             guard #available(iOS 14.0, *) else {
                 return
             }
-            presentRoleChoice { isIncoming in
-                pampGramVisualChatPresentFilePicker(context: context, asVoice: false) { media, fileName in
-                    appendDraft(isIncoming, .file(media, fileName: fileName))
-                }
+            let isIncoming = activeRoleState.with { $0 }
+            pampGramVisualChatPresentFilePicker(context: context, asVoice: false) { media, fileName in
+                appendDraft(isIncoming, .file(media, fileName: fileName))
             }
         },
         openMessageActions: { ordinal in
@@ -728,69 +716,52 @@ private func pampGramVisualChatMenuController(context: AccountContext, peerId: E
             ])
             topController.present(sheet, in: .window(.root))
         },
-        sendAll: {
+        confirmSendAll: {
             let allDrafts = draftsState.with { $0 }
             guard !allDrafts.isEmpty else {
                 return
             }
-            let baseTimestamp = Int32(Date().timeIntervalSince1970)
-            for (index, draft) in allDrafts.enumerated() {
-                let timestamp = baseTimestamp + Int32(index)
-                let text: String
-                let media: [Media]
-                switch draft.content {
-                case let .text(value):
-                    text = value
-                    media = []
-                case let .photo(value):
-                    text = ""
-                    media = [value]
-                case let .sticker(value):
-                    text = ""
-                    media = [value]
-                case let .voice(value, _):
-                    text = ""
-                    media = [value]
-                case let .file(value, _):
-                    text = ""
-                    media = [value]
-                }
-                let reaction = draft.reaction
-                let insert = pampGramVisualChatInsertMessage(context: context, chatPeerId: peerId, authorId: draft.authorId, isIncoming: draft.isIncoming, timestamp: timestamp, text: text, media: media)
-                let _ = (insert |> deliverOnMainQueue).start(next: { messageId in
-                    if let messageId, let reaction {
-                        pampGramToggleMessageReaction(context: context, messageId: messageId, emoji: reaction)
-                    }
-                })
+            guard let topController = pampGramVisualChatTopController(context: context) else {
+                return
             }
-            mutateDrafts { $0.removeAll() }
-            presentTooltipImpl?("Визуальная переписка отправлена в чат.")
-            popImpl?()
+            topController.present(textAlertController(
+                context: context,
+                title: nil,
+                text: "Вы точно хотите добавить эту переписку (\(allDrafts.count) сообщ.) в чат?",
+                actions: [
+                    TextAlertAction(type: .genericAction, title: "Назад", action: {}),
+                    TextAlertAction(type: .defaultAction, title: "Да", action: {
+                        performSendAll(allDrafts)
+                    })
+                ]
+            ), in: .window(.root))
         }
     )
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
         interlocutorPromise.get(),
+        activeRolePromise.get(),
         draftsPromise.get()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, interlocutor, drafts -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, interlocutor, activeRoleIsIncoming, drafts -> (ItemListControllerState, (ItemListNodeState, Any)) in
+        let roleButtonTitle = activeRoleIsIncoming ? interlocutor.displayName : "Я"
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Визуальный чат"),
-            leftNavigationButton: ItemListNavigationButton(content: .text("Собеседник"), style: .regular, enabled: true, action: {
-                arguments.changeInterlocutor()
+            leftNavigationButton: ItemListNavigationButton(content: .text(roleButtonTitle), style: .regular, enabled: true, action: {
+                arguments.toggleRole()
             }),
-            rightNavigationButton: ItemListNavigationButton(content: .text("Отправить"), style: .bold, enabled: !drafts.isEmpty, action: {
-                arguments.sendAll()
+            rightNavigationButton: ItemListNavigationButton(content: .text("Готово"), style: .bold, enabled: !drafts.isEmpty, action: {
+                arguments.confirmSendAll()
             }),
             backNavigationButton: nil,
             animateChanges: true
         )
 
         var entries: [PampGramVisualChatEntry] = [
-            .interlocutorInfo("СОБЕСЕДНИК: \(interlocutor.displayName.uppercased())"),
+            .interlocutorInfo(activeRoleIsIncoming ? "СЕЙЧАС ПИШЕШЬ КАК: \(interlocutor.displayName.uppercased())" : "СЕЙЧАС ПИШЕШЬ КАК: Я"),
             .addHeader("ДОБАВИТЬ В ПЕРЕПИСКУ"),
             .addText("📝 Текст"),
             .addPhoto("📷 Фото"),
@@ -800,7 +771,7 @@ private func pampGramVisualChatMenuController(context: AccountContext, peerId: E
             .messagesHeader("ЧЕРНОВИК (\(drafts.count))")
         ]
         if drafts.isEmpty {
-            entries.append(.messagesEmpty("Пока пусто — добавьте сообщение выше, потом нажмите «Отправить»."))
+            entries.append(.messagesEmpty("Пока пусто — добавьте сообщение выше, потом нажмите «Готово»."))
         } else {
             for draft in drafts {
                 let title = "\(draft.authorLabel): \(draft.content.icon) \(draft.content.preview)"
