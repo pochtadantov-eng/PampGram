@@ -128,23 +128,31 @@ public func pampGramPresentBannedScreen(context: AccountContext, reason: String)
     presentingController.present(PampGramBannedViewController(reason: reason), animated: true, completion: nil)
 }
 
-/// Checks this account's ban status for `section` FIRST and only calls `openReal` if neither
-/// the whole account nor this section is banned; a banned account sees the lock screen instead
-/// and `openReal` never runs, so there is no window where the real section is reachable while
-/// the check is still in flight. (An earlier version opened the section immediately and only
-/// corrected course once the check came back — on top of the real section rather than instead
-/// of it, so dismissing the lock screen left the banned section fully usable underneath. Ban
-/// enforcement that can be raced by a fast tap isn't enforcement.) The one real cost is that
-/// every open — including the overwhelmingly common not-banned case — now pays for a round trip
-/// to the ban-status endpoint before the section appears; `fetchBanStatus` never fails outward
-/// (any network problem resolves to "not banned" rather than erroring), so a flaky connection
+/// Checks this build's version and this account's ban status for `section` FIRST and only calls
+/// `openReal` if the build isn't retired and neither the whole account nor this section is
+/// banned; a blocked account sees the lock/update screen instead and `openReal` never runs, so
+/// there is no window where the real section is reachable while the checks are still in flight.
+/// (An earlier version opened the section immediately and only corrected course once the check
+/// came back — on top of the real section rather than instead of it, so dismissing the lock
+/// screen left the banned section fully usable underneath. Ban enforcement that can be raced by
+/// a fast tap isn't enforcement.) The version check runs first: a retired build shows "update
+/// required" even for an account that was never banned at all, since the point of retiring a
+/// build is to stop it from being usable regardless of who's signed in. The one real cost is
+/// that every open — including the overwhelmingly common allowed case — now pays for two round
+/// trips before the section appears; neither `fetchMinVersion` nor `fetchBanStatus` ever fails
+/// outward (any network problem resolves to "not banned"/"no minimum"), so a flaky connection
 /// costs a beat of latency, never a false lockout. Shared by every navigation point that can
 /// reach a gated section — the hub's own rows and "Статус"'s mirror of the same rows both call
 /// this rather than pushing straight through.
 public func pampGramGateSection(context: AccountContext, section: PampGramBanSection, openReal: @escaping () -> Void) {
-    let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
-    |> deliverOnMainQueue).start(next: { status in
-        if let reason = status.full ?? status.reason(for: section) {
+    let _ = (combineLatest(
+        PampGramSubscriptionAPI.fetchMinVersion(),
+        PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
+    )
+    |> deliverOnMainQueue).start(next: { minVersion, status in
+        if PampGramSubscriptionAPI.currentBuildVersion < minVersion {
+            pampGramPresentUpdateRequiredScreen(context: context)
+        } else if let reason = status.full ?? status.reason(for: section) {
             pampGramPresentBannedScreen(context: context, reason: reason)
         } else {
             openReal()
@@ -158,9 +166,14 @@ public func pampGramGateSection(context: AccountContext, section: PampGramBanSec
 /// entry points that live entirely outside the hub (message long-press menu, attachment-button
 /// long-press) so a full ban actually reaches every way into PampGram, not just the hub.
 public func pampGramGateFullAccess(context: AccountContext, onAllowed: @escaping () -> Void) {
-    let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
-    |> deliverOnMainQueue).start(next: { status in
-        if let reason = status.full {
+    let _ = (combineLatest(
+        PampGramSubscriptionAPI.fetchMinVersion(),
+        PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
+    )
+    |> deliverOnMainQueue).start(next: { minVersion, status in
+        if PampGramSubscriptionAPI.currentBuildVersion < minVersion {
+            pampGramPresentUpdateRequiredScreen(context: context)
+        } else if let reason = status.full {
             pampGramPresentBannedScreen(context: context, reason: reason)
         } else {
             onAllowed()

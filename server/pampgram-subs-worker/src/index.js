@@ -7,8 +7,9 @@
  * Telegram account id — no messages, no chat content, nothing else ever passes through here.
  *
  * Storage: a single Workers KV namespace (binding SUBS).
- *   key "sub:<id>"  -> "pro" | "standard"
- *   key "ban:<id>"  -> JSON { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
+ *   key "sub:<id>"     -> "pro" | "standard"
+ *   key "ban:<id>"     -> JSON { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
+ *   key "min_version"  -> "<integer>" (single global value, not per-account)
  * Same posture throughout: a key that would only ever store the "nothing going on" value is
  * deleted instead of written, so the store only ever holds actual overrides.
  *
@@ -24,6 +25,20 @@
  *     -> { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
  *     Public, same reasoning as /status — every install checks its own ban state before
  *     opening the hub or a section.
+ *
+ *   GET  /min-version
+ *     -> { "minVersion": <integer> }
+ *     Public, same reasoning as /status. Every install compares this against its own
+ *     hardcoded build number (`PampGramSubscriptionAPI.currentBuildVersion`) before opening
+ *     PampGram; a build below this number shows "update required" instead of the real
+ *     content. Absent key reads as 0, meaning "no minimum set" — every build passes.
+ *
+ *   POST /set-min-version
+ *     body: { "minVersion": <integer>, "token": "<ADMIN_TOKEN>" }
+ *     -> { "ok": true }
+ *     Admin-only, same token as /grant. Raising this past an already-shipped build's number
+ *     is what actually retires that build — existing installs of it start showing "update
+ *     required" the next time they check, with no client-side change needed on their end.
  *
  *   POST /grant
  *     body: { "id": <telegram account id>, "tier": "pro" | "standard", "token": "<ADMIN_TOKEN>" }
@@ -232,6 +247,39 @@ async function handleUnban(request, env) {
 	return jsonResponse({ ok: true });
 }
 
+async function handleMinVersion(request, env) {
+	const stored = await env.SUBS.get("min_version");
+	const parsed = stored === null ? 0 : parseInt(stored, 10);
+	const minVersion = Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+	return jsonResponse({ minVersion });
+}
+
+async function handleSetMinVersion(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { minVersion, token } = payload ?? {};
+
+	if (!isAuthorized(token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	if (!Number.isInteger(minVersion) || minVersion < 0) {
+		return jsonResponse({ error: "invalid minVersion" }, 400);
+	}
+
+	if (minVersion === 0) {
+		await env.SUBS.delete("min_version");
+	} else {
+		await env.SUBS.put("min_version", String(minVersion));
+	}
+
+	return jsonResponse({ ok: true });
+}
+
 async function handleBannedList(request, env) {
 	let payload;
 	try {
@@ -264,6 +312,12 @@ export default {
 		}
 		if (request.method === "GET" && url.pathname === "/ban-status") {
 			return handleBanStatus(request, env);
+		}
+		if (request.method === "GET" && url.pathname === "/min-version") {
+			return handleMinVersion(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/set-min-version") {
+			return handleSetMinVersion(request, env);
 		}
 		if (request.method === "POST" && url.pathname === "/grant") {
 			return handleGrant(request, env);

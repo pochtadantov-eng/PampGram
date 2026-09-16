@@ -92,6 +92,13 @@ public enum PampGramSubscriptionAPI {
     /// The deployed `server/pampgram-subs-worker/` instance (see its README).
     private static let baseURL = "https://pampgram.pochtadantov.workers.dev"
 
+    /// This build's own number, bumped by one in source each time a build is shipped that
+    /// should be able to retire everything before it. Compared against the server's
+    /// `min_version` (see `fetchMinVersion`/`setMinVersion`) — a build below that number shows
+    /// "update required" instead of opening PampGram. Nothing reads this from the server; it's
+    /// baked into the binary at compile time, same as `adminAccountId`.
+    public static let currentBuildVersion: Int = 1
+
     private struct StatusResponse: Decodable {
         let tier: String
     }
@@ -245,6 +252,63 @@ public enum PampGramSubscriptionAPI {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(UnbanRequestBody(id: userId, token: adminToken, scope: scopeString, section: sectionString))
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    private struct MinVersionResponse: Decodable {
+        let minVersion: Int
+    }
+
+    private struct SetMinVersionRequestBody: Encodable {
+        let minVersion: Int
+        let token: String
+    }
+
+    /// Live-ish read of the server's current minimum build number. Same never-fails-outward
+    /// contract as `fetchTier`/`fetchBanStatus`: any network or decode problem resolves to `0`
+    /// ("no minimum set") rather than erroring — a network hiccup can never falsely lock
+    /// somebody out of a build the admin never actually retired.
+    public static func fetchMinVersion() -> Signal<Int, NoError> {
+        return Signal { subscriber in
+            guard let url = URL(string: "\(baseURL)/min-version") else {
+                subscriber.putNext(0)
+                subscriber.putCompletion()
+                return EmptyDisposable
+            }
+            let task = URLSession.shared.dataTask(with: url) { data, _, _ in
+                var minVersion = 0
+                if let data, let decoded = try? JSONDecoder().decode(MinVersionResponse.self, from: data) {
+                    minVersion = decoded.minVersion
+                }
+                subscriber.putNext(minVersion)
+                subscriber.putCompletion()
+            }
+            task.resume()
+            return ActionDisposable {
+                task.cancel()
+            }
+        }
+    }
+
+    /// Admin-only: raises (or clears, with 0) the server's minimum build number. Every install
+    /// whose own `currentBuildVersion` falls below this — including ones already sitting on
+    /// someone's device right now — starts showing "update required" instead of PampGram's
+    /// real content the next time they check, with nothing needing to change on their end.
+    public static func setMinVersion(_ minVersion: Int, adminToken: String, completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: "\(baseURL)/set-min-version") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(SetMinVersionRequestBody(minVersion: minVersion, token: adminToken))
 
         URLSession.shared.dataTask(with: request) { _, response, error in
             let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200

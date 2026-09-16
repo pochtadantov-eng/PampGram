@@ -18,13 +18,15 @@ private final class PampGramAdminArguments {
     let banFull: () -> Void
     let banSection: () -> Void
     let openBannedList: () -> Void
+    let setMinVersion: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
         self.banFull = banFull
         self.banSection = banSection
         self.openBannedList = openBannedList
+        self.setMinVersion = setMinVersion
     }
 }
 
@@ -33,6 +35,7 @@ private enum PampGramAdminSection: Int32 {
     case token
     case grant
     case ban
+    case version
 }
 
 private enum PampGramAdminEntry: ItemListNodeEntry {
@@ -51,6 +54,10 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     case unbanAction(String, Bool)
     case banFooter(String)
 
+    case versionHeader(String)
+    case versionRow(String, String)
+    case versionFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .aboutText:
@@ -61,6 +68,8 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return PampGramAdminSection.grant.rawValue
         case .banHeader, .banFullAction, .banSectionAction, .unbanAction, .banFooter:
             return PampGramAdminSection.ban.rawValue
+        case .versionHeader, .versionRow, .versionFooter:
+            return PampGramAdminSection.version.rawValue
         }
     }
 
@@ -88,6 +97,12 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 9
         case .banFooter:
             return 10
+        case .versionHeader:
+            return 11
+        case .versionRow:
+            return 12
+        case .versionFooter:
+            return 13
         }
     }
 
@@ -115,6 +130,12 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.banFooter(lhsText), .banFooter(rhsText)):
             return lhsText == rhsText
+        case let (.versionHeader(lhsText), .versionHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.versionRow(lhsTitle, lhsLabel), .versionRow(rhsTitle, rhsLabel)):
+            return lhsTitle == rhsTitle && lhsLabel == rhsLabel
+        case let (.versionFooter(lhsText), .versionFooter(rhsText)):
+            return lhsText == rhsText
         default:
             return false
         }
@@ -127,13 +148,17 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdminArguments
         switch self {
-        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .banFooter(text):
+        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .banFooter(text), let .versionFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .tokenHeader(text), let .banHeader(text):
+        case let .tokenHeader(text), let .banHeader(text), let .versionHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .tokenRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.setAdminToken()
+            })
+        case let .versionRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.setMinVersion()
             })
         case let .grantAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -164,6 +189,7 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
     var presentControllerImpl: ((ViewController) -> Void)?
     var presentTooltipImpl: ((String) -> Void)?
+    var refreshMinVersion: (() -> Void)?
 
     // Same username-or-numeric-ID resolve as grantSubscription below, kept as its own copy
     // rather than shared: the two flows diverge right after (tier choice vs. ban reason), and
@@ -402,15 +428,47 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
         },
         openBannedList: {
             pushControllerImpl?(pampGramBannedUsersController(context: context))
+        },
+        setMinVersion: {
+            requireAdminToken { adminToken in
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Минимальная версия",
+                    subtitle: "Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Все версии ниже указанной перестанут открывать PampGram и покажут экран «Вышло новое обновление». Введи 0, чтобы снять ограничение.",
+                    value: "",
+                    placeholder: "например, \(PampGramSubscriptionAPI.currentBuildVersion)",
+                    characterLimit: 9,
+                    apply: { value in
+                        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), let minVersion = Int(value), minVersion >= 0 else {
+                            return
+                        }
+                        PampGramSubscriptionAPI.setMinVersion(minVersion, adminToken: adminToken) { ok in
+                            if ok {
+                                presentTooltipImpl?(minVersion == 0 ? "Ограничение по версии снято." : "Версии ниже \(minVersion) теперь заблокированы.")
+                                refreshMinVersion?()
+                            } else {
+                                presentTooltipImpl?("Не получилось — проверь токен и сервер.")
+                            }
+                        }
+                    }
+                ))
+            }
         }
     )
 
+    let minVersionPromise = Promise<Int>()
+    minVersionPromise.set(PampGramSubscriptionAPI.fetchMinVersion())
+    refreshMinVersion = {
+        minVersionPromise.set(PampGramSubscriptionAPI.fetchMinVersion())
+    }
+
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramSubscriptionAPI.adminTokenSignal(postbox: context.account.postbox)
+        PampGramSubscriptionAPI.adminTokenSignal(postbox: context.account.postbox),
+        minVersionPromise.get()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, adminToken -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, adminToken, minVersion -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Админ-панель"),
@@ -430,7 +488,10 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),
             .unbanAction("Разбанить", adminToken != nil),
-            .banFooter("Забаненный видит вместо раздела (или всего PampGram, если бан полный) закрытый замок и причину, которую ты укажешь.")
+            .banFooter("Забаненный видит вместо раздела (или всего PampGram, если бан полный) закрытый замок и причину, которую ты укажешь."),
+            .versionHeader("ВЕРСИЯ"),
+            .versionRow("Минимальная версия", minVersion == 0 ? "Не ограничена" : "\(minVersion)"),
+            .versionFooter("Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Подними минимальную версию до номера новой сборки, чтобы все более старые (включая уже установленные у людей) сразу показывали «Вышло новое обновление» вместо PampGram.")
         ]
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
