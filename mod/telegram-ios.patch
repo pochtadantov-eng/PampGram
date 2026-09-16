@@ -19906,7 +19906,7 @@ index a1a8f61d..8d28620c 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5bb..87e92e4f 100644
+index 07cef5bb..dca2a1c1 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -19920,7 +19920,7 @@ index 07cef5bb..87e92e4f 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,120 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,131 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -19949,92 +19949,103 @@ index 07cef5bb..87e92e4f 100644
 +        newList.insert(.separator, at: 0)
 +        newList.insert(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
 +            return pampGramSettingsIcon(size: 24.0)
-+        }, iconSource: nil, action: { c, f in
++        }, iconSource: nil, action: { _, f in
 +            // A full ban blocks this entry point too, not just the hub — checked before the
-+            // submenu is built at all, so a banned account never sees "Изменить текст"/"Отправить
++            // sheet is built at all, so a banned account never sees "Изменить текст"/"Отправить
 +            // фото"/etc. even for a moment. Not banned is the overwhelmingly common case and pays
 +            // a round trip to the ban-status endpoint for it, same trade-off pampGramGateSection
 +            // and pampGramGateFullAccess already make.
++            //
++            // This used to push a second level onto the SAME context menu (`c?.pushItems`) — the
++            // same overlay stock Telegram uses for the outer message menu. That overlay only
++            // handles overflow via an undiscoverable outer scroll (no indicator, no visible
++            // affordance) with no per-list max-height/scroll option of its own, so a ~9-row
++            // PampGram submenu opened on a message near the bottom of the screen could end up
++            // with rows nobody could find, let alone reach. `ActionSheetController` — a real
++            // bottom sheet with its own genuinely scrolling content node
++            // (`ActionSheetControllerNode`'s `scrollNode`/`scrollView`) — doesn't have that
++            // problem: it always has the full screen height to work with regardless of where the
++            // message sits, and scrolls properly if its content still doesn't fit.
 +            let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
 +            |> deliverOnMainQueue).start(next: { status in
-+                guard let reason = status.full else {
-+                    var subItems: [ContextMenuItem] = []
-+            subItems.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Common_Back, textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Back"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, iconPosition: .left, action: { c, _ in
-+                c?.popItems()
-+            })))
-+            subItems.append(.separator)
-+            subItems.append(.action(ContextMenuActionItem(text: "Изменить текст", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "pencil"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
 +                f(.dismissWithoutContent)
-+                controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
-+            })))
-+            // "Текст от собеседника"/"Текст от меня" moved out of this message menu onto the
-+            // send-button long-press menu (see ChatTextInputPanelNode) — they compose a brand
-+            // new fake message from the input field, so they belong on the send control, not on
-+            // an existing message. The rest of "Изменить визуально" stays here.
-+            subItems.append(.action(ContextMenuActionItem(text: "Отправить фото", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "photo"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                if #available(iOS 14.0, *) {
-+                    pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
-+                }
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Отправить голосовое", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "waveform"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                if #available(iOS 14.0, *) {
-+                    pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
-+                }
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Отправить файл", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "doc"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                if #available(iOS 14.0, *) {
-+                    pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
-+                }
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Показать звонок", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "phone.arrow.down.left"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Поставить реакцию", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "face.smiling"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                pampGramPresentReactionPicker(context: context, messageId: message.id)
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Сохранить одноразовое", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "lock.open"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Визуальное фото в канал", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "camera"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                if #available(iOS 14.0, *) {
-+                    pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
-+                }
-+            })))
-+            c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
++                if let reason = status.full {
++                    pampGramPresentBannedScreen(context: context, reason: reason)
 +                    return
 +                }
-+                f(.dismissWithoutContent)
-+                pampGramPresentBannedScreen(context: context, reason: reason)
++                pampGramPresentMessageActionsSheet(context: context, message: message, controllerInteraction: controllerInteraction, strings: chatPresentationInterfaceState.strings)
 +            })
 +        })), at: 0)
 +        items.content = .list(newList)
 +        return items
 +    }
++}
++
++/// The "PampGram" entry's full action list, as an `ActionSheetController` instead of a second
++/// context-menu level — see the comment at this file's "PampGram" `ContextMenuActionItem` call
++/// site for why. `message`/`controllerInteraction` are captured from the same closure that used
++/// to build the old `subItems` list; every action below is unchanged from that list, just
++/// rehomed onto `ActionSheetButtonItem`.
++private func pampGramPresentMessageActionsSheet(context: AccountContext, message: EngineRawMessage, controllerInteraction: ChatControllerInteraction?, strings: PresentationStrings) {
++    guard let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController else {
++        return
++    }
++    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
++    let sheet = ActionSheetController(presentationData: presentationData)
++
++    var buttons: [ActionSheetItem] = [
++        ActionSheetTextItem(title: "PampGram")
++    ]
++    buttons.append(ActionSheetButtonItem(title: "Изменить текст", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Отправить фото", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        if #available(iOS 14.0, *) {
++            pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
++        }
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Отправить голосовое", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        if #available(iOS 14.0, *) {
++            pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
++        }
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Отправить файл", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        if #available(iOS 14.0, *) {
++            pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
++        }
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Показать звонок", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Поставить реакцию", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        pampGramPresentReactionPicker(context: context, messageId: message.id)
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Сохранить одноразовое", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Визуальное фото в канал", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        if #available(iOS 14.0, *) {
++            pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
++        }
++    }))
++
++    sheet.setItemGroups([
++        ActionSheetItemGroup(items: buttons),
++        ActionSheetItemGroup(items: [
++            ActionSheetButtonItem(title: strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
++                sheet?.dismissAnimated()
++            })
++        ])
++    ])
++    topController.present(sheet, in: .window(.root))
 +}
 +
 +private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil) -> Signal<ContextController.Items, NoError> {
