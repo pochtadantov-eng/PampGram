@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import AudioToolbox
 import Postbox
 import TelegramCore
 import SwiftSignalKit
@@ -49,11 +50,15 @@ private func pampGramFormatRubles(_ kopecks: Int64) -> String {
 /// confirmation gesture the payment is settled against the *local* ruble wallet (0 real ₽, no
 /// StoreKit and no server).
 ///
-/// The sheet is modelled 1:1 on the real iOS App Store IAP sheet (light "App Store" sheet with the
-/// app icon, name, developer, "Встроенная покупка", a white purchase card, and a biometric footer
-/// that turns into a blue checkmark on success). It adapts to the device: Face ID phones show the
-/// "double-click the side button" prompt near the side button, Touch ID phones show the Touch ID
-/// prompt instead.
+/// The sheet is modelled on the real iOS StoreKit purchase confirmation sheet: close button top
+/// left, requesting app's name centered at the top, a large centered app-icon glyph, the product
+/// name and a one-line description centered underneath, a white purchase card (price, a one-time-
+/// purchase disclaimer, the masked account row), and a biometric footer that turns into a green
+/// checkmark on success. It adapts to the device: Face ID phones show the "double-click the side
+/// button" prompt near the side button, Touch ID phones show the Touch ID prompt instead. Success
+/// pairs a `.success` haptic with `AudioServicesPlaySystemSound(1057)` ("Tink", the same short
+/// public system chime iOS itself uses for this kind of confirmation) — nothing here can call the
+/// real StoreKit/biometric completion sound, since that isn't exposed to app code at all.
 ///
 /// If the local ruble balance does not cover the package price the sheet shows a payment error and
 /// nothing is credited — mirroring a declined charge. If it does, the rubles are debited, the fake
@@ -239,14 +244,8 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.sheet.clipsToBounds = true
         self.view.addSubview(self.sheet)
 
-        // Header: "App Store" (left) + circular close button (right).
-        let titleLabel = UILabel()
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = "App Store"
-        titleLabel.font = UIFont.systemFont(ofSize: 22.0, weight: .bold)
-        titleLabel.textColor = self.primaryColor
-        self.sheet.addSubview(titleLabel)
-
+        // Header: circular close button (left) + requesting app's name, centered — matching the
+        // real sheet's title being the app's own name, not a generic "App Store" label.
         let closeButton = UIButton(type: .system)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.backgroundColor = self.closeBackground
@@ -258,9 +257,17 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.addPressFeedback(to: closeButton)
         self.sheet.addSubview(closeButton)
 
-        // App icon: a Telegram-style blue squircle with a white paper plane.
+        let titleLabel = UILabel()
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text = "Telegram"
+        titleLabel.font = UIFont.systemFont(ofSize: 22.0, weight: .bold)
+        titleLabel.textColor = self.primaryColor
+        self.sheet.addSubview(titleLabel)
+
+        // App icon: a Telegram-style blue squircle with a white paper plane, large and centered —
+        // the real sheet's icon is the visual anchor of the whole card, not a small corner glyph.
         self.iconView.translatesAutoresizingMaskIntoConstraints = false
-        self.iconView.layer.cornerRadius = 13.0
+        self.iconView.layer.cornerRadius = 16.0
         self.iconView.layer.cornerCurve = .continuous
         self.iconView.clipsToBounds = true
         self.iconGradient.colors = [self.telegramBlueTop.cgColor, self.telegramBlueBottom.cgColor]
@@ -270,47 +277,31 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.planeView.translatesAutoresizingMaskIntoConstraints = false
         self.planeView.contentMode = .scaleAspectFit
         self.planeView.tintColor = .white
-        let planeConfig = UIImage.SymbolConfiguration(pointSize: 30.0, weight: .medium)
+        let planeConfig = UIImage.SymbolConfiguration(pointSize: 34.0, weight: .medium)
         self.planeView.image = UIImage(systemName: "paperplane.fill", withConfiguration: planeConfig)
         self.iconView.addSubview(self.planeView)
         self.sheet.addSubview(self.iconView)
 
-        // Product line, developer + age badge, "In-App Purchase" — stacked to the right of the icon.
+        // Product name + a one-line description, centered under the icon.
         let productLabel = UILabel()
         productLabel.translatesAutoresizingMaskIntoConstraints = false
         productLabel.text = "\(self.count) Telegram Stars"
-        productLabel.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        productLabel.font = UIFont.systemFont(ofSize: 19.0, weight: .bold)
         productLabel.textColor = self.primaryColor
+        productLabel.textAlignment = .center
         self.sheet.addSubview(productLabel)
 
-        let developerLabel = UILabel()
-        developerLabel.translatesAutoresizingMaskIntoConstraints = false
-        developerLabel.text = "Telegram Messenger"
-        developerLabel.font = UIFont.systemFont(ofSize: 14.0, weight: .regular)
-        developerLabel.textColor = self.secondaryColor
-        self.sheet.addSubview(developerLabel)
+        let descriptionLabel = UILabel()
+        descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
+        descriptionLabel.text = "Виртуальная валюта Telegram"
+        descriptionLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .regular)
+        descriptionLabel.textColor = self.secondaryColor
+        descriptionLabel.textAlignment = .center
+        descriptionLabel.numberOfLines = 0
+        self.sheet.addSubview(descriptionLabel)
 
-        let ageBadge = UILabel()
-        ageBadge.translatesAutoresizingMaskIntoConstraints = false
-        ageBadge.text = " 13+ "
-        ageBadge.font = UIFont.systemFont(ofSize: 11.0, weight: .semibold)
-        ageBadge.textColor = self.secondaryColor
-        ageBadge.layer.borderWidth = 1.0
-        ageBadge.layer.borderColor = self.separatorColor.cgColor
-        ageBadge.layer.cornerRadius = 4.0
-        ageBadge.clipsToBounds = true
-        ageBadge.setContentHuggingPriority(.required, for: .horizontal)
-        ageBadge.setContentCompressionResistancePriority(.required, for: .horizontal)
-        self.sheet.addSubview(ageBadge)
-
-        let purchaseLabel = UILabel()
-        purchaseLabel.translatesAutoresizingMaskIntoConstraints = false
-        purchaseLabel.text = "In-App Purchase"
-        purchaseLabel.font = UIFont.systemFont(ofSize: 14.0, weight: .regular)
-        purchaseLabel.textColor = self.secondaryColor
-        self.sheet.addSubview(purchaseLabel)
-
-        // Purchase card: price + "One-time charge" + separator + account.
+        // Purchase card: bold price, a one-time-purchase disclaimer, then the masked account row —
+        // same price → separator → paragraph → separator → account structure as the real sheet.
         let card = UIView()
         card.translatesAutoresizingMaskIntoConstraints = false
         card.backgroundColor = self.cardBackground
@@ -321,16 +312,22 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         let priceLabel = UILabel()
         priceLabel.translatesAutoresizingMaskIntoConstraints = false
         priceLabel.text = self.priceText
-        priceLabel.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        priceLabel.font = UIFont.systemFont(ofSize: 20.0, weight: .bold)
         priceLabel.textColor = self.primaryColor
         card.addSubview(priceLabel)
 
-        let chargeLabel = UILabel()
-        chargeLabel.translatesAutoresizingMaskIntoConstraints = false
-        chargeLabel.text = "One-time charge"
-        chargeLabel.font = UIFont.systemFont(ofSize: 13.0, weight: .regular)
-        chargeLabel.textColor = self.secondaryColor
-        card.addSubview(chargeLabel)
+        let topSeparator = UIView()
+        topSeparator.translatesAutoresizingMaskIntoConstraints = false
+        topSeparator.backgroundColor = self.separatorColor
+        card.addSubview(topSeparator)
+
+        let termsLabel = UILabel()
+        termsLabel.translatesAutoresizingMaskIntoConstraints = false
+        termsLabel.text = "Разовая покупка. Не подписка, автоматическое продление отсутствует."
+        termsLabel.font = UIFont.systemFont(ofSize: 14.0, weight: .regular)
+        termsLabel.textColor = self.primaryColor
+        termsLabel.numberOfLines = 0
+        card.addSubview(termsLabel)
 
         let cardSeparator = UIView()
         cardSeparator.translatesAutoresizingMaskIntoConstraints = false
@@ -381,45 +378,47 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         self.calloutContainer.addSubview(self.calloutChevrons)
 
         NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
-            titleLabel.topAnchor.constraint(equalTo: self.sheet.topAnchor, constant: 20.0),
-            closeButton.trailingAnchor.constraint(equalTo: self.sheet.trailingAnchor, constant: -16.0),
-            closeButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            closeButton.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 16.0),
+            closeButton.topAnchor.constraint(equalTo: self.sheet.topAnchor, constant: 16.0),
             closeButton.widthAnchor.constraint(equalToConstant: 30.0),
             closeButton.heightAnchor.constraint(equalToConstant: 30.0),
+            titleLabel.centerXAnchor.constraint(equalTo: self.sheet.centerXAnchor),
+            titleLabel.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
 
-            self.iconView.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
-            self.iconView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 22.0),
-            self.iconView.widthAnchor.constraint(equalToConstant: 58.0),
-            self.iconView.heightAnchor.constraint(equalToConstant: 58.0),
+            self.iconView.centerXAnchor.constraint(equalTo: self.sheet.centerXAnchor),
+            self.iconView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 34.0),
+            self.iconView.widthAnchor.constraint(equalToConstant: 76.0),
+            self.iconView.heightAnchor.constraint(equalToConstant: 76.0),
             self.planeView.centerXAnchor.constraint(equalTo: self.iconView.centerXAnchor, constant: -1.0),
             self.planeView.centerYAnchor.constraint(equalTo: self.iconView.centerYAnchor),
 
-            productLabel.leadingAnchor.constraint(equalTo: self.iconView.trailingAnchor, constant: 14.0),
-            productLabel.topAnchor.constraint(equalTo: self.iconView.topAnchor, constant: 1.0),
+            productLabel.centerXAnchor.constraint(equalTo: self.sheet.centerXAnchor),
+            productLabel.topAnchor.constraint(equalTo: self.iconView.bottomAnchor, constant: 16.0),
+            productLabel.leadingAnchor.constraint(greaterThanOrEqualTo: self.sheet.leadingAnchor, constant: 20.0),
             productLabel.trailingAnchor.constraint(lessThanOrEqualTo: self.sheet.trailingAnchor, constant: -20.0),
 
-            developerLabel.leadingAnchor.constraint(equalTo: productLabel.leadingAnchor),
-            developerLabel.topAnchor.constraint(equalTo: productLabel.bottomAnchor, constant: 4.0),
-            ageBadge.leadingAnchor.constraint(equalTo: developerLabel.trailingAnchor, constant: 6.0),
-            ageBadge.centerYAnchor.constraint(equalTo: developerLabel.centerYAnchor),
-            ageBadge.heightAnchor.constraint(equalToConstant: 17.0),
-            ageBadge.trailingAnchor.constraint(lessThanOrEqualTo: self.sheet.trailingAnchor, constant: -20.0),
-
-            purchaseLabel.leadingAnchor.constraint(equalTo: productLabel.leadingAnchor),
-            purchaseLabel.topAnchor.constraint(equalTo: developerLabel.bottomAnchor, constant: 3.0),
+            descriptionLabel.centerXAnchor.constraint(equalTo: self.sheet.centerXAnchor),
+            descriptionLabel.topAnchor.constraint(equalTo: productLabel.bottomAnchor, constant: 6.0),
+            descriptionLabel.leadingAnchor.constraint(greaterThanOrEqualTo: self.sheet.leadingAnchor, constant: 32.0),
+            descriptionLabel.trailingAnchor.constraint(lessThanOrEqualTo: self.sheet.trailingAnchor, constant: -32.0),
 
             card.leadingAnchor.constraint(equalTo: self.sheet.leadingAnchor, constant: 20.0),
             card.trailingAnchor.constraint(equalTo: self.sheet.trailingAnchor, constant: -20.0),
-            card.topAnchor.constraint(equalTo: self.iconView.bottomAnchor, constant: 22.0),
+            card.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 28.0),
 
             priceLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
+            priceLabel.trailingAnchor.constraint(lessThanOrEqualTo: card.trailingAnchor, constant: -16.0),
             priceLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: 14.0),
-            chargeLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
-            chargeLabel.topAnchor.constraint(equalTo: priceLabel.bottomAnchor, constant: 2.0),
+            topSeparator.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
+            topSeparator.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16.0),
+            topSeparator.topAnchor.constraint(equalTo: priceLabel.bottomAnchor, constant: 12.0),
+            topSeparator.heightAnchor.constraint(equalToConstant: 1.0),
+            termsLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
+            termsLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16.0),
+            termsLabel.topAnchor.constraint(equalTo: topSeparator.bottomAnchor, constant: 12.0),
             cardSeparator.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
             cardSeparator.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16.0),
-            cardSeparator.topAnchor.constraint(equalTo: chargeLabel.bottomAnchor, constant: 12.0),
+            cardSeparator.topAnchor.constraint(equalTo: termsLabel.bottomAnchor, constant: 12.0),
             cardSeparator.heightAnchor.constraint(equalToConstant: 1.0),
             accountLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16.0),
             accountLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16.0),
@@ -533,7 +532,7 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
 
         let width = self.view.bounds.width
         let height = self.view.bounds.height
-        let sheetHeight = min(max(height * 0.5, 430.0), height - self.view.safeAreaInsets.top - 8.0)
+        let sheetHeight = min(max(height * 0.5, 470.0), height - self.view.safeAreaInsets.top - 8.0)
         // The extra 60pt keeps the bottom rounded corners off-screen below the home indicator.
         self.sheet.frame = CGRect(x: 0.0, y: height - sheetHeight, width: width, height: sheetHeight + 60.0)
         self.iconGradient.frame = self.iconView.bounds
@@ -586,6 +585,11 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         }
         self.finished = true
 
+        // The real side button is a physical click with no software sound of its own — a light
+        // haptic tap here is what that moment actually feels like on a real device, not an
+        // invented "click" sound.
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
         // Press feedback: the white side-button indicator jumps twice — the same little "double
         // click" bounce you see when a real Apple Pay confirmation registers — then fades out.
         self.calloutChevrons.layer.removeAllAnimations()
@@ -615,7 +619,13 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
                     let resultConfig = UIImage.SymbolConfiguration(pointSize: 34.0, weight: .semibold)
                     if success {
                         // Confirmation animates into a green checkmark (pop-in), then the sheet
-                        // slides back down and the stars screen closes onto the balance.
+                        // slides back down and the stars screen closes onto the balance. Paired
+                        // with the same "Tink" system chime (1057) iOS itself uses for this kind
+                        // of short positive confirmation, plus a success haptic — the real
+                        // StoreKit/biometric completion sound isn't exposed to app code at all,
+                        // so this is the closest a third-party app can legitimately get.
+                        AudioServicesPlaySystemSound(1057)
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
                         self.resultIcon.image = UIImage(systemName: "checkmark.circle.fill", withConfiguration: resultConfig)
                         self.resultIcon.tintColor = self.successGreen
                         self.resultIcon.isHidden = false
@@ -631,6 +641,7 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
                             })
                         })
                     } else {
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
                         self.resultIcon.image = UIImage(systemName: "xmark.circle.fill", withConfiguration: resultConfig)
                         self.resultIcon.tintColor = self.errorRed
                         self.resultIcon.isHidden = false
