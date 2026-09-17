@@ -163,6 +163,7 @@ public func pampGramSearchController(context: AccountContext) -> ViewController 
         PampGramSearchItem(title: "Легальный премиум", subtitle: "Клиентские премиум-послабления", sectionName: "Дополнительно", keywords: "premium премиум подписка", open: openAdditional),
         PampGramSearchItem(title: "Фейковая геолокация", subtitle: "Подменять геопозицию, в т.ч. в реальном времени", sectionName: "Дополнительно", keywords: "location геолокация карта gps live", open: openFakeLocation),
         PampGramSearchItem(title: "Блокировка чатов", subtitle: "PIN на выбранные чаты", sectionName: "Дополнительно", keywords: "lock пин блокировка chat", open: openChatLock),
+        PampGramSearchItem(title: "Запись звонков", subtitle: "Записывать аудио и видеозвонки в Избранное", sectionName: "Дополнительно", keywords: "record call запись звонок аудио видео микрофон", open: openAdditional),
         PampGramSearchItem(title: "Иконка приложения", subtitle: "Сменить иконку на домашнем экране", sectionName: "Статус", keywords: "icon иконка appearance", open: openStatus),
         PampGramSearchItem(title: "Подписка (PRO/STANDARD)", subtitle: "Статус подписки и её обновление", sectionName: "Статус", keywords: "premium pro подписка обновить", open: openStatus),
         PampGramSearchItem(title: "Внешний вид", subtitle: "Темы, иконки, интерфейс", sectionName: "Внешний вид", keywords: "appearance тема оформление", open: openAppearance)

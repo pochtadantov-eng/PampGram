@@ -233,6 +233,32 @@ import Foundation
    - ChatInterfaceStateContextMenus.swift (pampGramStoreText wrapper)
  */
 
+// MARK: - 9. CALL RECORDING - Запись звонков
+/**
+ Интеграция через PampGramSettings.recordAudioCallsEnabled / recordVideoCallsEnabled /
+ recordOwnVoiceEnabled (Postbox):
+
+ 1. PampGramScreenshotBypassCache (TelegramUI) — расширен полями
+    recordAudioCallsEnabled, recordVideoCallsEnabled, recordOwnVoiceEnabled.
+
+ 2. PampGramCallRecorder (TelegramUI, новый файл) — AVAssetWriter-рекордер,
+    принимает CMSampleBuffer от OngoingCallContext, по завершении отправляет
+    файл в Избранное (Saved Messages).
+
+ 3. CallController / PrivateCallScreen — кнопка записи в UI звонка, создаёт
+    PampGramCallRecorder и подключает к аудио/видео буферам.
+
+ TODO для интеграции в CallController:
+   - Создать экземпляр PampGramCallRecorder при нажатии кнопки записи
+   - Подключить audio tap к OngoingCallContext для получения CMSampleBuffer
+   - Для видео: подключить видеофреймы через video(isIncoming:) сигнал
+   - При hangup / stop вызвать recorder.stop()
+
+ Патч: telegram-ios.patch, секции:
+   - PampGramScreenshotBypassCache.swift (recordAudioCalls/VideoCalls/OwnVoice)
+   - PampGramCallRecorder.swift (новый файл)
+ */
+
 // MARK: - TESTING
 /**
  Как тестировать каждую функцию:
@@ -271,4 +297,11 @@ import Foundation
     - Включите "Добавлять от кого переслано" в Ghost
     - Скопируйте сообщение через длинное нажатие → "Копировать"
     - Вставьте — первая строка должна быть @username автора или id:числовой_ID
+
+ 7. Call Recording:
+    - Включите "Записывать аудиозвонки" в Дополнительно
+    - Совершите звонок, нажмите кнопку записи
+    - Завершите звонок — файл должен появиться в Избранном
+    - Для видеозвонков: включите "Записывать видеозвонки"
+    - "Записывать свой голос" — добавляет ваш микрофон в запись
  */

@@ -264,6 +264,9 @@ public struct PampGramSettings: Codable, Equatable {
     /// no username is set) as the first line of the copied text. Works only on messages obtained
     /// through the copy-protection bypass — ordinary unprotected messages are not modified.
     public var addForwardSourceEnabled: Bool
+    public var recordAudioCallsEnabled: Bool
+    public var recordVideoCallsEnabled: Bool
+    public var recordOwnVoiceEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -323,11 +326,14 @@ public struct PampGramSettings: Codable, Equatable {
             legalPremiumEnabled: false,
             bypassScreenshotRestriction: false,
             addForwardSourceEnabled: false,
+            recordAudioCallsEnabled: false,
+            recordVideoCallsEnabled: false,
+            recordOwnVoiceEnabled: true,
             masterEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, bypassScreenshotRestriction: Bool, addForwardSourceEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, bypassScreenshotRestriction: Bool, addForwardSourceEnabled: Bool, recordAudioCallsEnabled: Bool, recordVideoCallsEnabled: Bool, recordOwnVoiceEnabled: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -366,6 +372,9 @@ public struct PampGramSettings: Codable, Equatable {
         self.legalPremiumEnabled = legalPremiumEnabled
         self.bypassScreenshotRestriction = bypassScreenshotRestriction
         self.addForwardSourceEnabled = addForwardSourceEnabled
+        self.recordAudioCallsEnabled = recordAudioCallsEnabled
+        self.recordVideoCallsEnabled = recordVideoCallsEnabled
+        self.recordOwnVoiceEnabled = recordOwnVoiceEnabled
         self.masterEnabled = masterEnabled
     }
 
@@ -437,6 +446,9 @@ public struct PampGramSettings: Codable, Equatable {
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
         self.bypassScreenshotRestriction = try container.decodeIfPresent(Bool.self, forKey: .bypassScreenshotRestriction) ?? defaults.bypassScreenshotRestriction
         self.addForwardSourceEnabled = try container.decodeIfPresent(Bool.self, forKey: .addForwardSourceEnabled) ?? defaults.addForwardSourceEnabled
+        self.recordAudioCallsEnabled = try container.decodeIfPresent(Bool.self, forKey: .recordAudioCallsEnabled) ?? defaults.recordAudioCallsEnabled
+        self.recordVideoCallsEnabled = try container.decodeIfPresent(Bool.self, forKey: .recordVideoCallsEnabled) ?? defaults.recordVideoCallsEnabled
+        self.recordOwnVoiceEnabled = try container.decodeIfPresent(Bool.self, forKey: .recordOwnVoiceEnabled) ?? defaults.recordOwnVoiceEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
     }
 

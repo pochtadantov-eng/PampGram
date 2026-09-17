@@ -20924,21 +20924,23 @@ new file mode 100644
 index 0000000..2b3c4d5
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypassCache.swift
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,61 @@
 +import Foundation
 +import SwiftSignalKit
 +import PampGramCore
 +import Postbox
 +
-+/// In-memory cache of PampGram's content-protection settings, refreshed from Postbox whenever
-+/// PampGram settings change. Avoids blocking the main thread with a synchronous transaction
-+/// inside the hot `copyProtectionEnabled` property. Reads are lock-free; the disposable lives
-+/// for the process lifetime.
++/// In-memory cache of PampGram settings that are read on hot paths (call UI, copy protection).
++/// Refreshed from Postbox whenever PampGram settings change. Reads are lock-free; the
++/// disposable lives for the process lifetime.
 +public final class PampGramScreenshotBypassCache {
 +    public static let shared = PampGramScreenshotBypassCache()
 +
 +    private let _isActive = Atomic<Bool>(value: false)
 +    private let _isForwardSourceActive = Atomic<Bool>(value: false)
++    private let _recordAudioCalls = Atomic<Bool>(value: false)
++    private let _recordVideoCalls = Atomic<Bool>(value: false)
++    private let _recordOwnVoice = Atomic<Bool>(value: true)
 +    private var disposable: Disposable?
 +
 +    private init() {}
@@ -20951,6 +20953,18 @@ index 0000000..2b3c4d5
 +        return _isForwardSourceActive.with { $0 }
 +    }
 +
++    public var recordAudioCallsEnabled: Bool {
++        return _recordAudioCalls.with { $0 }
++    }
++
++    public var recordVideoCallsEnabled: Bool {
++        return _recordVideoCalls.with { $0 }
++    }
++
++    public var recordOwnVoiceEnabled: Bool {
++        return _recordOwnVoice.with { $0 }
++    }
++
 +    /// Call once per account from `SharedAccountContextImpl` or `AccountContextImpl.init` —
 +    /// subscribes to the live settings signal and keeps cached values in sync.
 +    public func start(postbox: Postbox) {
@@ -20958,12 +20972,11 @@ index 0000000..2b3c4d5
 +        disposable = (PampGramCore.settingsSignal(postbox: postbox)
 +        |> deliverOnMainQueue).start(next: { [weak self] settings in
 +            guard let self else { return }
-+            let _ = self._isActive.modify { _ in
-+                return settings.bypassScreenshotRestriction
-+            }
-+            let _ = self._isForwardSourceActive.modify { _ in
-+                return settings.addForwardSourceEnabled
-+            }
++            let _ = self._isActive.modify { _ in settings.bypassScreenshotRestriction }
++            let _ = self._isForwardSourceActive.modify { _ in settings.addForwardSourceEnabled }
++            let _ = self._recordAudioCalls.modify { _ in settings.recordAudioCallsEnabled }
++            let _ = self._recordVideoCalls.modify { _ in settings.recordVideoCallsEnabled }
++            let _ = self._recordOwnVoice.modify { _ in settings.recordOwnVoiceEnabled }
 +        })
 +    }
 +
@@ -21025,3 +21038,174 @@ diff --git a/submodules/Display/Sources/WindowContent.swift b/submodules/Display
              if self.screenCaptureProtectionView == nil {
                  if let secureView = defaultScreenCaptureContent {
                      let contentView = UIView(frame: self.view.bounds)
+
+diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramCallRecorder.swift b/submodules/TelegramUI/Sources/PampGram/PampGramCallRecorder.swift
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/submodules/TelegramUI/Sources/PampGram/PampGramCallRecorder.swift
+@@ -0,0 +1,139 @@
++import Foundation
++import AVFoundation
++import UIKit
++import SwiftSignalKit
++import TelegramCore
++import Postbox
++import AccountContext
++import PampGramCore
++
++/// Records an ongoing call's audio (and optionally video) to a temporary file, then sends
++/// the result to Saved Messages. Uses AVAssetWriter for muxing.
++///
++/// Integration:
++///   - CallController creates an instance when the user taps the record button.
++///   - The call's OngoingCallContext feeds audio/video samples via `appendAudioBuffer`/
++///     `appendVideoSampleBuffer`.
++///   - When the user stops or the call ends, `stop()` finalises the file and enqueues
++///     the message to Saved Messages.
++public final class PampGramCallRecorder {
++    public enum Mode {
++        case audioOnly
++        case audioVideo
++    }
++
++    private let context: AccountContext
++    private let mode: Mode
++    private let includeOwnVoice: Bool
++    private let outputURL: URL
++    private var assetWriter: AVAssetWriter?
++    private var audioInput: AVAssetWriterInput?
++    private var videoInput: AVAssetWriterInput?
++    private var isRecording = false
++    private var startTime: CMTime?
++
++    public private(set) var isActive: Bool = false
++
++    public init(context: AccountContext, mode: Mode, includeOwnVoice: Bool) {
++        self.context = context
++        self.mode = mode
++        self.includeOwnVoice = includeOwnVoice
++
++        let filename = "pampgram_call_\(Int(Date().timeIntervalSince1970))"
++        let ext = mode == .audioVideo ? "mp4" : "m4a"
++        self.outputURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("\(filename).\(ext)")
++    }
++
++    public func start() {
++        guard !isRecording else { return }
++        do {
++            let fileType: AVFileType = mode == .audioVideo ? .mp4 : .m4a
++            assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: fileType)
++
++            let audioSettings: [String: Any] = [
++                AVFormatIDKey: kAudioFormatMPEG4AAC,
++                AVSampleRateKey: 48000,
++                AVNumberOfChannelsKey: 1,
++                AVEncoderBitRateKey: 128000
++            ]
++            audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
++            audioInput?.expectsMediaDataInRealTime = true
++            if let audioInput = audioInput {
++                assetWriter?.add(audioInput)
++            }
++
++            if mode == .audioVideo {
++                let videoSettings: [String: Any] = [
++                    AVVideoCodecKey: AVVideoCodecType.h264,
++                    AVVideoWidthKey: 1280,
++                    AVVideoHeightKey: 720,
++                    AVVideoCompressionPropertiesKey: [
++                        AVVideoAverageBitRateKey: 2_000_000,
++                        AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
++                    ]
++                ]
++                videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
++                videoInput?.expectsMediaDataInRealTime = true
++                if let videoInput = videoInput {
++                    assetWriter?.add(videoInput)
++                }
++            }
++
++            assetWriter?.startWriting()
++            isRecording = true
++            isActive = true
++        } catch {
++            // Recording setup failed — silently skip.
++        }
++    }
++
++    public func appendAudioBuffer(_ sampleBuffer: CMSampleBuffer) {
++        guard isRecording, let audioInput = audioInput, audioInput.isReadyForMoreMediaData else { return }
++        if startTime == nil {
++            startTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
++            assetWriter?.startSession(atSourceTime: startTime!)
++        }
++        audioInput.append(sampleBuffer)
++    }
++
++    public func appendVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
++        guard isRecording, mode == .audioVideo, let videoInput = videoInput, videoInput.isReadyForMoreMediaData else { return }
++        if startTime == nil {
++            startTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
++            assetWriter?.startSession(atSourceTime: startTime!)
++        }
++        videoInput.append(sampleBuffer)
++    }
++
++    public func stop(completion: (() -> Void)? = nil) {
++        guard isRecording else {
++            completion?()
++            return
++        }
++        isRecording = false
++        isActive = false
++        audioInput?.markAsFinished()
++        videoInput?.markAsFinished()
++        assetWriter?.finishWriting { [weak self] in
++            guard let self = self else { return }
++            DispatchQueue.main.async {
++                self.sendToSavedMessages()
++                completion?()
++            }
++        }
++    }
++
++    private func sendToSavedMessages() {
++        guard FileManager.default.fileExists(atPath: outputURL.path) else { return }
++        guard let data = try? Data(contentsOf: outputURL) else { return }
++
++        let resource = LocalFileMediaResource(fileId: Int64.random(in: Int64.min...Int64.max))
++        context.account.postbox.mediaBox.storeResourceData(resource.id, data: data)
++
++        let mimeType = mode == .audioVideo ? "video/mp4" : "audio/mp4"
++        let duration = self.estimateDuration()
++        let attrs: [TelegramMediaFileAttribute] = mode == .audioVideo
++            ? [.Video(duration: duration, size: PixelDimensions(width: 1280, height: 720), flags: [], preloadSize: nil)]
++            : [.Audio(isVoice: false, duration: Int(duration), title: "Запись звонка", performer: "PampGram", waveform: nil)]
++
++        let file = TelegramMediaFile(
++            fileId: EngineMedia.Id(namespace: Namespaces.Media.LocalFile, id: Int64.random(in: Int64.min...Int64.max)),
++            partialReference: nil,
++            resource: resource,
++            previewRepresentations: [],
++            videoThumbnails: [],
++            immediateThumbnailData: nil,
++            mimeType: mimeType,
++            size: Int64(data.count),
++            attributes: attrs,
++            alternativeRepresentations: []
++        )
++
++        let message: EnqueueMessage = .message(text: "", attributes: [], inlineStickers: [:], mediaReference: .standalone(media: file), threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
++        let _ = enqueueMessages(account: context.account, peerId: context.account.peerId, messages: [message]).start()
++
++        try? FileManager.default.removeItem(at: outputURL)
++    }
++
++    private func estimateDuration() -> Double {
++        if let asset = try? AVURLAsset(url: outputURL), let track = asset.tracks(withMediaType: mode == .audioVideo ? .video : .audio).first {
++            return track.timeRange.duration.seconds
++        }
++        return 0
++    }
++}
