@@ -80,6 +80,21 @@ public struct PampGramBannedUser: Codable, Equatable {
     }
 }
 
+/// One row of the admin panel's "Пользователи" list — any account that has ever called
+/// `/status` (i.e. actually opened PampGram at least once), its current tier, and when the
+/// server last heard from it.
+public struct PampGramUserSummary: Codable, Equatable {
+    public let id: String
+    public let tier: PampGramSubscriptionTier
+    public let lastSeen: Int64
+
+    public init(id: String, tier: PampGramSubscriptionTier, lastSeen: Int64) {
+        self.id = id
+        self.tier = tier
+        self.lastSeen = lastSeen
+    }
+}
+
 /// The admin's proof-of-identity token, stored ONLY in this device's own local Postbox —
 /// never hardcoded in source, never committed to the repo. It has to match the server's own
 /// `ADMIN_TOKEN` secret (`wrangler secret put ADMIN_TOKEN`) for a grant to be accepted; the
@@ -447,6 +462,47 @@ public enum PampGramSubscriptionAPI {
             var users: [PampGramBannedUser] = []
             if let data, let decoded = try? JSONDecoder().decode(BannedListResponse.self, from: data) {
                 users = decoded.users
+            }
+            DispatchQueue.main.async {
+                completion(users)
+            }
+        }.resume()
+    }
+
+    private struct UsersListRequestBody: Encodable {
+        let token: String
+    }
+
+    private struct UsersListUserResponse: Decodable {
+        let id: String
+        let tier: String
+        let lastSeen: Int64
+    }
+
+    private struct UsersListResponse: Decodable {
+        let users: [UsersListUserResponse]
+    }
+
+    /// Admin-only: every account that has ever opened PampGram (called `/status` at least
+    /// once), each with its current tier — for the admin panel's "Пользователи" list. An
+    /// unrecognized tier string falls back to `.standard`, same never-fails-outward posture as
+    /// `fetchTier`; the server only ever sends "standard"/"pro" in practice.
+    public static func fetchUsersList(adminToken: String, completion: @escaping ([PampGramUserSummary]) -> Void) {
+        guard let url = URL(string: "\(baseURL)/users-list") else {
+            completion([])
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(UsersListRequestBody(token: adminToken))
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            var users: [PampGramUserSummary] = []
+            if let data, let decoded = try? JSONDecoder().decode(UsersListResponse.self, from: data) {
+                users = decoded.users.map { user in
+                    PampGramUserSummary(id: user.id, tier: PampGramSubscriptionTier(rawValue: user.tier) ?? .standard, lastSeen: user.lastSeen)
+                }
             }
             DispatchQueue.main.async {
                 completion(users)

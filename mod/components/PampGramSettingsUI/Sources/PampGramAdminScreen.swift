@@ -15,15 +15,17 @@ import PampGramCore
 private final class PampGramAdminArguments {
     let setAdminToken: () -> Void
     let grantSubscription: () -> Void
+    let openUsersList: () -> Void
     let generateKey: () -> Void
     let banFull: () -> Void
     let banSection: () -> Void
     let openBannedList: () -> Void
     let setMinVersion: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, generateKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
+        self.openUsersList = openUsersList
         self.generateKey = generateKey
         self.banFull = banFull
         self.banSection = banSection
@@ -36,6 +38,7 @@ private enum PampGramAdminSection: Int32 {
     case about
     case token
     case grant
+    case users
     case keys
     case ban
     case version
@@ -50,6 +53,9 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
 
     case grantAction(String, Bool)
     case grantFooter(String)
+
+    case usersAction(String, Bool)
+    case usersFooter(String)
 
     case keysHeader(String)
     case generateKeyAction(String, Bool)
@@ -73,6 +79,8 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return PampGramAdminSection.token.rawValue
         case .grantAction, .grantFooter:
             return PampGramAdminSection.grant.rawValue
+        case .usersAction, .usersFooter:
+            return PampGramAdminSection.users.rawValue
         case .keysHeader, .generateKeyAction, .keysFooter:
             return PampGramAdminSection.keys.rawValue
         case .banHeader, .banFullAction, .banSectionAction, .unbanAction, .banFooter:
@@ -96,28 +104,32 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 4
         case .grantFooter:
             return 5
-        case .keysHeader:
+        case .usersAction:
             return 6
-        case .generateKeyAction:
+        case .usersFooter:
             return 7
-        case .keysFooter:
+        case .keysHeader:
             return 8
-        case .banHeader:
+        case .generateKeyAction:
             return 9
-        case .banFullAction:
+        case .keysFooter:
             return 10
-        case .banSectionAction:
+        case .banHeader:
             return 11
-        case .unbanAction:
+        case .banFullAction:
             return 12
-        case .banFooter:
+        case .banSectionAction:
             return 13
-        case .versionHeader:
+        case .unbanAction:
             return 14
-        case .versionRow:
+        case .banFooter:
             return 15
-        case .versionFooter:
+        case .versionHeader:
             return 16
+        case .versionRow:
+            return 17
+        case .versionFooter:
+            return 18
         }
     }
 
@@ -134,6 +146,10 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let (.grantAction(lhsTitle, lhsEnabled), .grantAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.grantFooter(lhsText), .grantFooter(rhsText)):
+            return lhsText == rhsText
+        case let (.usersAction(lhsTitle, lhsEnabled), .usersAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.usersFooter(lhsText), .usersFooter(rhsText)):
             return lhsText == rhsText
         case let (.keysHeader(lhsText), .keysHeader(rhsText)):
             return lhsText == rhsText
@@ -169,7 +185,7 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdminArguments
         switch self {
-        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .keysFooter(text), let .banFooter(text), let .versionFooter(text):
+        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .usersFooter(text), let .keysFooter(text), let .banFooter(text), let .versionFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .tokenHeader(text), let .keysHeader(text), let .banHeader(text), let .versionHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
@@ -184,6 +200,10 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let .grantAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.grantSubscription()
+            })
+        case let .usersAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.openUsersList()
             })
         case let .generateKeyAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -394,6 +414,9 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                 ))
             })
         },
+        openUsersList: {
+            pushControllerImpl?(pampGramUsersListController(context: context))
+        },
         generateKey: {
             requireAdminToken { adminToken in
                 let presentationData = context.sharedContext.currentPresentationData.with { $0 }
@@ -546,6 +569,8 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .tokenFooter("Секрет для авторизации на сервере — задаётся один раз, хранится только на этом устройстве."),
             .grantAction("Выдать подписку", adminToken != nil),
             .grantFooter("Меняет тариф человека на всех его устройствах — это единственная функция PampGram, которая обращается к серверу, а не хранит всё локально."),
+            .usersAction("Пользователи", adminToken != nil),
+            .usersFooter("Все аккаунты, которые хоть раз открывали PampGram, с их текущим тарифом и когда сервер видел их в последний раз."),
             .keysHeader("КЛЮЧИ АКТИВАЦИИ"),
             .generateKeyAction("Сгенерировать ключ", adminToken != nil),
             .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются."),

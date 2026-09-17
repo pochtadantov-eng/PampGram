@@ -13,8 +13,13 @@
  *   key "key:<KEY>"      -> JSON { "tier": "standard"|"pro", "usedBy": "<id>"|null, "usedAt": <ms>|null, "createdAt": <ms> }
  *   key "licensed:<id>"  -> "1" (present at all means licensed — same "absent means the
  *                          nothing-going-on default" posture as the other keys)
- * Same posture throughout: a key that would only ever store the "nothing going on" value is
- * deleted instead of written, so the store only ever holds actual overrides.
+ *   key "seen:<id>"      -> "<ms of the most recent /status call from this account>" — the only
+ *                          key that's an actual log rather than an override: written every time
+ *                          (there's no "nothing going on" value for "have they ever opened the
+ *                          app" to fall back to), so /users-list can answer "how many accounts
+ *                          exist at all", not just "how many are non-default".
+ * Every other key follows the same posture: a key that would only ever store the "nothing going
+ * on" value is deleted instead of written, so the store only ever holds actual overrides.
  *
  * Activation keys exist because a *file* sale (send the .ipa/mod once, no further contact) has
  * no way to stop the buyer forwarding that same file to someone else for free — unlike `/grant`,
@@ -30,7 +35,10 @@
  *     Public — every PampGram install calls this for its OWN account id to know whether to
  *     show PRO or STANDARD. No auth: the response never carries anything more sensitive than
  *     "this account is on tier X", and requiring auth here would mean embedding a *readable*
- *     secret in every copy of the app for zero benefit.
+ *     secret in every copy of the app for zero benefit. Also records "seen:<id>" (fire-and-
+ *     forget via ctx.waitUntil, never delays or can fail this response) — this is the one call
+ *     every install makes on every open, so it's the natural place to count "how many accounts
+ *     actually use this" without adding a dedicated ping route.
  *
  *   GET  /ban-status?id=<telegram account id>
  *     -> { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
@@ -107,6 +115,14 @@
  *     after a dropped response) rather than an error. Sets "licensed:<id>" so /license-status
  *     reports true from then on, and additionally grants the "sub:<id>" tier if the key was
  *     minted as "pro".
+ *
+ *   POST /users-list
+ *     body: { "token": "<ADMIN_TOKEN>" }
+ *     -> { "users": [{ "id": "<id>", "tier": "standard"|"pro", "lastSeen": <ms> }, ...], "total": <count> }
+ *     Admin-only — backs the admin panel's "Пользователи" screen: every account that has ever
+ *     called /status (i.e. every account "seen:<id>" was written for), each with its current
+ *     tier and when it was last seen, newest first. `total` is just `users.length`, sent
+ *     separately so the client can show a count without counting the array itself.
  */
 
 const ALLOWED_TIERS = new Set(["standard", "pro"]);
@@ -140,7 +156,7 @@ function isValidAccountId(value) {
 	return typeof value === "string" && /^-?\d{1,20}$/.test(value);
 }
 
-async function handleStatus(request, env) {
+async function handleStatus(request, env, ctx) {
 	const url = new URL(request.url);
 	const id = url.searchParams.get("id");
 	if (!isValidAccountId(id)) {
@@ -148,6 +164,8 @@ async function handleStatus(request, env) {
 	}
 	const stored = await env.SUBS.get(`sub:${id}`);
 	const tier = ALLOWED_TIERS.has(stored) ? stored : "standard";
+	// Fire-and-forget: never awaited, so a KV write here can't slow down or fail this response.
+	ctx.waitUntil(env.SUBS.put(`seen:${id}`, String(Date.now())));
 	return jsonResponse({ tier });
 }
 
@@ -354,6 +372,45 @@ async function handleBannedList(request, env) {
 	return jsonResponse({ users });
 }
 
+async function handleUsersList(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	if (!isAuthorized(payload?.token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+
+	// KV's list() caps at 1000 keys per call — a cursor loop, unlike handleBannedList's single
+	// call, since silently truncating the *user count* itself would defeat the one thing this
+	// route exists for (ban lists are small enough in practice that this never mattered there).
+	const seenKeys = [];
+	let cursor;
+	for (;;) {
+		const page = await env.SUBS.list({ prefix: "seen:", cursor });
+		seenKeys.push(...page.keys);
+		if (page.list_complete) {
+			break;
+		}
+		cursor = page.cursor;
+	}
+
+	const users = [];
+	for (const key of seenKeys) {
+		const idString = key.name.slice("seen:".length);
+		const [lastSeenRaw, tierRaw] = await Promise.all([env.SUBS.get(key.name), env.SUBS.get(`sub:${idString}`)]);
+		const lastSeen = parseInt(lastSeenRaw, 10);
+		const tier = ALLOWED_TIERS.has(tierRaw) ? tierRaw : "standard";
+		users.push({ id: idString, tier, lastSeen: Number.isInteger(lastSeen) ? lastSeen : 0 });
+	}
+	users.sort((a, b) => b.lastSeen - a.lastSeen);
+
+	return jsonResponse({ users, total: users.length });
+}
+
 async function handleLicenseStatus(request, env) {
 	const url = new URL(request.url);
 	const id = url.searchParams.get("id");
@@ -447,11 +504,11 @@ async function handleRedeemKey(request, env) {
 }
 
 export default {
-	async fetch(request, env) {
+	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
 
 		if (request.method === "GET" && url.pathname === "/status") {
-			return handleStatus(request, env);
+			return handleStatus(request, env, ctx);
 		}
 		if (request.method === "GET" && url.pathname === "/ban-status") {
 			return handleBanStatus(request, env);
@@ -482,6 +539,9 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/keys/redeem") {
 			return handleRedeemKey(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/users-list") {
+			return handleUsersList(request, env);
 		}
 		return jsonResponse({ error: "not found" }, 404);
 	},
