@@ -224,6 +224,7 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     entries.append(.ghostRow(5, "Автоматический «офлайн»", settings.ghostModeEnabled && settings.ghostAutoOffline))
     entries.append(.ghostRow(6, "Читать при действиях", settings.ghostModeEnabled && settings.ghostReadOnAction))
     entries.append(.ghostRow(7, "Обход ограничений скриншота", settings.bypassScreenshotRestriction))
+    entries.append(.ghostRow(8, "Добавлять от кого переслано", settings.addForwardSourceEnabled))
 
     return entries
 }

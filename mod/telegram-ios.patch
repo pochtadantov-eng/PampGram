@@ -20008,6 +20008,41 @@ index 07cef5bb..57ff7a74 100644
      guard let interfaceInteraction = interfaceInteraction, let controllerInteraction = controllerInteraction else {
          return .single(ContextController.Items(content: .list([])))
      }
+@@ -1370,16 +1452,30 @@ private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationIn
+                                     }
+
++                                    // PampGram: when "Добавлять от кого переслано" is on, prepend the message
++                                    // author's @username (or numeric ID) to every text copied from a protected chat.
++                                    let pampGramStoreText: (String, [MessageTextEntity]?) -> Void = { text, entities in
++                                        var finalText = text
++                                        if PampGramScreenshotBypassCache.shared.isForwardSourceActive, let author = message.author {
++                                            if let username = author.addressName, !username.isEmpty {
++                                                finalText = "@\(username)\n\(finalText)"
++                                            } else {
++                                                finalText = "id:\(author.id.id._internalGetInt64Value())\n\(finalText)"
++                                            }
++                                        }
++                                        storeMessageTextInPasteboard(finalText, entities: entities)
++                                    }
+                                     if let restrictedText = restrictedText {
+-                                        storeMessageTextInPasteboard(restrictedText, entities: nil)
++                                        pampGramStoreText(restrictedText, nil)
+                                     } else {
+                                         var translateToLang: String?
+                                         if let translationState = chatPresentationInterfaceState.translationState, translationState.isEnabled {
+                                             translateToLang = translationState.toLang
+                                         }
+                                         if controllerInteraction.summarizedMessageIds.contains(message.id), let attribute = message.attributes.first(where: { $0 is SummarizationMessageAttribute }) as? SummarizationMessageAttribute, let summary = attribute.summaryForLang(translateToLang) {
+-                                            storeMessageTextInPasteboard(summary.text, entities: summary.entities)
++                                            pampGramStoreText(summary.text, summary.entities)
+                                         } else if let translateToLang, let translation = message.attributes.first(where: { ($0 as? TranslationMessageAttribute)?.toLang == translateToLang }) as? TranslationMessageAttribute, !translation.text.isEmpty {
+-                                            storeMessageTextInPasteboard(translation.text, entities: translation.entities)
++                                            pampGramStoreText(translation.text, translation.entities)
+                                         } else {
+-                                            storeMessageTextInPasteboard(messageText, entities: messageEntities)
++                                            pampGramStoreText(messageText, messageEntities)
+                                         }
+                                     }
 diff --git a/submodules/TelegramUI/Sources/NavigateToChatController.swift b/submodules/TelegramUI/Sources/NavigateToChatController.swift
 index 4a25558..192f9fc 100644
 --- a/submodules/TelegramUI/Sources/NavigateToChatController.swift
@@ -20889,20 +20924,21 @@ new file mode 100644
 index 0000000..2b3c4d5
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypassCache.swift
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,46 @@
 +import Foundation
 +import SwiftSignalKit
 +import PampGramCore
 +import Postbox
 +
-+/// An in-memory cache of the "Обход ограничений скриншота" setting, refreshed from Postbox
-+/// whenever PampGram settings change. This avoids blocking the main thread with a synchronous
-+/// transaction inside the hot `copyProtectionEnabled` property, which is called on every
-+/// message layout. Reads are lock-free; the disposable lives for the process lifetime.
++/// In-memory cache of PampGram's content-protection settings, refreshed from Postbox whenever
++/// PampGram settings change. Avoids blocking the main thread with a synchronous transaction
++/// inside the hot `copyProtectionEnabled` property. Reads are lock-free; the disposable lives
++/// for the process lifetime.
 +public final class PampGramScreenshotBypassCache {
 +    public static let shared = PampGramScreenshotBypassCache()
 +
 +    private let _isActive = Atomic<Bool>(value: false)
++    private let _isForwardSourceActive = Atomic<Bool>(value: false)
 +    private var disposable: Disposable?
 +
 +    private init() {}
@@ -20911,8 +20947,12 @@ index 0000000..2b3c4d5
 +        return _isActive.with { $0 }
 +    }
 +
++    public var isForwardSourceActive: Bool {
++        return _isForwardSourceActive.with { $0 }
++    }
++
 +    /// Call once per account from `SharedAccountContextImpl` or `AccountContextImpl.init` —
-+    /// subscribes to the live settings signal and keeps `isActive` in sync.
++    /// subscribes to the live settings signal and keeps cached values in sync.
 +    public func start(postbox: Postbox) {
 +        disposable?.dispose()
 +        disposable = (PampGramCore.settingsSignal(postbox: postbox)
@@ -20920,6 +20960,9 @@ index 0000000..2b3c4d5
 +            guard let self else { return }
 +            let _ = self._isActive.modify { _ in
 +                return settings.bypassScreenshotRestriction
++            }
++            let _ = self._isForwardSourceActive.modify { _ in
++                return settings.addForwardSourceEnabled
 +            }
 +        })
 +    }

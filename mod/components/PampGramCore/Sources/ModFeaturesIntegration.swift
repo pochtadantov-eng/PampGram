@@ -215,26 +215,44 @@ import Foundation
    - PampGramScreenshotBypass.swift (новый файл)
  */
 
+// MARK: - 8. ADD FORWARD SOURCE - Добавлять от кого переслано
+/**
+ Интеграция через PampGramSettings.addForwardSourceEnabled (Postbox):
+
+ 1. PampGramScreenshotBypassCache.isForwardSourceActive (TelegramUI) — то же
+    in-memory кеш, расширен вторым Atomic<Bool> для addForwardSourceEnabled.
+
+ 2. ChatInterfaceStateContextMenus.swift — в обёртке pampGramStoreText вокруг
+    storeMessageTextInPasteboard: если isForwardSourceActive, перед текстом
+    вставляется @username автора (или id:числовой_ID если username пуст).
+    Работает для всех веток копирования (обычный текст, restricted, translation,
+    summary).
+
+ Патч: telegram-ios.patch, секции:
+   - PampGramScreenshotBypassCache.swift (isForwardSourceActive)
+   - ChatInterfaceStateContextMenus.swift (pampGramStoreText wrapper)
+ */
+
 // MARK: - TESTING
 /**
  Как тестировать каждую функцию:
- 
+
  1. Copy Protection:
     - Откройте защищённое сообщение
     - Включите "Обход защиты от копирования" в настройках
     - Должны суметь скопировать текст
- 
+
  2. Auto-Delete Bypass:
     - Получите сообщение с таймером удаления
     - Включите "Отключить автоудаление"
     - Сообщение не должно удалиться
- 
+
  3. Screenshot Blur:
     - Откройте чат
     - Включите "Скрыть при скриншоте"
     - Сделайте скриншот
     - Экран должен размыться на 0.5 сек
- 
+
  4. Block Ads:
     - Найдите спонсорское сообщение
     - Включите "Блокировать рекламу"
@@ -246,4 +264,11 @@ import Foundation
     - Включите "Обход ограничений скриншота" в Ghost
     - Сделайте скриншот — контент должен быть виден
     - Включите запись экрана — контент должен быть виден
+
+ 6. Add Forward Source:
+    - Откройте канал или чат с защитой контента
+    - Включите "Обход ограничений скриншота" (чтобы кнопка Copy стала доступна)
+    - Включите "Добавлять от кого переслано" в Ghost
+    - Скопируйте сообщение через длинное нажатие → "Копировать"
+    - Вставьте — первая строка должна быть @username автора или id:числовой_ID
  */

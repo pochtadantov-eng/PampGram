@@ -279,7 +279,8 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
         settings.antiDeleteMessagesEnabled,
         settings.visualEditEnabled,
         settings.ghostModeEnabled,
-        settings.bypassScreenshotRestriction
+        settings.bypassScreenshotRestriction,
+        settings.addForwardSourceEnabled
     ]
     let activeCount = toggles.filter { $0 }.count
     var entries: [PampGramHubEntry] = [
