@@ -19976,7 +19976,7 @@ index a1a8f61d..8d28620c 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5bb..dca2a1c1 100644
+index 07cef5bb..2fdf752e 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -19990,7 +19990,7 @@ index 07cef5bb..dca2a1c1 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,131 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,138 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -20105,6 +20105,13 @@ index 07cef5bb..dca2a1c1 100644
 +        if #available(iOS 14.0, *) {
 +            pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
 +        }
++    }))
++    // The only entry in this sheet that spends real Stars and touches a real gift — colored
++    // .destructive (red) to read as distinct from the purely-visual/local actions above it,
++    // same as this menu already colors any other irreversible real action.
++    buttons.append(ActionSheetButtonItem(title: "Подарить 2 мишек", color: .destructive, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        pampGramConfirmSendRealBears(context: context, peerId: message.id.peerId)
 +    }))
 +
 +    sheet.setItemGroups([
