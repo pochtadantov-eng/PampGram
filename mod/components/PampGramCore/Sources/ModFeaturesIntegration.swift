@@ -190,6 +190,31 @@ import Foundation
      }
  */
 
+// MARK: - 7. SCREENSHOT RESTRICTION BYPASS - Обход ограничений скриншота
+/**
+ Интеграция через PampGramSettings.bypassScreenshotRestriction (Postbox):
+
+ 1. PampGramScreenshotBypassCache (TelegramUI) — in-memory кеш настройки,
+    подписан на settingsSignal. Инициализируется в AppDelegate при старте.
+
+ 2. ChatControllerInteraction.copyProtectionEnabled — возвращает false
+    когда bypass активен, отключая UI-блокировки (overlay, меню).
+
+ 3. WindowContent.setScreenCaptureProtection — пропускает установку
+    secureTextField-обёртки, когда bypass активен.
+
+ 4. PampGramScreenshotBypass (TelegramCore) — хелпер для проверки из
+    контекста транзакции (используется при необходимости в TelegramCore).
+
+ Патч: telegram-ios.patch, секции:
+   - ChatControllerInteraction.swift (copyProtectionEnabled)
+   - WindowContent.swift (setScreenCaptureProtection)
+   - AppDelegate.swift (инициализация кеша)
+   - SharedAccountContext.swift (инициализация кеша)
+   - PampGramScreenshotBypassCache.swift (новый файл)
+   - PampGramScreenshotBypass.swift (новый файл)
+ */
+
 // MARK: - TESTING
 /**
  Как тестировать каждую функцию:
@@ -214,4 +239,11 @@ import Foundation
     - Найдите спонсорское сообщение
     - Включите "Блокировать рекламу"
     - Объявление должно исчезнуть из списка
+
+ 5. Screenshot Restriction Bypass:
+    - Откройте канал с включённой защитой контента
+    - Убедитесь, что скриншот даёт чёрный экран
+    - Включите "Обход ограничений скриншота" в Ghost
+    - Сделайте скриншот — контент должен быть виден
+    - Включите запись экрана — контент должен быть виден
  */

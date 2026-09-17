@@ -223,6 +223,7 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
     entries.append(.ghostRow(4, "Не отправлять «печатает»", settings.ghostModeEnabled && settings.ghostHideTyping))
     entries.append(.ghostRow(5, "Автоматический «офлайн»", settings.ghostModeEnabled && settings.ghostAutoOffline))
     entries.append(.ghostRow(6, "Читать при действиях", settings.ghostModeEnabled && settings.ghostReadOnAction))
+    entries.append(.ghostRow(7, "Обход ограничений скриншота", settings.bypassScreenshotRestriction))
 
     return entries
 }

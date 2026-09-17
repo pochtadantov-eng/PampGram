@@ -155,6 +155,7 @@ public func pampGramSearchController(context: AccountContext) -> ViewController 
         PampGramSearchItem(title: "Режим призрака", subtitle: "Скрывать прочтение, онлайн, «печатает», истории", sectionName: "Ghost", keywords: "ghost призрак нечиталка онлайн typing", open: openGhost),
         PampGramSearchItem(title: "Не читать сообщения", subtitle: "Не отправлять отметку о прочтении", sectionName: "Ghost", keywords: "прочтение read receipt галочки", open: openGhost),
         PampGramSearchItem(title: "Не отправлять «онлайн»", subtitle: "Не показывать статус в сети", sectionName: "Ghost", keywords: "онлайн online статус", open: openGhost),
+        PampGramSearchItem(title: "Обход ограничений скриншота", subtitle: "Снять чёрный экран при скриншоте и записи экрана", sectionName: "Ghost", keywords: "screenshot скриншот запись экрана чёрный экран защита контента noforwards screen recording capture", open: openGhost),
         PampGramSearchItem(title: "Изменение голоса", subtitle: "Менять высоту голоса в голосовых сообщениях", sectionName: "Дополнительно", keywords: "voice голос голосовое питч", open: openAdditional),
         PampGramSearchItem(title: "Ускорение загрузки/скачивания", subtitle: "Быстрее передавать файлы", sectionName: "Дополнительно", keywords: "speed скорость upload download турбо", open: openAdditional),
         PampGramSearchItem(title: "Закрепить чаты ∞", subtitle: "Снять лимит на закреплённые чаты", sectionName: "Дополнительно", keywords: "pin закреп бесконечно pinned", open: openAdditional),
