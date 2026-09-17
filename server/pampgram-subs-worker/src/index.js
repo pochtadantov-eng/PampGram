@@ -7,17 +7,27 @@
  * Telegram account id — no messages, no chat content, nothing else ever passes through here.
  *
  * Storage: a single Workers KV namespace (binding SUBS).
- *   key "sub:<id>"       -> "pro" | "standard"
- *   key "ban:<id>"       -> JSON { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
- *   key "min_version"    -> "<integer>" (single global value, not per-account)
- *   key "key:<KEY>"      -> JSON { "tier": "standard"|"pro", "usedBy": "<id>"|null, "usedAt": <ms>|null, "createdAt": <ms> }
- *   key "licensed:<id>"  -> "1" (present at all means licensed — same "absent means the
- *                          nothing-going-on default" posture as the other keys)
- *   key "seen:<id>"      -> "<ms of the most recent /status call from this account>" — the only
- *                          key that's an actual log rather than an override: written every time
- *                          (there's no "nothing going on" value for "have they ever opened the
- *                          app" to fall back to), so /users-list can answer "how many accounts
- *                          exist at all", not just "how many are non-default".
+ *   key "sub:<id>"          -> "pro" | "standard"
+ *   key "tier_changed:<id>" -> "<ms of the most recent /grant or pro-key /keys/redeem for this
+ *                             account>" — written every time /grant runs, even when it sets
+ *                             "standard" (that's still a real change worth dating), and every
+ *                             time a pro key is redeemed.
+ *   key "ban:<id>"          -> JSON { "full": {"reason":"<text>","at":<ms>}|null,
+ *                             "sections": { "<section>": {"reason":"<text>","at":<ms>} } }.
+ *                             An older record can still hold a plain string instead of an
+ *                             {reason,at} object for "full"/a section — every reader normalizes
+ *                             that to {reason, at: null} on the way in, so nothing ever has to
+ *                             backfill the old rows.
+ *   key "min_version"       -> "<integer>" (single global value, not per-account)
+ *   key "key:<KEY>"         -> JSON { "tier": "standard"|"pro", "usedBy": "<id>"|null, "usedAt": <ms>|null, "createdAt": <ms> }
+ *   key "licensed:<id>"     -> "1" (present at all means licensed — same "absent means the
+ *                             nothing-going-on default" posture as the other keys)
+ *   key "seen:<id>"         -> "<ms of the most recent /status call from this account>" — the
+ *                             only key that's an actual log rather than an override: written
+ *                             every time (there's no "nothing going on" value for "have they
+ *                             ever opened the app" to fall back to), so /users-list can answer
+ *                             "how many accounts exist at all", not just "how many are
+ *                             non-default".
  * Every other key follows the same posture: a key that would only ever store the "nothing going
  * on" value is deleted instead of written, so the store only ever holds actual overrides.
  *
@@ -43,7 +53,10 @@
  *   GET  /ban-status?id=<telegram account id>
  *     -> { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
  *     Public, same reasoning as /status — every install checks its own ban state before
- *     opening the hub or a section.
+ *     opening the hub or a section. Deliberately still plain reason strings, not the
+ *     {reason,at} shape "ban:<id>" is actually stored as — every install's ban-enforcement
+ *     code depends on this exact shape, so /users-list (the only place "at" is exposed) reads
+ *     the richer stored form itself instead of this route changing underneath every install.
  *
  *   GET  /min-version
  *     -> { "minVersion": <integer> }
@@ -86,13 +99,6 @@
  *     -> { "ok": true }
  *     Admin-only. "all" clears the full ban and every section ban together.
  *
- *   POST /banned-list
- *     body: { "token": "<ADMIN_TOKEN>" }
- *     -> { "users": [{ "id": "<id>", "full": "<reason>"|null, "sections": {...} }, ...] }
- *     Admin-only — backs the admin panel's "Разбанить" screen. Token goes in the body rather
- *     than a query string, same reasoning as /grant: never put the secret somewhere that ends
- *     up in a server log line.
- *
  *   GET  /license-status?id=<telegram account id>
  *     -> { "licensed": true|false }
  *     Public, same posture as /status — every install checks its own account on opening the
@@ -118,10 +124,18 @@
  *
  *   POST /users-list
  *     body: { "token": "<ADMIN_TOKEN>" }
- *     -> { "users": [{ "id": "<id>", "tier": "standard"|"pro", "lastSeen": <ms> }, ...], "total": <count> }
- *     Admin-only — backs the admin panel's "Пользователи" screen: every account that has ever
- *     called /status (i.e. every account "seen:<id>" was written for), each with its current
- *     tier and when it was last seen, newest first. `total` is just `users.length`, sent
+ *     -> { "users": [{
+ *            "id": "<id>", "tier": "standard"|"pro", "tierChangedAt": <ms>|null, "lastSeen": <ms>,
+ *            "full": {"reason":"<text>","at":<ms>}|null,
+ *            "sections": { "<section>": {"reason":"<text>","at":<ms>} }
+ *          }, ...], "total": <count> }
+ *     Admin-only — backs the admin panel's "Пользователи" screen (which replaced the old,
+ *     separate "Разбанить" screen and its now-removed /banned-list route: one merged list of
+ *     every account PampGram knows about, banned or not, with tier and ban detail together).
+ *     The account set is every id with a "seen:<id>" OR a "ban:<id>" entry — union, not just
+ *     "seen:", so an account banned before it ever opened the app (or one that's never called
+ *     /status for any other reason) still shows up instead of silently vanishing from this
+ *     list; such an account reports `lastSeen: 0`. `total` is just `users.length`, sent
  *     separately so the client can show a count without counting the array itself.
  */
 
@@ -197,12 +211,27 @@ async function handleGrant(request, env) {
 	} else {
 		await env.SUBS.put(`sub:${idString}`, tier);
 	}
+	// Every /grant is a real change worth dating, even one that sets "standard".
+	await env.SUBS.put(`tier_changed:${idString}`, String(Date.now()));
 
 	return jsonResponse({ ok: true });
 }
 
 function isAuthorized(token, env) {
 	return typeof token === "string" && token.length > 0 && token === env.ADMIN_TOKEN;
+}
+
+// A stored entry is either an old plain reason string or a {reason, at} object — see the
+// storage doc at the top of this file. Reading always normalizes to the latter so every caller
+// only ever deals with one shape; nothing ever rewrites an old row just for having read it.
+function normalizeBanEntry(value) {
+	if (typeof value === "string") {
+		return { reason: value, at: null };
+	}
+	if (value && typeof value === "object" && typeof value.reason === "string") {
+		return { reason: value.reason, at: Number.isInteger(value.at) ? value.at : null };
+	}
+	return null;
 }
 
 async function readBanRecord(env, idString) {
@@ -212,10 +241,17 @@ async function readBanRecord(env, idString) {
 	}
 	try {
 		const parsed = JSON.parse(stored);
-		return {
-			full: typeof parsed.full === "string" ? parsed.full : null,
-			sections: parsed.sections && typeof parsed.sections === "object" ? parsed.sections : {},
-		};
+		const full = normalizeBanEntry(parsed.full);
+		const sections = {};
+		if (parsed.sections && typeof parsed.sections === "object") {
+			for (const [section, value] of Object.entries(parsed.sections)) {
+				const entry = normalizeBanEntry(value);
+				if (entry) {
+					sections[section] = entry;
+				}
+			}
+		}
+		return { full, sections };
 	} catch {
 		return { full: null, sections: {} };
 	}
@@ -235,7 +271,12 @@ async function handleBanStatus(request, env) {
 	if (!isValidAccountId(id)) {
 		return jsonResponse({ error: "invalid id" }, 400);
 	}
-	return jsonResponse(await readBanRecord(env, id));
+	const record = await readBanRecord(env, id);
+	// Plain reason strings only — see this route's own doc for why it never exposes "at".
+	return jsonResponse({
+		full: record.full ? record.full.reason : null,
+		sections: Object.fromEntries(Object.entries(record.sections).map(([section, entry]) => [section, entry.reason])),
+	});
 }
 
 async function handleBan(request, env) {
@@ -266,10 +307,11 @@ async function handleBan(request, env) {
 	}
 
 	const record = await readBanRecord(env, idString);
+	const entry = { reason: reason.trim(), at: Date.now() };
 	if (scope === "full") {
-		record.full = reason.trim();
+		record.full = entry;
 	} else {
-		record.sections[section] = reason.trim();
+		record.sections[section] = entry;
 	}
 	await writeBanRecord(env, idString, record);
 
@@ -349,27 +391,20 @@ async function handleSetMinVersion(request, env) {
 	return jsonResponse({ ok: true });
 }
 
-async function handleBannedList(request, env) {
-	let payload;
-	try {
-		payload = await request.json();
-	} catch {
-		return jsonResponse({ error: "invalid json" }, 400);
+// KV's list() caps at 1000 keys per call — silently truncating a prefix scan would understate
+// exactly the count /users-list exists to report, so every full-prefix scan in this file loops
+// on the cursor instead of trusting a single call.
+async function listAllKeys(env, prefix) {
+	const keys = [];
+	let cursor;
+	for (;;) {
+		const page = await env.SUBS.list({ prefix, cursor });
+		keys.push(...page.keys);
+		if (page.list_complete) {
+			return keys;
+		}
+		cursor = page.cursor;
 	}
-
-	if (!isAuthorized(payload?.token, env)) {
-		return jsonResponse({ error: "unauthorized" }, 401);
-	}
-
-	const { keys } = await env.SUBS.list({ prefix: "ban:" });
-	const users = [];
-	for (const key of keys) {
-		const idString = key.name.slice("ban:".length);
-		const record = await readBanRecord(env, idString);
-		users.push({ id: idString, full: record.full, sections: record.sections });
-	}
-
-	return jsonResponse({ users });
 }
 
 async function handleUsersList(request, env) {
@@ -384,28 +419,38 @@ async function handleUsersList(request, env) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
 
-	// KV's list() caps at 1000 keys per call — a cursor loop, unlike handleBannedList's single
-	// call, since silently truncating the *user count* itself would defeat the one thing this
-	// route exists for (ban lists are small enough in practice that this never mattered there).
-	const seenKeys = [];
-	let cursor;
-	for (;;) {
-		const page = await env.SUBS.list({ prefix: "seen:", cursor });
-		seenKeys.push(...page.keys);
-		if (page.list_complete) {
-			break;
-		}
-		cursor = page.cursor;
+	// Union of "seen:" and "ban:" ids: an account banned before it ever opened the app (or
+	// that never calls /status for any other reason) has no "seen:" entry, but still belongs
+	// on this list rather than silently disappearing from admin view.
+	const [seenKeys, banKeys] = await Promise.all([listAllKeys(env, "seen:"), listAllKeys(env, "ban:")]);
+	const ids = new Set();
+	for (const key of seenKeys) {
+		ids.add(key.name.slice("seen:".length));
+	}
+	for (const key of banKeys) {
+		ids.add(key.name.slice("ban:".length));
 	}
 
-	const users = [];
-	for (const key of seenKeys) {
-		const idString = key.name.slice("seen:".length);
-		const [lastSeenRaw, tierRaw] = await Promise.all([env.SUBS.get(key.name), env.SUBS.get(`sub:${idString}`)]);
-		const lastSeen = parseInt(lastSeenRaw, 10);
-		const tier = ALLOWED_TIERS.has(tierRaw) ? tierRaw : "standard";
-		users.push({ id: idString, tier, lastSeen: Number.isInteger(lastSeen) ? lastSeen : 0 });
-	}
+	const users = await Promise.all(
+		Array.from(ids).map(async (idString) => {
+			const [lastSeenRaw, tierRaw, tierChangedRaw, banRecord] = await Promise.all([
+				env.SUBS.get(`seen:${idString}`),
+				env.SUBS.get(`sub:${idString}`),
+				env.SUBS.get(`tier_changed:${idString}`),
+				readBanRecord(env, idString),
+			]);
+			const lastSeen = parseInt(lastSeenRaw, 10);
+			const tierChangedAt = parseInt(tierChangedRaw, 10);
+			return {
+				id: idString,
+				tier: ALLOWED_TIERS.has(tierRaw) ? tierRaw : "standard",
+				tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : null,
+				lastSeen: Number.isInteger(lastSeen) ? lastSeen : 0,
+				full: banRecord.full,
+				sections: banRecord.sections,
+			};
+		})
+	);
 	users.sort((a, b) => b.lastSeen - a.lastSeen);
 
 	return jsonResponse({ users, total: users.length });
@@ -498,6 +543,7 @@ async function handleRedeemKey(request, env) {
 	await env.SUBS.put(`licensed:${idString}`, "1");
 	if (record.tier === "pro") {
 		await env.SUBS.put(`sub:${idString}`, "pro");
+		await env.SUBS.put(`tier_changed:${idString}`, String(Date.now()));
 	}
 
 	return jsonResponse({ ok: true, tier: record.tier });
@@ -527,9 +573,6 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/unban") {
 			return handleUnban(request, env);
-		}
-		if (request.method === "POST" && url.pathname === "/banned-list") {
-			return handleBannedList(request, env);
 		}
 		if (request.method === "GET" && url.pathname === "/license-status") {
 			return handleLicenseStatus(request, env);

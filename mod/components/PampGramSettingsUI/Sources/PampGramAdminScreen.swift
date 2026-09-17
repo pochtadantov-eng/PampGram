@@ -19,17 +19,15 @@ private final class PampGramAdminArguments {
     let generateKey: () -> Void
     let banFull: () -> Void
     let banSection: () -> Void
-    let openBannedList: () -> Void
     let setMinVersion: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
         self.openUsersList = openUsersList
         self.generateKey = generateKey
         self.banFull = banFull
         self.banSection = banSection
-        self.openBannedList = openBannedList
         self.setMinVersion = setMinVersion
     }
 }
@@ -64,7 +62,6 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     case banHeader(String)
     case banFullAction(String, Bool)
     case banSectionAction(String, Bool)
-    case unbanAction(String, Bool)
     case banFooter(String)
 
     case versionHeader(String)
@@ -83,7 +80,7 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return PampGramAdminSection.users.rawValue
         case .keysHeader, .generateKeyAction, .keysFooter:
             return PampGramAdminSection.keys.rawValue
-        case .banHeader, .banFullAction, .banSectionAction, .unbanAction, .banFooter:
+        case .banHeader, .banFullAction, .banSectionAction, .banFooter:
             return PampGramAdminSection.ban.rawValue
         case .versionHeader, .versionRow, .versionFooter:
             return PampGramAdminSection.version.rawValue
@@ -120,16 +117,14 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 12
         case .banSectionAction:
             return 13
-        case .unbanAction:
-            return 14
         case .banFooter:
-            return 15
+            return 14
         case .versionHeader:
-            return 16
+            return 15
         case .versionRow:
-            return 17
+            return 16
         case .versionFooter:
-            return 18
+            return 17
         }
     }
 
@@ -162,8 +157,6 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let (.banFullAction(lhsTitle, lhsEnabled), .banFullAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.banSectionAction(lhsTitle, lhsEnabled), .banSectionAction(rhsTitle, rhsEnabled)):
-            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
-        case let (.unbanAction(lhsTitle, lhsEnabled), .unbanAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.banFooter(lhsText), .banFooter(rhsText)):
             return lhsText == rhsText
@@ -216,10 +209,6 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let .banSectionAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.banSection()
-            })
-        case let .unbanAction(title, enabled):
-            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
-                arguments.openBannedList()
             })
         }
     }
@@ -511,9 +500,6 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                 ))
             }
         },
-        openBannedList: {
-            pushControllerImpl?(pampGramBannedUsersController(context: context))
-        },
         setMinVersion: {
             requireAdminToken { adminToken in
                 presentControllerImpl?(promptController(
@@ -570,15 +556,14 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .grantAction("Выдать подписку", adminToken != nil),
             .grantFooter("Меняет тариф человека на всех его устройствах — это единственная функция PampGram, которая обращается к серверу, а не хранит всё локально."),
             .usersAction("Пользователи", adminToken != nil),
-            .usersFooter("Все аккаунты, которые хоть раз открывали PampGram, с их текущим тарифом и когда сервер видел их в последний раз."),
+            .usersFooter("Все аккаунты, которые PampGram знает — открывали мод или были забанены: тариф, когда сервер видел их в последний раз, и статус бана. Отсюда же снимаются баны."),
             .keysHeader("КЛЮЧИ АКТИВАЦИИ"),
             .generateKeyAction("Сгенерировать ключ", adminToken != nil),
             .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются."),
             .banHeader("ДОСТУП"),
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),
-            .unbanAction("Разбанить", adminToken != nil),
-            .banFooter("Забаненный видит вместо раздела (или всего PampGram, если бан полный) закрытый замок и причину, которую ты укажешь."),
+            .banFooter("Забаненный видит вместо раздела (или всего PampGram, если бан полный) закрытый замок и причину, которую ты укажешь. Разбанить — в разделе «Пользователи» выше."),
             .versionHeader("ВЕРСИЯ"),
             .versionRow("Минимальная версия", minVersion == 0 ? "Не ограничена" : "\(minVersion)"),
             .versionFooter("Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Подними минимальную версию до номера новой сборки, чтобы все более старые (включая уже установленные у людей) сразу показывали «Вышло новое обновление» вместо PampGram.")
