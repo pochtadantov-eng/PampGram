@@ -20008,7 +20008,7 @@ index 07cef5bb..57ff7a74 100644
      guard let interfaceInteraction = interfaceInteraction, let controllerInteraction = controllerInteraction else {
          return .single(ContextController.Items(content: .list([])))
      }
-@@ -1370,16 +1452,30 @@ private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationIn
+@@ -1370,17 +1452,30 @@ private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationIn
                                      }
 
 +                                    // PampGram: when "Добавлять от кого переслано" is on, prepend the message
@@ -20900,14 +20900,14 @@ diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageReactio
 diff --git a/submodules/TelegramUI/Sources/ChatControllerInteraction.swift b/submodules/TelegramUI/Sources/ChatControllerInteraction.swift
 --- a/submodules/TelegramUI/Sources/ChatControllerInteraction.swift
 +++ b/submodules/TelegramUI/Sources/ChatControllerInteraction.swift
-@@ -5,6 +5,7 @@ import TelegramCore
+@@ -5,5 +5,6 @@ import TelegramCore
  import Postbox
  import Display
  import AccountContext
 +import PampGramCore
 
  public final class ChatControllerInteraction {
-@@ -247,7 +248,11 @@ public final class ChatControllerInteraction {
+@@ -247,6 +248,10 @@ public final class ChatControllerInteraction {
      public var copyProtectionEnabled: Bool {
          if let peer = self.peer {
 -            return peer.isCopyProtectionEnabled
@@ -20924,7 +20924,7 @@ new file mode 100644
 index 0000000..2b3c4d5
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypassCache.swift
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,60 @@
 +import Foundation
 +import SwiftSignalKit
 +import PampGramCore
@@ -20988,7 +20988,7 @@ index 0000000..2b3c4d5
 diff --git a/submodules/TelegramUI/Sources/SharedAccountContext.swift b/submodules/TelegramUI/Sources/SharedAccountContext.swift
 --- a/submodules/TelegramUI/Sources/SharedAccountContext.swift
 +++ b/submodules/TelegramUI/Sources/SharedAccountContext.swift
-@@ -1073,6 +1073,9 @@ public final class SharedAccountContextImpl: SharedAccountContext {
+@@ -1073,4 +1073,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
      public func makeChatController(context: AccountContext) -> ViewController {
 +        // PampGram: start watching the bypass setting so the in-memory cache is ready before
 +        // any ChatControllerInteraction.copyProtectionEnabled check runs.
@@ -20999,7 +20999,7 @@ diff --git a/submodules/TelegramUI/Sources/SharedAccountContext.swift b/submodul
 diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/TelegramUI/Sources/AppDelegate.swift
 --- a/submodules/TelegramUI/Sources/AppDelegate.swift
 +++ b/submodules/TelegramUI/Sources/AppDelegate.swift
-@@ -1560,6 +1560,12 @@ final class SharedApplicationContext {
+@@ -1560,5 +1560,11 @@ final class SharedApplicationContext {
                  self.context = context
                  self.hasActiveContext = true
 
@@ -21014,14 +21014,14 @@ diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/Telegr
 diff --git a/submodules/Display/Sources/WindowContent.swift b/submodules/Display/Sources/WindowContent.swift
 --- a/submodules/Display/Sources/WindowContent.swift
 +++ b/submodules/Display/Sources/WindowContent.swift
-@@ -4,6 +4,7 @@ import UIKit
+@@ -4,5 +4,6 @@ import UIKit
  import AsyncDisplayKit
  import SwiftSignalKit
  import UIKitRuntimeUtils
 +import PampGramCore
 
  private let defaultScreenCaptureContent: UIView? = {
-@@ -147,7 +148,14 @@ open class WindowContent: UIViewController, WindowHost {
+@@ -147,7 +148,16 @@ open class WindowContent: UIViewController, WindowHost {
 
      public func setScreenCaptureProtection(enabled: Bool) {
 +        // PampGram: when the screenshot bypass is active, never install the screen-capture
@@ -21044,7 +21044,7 @@ new file mode 100644
 index 0000000..a1b2c3d
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramCallRecorder.swift
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,164 @@
 +import Foundation
 +import AVFoundation
 +import UIKit
