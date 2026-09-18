@@ -20800,33 +20800,65 @@ diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/Tel
 +        
          let _ = (self.shouldDivertMessagesToScheduled(messages: messages)
 
+diff --git a/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.h b/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.h
+--- a/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.h
++++ b/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.h
+@@ -38,6 +38,8 @@
+ void setLayerDisableScreenshots(CALayer * _Nonnull layer, bool disableScreenshots);
+ bool getLayerDisableScreenshots(CALayer * _Nonnull layer);
+
++extern bool pampgramDisableScreenshotProtection;
++
+ void setLayerContentsMaskMode(CALayer * _Nonnull layer, bool maskMode);
+
+ void setMonochromaticEffectImpl(UIView * _Nonnull view, bool isEnabled);
+diff --git a/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m b/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m
+--- a/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m
++++ b/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m
+@@ -218,6 +218,8 @@
+
+ static const void *layerDisableScreenshotsKey = &layerDisableScreenshotsKey;
+
++bool pampgramDisableScreenshotProtection = false;
++
+ void setLayerDisableScreenshots(CALayer * _Nonnull layer, bool disableScreenshots) {
+     static UITextField *textField = nil;
+     static UIView *secureView = nil;
+@@ -232,6 +234,10 @@
+     if (secureView == nil) {
+         return;
+     }
++    if (pampgramDisableScreenshotProtection && disableScreenshots) {
++        [layer setAssociatedObject:@(NO) forKey:layerDisableScreenshotsKey associationPolicy:NSObjectAssociationPolicyRetain];
++        return;
++    }
+
+     CALayer *previousLayer = secureView.layer;
+     [secureView setValue:layer forKey:@"layer"];
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypass.swift b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypass.swift
 new file mode 100644
-index 0000000..b3a1f4c
+index 0000000..0000000
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypass.swift
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,78 @@
 +import UIKit
 +import Postbox
 +import SwiftSignalKit
 +import PampGramCore
++import UIKitRuntimeUtils
 +
 +/// "Обход защиты от скриншотов" — two-part, entirely client-side bypass:
 +///
 +/// Part 1 — Content-protected chats (channels/groups with screenshot blocking):
-+/// Telegram inserts a hidden, non-interactive UITextField with isSecureTextEntry=true into the
-+/// window hierarchy. iOS responds by blacking out any screenshots taken while that field is
-+/// present. We swizzle UITextField's isSecureTextEntry setter so that, when the bypass is on,
-+/// the call is silently dropped for any field that is hidden or non-interactive (i.e. the
-+/// security-only field Telegram inserts, not a real password input the user types into).
++/// Telegram uses setLayerDisableScreenshots (UIKitRuntimeUtils) to mark CALayers
++/// as secure via the iOS UITextField.isSecureTextEntry trick. We patch that function
++/// with a global flag (pampgramDisableScreenshotProtection) so it returns early when
++/// the flag is true. On toggle-on we also walk the layer tree to clear existing protection.
 +///
 +/// Part 2 — Secret chats:
 +/// When a screenshot is taken while a secret chat is open, Telegram notifies the server, which
 +/// in turn tells the other party. We intercept ChatControllerImpl's screenshot-notification
 +/// handler via the Obj-C runtime so the MTProto call never fires while the bypass is on.
-+/// The swizzle targets `userDidTakeScreenshot`, the @objc selector ChatControllerImpl
-+/// registers for UIApplication.userDidTakeScreenshotNotification. Silently skipped if the
-+/// class or selector cannot be found at runtime (e.g., renamed in a future Telegram release).
 +public enum PampGramScreenshotBypass {
 +    nonisolated(unsafe) public static var bypassEnabled: Bool = false
 +    private static var installed = false
@@ -20834,51 +20866,37 @@ index 0000000..b3a1f4c
 +    public static func install(postbox: Postbox) {
 +        guard !installed else { return }
 +        installed = true
-+        installSecureFieldSwizzle()
 +        installSecretChatBypass()
 +        let _ = PampGramCore.rawSettingsSignal(postbox: postbox)
 +            .startStandalone(next: { settings in
 +                let wasEnabled = PampGramScreenshotBypass.bypassEnabled
 +                PampGramScreenshotBypass.bypassEnabled = settings.bypassScreenshotProtection
++                pampgramDisableScreenshotProtection = settings.bypassScreenshotProtection
 +                if !wasEnabled && settings.bypassScreenshotProtection {
 +                    DispatchQueue.main.async {
-+                        PampGramScreenshotBypass.clearExistingSecureFields()
++                        PampGramScreenshotBypass.clearExistingProtectedLayers()
 +                    }
 +                }
 +            })
 +    }
 +
-+    // MARK: - Part 1: UITextField secure-entry swizzle
++    // MARK: - Part 1: Clear existing screenshot-protected layers
 +
-+    public static func clearExistingSecureFields() {
++    public static func clearExistingProtectedLayers() {
 +        for window in UIApplication.shared.windows {
-+            clearSecureFieldsIn(view: window)
++            clearProtectedLayersIn(layer: window.layer)
 +        }
 +    }
 +
-+    private static func clearSecureFieldsIn(view: UIView) {
-+        if let tf = view as? UITextField, tf.isSecureTextEntry,
-+           !tf.isFirstResponder {
-+            tf.isSecureTextEntry = false
++    private static func clearProtectedLayersIn(layer: CALayer) {
++        if getLayerDisableScreenshots(layer) {
++            setLayerDisableScreenshots(layer, false)
 +        }
-+        for sub in view.subviews { clearSecureFieldsIn(view: sub) }
-+    }
-+
-+    private static func installSecureFieldSwizzle() {
-+        let cls = UITextField.self
-+        let sel = #selector(setter: UITextField.isSecureTextEntry)
-+        guard let method = class_getInstanceMethod(cls, sel) else { return }
-+        let originalIMP = method_getImplementation(method)
-+        typealias IMPType = @convention(c) (UITextField, Selector, Bool) -> Void
-+        let original = unsafeBitCast(originalIMP, to: IMPType.self)
-+        let block: @convention(block) (UITextField, Bool) -> Void = { textField, value in
-+            if value && PampGramScreenshotBypass.bypassEnabled,
-+               !textField.isFirstResponder {
-+                return
++        if let sublayers = layer.sublayers {
++            for sublayer in sublayers {
++                clearProtectedLayersIn(layer: sublayer)
 +            }
-+            original(textField, sel, value)
 +        }
-+        method_setImplementation(method, imp_implementationWithBlock(block))
 +    }
 +
 +    // MARK: - Part 2: Secret-chat screenshot notification swizzle
