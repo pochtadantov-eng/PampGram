@@ -20010,7 +20010,7 @@ index 07cef5bb..57ff7a74 100644
      }
 @@ -1370,17 +1452,30 @@ private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationIn
                                      }
-
+                                     
 +                                    // PampGram: when "Добавлять от кого переслано" is on, prepend the message
 +                                    // author's @username (or numeric ID) to every text copied from a protected chat.
 +                                    let pampGramStoreText: (String, [MessageTextEntity]?) -> Void = { text, entities in
@@ -20860,7 +20860,7 @@ index 0000000..1a2b3c4
 diff --git a/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift b/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift
 --- a/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift
 +++ b/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift
-@@ -18,7 +18,8 @@ import ChatMessageItemCommon
+@@ -19,6 +19,7 @@ import ChatMessageItemCommon
  import ChatMessageItemView
  import ReactionSelectionNode
  import AnimatedTextComponent
@@ -20868,7 +20868,6 @@ diff --git a/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionCont
  import PresentationDataUtils
 
  extension ChatControllerImpl {
-     func openMessageReactionContextMenu(message: Message, sourceView: UIView, gesture: ContextGesture?, value: MessageReaction.Reaction?) {
 diff --git a/submodules/TelegramUI/Sources/ChatControllerContentData.swift b/submodules/TelegramUI/Sources/ChatControllerContentData.swift
 --- a/submodules/TelegramUI/Sources/ChatControllerContentData.swift
 +++ b/submodules/TelegramUI/Sources/ChatControllerContentData.swift
@@ -20896,7 +20895,7 @@ new file mode 100644
 index 0000000..2b3c4d5
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypassCache.swift
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,61 @@
 +import Foundation
 +import SwiftSignalKit
 +import PampGramCore
@@ -20937,9 +20936,10 @@ index 0000000..2b3c4d5
 +        return _recordOwnVoice.with { $0 }
 +    }
 +
-+    /// Call once per account from `SharedAccountContextImpl` or `AccountContextImpl.init` —
-+    /// subscribes to the live settings signal and keeps cached values in sync.
-+    public func start(postbox: Postbox) {
++    /// Call once per account — subscribes to the live settings signal, keeps cached values in
++    /// sync, and kicks off the ban-status fetch so `settingsSignal` is ban-gated from the start.
++    public func start(postbox: Postbox, userId: Int64) {
++        PampGramBanCache.shared.start(userId: userId)
 +        disposable?.dispose()
 +        disposable = (PampGramCore.settingsSignal(postbox: postbox)
 +        |> deliverOnMainQueue).start(next: { [weak self] settings in
@@ -20964,20 +20964,20 @@ diff --git a/submodules/TelegramUI/Sources/SharedAccountContext.swift b/submodul
      public func makeChatController(context: AccountContext, chatLocation: ChatLocation, subject: ChatControllerSubject?, botStart: ChatControllerInitialBotStart?, mode: ChatControllerPresentationMode, params: ChatControllerParams?) -> ChatController {
 +        // PampGram: start watching the bypass setting so the in-memory cache is ready before
 +        // any copyProtectionEnabled check runs.
-+        PampGramScreenshotBypassCache.shared.start(postbox: context.account.postbox)
++        PampGramScreenshotBypassCache.shared.start(postbox: context.account.postbox, userId: context.account.peerId.id._internalGetInt64Value())
          return ChatControllerImpl(context: context, chatLocation: chatLocation, subject: subject, botStart: botStart, mode: mode, params: params)
      }
-
+     
 diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/TelegramUI/Sources/AppDelegate.swift
 --- a/submodules/TelegramUI/Sources/AppDelegate.swift
 +++ b/submodules/TelegramUI/Sources/AppDelegate.swift
-@@ -1333,5 +1333,10 @@
+@@ -1333,4 +1333,9 @@
              if let context = context {
                  setupLegacyComponents(context: context.context)
 +
-+                // PampGram: initialize the screenshot-bypass cache early so the cached
-+                // value is up to date by the first copyProtectionEnabled check.
-+                PampGramScreenshotBypassCache.shared.start(postbox: context.context.account.postbox)
++                 // PampGram: initialize the screenshot-bypass cache early so the cached
++                 // value is up to date by the first copyProtectionEnabled check.
++                 PampGramScreenshotBypassCache.shared.start(postbox: context.context.account.postbox, userId: context.context.account.peerId.id._internalGetInt64Value())
 +
                  let isReady = context.isReady.get()
                  contextReadyDisposable.set((isReady

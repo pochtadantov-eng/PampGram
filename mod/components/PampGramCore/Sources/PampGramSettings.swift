@@ -452,6 +452,70 @@ public struct PampGramSettings: Codable, Equatable {
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
     }
 
+    public func withFullBan() -> PampGramSettings {
+        var s = self
+        s.fakeStarsBalance = 0
+        s.fakeTonBalanceNanos = 0
+        s.localRublesBalanceKopecks = 0
+        s.phantomGiftsEnabled = false
+        s.fakeStarsDisplayEnabled = false
+        s.fakeTonDisplayEnabled = false
+        s.fromHimGiftsEnabled = false
+        s.localRublesPurchaseEnabled = false
+        s.masterEnabled = false
+        s.antiDeleteMessagesEnabled = false
+        s.visualEditEnabled = false
+        s.voiceChangerMessagesEnabled = false
+        s.ghostModeEnabled = false
+        s.ghostHideReadReceipts = false
+        s.ghostHideStoryViews = false
+        s.ghostHideOnline = false
+        s.ghostHideTyping = false
+        s.ghostAutoOffline = false
+        s.bypassScreenshotRestriction = false
+        s.addForwardSourceEnabled = false
+        s.recordAudioCallsEnabled = false
+        s.recordVideoCallsEnabled = false
+        s.fakeLocationEnabled = false
+        s.chatLockEnabled = false
+        s.infinitePinsEnabled = false
+        s.legalPremiumEnabled = false
+        return s
+    }
+
+    public func withSectionBans(_ sections: [String: String]) -> PampGramSettings {
+        var s = self
+        if sections[PampGramBanSection.gifts.rawValue] != nil {
+            s.phantomGiftsEnabled = false
+            s.fakeStarsDisplayEnabled = false
+            s.fakeTonDisplayEnabled = false
+            s.fromHimGiftsEnabled = false
+            s.localRublesPurchaseEnabled = false
+            s.masterEnabled = false
+            s.fakeStarsBalance = 0
+            s.fakeTonBalanceNanos = 0
+            s.localRublesBalanceKopecks = 0
+        }
+        if sections[PampGramBanSection.messages.rawValue] != nil {
+            s.visualEditEnabled = false
+            s.antiDeleteMessagesEnabled = false
+            s.voiceChangerMessagesEnabled = false
+        }
+        if sections[PampGramBanSection.ghost.rawValue] != nil {
+            s.ghostModeEnabled = false
+            s.ghostHideReadReceipts = false
+            s.ghostHideStoryViews = false
+            s.ghostHideOnline = false
+            s.ghostHideTyping = false
+            s.ghostAutoOffline = false
+            s.bypassScreenshotRestriction = false
+            s.addForwardSourceEnabled = false
+            s.recordAudioCallsEnabled = false
+            s.recordVideoCallsEnabled = false
+        }
+        return s
+    }
+
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
     /// preserved). Returned by `PampGramCore.settings`/`settingsSignal` while "Включить визуалку"
     /// is off, so the gift visuals stop taking effect while nothing is lost and no other section
@@ -519,12 +583,17 @@ public enum PampGramCore {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
-    /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
-    /// визуалку" is off, only the gift-visual features read as disabled; every other section is
-    /// unaffected. Screens that need the real stored gift state use `rawSettings` instead.
+    /// Gifts-gated and ban-gated settings, used by all feature EFFECT and display code.
     public static func settings(transaction: Transaction) -> PampGramSettings {
         let raw = self.rawSettings(transaction: transaction)
-        return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+        var settings = raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+        let banStatus = PampGramBanCache.shared.status
+        if banStatus.full != nil {
+            settings = settings.withFullBan()
+        } else if !banStatus.sections.isEmpty {
+            settings = settings.withSectionBans(banStatus.sections)
+        }
+        return settings
     }
 
     public static func updateSettings(transaction: Transaction, _ f: (PampGramSettings) -> PampGramSettings) {
@@ -543,11 +612,20 @@ public enum PampGramCore {
         |> distinctUntilChanged
     }
 
-    /// Live gifts-gated settings, for feature effect/display code.
+    /// Live gifts-gated and ban-gated settings, for feature effect/display code.
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
-        return self.rawSettingsSignal(postbox: postbox)
-        |> map { raw -> PampGramSettings in
-            return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+        return combineLatest(
+            self.rawSettingsSignal(postbox: postbox),
+            PampGramBanCache.shared.signal()
+        )
+        |> map { raw, banStatus -> PampGramSettings in
+            var settings = raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+            if banStatus.full != nil {
+                settings = settings.withFullBan()
+            } else if !banStatus.sections.isEmpty {
+                settings = settings.withSectionBans(banStatus.sections)
+            }
+            return settings
         }
         |> distinctUntilChanged
     }

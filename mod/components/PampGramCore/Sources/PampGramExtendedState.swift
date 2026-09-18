@@ -240,6 +240,15 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumberPriceUsdCents = anonymousNumberPriceUsdCents
     }
 
+    public func withBanOff() -> PampGramProfileVisualState {
+        var s = self
+        s.ratingEnabled = false
+        s.ratingValue = 0
+        s.ratingPoints = 0
+        s.anonymousNumberEnabled = false
+        return s
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = PampGramProfileVisualState.default
@@ -255,18 +264,31 @@ public struct PampGramProfileVisualState: Codable, Equatable {
 }
 
 public enum PampGramProfileVisualStore {
-    public static func state(transaction: Transaction) -> PampGramProfileVisualState {
+    public static func rawState(transaction: Transaction) -> PampGramProfileVisualState {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.profileVisuals)?.get(PampGramProfileVisualState.self) ?? .default
     }
 
-    public static func update(transaction: Transaction, _ f: (PampGramProfileVisualState) -> PampGramProfileVisualState) {
-        transaction.setPreferencesEntry(key: PampGramPreferencesKeys.profileVisuals, value: PreferencesEntry(f(self.state(transaction: transaction))))
+    public static func state(transaction: Transaction) -> PampGramProfileVisualState {
+        let raw = rawState(transaction: transaction)
+        return PampGramBanCache.shared.isFullyBanned ? raw.withBanOff() : raw
     }
 
-    public static func signal(postbox: Postbox) -> Signal<PampGramProfileVisualState, NoError> {
+    public static func update(transaction: Transaction, _ f: (PampGramProfileVisualState) -> PampGramProfileVisualState) {
+        transaction.setPreferencesEntry(key: PampGramPreferencesKeys.profileVisuals, value: PreferencesEntry(f(self.rawState(transaction: transaction))))
+    }
+
+    public static func rawSignal(postbox: Postbox) -> Signal<PampGramProfileVisualState, NoError> {
         return postbox.preferencesView(keys: [PampGramPreferencesKeys.profileVisuals])
         |> map { view in
             view.values[PampGramPreferencesKeys.profileVisuals]?.get(PampGramProfileVisualState.self) ?? .default
+        }
+        |> distinctUntilChanged
+    }
+
+    public static func signal(postbox: Postbox) -> Signal<PampGramProfileVisualState, NoError> {
+        return combineLatest(rawSignal(postbox: postbox), PampGramBanCache.shared.signal())
+        |> map { state, banStatus -> PampGramProfileVisualState in
+            return banStatus.full != nil ? state.withBanOff() : state
         }
         |> distinctUntilChanged
     }
