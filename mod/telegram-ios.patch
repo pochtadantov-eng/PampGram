@@ -20858,7 +20858,7 @@ index 0000000..b3a1f4c
 +
 +    private static func clearSecureFieldsIn(view: UIView) {
 +        if let tf = view as? UITextField, tf.isSecureTextEntry,
-+           !tf.isUserInteractionEnabled || tf.isHidden || tf.bounds.isEmpty {
++           !tf.isFirstResponder {
 +            tf.isSecureTextEntry = false
 +        }
 +        for sub in view.subviews { clearSecureFieldsIn(view: sub) }
@@ -20873,7 +20873,7 @@ index 0000000..b3a1f4c
 +        let original = unsafeBitCast(originalIMP, to: IMPType.self)
 +        let block: @convention(block) (UITextField, Bool) -> Void = { textField, value in
 +            if value && PampGramScreenshotBypass.bypassEnabled,
-+               !textField.isUserInteractionEnabled || textField.isHidden {
++               !textField.isFirstResponder {
 +                return
 +            }
 +            original(textField, sel, value)
