@@ -20815,7 +20815,7 @@ diff --git a/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.h 
 diff --git a/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m b/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m
 --- a/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m
 +++ b/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m
-@@ -218,6 +218,8 @@
+@@ -296,6 +296,8 @@
 
  static const void *layerDisableScreenshotsKey = &layerDisableScreenshotsKey;
 
@@ -20824,7 +20824,7 @@ diff --git a/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m 
  void setLayerDisableScreenshots(CALayer * _Nonnull layer, bool disableScreenshots) {
      static UITextField *textField = nil;
      static UIView *secureView = nil;
-@@ -232,6 +234,10 @@
+@@ -312,6 +314,10 @@
      if (secureView == nil) {
          return;
      }
