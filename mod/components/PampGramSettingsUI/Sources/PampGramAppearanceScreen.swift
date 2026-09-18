@@ -12,6 +12,7 @@ import PampGramCore
 
 private final class PampGramAppearanceArguments {
     let choosePreset: () -> Void
+    let chooseBadge: () -> Void
     let editBubbleRadius: () -> Void
     let editBubbleOpacity: () -> Void
     let editBlur: () -> Void
@@ -29,14 +30,14 @@ private final class PampGramAppearanceArguments {
     let openIconPicker: () -> Void
     let reset: () -> Void
 
-    init(choosePreset: @escaping () -> Void, editBubbleRadius: @escaping () -> Void, editBubbleOpacity: @escaping () -> Void, editBlur: @escaping () -> Void, editDensity: @escaping () -> Void, toggleReduceAnimations: @escaping (Bool) -> Void, toggleOled: @escaping (Bool) -> Void, toggleCompactHub: @escaping (Bool) -> Void, toggleMonochrome: @escaping (Bool) -> Void, toggleGlassCards: @escaping (Bool) -> Void, toggleMinimal: @escaping (Bool) -> Void, toggleChatPreview: @escaping (Bool) -> Void, toggleChatDate: @escaping (Bool) -> Void, editAvatarSize: @escaping () -> Void, editProfileBlur: @escaping () -> Void, openIconPicker: @escaping () -> Void, reset: @escaping () -> Void) {
-        self.choosePreset = choosePreset; self.editBubbleRadius = editBubbleRadius; self.editBubbleOpacity = editBubbleOpacity; self.editBlur = editBlur; self.editDensity = editDensity; self.toggleReduceAnimations = toggleReduceAnimations; self.toggleOled = toggleOled; self.toggleCompactHub = toggleCompactHub; self.toggleMonochrome = toggleMonochrome; self.toggleGlassCards = toggleGlassCards; self.toggleMinimal = toggleMinimal; self.toggleChatPreview = toggleChatPreview; self.toggleChatDate = toggleChatDate; self.editAvatarSize = editAvatarSize; self.editProfileBlur = editProfileBlur; self.openIconPicker = openIconPicker; self.reset = reset
+    init(choosePreset: @escaping () -> Void, chooseBadge: @escaping () -> Void, editBubbleRadius: @escaping () -> Void, editBubbleOpacity: @escaping () -> Void, editBlur: @escaping () -> Void, editDensity: @escaping () -> Void, toggleReduceAnimations: @escaping (Bool) -> Void, toggleOled: @escaping (Bool) -> Void, toggleCompactHub: @escaping (Bool) -> Void, toggleMonochrome: @escaping (Bool) -> Void, toggleGlassCards: @escaping (Bool) -> Void, toggleMinimal: @escaping (Bool) -> Void, toggleChatPreview: @escaping (Bool) -> Void, toggleChatDate: @escaping (Bool) -> Void, editAvatarSize: @escaping () -> Void, editProfileBlur: @escaping () -> Void, openIconPicker: @escaping () -> Void, reset: @escaping () -> Void) {
+        self.choosePreset = choosePreset; self.chooseBadge = chooseBadge; self.editBubbleRadius = editBubbleRadius; self.editBubbleOpacity = editBubbleOpacity; self.editBlur = editBlur; self.editDensity = editDensity; self.toggleReduceAnimations = toggleReduceAnimations; self.toggleOled = toggleOled; self.toggleCompactHub = toggleCompactHub; self.toggleMonochrome = toggleMonochrome; self.toggleGlassCards = toggleGlassCards; self.toggleMinimal = toggleMinimal; self.toggleChatPreview = toggleChatPreview; self.toggleChatDate = toggleChatDate; self.editAvatarSize = editAvatarSize; self.editProfileBlur = editProfileBlur; self.openIconPicker = openIconPicker; self.reset = reset
     }
 }
 
 private enum PampGramAppearanceEntry: ItemListNodeEntry {
     case about(String)
-    case presetHeader(String), preset(String, String)
+    case presetHeader(String), preset(String, String), badge(String, String)
     case chatHeader(String), bubbleRadius(String, String), bubbleOpacity(String, String), blur(String, String), density(String, String), chatPreview(String, Bool), chatDate(String, Bool), avatarSize(String, String)
     case uiHeader(String), glassCards(String, Bool), compactHub(String, Bool), monochrome(String, Bool), minimal(String, Bool), oled(String, Bool), profileBlur(String, String), reduceAnimations(String, Bool)
     case appHeader(String), icon(PresentationAppIcon)
@@ -45,7 +46,7 @@ private enum PampGramAppearanceEntry: ItemListNodeEntry {
     var section: ItemListSectionId {
         switch self {
         case .about: return 0
-        case .presetHeader, .preset: return 1
+        case .presetHeader, .preset, .badge: return 1
         case .chatHeader, .bubbleRadius, .bubbleOpacity, .blur, .density, .chatPreview, .chatDate, .avatarSize: return 2
         case .uiHeader, .glassCards, .compactHub, .monochrome, .minimal, .oled, .profileBlur, .reduceAnimations: return 3
         case .appHeader, .icon: return 4
@@ -54,7 +55,7 @@ private enum PampGramAppearanceEntry: ItemListNodeEntry {
     }
     var stableId: Int32 {
         switch self {
-        case .about: return 0; case .presetHeader: return 1; case .preset: return 2; case .chatHeader: return 10; case .bubbleRadius: return 11; case .bubbleOpacity: return 12; case .blur: return 13; case .density: return 14; case .chatPreview: return 15; case .chatDate: return 16; case .avatarSize: return 17; case .uiHeader: return 20; case .glassCards: return 21; case .compactHub: return 22; case .monochrome: return 23; case .minimal: return 24; case .oled: return 25; case .profileBlur: return 26; case .reduceAnimations: return 27; case .appHeader: return 30; case .icon: return 31; case .reset: return 40; case .footer: return 41
+        case .about: return 0; case .presetHeader: return 1; case .preset: return 2; case .badge: return 3; case .chatHeader: return 10; case .bubbleRadius: return 11; case .bubbleOpacity: return 12; case .blur: return 13; case .density: return 14; case .chatPreview: return 15; case .chatDate: return 16; case .avatarSize: return 17; case .uiHeader: return 20; case .glassCards: return 21; case .compactHub: return 22; case .monochrome: return 23; case .minimal: return 24; case .oled: return 25; case .profileBlur: return 26; case .reduceAnimations: return 27; case .appHeader: return 30; case .icon: return 31; case .reset: return 40; case .footer: return 41
         }
     }
     static func <(lhs: Self, rhs: Self) -> Bool { lhs.stableId < rhs.stableId }
@@ -64,6 +65,7 @@ private enum PampGramAppearanceEntry: ItemListNodeEntry {
         case let .about(text), let .footer(text): return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .presetHeader(text), let .chatHeader(text), let .uiHeader(text), let .appHeader(text): return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .preset(title, label): return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: a.choosePreset)
+        case let .badge(title, label): return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: a.chooseBadge)
         case let .bubbleRadius(title, label): return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: a.editBubbleRadius)
         case let .bubbleOpacity(title, label): return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: a.editBubbleOpacity)
         case let .blur(title, label): return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: a.editBlur)
@@ -103,11 +105,16 @@ public func pampGramAppearanceController(context: AccountContext) -> ViewControl
     let arguments = PampGramAppearanceArguments(
         choosePreset: {
             let pd = context.sharedContext.currentPresentationData.with { $0 }; let sheet = ActionSheetController(presentationData: pd)
-            let buttons = PampGramAppearancePreset.allCases.map { preset in ActionSheetButtonItem(title: preset.displayName, color: .accent, action: { [weak sheet] in sheet?.dismissAnimated(); update { _ in
-                var s = PampGramAppearanceState.default; s.preset = preset
+            let buttons = PampGramAppearancePreset.allCases.map { preset in ActionSheetButtonItem(title: preset.displayName, color: .accent, action: { [weak sheet] in sheet?.dismissAnimated(); update { current in
+                var s = PampGramAppearanceState.default; s.preset = preset; s.hubBadge = current.hubBadge
                 switch preset { case .standard: break; case .glass: s.glassCards = true; s.blurStrength = 65; s.bubbleOpacityPercent = 88; case .compact: s.chatDensity = 0; s.compactHub = true; s.avatarSize = 42; s.bubbleRadius = 12 }
                 return s
             } }) }
+            sheet.setItemGroups([ActionSheetItemGroup(items: buttons), ActionSheetItemGroup(items: [ActionSheetButtonItem(title: pd.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in sheet?.dismissAnimated() })])]); present?(sheet)
+        },
+        chooseBadge: {
+            let pd = context.sharedContext.currentPresentationData.with { $0 }; let sheet = ActionSheetController(presentationData: pd)
+            let buttons = PampGramHubBadge.allCases.map { badge in ActionSheetButtonItem(title: badge.displayText, color: .accent, action: { [weak sheet] in sheet?.dismissAnimated(); update { var s = $0; s.hubBadge = badge; return s } }) }
             sheet.setItemGroups([ActionSheetItemGroup(items: buttons), ActionSheetItemGroup(items: [ActionSheetButtonItem(title: pd.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in sheet?.dismissAnimated() })])]); present?(sheet)
         },
         editBubbleRadius: { let _ = (PampGramAppearanceStore.signal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { numericPrompt(title: "Радиус пузырей", current: $0.bubbleRadius, range: 4...32) { $0.bubbleRadius = $1 } }) },
@@ -124,7 +131,7 @@ public func pampGramAppearanceController(context: AccountContext) -> ViewControl
     let signal = combineLatest(context.sharedContext.presentationData, PampGramAppearanceStore.signal(postbox: context.account.postbox), currentIconName.get())
     |> deliverOnMainQueue
     |> map { pd, state, selectedName -> (ItemListControllerState, (ItemListNodeState, Any)) in
-        var entries: [PampGramAppearanceEntry] = [.about("Настройки визуального движка PampGram. Пресет задаёт базу, отдельные параметры можно менять после него."), .presetHeader("ПРЕСЕТ"), .preset("Оформление", state.preset.displayName), .chatHeader("ЧАТЫ"), .bubbleRadius("Радиус пузырей", "\(state.bubbleRadius)"), .bubbleOpacity("Прозрачность пузырей", "\(state.bubbleOpacityPercent)%"), .blur("Blur / стекло", "\(state.blurStrength)%"), .density("Плотность", state.chatDensity == 0 ? "Compact" : state.chatDensity == 2 ? "Просторно" : "Обычно"), .chatPreview("Превью сообщений", state.showChatPreview), .chatDate("Дата в списке чатов", state.showChatDate), .avatarSize("Размер аватарок", "\(state.avatarSize)"), .uiHeader("ИНТЕРФЕЙС"), .glassCards("Стеклянные карточки", state.glassCards), .compactHub("Компактный PampGram", state.compactHub), .monochrome("Монохромные иконки", state.monochromeIcons), .minimal("Минималистичный режим", state.minimalMode), .oled("OLED Black", state.oledBlack), .profileBlur("Blur шапки профиля", "\(state.profileHeaderBlur)%"), .reduceAnimations("Уменьшить анимации", state.reduceAnimations), .appHeader("ПРИЛОЖЕНИЕ")]
+        var entries: [PampGramAppearanceEntry] = [.about("Настройки визуального движка PampGram. Пресет задаёт базу, отдельные параметры можно менять после него."), .presetHeader("ПРЕСЕТ"), .preset("Оформление", state.preset.displayName), .badge("Бейджик", state.hubBadge.displayText), .chatHeader("ЧАТЫ"), .bubbleRadius("Радиус пузырей", "\(state.bubbleRadius)"), .bubbleOpacity("Прозрачность пузырей", "\(state.bubbleOpacityPercent)%"), .blur("Blur / стекло", "\(state.blurStrength)%"), .density("Плотность", state.chatDensity == 0 ? "Compact" : state.chatDensity == 2 ? "Просторно" : "Обычно"), .chatPreview("Превью сообщений", state.showChatPreview), .chatDate("Дата в списке чатов", state.showChatDate), .avatarSize("Размер аватарок", "\(state.avatarSize)"), .uiHeader("ИНТЕРФЕЙС"), .glassCards("Стеклянные карточки", state.glassCards), .compactHub("Компактный PampGram", state.compactHub), .monochrome("Монохромные иконки", state.monochromeIcons), .minimal("Минималистичный режим", state.minimalMode), .oled("OLED Black", state.oledBlack), .profileBlur("Blur шапки профиля", "\(state.profileHeaderBlur)%"), .reduceAnimations("Уменьшить анимации", state.reduceAnimations), .appHeader("ПРИЛОЖЕНИЕ")]
         if let selected = icons.first(where: { $0.name == selectedName }) ?? icons.first(where: { $0.isDefault }) ?? icons.first { entries.append(.icon(selected)) }
         entries.append(.reset("Сбросить внешний вид")); entries.append(.footer("Сброс возвращает стандартный пресет. Тяжёлые эффекты можно отключить через «Уменьшить анимации»."))
         return (ItemListControllerState(presentationData: ItemListPresentationData(pd), title: .text("Внешний вид"), leftNavigationButton: nil, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: pd.strings.Common_Back), animateChanges: false), (ItemListNodeState(presentationData: ItemListPresentationData(pd), entries: entries, style: .blocks, animateChanges: true), arguments))

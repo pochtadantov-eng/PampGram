@@ -1,13 +1,15 @@
 import Foundation
 import Display
 import SwiftSignalKit
+import Postbox
 import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import PampGramCore
 
 private enum PampGramAboutEntry: ItemListNodeEntry {
-    case hero
+    case hero(String)
     case aboutHeader(String)
     case aboutText(String)
     case changelogHeader(String)
@@ -45,14 +47,14 @@ private enum PampGramAboutEntry: ItemListNodeEntry {
 
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         switch self {
-        case .hero:
+        case let .hero(badgeText):
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
                 icon: pampGramSettingsIcon(size: 44.0),
                 title: "PampGram",
                 titleFont: .bold,
-                titleBadge: "MOD",
+                titleBadge: badgeText,
                 label: pampGramVersionString,
                 sectionId: self.section,
                 style: .blocks,
@@ -70,9 +72,9 @@ private enum PampGramAboutEntry: ItemListNodeEntry {
 /// The hub's hero row opens this on tap — a short "what is this" plus the current release's
 /// changelog. Both texts live in `PampGramVersion.swift`, updated on every release.
 public func pampGramAboutController(context: AccountContext) -> ViewController {
-    let signal = context.sharedContext.presentationData
+    let signal = combineLatest(context.sharedContext.presentationData, PampGramAppearanceStore.signal(postbox: context.account.postbox))
     |> deliverOnMainQueue
-    |> map { presentationData -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, appearance -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("О PampGram"),
@@ -82,7 +84,7 @@ public func pampGramAboutController(context: AccountContext) -> ViewController {
             animateChanges: false
         )
         let entries: [PampGramAboutEntry] = [
-            .hero,
+            .hero(appearance.hubBadge.displayText),
             .aboutHeader("ЧТО ЭТО"),
             .aboutText("Мод для Telegram-iOS: визуальные и локальные функции поверх настоящего клиента."),
             .changelogHeader("ЧТО В ЭТОЙ ВЕРСИИ"),
