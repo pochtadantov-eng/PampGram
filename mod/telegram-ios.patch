@@ -20857,68 +20857,40 @@ index 0000000..1a2b3c4
 +    return true
 +}
 +
-diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerNode.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerNode.swift
---- a/submodules/TelegramUI/Sources/Chat/ChatControllerNode.swift
-+++ b/submodules/TelegramUI/Sources/Chat/ChatControllerNode.swift
-@@ -14,6 +14,7 @@ import TelegramCore
- import TelegramPresentationData
- import TelegramUIPreferences
- import TextFormat
-+import PampGramCore
- import AccountContext
- import TelegramStringFormatting
- import OverlayStatusController
-@@ -1485,8 +1486,16 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
-     }
-
-     func containerLayoutUpdated(_ layout: ContainerViewLayout, navigationBarHeight: CGFloat, transition: ContainedViewLayoutTransition, listViewTransaction: (ListViewUpdateSizeAndInsets, CGFloat, Bool, @escaping () -> Void) -> Void) {
-+        // PampGram: bypass screenshot protection when the setting is on — read the flag
-+        // synchronously so the very first layout pass already skips the secure-content wrapper.
-+        let pampGramBypassScreenshot: Bool = self.context.account.postbox.transaction { transaction -> Bool in
-+            let settings = PampGramCore.settings(transaction: transaction)
-+            return settings.bypassScreenshotRestriction
-+        } |> take(1) |> mapToSignal { $0 } |> deliverOnMainQueue |> take(1) as? Bool ?? false
-+
-         if let chatPresentationInterfaceState = self.chatPresentationInterfaceState {
--            self.containerLayoutUpdated(layout, navigationBarHeight: navigationBarHeight, transition: transition, listViewTransaction: listViewTransaction, updateExtraNavigationBarBackgroundHeight: nil)
-+            let _ = pampGramBypassScreenshot
-+            self.containerLayoutUpdated(layout, navigationBarHeight: navigationBarHeight, transition: transition, listViewTransaction: listViewTransaction, updateExtraNavigationBarBackgroundHeight: nil)
-         }
-     }
-
-diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageReactionContextMenu.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageReactionContextMenu.swift
---- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageReactionContextMenu.swift
-+++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageReactionContextMenu.swift
-@@ -9,6 +9,7 @@ import TelegramCore
- import Postbox
- import SwiftSignalKit
+diff --git a/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift b/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift
+--- a/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift
++++ b/submodules/TelegramUI/Sources/ChatControllerOpenMessageReactionContextMenu.swift
+@@ -18,7 +18,8 @@ import ChatMessageItemCommon
+ import ChatMessageItemView
  import ReactionSelectionNode
+ import AnimatedTextComponent
 +import PampGramCore
+ import PresentationDataUtils
 
  extension ChatControllerImpl {
      func openMessageReactionContextMenu(message: Message, sourceView: UIView, gesture: ContextGesture?, value: MessageReaction.Reaction?) {
-diff --git a/submodules/TelegramUI/Sources/ChatControllerInteraction.swift b/submodules/TelegramUI/Sources/ChatControllerInteraction.swift
---- a/submodules/TelegramUI/Sources/ChatControllerInteraction.swift
-+++ b/submodules/TelegramUI/Sources/ChatControllerInteraction.swift
-@@ -5,5 +5,6 @@ import TelegramCore
- import Postbox
- import Display
- import AccountContext
+diff --git a/submodules/TelegramUI/Sources/ChatControllerContentData.swift b/submodules/TelegramUI/Sources/ChatControllerContentData.swift
+--- a/submodules/TelegramUI/Sources/ChatControllerContentData.swift
++++ b/submodules/TelegramUI/Sources/ChatControllerContentData.swift
+@@ -15,5 +15,6 @@
+ import TelegramUIPreferences
+ import TranslateUI
+ import TelegramNotices
 +import PampGramCore
 
- public final class ChatControllerInteraction {
-@@ -247,6 +248,10 @@ public final class ChatControllerInteraction {
-     public var copyProtectionEnabled: Bool {
-         if let peer = self.peer {
--            return peer.isCopyProtectionEnabled
-+            // PampGram: when "Обход ограничений скриншота" is on, report content protection
-+            // as disabled so the UI never applies the screenshot/copy overlay. The check is
-+            // backed by a cached value refreshed on each chat open — no synchronous transaction.
-+            let base = peer.isCopyProtectionEnabled
-+            return base && !PampGramScreenshotBypassCache.shared.isActive
-         }
-         return false
-     }
+ extension ChatControllerImpl {
+@@ -1077,3 +1078,4 @@
+                     strongSelf.state.currentSendAsPeerId = currentSendAsPeerId
+-                    strongSelf.state.copyProtectionEnabled = copyProtectionEnabled
++                    // PampGram: bypass copy protection when screenshot bypass is active
++                    strongSelf.state.copyProtectionEnabled = copyProtectionEnabled && !PampGramScreenshotBypassCache.shared.isActive
+                     strongSelf.state.myCopyProtectionEnabled = myCopyProtectionEnabled
+@@ -1782,3 +1784,4 @@
+                         strongSelf.state.currentSendAsPeerId = currentSendAsPeerId
+-                        strongSelf.state.copyProtectionEnabled = copyProtectionEnabled
++                        // PampGram: bypass copy protection when screenshot bypass is active
++                        strongSelf.state.copyProtectionEnabled = copyProtectionEnabled && !PampGramScreenshotBypassCache.shared.isActive
+                         strongSelf.state.hasSearchTags = hasSearchTags
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypassCache.swift b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypassCache.swift
 new file mode 100644
 index 0000000..2b3c4d5
@@ -20988,56 +20960,27 @@ index 0000000..2b3c4d5
 diff --git a/submodules/TelegramUI/Sources/SharedAccountContext.swift b/submodules/TelegramUI/Sources/SharedAccountContext.swift
 --- a/submodules/TelegramUI/Sources/SharedAccountContext.swift
 +++ b/submodules/TelegramUI/Sources/SharedAccountContext.swift
-@@ -1073,4 +1073,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
-     public func makeChatController(context: AccountContext) -> ViewController {
+@@ -2262,4 +2262,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
+     public func makeChatController(context: AccountContext, chatLocation: ChatLocation, subject: ChatControllerSubject?, botStart: ChatControllerInitialBotStart?, mode: ChatControllerPresentationMode, params: ChatControllerParams?) -> ChatController {
 +        // PampGram: start watching the bypass setting so the in-memory cache is ready before
-+        // any ChatControllerInteraction.copyProtectionEnabled check runs.
++        // any copyProtectionEnabled check runs.
 +        PampGramScreenshotBypassCache.shared.start(postbox: context.account.postbox)
-         return ChatControllerImpl(context: context, chatLocation: .peer(id: context.account.peerId))
+         return ChatControllerImpl(context: context, chatLocation: chatLocation, subject: subject, botStart: botStart, mode: mode, params: params)
      }
 
 diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/TelegramUI/Sources/AppDelegate.swift
 --- a/submodules/TelegramUI/Sources/AppDelegate.swift
 +++ b/submodules/TelegramUI/Sources/AppDelegate.swift
-@@ -1560,5 +1560,11 @@ final class SharedApplicationContext {
-                 self.context = context
-                 self.hasActiveContext = true
-
-+                // PampGram: initialize the screenshot-bypass cache early — before any chat
-+                // controller is created — so the cached value is up to date by the time the
-+                // first ChatControllerInteraction.copyProtectionEnabled fires. Subscribes to
-+                // the live PampGram settings signal; harmless to call more than once.
+@@ -1333,5 +1333,10 @@
+             if let context = context {
+                 setupLegacyComponents(context: context.context)
++
++                // PampGram: initialize the screenshot-bypass cache early so the cached
++                // value is up to date by the first copyProtectionEnabled check.
 +                PampGramScreenshotBypassCache.shared.start(postbox: context.context.account.postbox)
 +
-                 let accountId = context.context.account.id
-
-diff --git a/submodules/Display/Sources/WindowContent.swift b/submodules/Display/Sources/WindowContent.swift
---- a/submodules/Display/Sources/WindowContent.swift
-+++ b/submodules/Display/Sources/WindowContent.swift
-@@ -4,5 +4,6 @@ import UIKit
- import AsyncDisplayKit
- import SwiftSignalKit
- import UIKitRuntimeUtils
-+import PampGramCore
-
- private let defaultScreenCaptureContent: UIView? = {
-@@ -147,7 +148,16 @@ open class WindowContent: UIViewController, WindowHost {
-
-     public func setScreenCaptureProtection(enabled: Bool) {
-+        // PampGram: when the screenshot bypass is active, never install the screen-capture
-+        // protection overlay — the window's content stays fully visible during screenshots
-+        // and screen recordings regardless of the chat's noForwards flag.
-+        let effectiveEnabled: Bool
-+        if PampGramScreenshotBypassCache.shared.isActive {
-+            effectiveEnabled = false
-+        } else {
-+            effectiveEnabled = enabled
-+        }
--        if enabled {
-+        if effectiveEnabled {
-             if self.screenCaptureProtectionView == nil {
-                 if let secureView = defaultScreenCaptureContent {
-                     let contentView = UIView(frame: self.view.bounds)
+                 let isReady = context.isReady.get()
+                 contextReadyDisposable.set((isReady
 
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramCallRecorder.swift b/submodules/TelegramUI/Sources/PampGram/PampGramCallRecorder.swift
 new file mode 100644
