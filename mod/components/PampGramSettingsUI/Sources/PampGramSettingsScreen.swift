@@ -620,7 +620,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.rawSettingsSignal(postbox: context.account.postbox),
-        PampGramProfileVisualStore.signal(postbox: context.account.postbox),
+        PampGramProfileVisualStore.rawSignal(postbox: context.account.postbox),
         PampGramPhantomGiftStore.allGiftsSignal(context: context)
     )
     |> deliverOnMainQueue

@@ -190,28 +190,118 @@ import Foundation
      }
  */
 
+// MARK: - 7. SCREENSHOT RESTRICTION BYPASS - Обход ограничений скриншота
+/**
+ Интеграция через PampGramSettings.bypassScreenshotRestriction (Postbox):
+
+ 1. PampGramScreenshotBypassCache (TelegramUI) — in-memory кеш настройки,
+    подписан на settingsSignal. Инициализируется в AppDelegate при старте.
+
+ 2. ChatControllerInteraction.copyProtectionEnabled — возвращает false
+    когда bypass активен, отключая UI-блокировки (overlay, меню).
+
+ 3. WindowContent.setScreenCaptureProtection — пропускает установку
+    secureTextField-обёртки, когда bypass активен.
+
+ 4. PampGramScreenshotBypass (TelegramCore) — хелпер для проверки из
+    контекста транзакции (используется при необходимости в TelegramCore).
+
+ Патч: telegram-ios.patch, секции:
+   - ChatControllerInteraction.swift (copyProtectionEnabled)
+   - WindowContent.swift (setScreenCaptureProtection)
+   - AppDelegate.swift (инициализация кеша)
+   - SharedAccountContext.swift (инициализация кеша)
+   - PampGramScreenshotBypassCache.swift (новый файл)
+   - PampGramScreenshotBypass.swift (новый файл)
+ */
+
+// MARK: - 8. ADD FORWARD SOURCE - Добавлять от кого переслано
+/**
+ Интеграция через PampGramSettings.addForwardSourceEnabled (Postbox):
+
+ 1. PampGramScreenshotBypassCache.isForwardSourceActive (TelegramUI) — то же
+    in-memory кеш, расширен вторым Atomic<Bool> для addForwardSourceEnabled.
+
+ 2. ChatInterfaceStateContextMenus.swift — в обёртке pampGramStoreText вокруг
+    storeMessageTextInPasteboard: если isForwardSourceActive, перед текстом
+    вставляется @username автора (или id:числовой_ID если username пуст).
+    Работает для всех веток копирования (обычный текст, restricted, translation,
+    summary).
+
+ Патч: telegram-ios.patch, секции:
+   - PampGramScreenshotBypassCache.swift (isForwardSourceActive)
+   - ChatInterfaceStateContextMenus.swift (pampGramStoreText wrapper)
+ */
+
+// MARK: - 9. CALL RECORDING - Запись звонков
+/**
+ Интеграция через PampGramSettings.recordAudioCallsEnabled / recordVideoCallsEnabled /
+ recordOwnVoiceEnabled (Postbox):
+
+ 1. PampGramScreenshotBypassCache (TelegramUI) — расширен полями
+    recordAudioCallsEnabled, recordVideoCallsEnabled, recordOwnVoiceEnabled.
+
+ 2. PampGramCallRecorder (TelegramUI, новый файл) — AVAssetWriter-рекордер,
+    принимает CMSampleBuffer от OngoingCallContext, по завершении отправляет
+    файл в Избранное (Saved Messages).
+
+ 3. CallController / PrivateCallScreen — кнопка записи в UI звонка, создаёт
+    PampGramCallRecorder и подключает к аудио/видео буферам.
+
+ TODO для интеграции в CallController:
+   - Создать экземпляр PampGramCallRecorder при нажатии кнопки записи
+   - Подключить audio tap к OngoingCallContext для получения CMSampleBuffer
+   - Для видео: подключить видеофреймы через video(isIncoming:) сигнал
+   - При hangup / stop вызвать recorder.stop()
+
+ Патч: telegram-ios.patch, секции:
+   - PampGramScreenshotBypassCache.swift (recordAudioCalls/VideoCalls/OwnVoice)
+   - PampGramCallRecorder.swift (новый файл)
+ */
+
 // MARK: - TESTING
 /**
  Как тестировать каждую функцию:
- 
+
  1. Copy Protection:
     - Откройте защищённое сообщение
     - Включите "Обход защиты от копирования" в настройках
     - Должны суметь скопировать текст
- 
+
  2. Auto-Delete Bypass:
     - Получите сообщение с таймером удаления
     - Включите "Отключить автоудаление"
     - Сообщение не должно удалиться
- 
+
  3. Screenshot Blur:
     - Откройте чат
     - Включите "Скрыть при скриншоте"
     - Сделайте скриншот
     - Экран должен размыться на 0.5 сек
- 
+
  4. Block Ads:
     - Найдите спонсорское сообщение
     - Включите "Блокировать рекламу"
     - Объявление должно исчезнуть из списка
+
+ 5. Screenshot Restriction Bypass:
+    - Откройте канал с включённой защитой контента
+    - Убедитесь, что скриншот даёт чёрный экран
+    - Включите "Обход ограничений скриншота" в Ghost
+    - Сделайте скриншот — контент должен быть виден
+    - Включите запись экрана — контент должен быть виден
+
+ 6. Add Forward Source:
+    - Откройте канал или чат с защитой контента
+    - Включите "Обход ограничений скриншота" (чтобы кнопка Copy стала доступна)
+    - Включите "Добавлять от кого переслано" в Ghost
+    - Скопируйте сообщение через длинное нажатие → "Копировать"
+    - Вставьте — первая строка должна быть @username автора или id:числовой_ID
+
+ 7. Call Recording:
+    - Включите "Записывать аудиозвонки" в Дополнительно
+    - Совершите звонок, нажмите кнопку записи
+    - Завершите звонок — файл должен появиться в Избранном
+    - Для видеозвонков: включите "Записывать видеозвонки"
+    - "Записывать свой голос" — добавляет ваш микрофон в запись
  */

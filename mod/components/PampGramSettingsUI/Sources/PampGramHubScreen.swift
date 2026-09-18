@@ -18,7 +18,7 @@ private enum PampGramHubSection: Int32 {
 }
 
 private enum PampGramHubEntry: ItemListNodeEntry {
-    case hero
+    case hero(String)
     case search
     case gifts
     case messages
@@ -34,6 +34,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         case .hero:
             return PampGramHubSection.hero.rawValue
         case .search:
+
             return PampGramHubSection.search.rawValue
         case .gifts, .messages, .privacy, .appearance, .advanced, .admin:
             return PampGramHubSection.sections.rawValue
@@ -76,14 +77,14 @@ private enum PampGramHubEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramHubArguments
         switch self {
-        case .hero:
+        case let .hero(badgeText):
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
                 icon: pampGramSettingsIcon(),
                 title: "PampGram",
                 titleFont: .bold,
-                titleBadge: "MOD",
+                titleBadge: badgeText,
                 label: pampGramVersionString,
                 additionalDetailLabel: "Расширяй. Скрывай. Контролируй.",
                 sectionId: self.section,
@@ -268,7 +269,7 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
     return "https://t.me/\(pampGramSupportUsername)?text=\(encoded)"
 }
 
-private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, isAdmin: Bool) -> [PampGramHubEntry] {
+private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, isAdmin: Bool, badgeText: String) -> [PampGramHubEntry] {
     let toggles = [
         settings.phantomGiftsEnabled,
         settings.fakeStarsDisplayEnabled,
@@ -278,11 +279,15 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
         profileVisuals.ratingEnabled,
         settings.antiDeleteMessagesEnabled,
         settings.visualEditEnabled,
-        settings.ghostModeEnabled
+        settings.ghostModeEnabled,
+        settings.bypassScreenshotRestriction,
+        settings.addForwardSourceEnabled,
+        settings.recordAudioCallsEnabled,
+        settings.recordVideoCallsEnabled
     ]
     let activeCount = toggles.filter { $0 }.count
     var entries: [PampGramHubEntry] = [
-        .hero,
+        .hero(badgeText),
         .search,
         .gifts,
         .messages,
@@ -416,10 +421,11 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
     let signal = combineLatest(
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox),
-        PampGramProfileVisualStore.signal(postbox: context.account.postbox)
+        PampGramProfileVisualStore.signal(postbox: context.account.postbox),
+        PampGramAppearanceStore.signal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings, profileVisuals -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, profileVisuals, appearance -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("PampGram"),
@@ -430,7 +436,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramHubEntries(settings: settings, profileVisuals: profileVisuals, isAdmin: isAdmin),
+            entries: pampGramHubEntries(settings: settings, profileVisuals: profileVisuals, isAdmin: isAdmin, badgeText: appearance.hubBadge.displayText),
             style: .blocks,
             animateChanges: true
         )

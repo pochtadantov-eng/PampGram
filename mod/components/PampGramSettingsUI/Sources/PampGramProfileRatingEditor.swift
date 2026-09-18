@@ -114,7 +114,7 @@ private final class PampGramProfileRatingEditorController: ViewController {
         self.displayNodeDidLoad()
         self.configureView(node.view)
 
-        self.stateDisposable.set((PampGramProfileVisualStore.signal(postbox: self.context.account.postbox)
+        self.stateDisposable.set((PampGramProfileVisualStore.rawSignal(postbox: self.context.account.postbox)
         |> take(1)
         |> deliverOnMainQueue).startStrict(next: { [weak self] state in
             self?.applyInitialState(state)

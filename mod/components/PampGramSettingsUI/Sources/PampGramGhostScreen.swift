@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Display
 import SwiftSignalKit
 import TelegramCore
@@ -17,12 +18,14 @@ private final class PampGramGhostArguments {
     let toggleHideTyping: (Bool) -> Void
     let toggleAutoOffline: (Bool) -> Void
     let toggleReadOnAction: (Bool) -> Void
+    let toggleBypassScreenshot: (Bool) -> Void
+    let toggleAddForwardSource: (Bool) -> Void
     let toggleExcludeAllChannels: (Bool) -> Void
     let toggleExcludeAllGroups: (Bool) -> Void
     let openFolders: () -> Void
     let openExceptions: () -> Void
 
-    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void) {
+    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleBypassScreenshot: @escaping (Bool) -> Void, toggleAddForwardSource: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void) {
         self.toggleMaster = toggleMaster
         self.toggleHideReadReceipts = toggleHideReadReceipts
         self.toggleHideStoryViews = toggleHideStoryViews
@@ -30,6 +33,8 @@ private final class PampGramGhostArguments {
         self.toggleHideTyping = toggleHideTyping
         self.toggleAutoOffline = toggleAutoOffline
         self.toggleReadOnAction = toggleReadOnAction
+        self.toggleBypassScreenshot = toggleBypassScreenshot
+        self.toggleAddForwardSource = toggleAddForwardSource
         self.toggleExcludeAllChannels = toggleExcludeAllChannels
         self.toggleExcludeAllGroups = toggleExcludeAllGroups
         self.openFolders = openFolders
@@ -40,6 +45,7 @@ private final class PampGramGhostArguments {
 private enum PampGramGhostSection: Int32 {
     case master
     case features
+    case screenshot
     case exceptions
 }
 
@@ -56,6 +62,11 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     case readOnAction(String, Bool, Bool)
     case featuresFooter(String)
 
+    case screenshotHeader(String)
+    case bypassScreenshot(String, Bool)
+    case addForwardSource(String, Bool)
+    case screenshotFooter(String)
+
     case exceptionsHeader(String)
     case excludeAllChannels(String, Bool, Bool)
     case excludeAllGroups(String, Bool, Bool)
@@ -69,6 +80,8 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return PampGramGhostSection.master.rawValue
         case .featuresHeader, .hideReadReceipts, .hideStoryViews, .hideOnline, .hideTyping, .autoOffline, .readOnAction, .featuresFooter:
             return PampGramGhostSection.features.rawValue
+        case .screenshotHeader, .bypassScreenshot, .addForwardSource, .screenshotFooter:
+            return PampGramGhostSection.screenshot.rawValue
         case .exceptionsHeader, .excludeAllChannels, .excludeAllGroups, .foldersRow, .exceptionsRow, .exceptionsFooter:
             return PampGramGhostSection.exceptions.rawValue
         }
@@ -96,18 +109,26 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return 8
         case .featuresFooter:
             return 9
-        case .exceptionsHeader:
+        case .screenshotHeader:
             return 10
-        case .excludeAllChannels:
+        case .bypassScreenshot:
             return 11
-        case .excludeAllGroups:
+        case .addForwardSource:
             return 12
-        case .foldersRow:
+        case .screenshotFooter:
             return 13
-        case .exceptionsRow:
+        case .exceptionsHeader:
             return 14
-        case .exceptionsFooter:
+        case .excludeAllChannels:
             return 15
+        case .excludeAllGroups:
+            return 16
+        case .foldersRow:
+            return 17
+        case .exceptionsRow:
+            return 18
+        case .exceptionsFooter:
+            return 19
         }
     }
 
@@ -118,9 +139,9 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramGhostArguments
         switch self {
-        case let .masterFooter(text), let .featuresFooter(text), let .exceptionsFooter(text):
+        case let .masterFooter(text), let .featuresFooter(text), let .screenshotFooter(text), let .exceptionsFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .featuresHeader(text), let .exceptionsHeader(text):
+        case let .featuresHeader(text), let .screenshotHeader(text), let .exceptionsHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .masterToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -149,6 +170,14 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
         case let .readOnAction(title, value, enabled):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleReadOnAction(value)
+            })
+        case let .bypassScreenshot(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "camera.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBypassScreenshot(value)
+            })
+        case let .addForwardSource(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrowshape.turn.up.forward.fill", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleAddForwardSource(value)
             })
         case let .excludeAllChannels(title, value, enabled):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
@@ -186,6 +215,11 @@ private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, 
     entries.append(.autoOffline("Автоматический «офлайн»", settings.ghostAutoOffline, on))
     entries.append(.readOnAction("Читать при действиях", settings.ghostReadOnAction, on))
     entries.append(.featuresFooter("Прочтения, истории и «печатает» скрываются пофайлово по каждому чату (учитывая исключения ниже). «Онлайн» и «офлайн» — общий статус аккаунта, к ним исключения не применяются. «Читать при действиях»: как только вы написали в чат, прочтения в нём снова отправляются — вы уже обозначили присутствие."))
+
+    entries.append(.screenshotHeader("ЗАЩИТА КОНТЕНТА"))
+    entries.append(.bypassScreenshot("Обход ограничений скриншота", settings.bypassScreenshotRestriction))
+    entries.append(.addForwardSource("Добавлять от кого переслано", settings.addForwardSourceEnabled))
+    entries.append(.screenshotFooter("«Обход скриншота» снимает чёрный экран при скриншоте и записи экрана в защищённых чатах. «Добавлять от кого переслано» вставляет @юзернейм или ID автора первой строкой при копировании из защищённого чата. Всё только на этом устройстве."))
 
     entries.append(.exceptionsHeader("ИСКЛЮЧЕНИЯ"))
     entries.append(.excludeAllChannels("Все каналы", settings.ghostExcludeAllChannels, on))
@@ -256,6 +290,20 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
             updateSettings { settings in
                 var settings = settings
                 settings.ghostReadOnAction = value
+                return settings
+            }
+        },
+        toggleBypassScreenshot: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.bypassScreenshotRestriction = value
+                return settings
+            }
+        },
+        toggleAddForwardSource: { value in
+            updateSettings { settings in
+                var settings = settings
+                settings.addForwardSourceEnabled = value
                 return settings
             }
         },

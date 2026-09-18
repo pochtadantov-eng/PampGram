@@ -62,7 +62,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillChangeFrame(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillHide(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
 
-        self.stateDisposable.set((PampGramProfileVisualStore.signal(postbox: self.context.account.postbox)
+        self.stateDisposable.set((PampGramProfileVisualStore.rawSignal(postbox: self.context.account.postbox)
         |> take(1)
         |> deliverOnMainQueue).startStrict(next: { [weak self] state in
             self?.applyInitialState(state)

@@ -20,8 +20,11 @@ private final class PampGramAdditionalArguments {
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
+    let toggleRecordAudioCalls: (Bool) -> Void
+    let toggleRecordVideoCalls: (Bool) -> Void
+    let toggleRecordOwnVoice: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleRecordAudioCalls: @escaping (Bool) -> Void, toggleRecordVideoCalls: @escaping (Bool) -> Void, toggleRecordOwnVoice: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -32,6 +35,9 @@ private final class PampGramAdditionalArguments {
         self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
+        self.toggleRecordAudioCalls = toggleRecordAudioCalls
+        self.toggleRecordVideoCalls = toggleRecordVideoCalls
+        self.toggleRecordOwnVoice = toggleRecordOwnVoice
     }
 }
 
@@ -40,6 +46,7 @@ private enum PampGramAdditionalSection: Int32 {
     case voice
     case speed
     case premium
+    case callRecording
     case extras
 }
 
@@ -61,6 +68,12 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case legalPremiumToggle(String, Bool)
     case premiumFooter(String)
 
+    case callRecordingHeader(String)
+    case recordAudioCallsToggle(String, Bool)
+    case recordVideoCallsToggle(String, Bool)
+    case recordOwnVoiceToggle(String, Bool)
+    case callRecordingFooter(String)
+
     case extrasHeader(String)
     case fakeLocationRow(String, String)
     case chatLockRow(String, String)
@@ -78,6 +91,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.speed.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
+        case .callRecordingHeader, .recordAudioCallsToggle, .recordVideoCallsToggle, .recordOwnVoiceToggle, .callRecordingFooter:
+            return PampGramAdditionalSection.callRecording.rawValue
         case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
@@ -111,18 +126,28 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 11
         case .premiumFooter:
             return 12
-        case .extrasHeader:
+        case .callRecordingHeader:
             return 13
-        case .fakeLocationRow:
+        case .recordAudioCallsToggle:
             return 14
-        case .chatLockRow:
+        case .recordVideoCallsToggle:
             return 15
-        case .callOverridesRow:
+        case .recordOwnVoiceToggle:
             return 16
-        case .fakeAdminRow:
+        case .callRecordingFooter:
             return 17
-        case .extrasFooter:
+        case .extrasHeader:
             return 18
+        case .fakeLocationRow:
+            return 19
+        case .chatLockRow:
+            return 20
+        case .callOverridesRow:
+            return 21
+        case .fakeAdminRow:
+            return 22
+        case .extrasFooter:
+            return 23
         }
     }
 
@@ -133,9 +158,9 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .callRecordingFooter(text), let .extrasFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .callRecordingHeader(text), let .extrasHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -169,6 +194,18 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openChatLock()
             })
+        case let .recordAudioCallsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleRecordAudioCalls(value)
+            })
+        case let .recordVideoCallsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleRecordVideoCalls(value)
+            })
+        case let .recordOwnVoiceToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleRecordOwnVoice(value)
+            })
         case let .callOverridesRow(title):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openCallOverrides()
@@ -200,6 +237,12 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
     entries.append(.legalPremiumToggle("Легальный премиум", settings.legalPremiumEnabled))
     entries.append(.premiumFooter("«Закрепить чаты ∞» снимает лимит на количество закреплённых чатов. «Легальный премиум» включает клиентские премиум-послабления, которые Telegram не проверяет на сервере (лимиты закреплений и папок). Закрепления сверх серверного лимита действуют на этом устройстве и могут не синхронизироваться на другие."))
+
+    entries.append(.callRecordingHeader("ЗАПИСЬ ЗВОНКОВ"))
+    entries.append(.recordAudioCallsToggle("Записывать аудиозвонки", settings.recordAudioCallsEnabled))
+    entries.append(.recordVideoCallsToggle("Записывать видеозвонки", settings.recordVideoCallsEnabled))
+    entries.append(.recordOwnVoiceToggle("Записывать свой голос", settings.recordOwnVoiceEnabled))
+    entries.append(.callRecordingFooter("После завершения звонка запись автоматически отправляется в Избранное. Аудиозвонки сохраняются как аудиофайл, видеозвонки — как видео. При включённой опции «Записывать свой голос» в запись добавляется ваш микрофон."))
 
     entries.append(.extrasHeader("ЕЩЁ"))
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
@@ -327,6 +370,27 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.legalPremiumEnabled = value
+                return settings
+            }).start()
+        },
+        toggleRecordAudioCalls: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.recordAudioCallsEnabled = value
+                return settings
+            }).start()
+        },
+        toggleRecordVideoCalls: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.recordVideoCallsEnabled = value
+                return settings
+            }).start()
+        },
+        toggleRecordOwnVoice: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.recordOwnVoiceEnabled = value
                 return settings
             }).start()
         }

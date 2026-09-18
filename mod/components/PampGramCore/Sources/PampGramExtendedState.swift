@@ -240,6 +240,15 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumberPriceUsdCents = anonymousNumberPriceUsdCents
     }
 
+    public func withBanOff() -> PampGramProfileVisualState {
+        var s = self
+        s.ratingEnabled = false
+        s.ratingValue = 0
+        s.ratingPoints = 0
+        s.anonymousNumberEnabled = false
+        return s
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = PampGramProfileVisualState.default
@@ -255,20 +264,64 @@ public struct PampGramProfileVisualState: Codable, Equatable {
 }
 
 public enum PampGramProfileVisualStore {
-    public static func state(transaction: Transaction) -> PampGramProfileVisualState {
+    public static func rawState(transaction: Transaction) -> PampGramProfileVisualState {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.profileVisuals)?.get(PampGramProfileVisualState.self) ?? .default
     }
 
-    public static func update(transaction: Transaction, _ f: (PampGramProfileVisualState) -> PampGramProfileVisualState) {
-        transaction.setPreferencesEntry(key: PampGramPreferencesKeys.profileVisuals, value: PreferencesEntry(f(self.state(transaction: transaction))))
+    public static func state(transaction: Transaction) -> PampGramProfileVisualState {
+        let raw = rawState(transaction: transaction)
+        return PampGramBanCache.shared.isFullyBanned ? raw.withBanOff() : raw
     }
 
-    public static func signal(postbox: Postbox) -> Signal<PampGramProfileVisualState, NoError> {
+    public static func update(transaction: Transaction, _ f: (PampGramProfileVisualState) -> PampGramProfileVisualState) {
+        transaction.setPreferencesEntry(key: PampGramPreferencesKeys.profileVisuals, value: PreferencesEntry(f(self.rawState(transaction: transaction))))
+    }
+
+    public static func rawSignal(postbox: Postbox) -> Signal<PampGramProfileVisualState, NoError> {
         return postbox.preferencesView(keys: [PampGramPreferencesKeys.profileVisuals])
         |> map { view in
             view.values[PampGramPreferencesKeys.profileVisuals]?.get(PampGramProfileVisualState.self) ?? .default
         }
         |> distinctUntilChanged
+    }
+
+    public static func signal(postbox: Postbox) -> Signal<PampGramProfileVisualState, NoError> {
+        return combineLatest(rawSignal(postbox: postbox), PampGramBanCache.shared.signal())
+        |> map { state, banStatus -> PampGramProfileVisualState in
+            return banStatus.full != nil ? state.withBanOff() : state
+        }
+        |> distinctUntilChanged
+    }
+}
+
+public enum PampGramHubBadge: String, CaseIterable {
+    case mod
+    case swiftgram
+    case telegram
+
+    public var displayText: String {
+        switch self {
+        case .mod: return "MOD"
+        case .swiftgram: return "Swiftgram"
+        case .telegram: return "Telegram"
+        }
+    }
+}
+
+extension PampGramHubBadge: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawValue = try container.decode(String.self, forKey: .value)
+        self = PampGramHubBadge(rawValue: rawValue) ?? .mod
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.rawValue, forKey: .value)
     }
 }
 
@@ -329,12 +382,13 @@ public struct PampGramAppearanceState: Codable, Equatable {
     public var minimalMode: Bool
     public var avatarShape: Int32
     public var profileGradientHex: String
+    public var hubBadge: PampGramHubBadge
 
     public static var `default`: PampGramAppearanceState {
-        return PampGramAppearanceState(preset: .standard, bubbleRadius: 16, bubbleOpacityPercent: 100, chatDensity: 1, blurStrength: 40, animationsMode: 1, reduceAnimations: false, oledBlack: false, compactHub: false, monochromeIcons: false, showChatPreview: true, showChatDate: true, avatarSize: 48, profileHeaderBlur: 30, incomingColorHex: "#FFFFFF", outgoingColorHex: "#DCF8C6", inputRadius: 22, cardScalePercent: 100, iconScalePercent: 100, textScalePercent: 100, boldHeaders: true, glassCards: false, minimalMode: false, avatarShape: 0, profileGradientHex: "#2AABEE,#8774E1")
+        return PampGramAppearanceState(preset: .standard, bubbleRadius: 16, bubbleOpacityPercent: 100, chatDensity: 1, blurStrength: 40, animationsMode: 1, reduceAnimations: false, oledBlack: false, compactHub: false, monochromeIcons: false, showChatPreview: true, showChatDate: true, avatarSize: 48, profileHeaderBlur: 30, incomingColorHex: "#FFFFFF", outgoingColorHex: "#DCF8C6", inputRadius: 22, cardScalePercent: 100, iconScalePercent: 100, textScalePercent: 100, boldHeaders: true, glassCards: false, minimalMode: false, avatarShape: 0, profileGradientHex: "#2AABEE,#8774E1", hubBadge: .mod)
     }
 
-    public init(preset: PampGramAppearancePreset, bubbleRadius: Int32, bubbleOpacityPercent: Int32, chatDensity: Int32, blurStrength: Int32, animationsMode: Int32, reduceAnimations: Bool, oledBlack: Bool, compactHub: Bool, monochromeIcons: Bool, showChatPreview: Bool, showChatDate: Bool, avatarSize: Int32, profileHeaderBlur: Int32, incomingColorHex: String, outgoingColorHex: String, inputRadius: Int32, cardScalePercent: Int32, iconScalePercent: Int32, textScalePercent: Int32, boldHeaders: Bool, glassCards: Bool, minimalMode: Bool, avatarShape: Int32, profileGradientHex: String) {
+    public init(preset: PampGramAppearancePreset, bubbleRadius: Int32, bubbleOpacityPercent: Int32, chatDensity: Int32, blurStrength: Int32, animationsMode: Int32, reduceAnimations: Bool, oledBlack: Bool, compactHub: Bool, monochromeIcons: Bool, showChatPreview: Bool, showChatDate: Bool, avatarSize: Int32, profileHeaderBlur: Int32, incomingColorHex: String, outgoingColorHex: String, inputRadius: Int32, cardScalePercent: Int32, iconScalePercent: Int32, textScalePercent: Int32, boldHeaders: Bool, glassCards: Bool, minimalMode: Bool, avatarShape: Int32, profileGradientHex: String, hubBadge: PampGramHubBadge = .mod) {
         self.preset = preset
         self.bubbleRadius = bubbleRadius
         self.bubbleOpacityPercent = bubbleOpacityPercent
@@ -360,6 +414,7 @@ public struct PampGramAppearanceState: Codable, Equatable {
         self.minimalMode = minimalMode
         self.avatarShape = avatarShape
         self.profileGradientHex = profileGradientHex
+        self.hubBadge = hubBadge
     }
 
     public init(from decoder: Decoder) throws {
@@ -390,6 +445,7 @@ public struct PampGramAppearanceState: Codable, Equatable {
         self.minimalMode = try c.decodeIfPresent(Bool.self, forKey: .minimalMode) ?? d.minimalMode
         self.avatarShape = try c.decodeIfPresent(Int32.self, forKey: .avatarShape) ?? d.avatarShape
         self.profileGradientHex = try c.decodeIfPresent(String.self, forKey: .profileGradientHex) ?? d.profileGradientHex
+        self.hubBadge = try c.decodeIfPresent(PampGramHubBadge.self, forKey: .hubBadge) ?? d.hubBadge
     }
 }
 

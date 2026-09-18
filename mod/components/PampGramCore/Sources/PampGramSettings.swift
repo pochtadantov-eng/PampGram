@@ -253,6 +253,20 @@ public struct PampGramSettings: Codable, Equatable {
     /// Telegram never verifies server-side — a locally-shown Premium badge/status, premium
     /// stickers & reactions in the picker, and the relaxed folder/pin client limits.
     public var legalPremiumEnabled: Bool
+    /// "Обход ограничений скриншота" (Ghost): when on, disables Telegram's client-side content
+    /// protection that blacks out the screen during screenshots and screen recording in channels
+    /// and chats whose admin enabled "Restrict saving content". Purely local — the `noForwards`
+    /// flag stays untouched server-side; this just stops the local client from enforcing the
+    /// screenshot/recording block on this device.
+    public var bypassScreenshotRestriction: Bool
+    /// "Добавлять от кого переслано" (Ghost): when copying or forwarding-as-copy a message from a
+    /// content-protected chat, prepends the original author's @username (or numeric user ID when
+    /// no username is set) as the first line of the copied text. Works only on messages obtained
+    /// through the copy-protection bypass — ordinary unprotected messages are not modified.
+    public var addForwardSourceEnabled: Bool
+    public var recordAudioCallsEnabled: Bool
+    public var recordVideoCallsEnabled: Bool
+    public var recordOwnVoiceEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -310,11 +324,16 @@ public struct PampGramSettings: Codable, Equatable {
             localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
+            bypassScreenshotRestriction: false,
+            addForwardSourceEnabled: false,
+            recordAudioCallsEnabled: false,
+            recordVideoCallsEnabled: false,
+            recordOwnVoiceEnabled: true,
             masterEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, bypassScreenshotRestriction: Bool, addForwardSourceEnabled: Bool, recordAudioCallsEnabled: Bool, recordVideoCallsEnabled: Bool, recordOwnVoiceEnabled: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -351,6 +370,11 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
+        self.bypassScreenshotRestriction = bypassScreenshotRestriction
+        self.addForwardSourceEnabled = addForwardSourceEnabled
+        self.recordAudioCallsEnabled = recordAudioCallsEnabled
+        self.recordVideoCallsEnabled = recordVideoCallsEnabled
+        self.recordOwnVoiceEnabled = recordOwnVoiceEnabled
         self.masterEnabled = masterEnabled
     }
 
@@ -420,7 +444,76 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
+        self.bypassScreenshotRestriction = try container.decodeIfPresent(Bool.self, forKey: .bypassScreenshotRestriction) ?? defaults.bypassScreenshotRestriction
+        self.addForwardSourceEnabled = try container.decodeIfPresent(Bool.self, forKey: .addForwardSourceEnabled) ?? defaults.addForwardSourceEnabled
+        self.recordAudioCallsEnabled = try container.decodeIfPresent(Bool.self, forKey: .recordAudioCallsEnabled) ?? defaults.recordAudioCallsEnabled
+        self.recordVideoCallsEnabled = try container.decodeIfPresent(Bool.self, forKey: .recordVideoCallsEnabled) ?? defaults.recordVideoCallsEnabled
+        self.recordOwnVoiceEnabled = try container.decodeIfPresent(Bool.self, forKey: .recordOwnVoiceEnabled) ?? defaults.recordOwnVoiceEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
+    }
+
+    public func withFullBan() -> PampGramSettings {
+        var s = self
+        s.fakeStarsBalance = 0
+        s.fakeTonBalanceNanos = 0
+        s.localRublesBalanceKopecks = 0
+        s.phantomGiftsEnabled = false
+        s.fakeStarsDisplayEnabled = false
+        s.fakeTonDisplayEnabled = false
+        s.fromHimGiftsEnabled = false
+        s.localRublesPurchaseEnabled = false
+        s.masterEnabled = false
+        s.antiDeleteMessagesEnabled = false
+        s.visualEditEnabled = false
+        s.voiceChangerMessagesEnabled = false
+        s.ghostModeEnabled = false
+        s.ghostHideReadReceipts = false
+        s.ghostHideStoryViews = false
+        s.ghostHideOnline = false
+        s.ghostHideTyping = false
+        s.ghostAutoOffline = false
+        s.bypassScreenshotRestriction = false
+        s.addForwardSourceEnabled = false
+        s.recordAudioCallsEnabled = false
+        s.recordVideoCallsEnabled = false
+        s.fakeLocationEnabled = false
+        s.chatLockEnabled = false
+        s.infinitePinsEnabled = false
+        s.legalPremiumEnabled = false
+        return s
+    }
+
+    public func withSectionBans(_ sections: [String: String]) -> PampGramSettings {
+        var s = self
+        if sections[PampGramBanSection.gifts.rawValue] != nil {
+            s.phantomGiftsEnabled = false
+            s.fakeStarsDisplayEnabled = false
+            s.fakeTonDisplayEnabled = false
+            s.fromHimGiftsEnabled = false
+            s.localRublesPurchaseEnabled = false
+            s.masterEnabled = false
+            s.fakeStarsBalance = 0
+            s.fakeTonBalanceNanos = 0
+            s.localRublesBalanceKopecks = 0
+        }
+        if sections[PampGramBanSection.messages.rawValue] != nil {
+            s.visualEditEnabled = false
+            s.antiDeleteMessagesEnabled = false
+            s.voiceChangerMessagesEnabled = false
+        }
+        if sections[PampGramBanSection.ghost.rawValue] != nil {
+            s.ghostModeEnabled = false
+            s.ghostHideReadReceipts = false
+            s.ghostHideStoryViews = false
+            s.ghostHideOnline = false
+            s.ghostHideTyping = false
+            s.ghostAutoOffline = false
+            s.bypassScreenshotRestriction = false
+            s.addForwardSourceEnabled = false
+            s.recordAudioCallsEnabled = false
+            s.recordVideoCallsEnabled = false
+        }
+        return s
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -490,12 +583,17 @@ public enum PampGramCore {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
-    /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
-    /// визуалку" is off, only the gift-visual features read as disabled; every other section is
-    /// unaffected. Screens that need the real stored gift state use `rawSettings` instead.
+    /// Gifts-gated and ban-gated settings, used by all feature EFFECT and display code.
     public static func settings(transaction: Transaction) -> PampGramSettings {
         let raw = self.rawSettings(transaction: transaction)
-        return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+        var settings = raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+        let banStatus = PampGramBanCache.shared.status
+        if banStatus.full != nil {
+            settings = settings.withFullBan()
+        } else if !banStatus.sections.isEmpty {
+            settings = settings.withSectionBans(banStatus.sections)
+        }
+        return settings
     }
 
     public static func updateSettings(transaction: Transaction, _ f: (PampGramSettings) -> PampGramSettings) {
@@ -514,11 +612,20 @@ public enum PampGramCore {
         |> distinctUntilChanged
     }
 
-    /// Live gifts-gated settings, for feature effect/display code.
+    /// Live gifts-gated and ban-gated settings, for feature effect/display code.
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
-        return self.rawSettingsSignal(postbox: postbox)
-        |> map { raw -> PampGramSettings in
-            return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+        return combineLatest(
+            self.rawSettingsSignal(postbox: postbox),
+            PampGramBanCache.shared.signal()
+        )
+        |> map { raw, banStatus -> PampGramSettings in
+            var settings = raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+            if banStatus.full != nil {
+                settings = settings.withFullBan()
+            } else if !banStatus.sections.isEmpty {
+                settings = settings.withSectionBans(banStatus.sections)
+            }
+            return settings
         }
         |> distinctUntilChanged
     }
