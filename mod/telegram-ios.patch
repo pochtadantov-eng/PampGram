@@ -20723,12 +20723,13 @@ index 4d971fd..7bb0216 100644
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -295,6 +300,8 @@ public final class AccountContextImpl: AccountContext {
+@@ -295,6 +300,9 @@ public final class AccountContextImpl: AccountContext {
          }
          self.fetchManager = FetchManagerImpl(postbox: account.postbox, storeManager: self.downloadedMediaStoreManager)
          if sharedContext.applicationBindings.isMainApp && !temp {
 +            self.pampGramGiftReceiveDisposable.set(PampGramPhantomGiftManager.observeIncomingGiftTransfers(account: account))
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
++            PampGramScreenshotBypass.install(postbox: account.postbox)
              self.prefetchManager = PrefetchManagerImpl(sharedContext: sharedContext, account: account, engine: self.engine, fetchManager: self.fetchManager)
              self.wallpaperUploadManager = WallpaperUploadManagerImpl(sharedContext: sharedContext, account: account, presentationData: sharedContext.presentationData)
              self.themeUpdateManager = ThemeUpdateManagerImpl(sharedContext: sharedContext, account: account)
@@ -20798,3 +20799,105 @@ diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/Tel
 +        }
 +        
          let _ = (self.shouldDivertMessagesToScheduled(messages: messages)
+
+diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypass.swift b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypass.swift
+new file mode 100644
+index 0000000..b3a1f4c
+--- /dev/null
++++ b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypass.swift
+@@ -0,0 +1,88 @@
++import UIKit
++import Postbox
++import SwiftSignalKit
++import PampGramCore
++
++/// "Обход защиты от скриншотов" — two-part, entirely client-side bypass:
++///
++/// Part 1 — Content-protected chats (channels/groups with screenshot blocking):
++/// Telegram inserts a hidden, non-interactive UITextField with isSecureTextEntry=true into the
++/// window hierarchy. iOS responds by blacking out any screenshots taken while that field is
++/// present. We swizzle UITextField's isSecureTextEntry setter so that, when the bypass is on,
++/// the call is silently dropped for any field that is hidden or non-interactive (i.e. the
++/// security-only field Telegram inserts, not a real password input the user types into).
++///
++/// Part 2 — Secret chats:
++/// When a screenshot is taken while a secret chat is open, Telegram notifies the server, which
++/// in turn tells the other party. We intercept ChatControllerImpl's screenshot-notification
++/// handler via the Obj-C runtime so the MTProto call never fires while the bypass is on.
++/// The swizzle targets `userDidTakeScreenshot`, the @objc selector ChatControllerImpl
++/// registers for UIApplication.userDidTakeScreenshotNotification. Silently skipped if the
++/// class or selector cannot be found at runtime (e.g., renamed in a future Telegram release).
++public enum PampGramScreenshotBypass {
++    nonisolated(unsafe) public static var bypassEnabled: Bool = false
++    private static var installed = false
++
++    public static func install(postbox: Postbox) {
++        guard !installed else { return }
++        installed = true
++        installSecureFieldSwizzle()
++        installSecretChatBypass()
++        let _ = PampGramCore.rawSettingsSignal(postbox: postbox)
++            .startStandalone(next: { settings in
++                let wasEnabled = PampGramScreenshotBypass.bypassEnabled
++                PampGramScreenshotBypass.bypassEnabled = settings.bypassScreenshotProtection
++                if !wasEnabled && settings.bypassScreenshotProtection {
++                    DispatchQueue.main.async {
++                        PampGramScreenshotBypass.clearExistingSecureFields()
++                    }
++                }
++            })
++    }
++
++    // MARK: - Part 1: UITextField secure-entry swizzle
++
++    public static func clearExistingSecureFields() {
++        for window in UIApplication.shared.windows {
++            clearSecureFieldsIn(view: window)
++        }
++    }
++
++    private static func clearSecureFieldsIn(view: UIView) {
++        if let tf = view as? UITextField, tf.isSecureTextEntry,
++           !tf.isUserInteractionEnabled || tf.isHidden || tf.bounds.isEmpty {
++            tf.isSecureTextEntry = false
++        }
++        for sub in view.subviews { clearSecureFieldsIn(view: sub) }
++    }
++
++    private static func installSecureFieldSwizzle() {
++        let cls = UITextField.self
++        let sel = #selector(setter: UITextField.isSecureTextEntry)
++        guard let method = class_getInstanceMethod(cls, sel) else { return }
++        let originalIMP = method_getImplementation(method)
++        typealias IMPType = @convention(c) (UITextField, Selector, Bool) -> Void
++        let original = unsafeBitCast(originalIMP, to: IMPType.self)
++        let block: @convention(block) (UITextField, Bool) -> Void = { textField, value in
++            if value && PampGramScreenshotBypass.bypassEnabled,
++               !textField.isUserInteractionEnabled || textField.isHidden {
++                return
++            }
++            original(textField, sel, value)
++        }
++        method_setImplementation(method, imp_implementationWithBlock(block))
++    }
++
++    // MARK: - Part 2: Secret-chat screenshot notification swizzle
++
++    private static func installSecretChatBypass() {
++        let classNames = ["TelegramUI.ChatControllerImpl", "ChatControllerImpl"]
++        let sel = NSSelectorFromString("userDidTakeScreenshot")
++        for name in classNames {
++            guard let cls = NSClassFromString(name) else { continue }
++            guard let method = class_getInstanceMethod(cls, sel) else { continue }
++            let originalIMP = method_getImplementation(method)
++            typealias IMPType = @convention(c) (NSObject, Selector) -> Void
++            let original = unsafeBitCast(originalIMP, to: IMPType.self)
++            let block: @convention(block) (NSObject) -> Void = { target in
++                guard !PampGramScreenshotBypass.bypassEnabled else { return }
++                original(target, sel)
++            }
++            method_setImplementation(method, imp_implementationWithBlock(block))
++            break
++        }
++    }
++}
