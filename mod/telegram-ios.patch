@@ -20805,7 +20805,7 @@ new file mode 100644
 index 0000000..b3a1f4c
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypass.swift
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,95 @@
 +import UIKit
 +import Postbox
 +import SwiftSignalKit
