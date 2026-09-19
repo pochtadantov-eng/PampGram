@@ -259,6 +259,21 @@ public struct PampGramSettings: Codable, Equatable {
     /// so the other side isn't told a screenshot was taken. Both are entirely client-side and only
     /// affect THIS device's own behavior.
     public var bypassScreenshotProtection: Bool
+    /// "Скрыть номер телефона" (Дополнительно): locally hides the real phone number from
+    /// the Settings screen — the row shows "Скрыто" instead of the real digits. Other people
+    /// still see the number according to Telegram's own privacy settings; this only affects
+    /// what THIS device displays.
+    public var hidePhoneNumberEnabled: Bool
+    /// "Фейковый номер телефона" (Дополнительно): when non-empty and enabled, shown in place
+    /// of the real phone number in Settings. Takes priority over `hidePhoneNumberEnabled` when
+    /// both are on (a fake number is more useful than "Скрыто"). Purely local.
+    public var fakePhoneNumberEnabled: Bool
+    public var fakePhoneNumberValue: String
+    /// "Защита от краш-стикеров" (Дополнительно): intercepts incoming sticker documents whose
+    /// pixel dimensions or file size greatly exceed Telegram's normal limits — a heuristic
+    /// against intentionally oversized stickers crafted to crash the app. When triggered, the
+    /// sticker is not rendered.
+    public var crashStickerProtectionEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -317,11 +332,15 @@ public struct PampGramSettings: Codable, Equatable {
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
             bypassScreenshotProtection: false,
+            hidePhoneNumberEnabled: false,
+            fakePhoneNumberEnabled: false,
+            fakePhoneNumberValue: "",
+            crashStickerProtectionEnabled: false,
             masterEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, bypassScreenshotProtection: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, bypassScreenshotProtection: Bool, hidePhoneNumberEnabled: Bool, fakePhoneNumberEnabled: Bool, fakePhoneNumberValue: String, crashStickerProtectionEnabled: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -359,6 +378,10 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
         self.bypassScreenshotProtection = bypassScreenshotProtection
+        self.hidePhoneNumberEnabled = hidePhoneNumberEnabled
+        self.fakePhoneNumberEnabled = fakePhoneNumberEnabled
+        self.fakePhoneNumberValue = fakePhoneNumberValue
+        self.crashStickerProtectionEnabled = crashStickerProtectionEnabled
         self.masterEnabled = masterEnabled
     }
 
@@ -429,6 +452,10 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
         self.bypassScreenshotProtection = try container.decodeIfPresent(Bool.self, forKey: .bypassScreenshotProtection) ?? defaults.bypassScreenshotProtection
+        self.hidePhoneNumberEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePhoneNumberEnabled) ?? defaults.hidePhoneNumberEnabled
+        self.fakePhoneNumberEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakePhoneNumberEnabled) ?? defaults.fakePhoneNumberEnabled
+        self.fakePhoneNumberValue = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumberValue) ?? defaults.fakePhoneNumberValue
+        self.crashStickerProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .crashStickerProtectionEnabled) ?? defaults.crashStickerProtectionEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
     }
 
@@ -527,7 +554,9 @@ public enum PampGramCore {
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return self.rawSettingsSignal(postbox: postbox)
         |> map { raw -> PampGramSettings in
-            return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+            let settings = raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+            PampGramCrashStickerGuard.shared.enabled = settings.crashStickerProtectionEnabled
+            return settings
         }
         |> distinctUntilChanged
     }

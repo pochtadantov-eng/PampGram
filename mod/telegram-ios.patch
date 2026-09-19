@@ -17564,6 +17564,35 @@ index 5da8c15e..c8bd1d42 100644
          "//submodules/ShareItems:ShareItems",
          "//submodules/ShareItems/Impl:ShareItemsImpl",
          "//submodules/SettingsUI:SettingsUI",
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD
+@@ -57,6 +57,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/Chat/ChatMessageSuggestedPostInfoNode",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
+@@ -49,6 +49,7 @@ import ChatMessageTransitionNode
+ import ChatMessageSuggestedPostInfoNode
+ import TelegramStringFormatting
++import PampGramCore
+
+@@ -453,6 +454,14 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
+         for media in item.message.media {
+             if let telegramFile = media as? TelegramMediaFile {
++                if PampGramCrashStickerGuard.shared.enabled {
++                    let dims = telegramFile.dimensions ?? PixelDimensions(width: 512, height: 512)
++                    if !PampGramCrashStickerGuard.shared.isSafe(
++                        width: Int(dims.cgSize.width),
++                        height: Int(dims.cgSize.height),
++                        fileSize: telegramFile.size ?? 0
++                    ) { break }
++                }
+                 if self.telegramFile?.id != telegramFile.id {
+                     self.telegramFile = telegramFile
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
 index 1ddd9b86..5e5fecbc 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
@@ -17691,6 +17720,35 @@ index 2dcfc95e..901f287a 100644
          if let (suggestedPostInfoSize, suggestedPostInfoApply) = suggestedPostInfoNodeLayout {
              let suggestedPostInfoNode = suggestedPostInfoApply()
              if suggestedPostInfoNode !== strongSelf.suggestedPostInfoNode {
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD
+@@ -40,6 +40,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/Chat/ChatMessageSuggestedPostInfoNode",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
+@@ -29,6 +29,7 @@ import ChatMessageReactionsFooterContentNode
+ import ChatSwipeToReplyRecognizer
+ import ChatMessageSuggestedPostInfoNode
++import PampGramCore
+
+@@ -304,6 +305,14 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
+         for media in item.message.media {
+             if let telegramFile = media as? TelegramMediaFile {
++                if PampGramCrashStickerGuard.shared.enabled {
++                    let dims = telegramFile.dimensions ?? PixelDimensions(width: 512, height: 512)
++                    if !PampGramCrashStickerGuard.shared.isSafe(
++                        width: Int(dims.cgSize.width),
++                        height: Int(dims.cgSize.height),
++                        fileSize: telegramFile.size ?? 0
++                    ) { break }
++                }
+                 if self.telegramFile != telegramFile {
+                     let signal = chatMessageSticker(account: item.context.account, userLocation: .peer(item.message.id.peerId), file: telegramFile, small: false, onlyFullSize: self.telegramFile != nil, synchronousLoad: synchronousLoad)
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
 index 1820be66..4590ccc6 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
@@ -18849,6 +18907,22 @@ index c5f58f4b..48884aa7 100644
              items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
                  interaction.openSettings(.ton)
              }))
+@@ -446,7 +473,15 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+ 
+     if case let .user(user) = data.peer {
+-        items[.info]!.append(PeerInfoScreenDisclosureItem(id: ItemPhoneNumber, label: .text(user.phone.flatMap({ formatPhoneNumber(context: context, number: $0) }) ?? ""), text: presentationData.strings.Settings_PhoneNumber, icon: PresentationResourcesSettings.recentCalls, action: {
++        let phoneLabel: String
++        if pampGramSettings.fakePhoneNumberEnabled && !pampGramSettings.fakePhoneNumberValue.isEmpty {
++            phoneLabel = pampGramSettings.fakePhoneNumberValue
++        } else if pampGramSettings.hidePhoneNumberEnabled {
++            phoneLabel = "Скрыто"
++        } else {
++            phoneLabel = user.phone.flatMap({ formatPhoneNumber(context: context, number: $0) }) ?? ""
++        }
++        items[.info]!.append(PeerInfoScreenDisclosureItem(id: ItemPhoneNumber, label: .text(phoneLabel), text: presentationData.strings.Settings_PhoneNumber, icon: PresentationResourcesSettings.recentCalls, action: {
+             interaction.openSettings(.phoneNumber)
+         }))
+     }
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
 index ef6fe4b4..9409b119 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD

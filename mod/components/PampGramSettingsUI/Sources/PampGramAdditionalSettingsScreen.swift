@@ -21,8 +21,11 @@ private final class PampGramAdditionalArguments {
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
     let toggleBypassScreenshotProtection: (Bool) -> Void
+    let toggleHidePhoneNumber: (Bool) -> Void
+    let openFakePhoneNumber: () -> Void
+    let toggleCrashStickerProtection: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassScreenshotProtection: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassScreenshotProtection: @escaping (Bool) -> Void, toggleHidePhoneNumber: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleCrashStickerProtection: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -34,6 +37,9 @@ private final class PampGramAdditionalArguments {
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
         self.toggleBypassScreenshotProtection = toggleBypassScreenshotProtection
+        self.toggleHidePhoneNumber = toggleHidePhoneNumber
+        self.openFakePhoneNumber = openFakePhoneNumber
+        self.toggleCrashStickerProtection = toggleCrashStickerProtection
     }
 }
 
@@ -69,6 +75,9 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case callOverridesRow(String)
     case fakeAdminRow(String)
     case bypassScreenshotProtectionToggle(String, Bool)
+    case hidePhoneNumberToggle(String, Bool)
+    case fakePhoneNumberRow(String, String)
+    case crashStickerProtectionToggle(String, Bool)
     case extrasFooter(String)
 
     var section: ItemListSectionId {
@@ -81,7 +90,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.speed.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .bypassScreenshotProtectionToggle, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .bypassScreenshotProtectionToggle, .hidePhoneNumberToggle, .fakePhoneNumberRow, .crashStickerProtectionToggle, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -126,8 +135,14 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 17
         case .bypassScreenshotProtectionToggle:
             return 18
-        case .extrasFooter:
+        case .hidePhoneNumberToggle:
             return 19
+        case .fakePhoneNumberRow:
+            return 20
+        case .crashStickerProtectionToggle:
+            return 21
+        case .extrasFooter:
+            return 22
         }
     }
 
@@ -186,6 +201,18 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "camera.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleBypassScreenshotProtection(value)
             })
+        case let .hidePhoneNumberToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHidePhoneNumber(value)
+            })
+        case let .fakePhoneNumberRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "phone.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openFakePhoneNumber()
+            })
+        case let .crashStickerProtectionToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "shield.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleCrashStickerProtection(value)
+            })
         }
     }
 }
@@ -216,7 +243,16 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.fakeAdminRow("Фейк админ"))
     entries.append(.bypassScreenshotProtectionToggle("Обход скриншотов", settings.bypassScreenshotProtection))
-    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Обход скриншотов» снимает системную блокировку в защищённых чатах и не отправляет уведомление о скриншоте в секретном чате."))
+    entries.append(.hidePhoneNumberToggle("Скрыть номер телефона", settings.hidePhoneNumberEnabled))
+    let fakePhoneLabel: String
+    if settings.fakePhoneNumberEnabled && !settings.fakePhoneNumberValue.isEmpty {
+        fakePhoneLabel = settings.fakePhoneNumberValue
+    } else {
+        fakePhoneLabel = settings.fakePhoneNumberEnabled ? "Включено" : "Выключено"
+    }
+    entries.append(.fakePhoneNumberRow("Фейковый номер телефона", fakePhoneLabel))
+    entries.append(.crashStickerProtectionToggle("Защита от краш-стикеров", settings.crashStickerProtectionEnabled))
+    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Обход скриншотов» снимает системную блокировку в защищённых чатах и не отправляет уведомление о скриншоте в секретном чате. «Скрыть номер» заменяет ваш номер на «Скрыто» в настройках, «Фейковый номер» показывает другой номер. «Защита от краш-стикеров» блокирует рендер чрезмерно больших стикеров."))
 
     return entries
 }
@@ -344,6 +380,23 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.bypassScreenshotProtection = value
+                return settings
+            }).start()
+        },
+        toggleHidePhoneNumber: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.hidePhoneNumberEnabled = value
+                return settings
+            }).start()
+        },
+        openFakePhoneNumber: {
+            pushControllerImpl?(pampGramFakePhoneNumberController(context: context))
+        },
+        toggleCrashStickerProtection: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.crashStickerProtectionEnabled = value
                 return settings
             }).start()
         }
