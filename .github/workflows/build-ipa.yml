@@ -31,7 +31,7 @@ jobs:
 
       - name: Check out Telegram-iOS
         run: |
-          git clone --recursive --shallow-submodules --depth 1 -j8 \
+          git clone --recursive --shallow-submodules --depth 1 --branch 12.9.4 -j8 \
             https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
 
       # mod/components/* are whole new Bazel packages, dropped in as-is under a single
@@ -42,7 +42,7 @@ jobs:
         working-directory: telegram-ios
         run: |
           git apply --check ../pampgram/mod/telegram-ios.patch
-          git apply ../pampgram/mod/telegram-ios.patch
+          git apply --3way ../pampgram/mod/telegram-ios.patch
           mkdir -p submodules/TelegramUI/Components/PampGram
           cp -R ../pampgram/mod/components/. submodules/TelegramUI/Components/PampGram/
           # The visual profile state is rendered in Telegram's profile screen by this
@@ -240,9 +240,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/telegram-bazel-cache
-          key: telegram-bazel-cache-xcode-26.2-${{ github.run_id }}
+          key: telegram-bazel-cache-xcode-26.2-tg-12.9.4-${{ github.run_id }}
           restore-keys: |
-            telegram-bazel-cache-xcode-26.2-
+            telegram-bazel-cache-xcode-26.2-tg-12.9.4-
 
       # A DEVICE build (release_arm64), signed with the self-signed cert + fake provisioning
       # profiles the Telegram repo ships in build-system/fake-codesigning for exactly this
@@ -271,7 +271,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/telegram-bazel-cache
-          key: telegram-bazel-cache-xcode-26.2-${{ github.run_id }}
+          key: telegram-bazel-cache-xcode-26.2-tg-12.9.4-${{ github.run_id }}
 
       - name: Show what was produced
         if: always()
