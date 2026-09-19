@@ -1,0 +1,702 @@
+<title>PampGram</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap">
+
+<style>
+/* ─── TOKENS ─── */
+:root {
+  --bg:   #06070F;
+  --bg2:  #0C0E1C;
+  --surf: rgba(255,255,255,0.055);
+  --sf2:  rgba(255,255,255,0.09);
+  --bdr:  rgba(255,255,255,0.09);
+  --blue: #4E8FFA;
+  --bdim: rgba(78,143,250,0.14);
+  --bglw: rgba(78,143,250,0.35);
+  --prpl: #A07CF8;
+  --pdim: rgba(160,124,248,0.14);
+  --pglw: rgba(160,124,248,0.35);
+  --tx:   #DEE2F2;
+  --mut:  #6474A0;
+  --dim:  #363E60;
+  color-scheme: dark;
+}
+
+/* ─── RESET ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+img { max-width: 100%; display: block; }
+
+/* ─── BASE ─── */
+body {
+  background: var(--bg);
+  color: var(--tx);
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  padding-inline: 20px;
+  padding-block: env(safe-area-inset-top,0px) env(safe-area-inset-bottom,0px);
+  overflow-x: hidden;
+}
+
+/* ─── NAV ─── */
+nav {
+  position: sticky;
+  top: env(safe-area-inset-top,0px);
+  z-index: 100;
+  margin-inline: -20px;
+  padding: 14px 20px;
+  background: rgba(6,7,15,0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--bdr);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 800;
+  letter-spacing: -0.02em; color: var(--tx); text-decoration: none;
+}
+
+.logo-mark {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--blue), var(--prpl));
+  display: grid; place-items: center;
+}
+
+.nav-r { display: flex; align-items: center; gap: 10px; }
+
+.badge {
+  font-size: 12px; font-weight: 500;
+  padding: 4px 10px; border-radius: 20px;
+  background: var(--surf); border: 1px solid var(--bdr); color: var(--mut);
+}
+
+/* ─── BUTTONS ─── */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: 'DM Sans', sans-serif; font-weight: 500;
+  border: none; border-radius: 10px; cursor: pointer;
+  text-decoration: none; transition: opacity .15s, transform .15s;
+}
+.btn:hover { opacity: .82; }
+.btn:active { transform: scale(.97); }
+.btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.btn-blue  { background: var(--blue); color: #fff; padding: 9px 16px; font-size: 14px; }
+.btn-ghost { background: var(--surf); color: var(--tx); padding: 9px 16px; font-size: 14px; border: 1px solid var(--bdr); }
+.btn-lg    { font-size: 15px; padding: 13px 24px; border-radius: 13px; }
+.btn-flat  { background: var(--sf2); color: var(--tx); padding: 12px 20px; font-size: 14px; border-radius: 12px; border: 1px solid var(--bdr); width: 100%; justify-content: center; }
+.btn-grad  { background: linear-gradient(135deg, var(--prpl), var(--blue)); color: #fff; padding: 12px 20px; font-size: 14px; border-radius: 12px; width: 100%; justify-content: center; }
+
+/* ─── HERO ─── */
+.hero {
+  max-width: 1080px; margin: 0 auto;
+  padding-block: 80px 64px;
+  display: grid; grid-template-columns: 1fr 240px;
+  gap: 60px; align-items: center;
+}
+
+@media (max-width: 720px) {
+  .hero { grid-template-columns: 1fr; padding-block: 50px 44px; gap: 44px; }
+  .phone-col { display: flex; justify-content: center; order: -1; }
+  .hero-copy { text-align: center; }
+  .hero-cta  { justify-content: center; }
+  .hero-sub  { margin-inline: auto; }
+}
+
+.eyebrow {
+  font-size: 12px; font-weight: 500;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--blue); margin-bottom: 16px;
+}
+
+h1 {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(38px, 6.5vw, 68px);
+  font-weight: 800; line-height: 1.04;
+  letter-spacing: -0.035em; text-wrap: balance;
+  margin-bottom: 20px;
+}
+
+h1 .grad {
+  background: linear-gradient(130deg, var(--blue) 20%, var(--prpl) 85%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero-sub {
+  font-size: 17px; font-weight: 300;
+  color: var(--mut); max-width: 460px; line-height: 1.75;
+  margin-bottom: 32px;
+}
+
+.hero-cta  { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+
+.hero-note { font-size: 12px; color: var(--dim); }
+
+/* ─── PHONE MOCKUP ─── */
+.phone-col { position: relative; }
+
+.phone-col::before, .phone-col::after {
+  content: ''; position: absolute; border-radius: 50%;
+  filter: blur(55px); pointer-events: none; z-index: -1;
+}
+.phone-col::before {
+  width: 180px; height: 180px; background: var(--bglw);
+  top: 5%; left: -30%; opacity: .45;
+}
+.phone-col::after {
+  width: 160px; height: 160px; background: var(--pglw);
+  bottom: 5%; right: -20%; opacity: .4;
+}
+
+.phone {
+  width: 230px;
+  background: #0B0D1B;
+  border-radius: 40px;
+  border: 1.5px solid rgba(255,255,255,0.13);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.5), 0 40px 80px rgba(0,0,0,.65);
+  position: relative;
+}
+
+.phone::before {
+  content: '';
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 90px; height: 26px;
+  background: #0B0D1B;
+  border-radius: 0 0 16px 16px;
+  border: 1.5px solid rgba(255,255,255,0.13); border-top: none;
+  z-index: 10;
+}
+
+.ph { padding: 36px 0 14px; }
+
+.ph-status {
+  display: flex; justify-content: space-between;
+  padding: 0 18px 6px;
+  font-size: 11px; font-weight: 600; color: var(--tx);
+}
+
+.ph-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px 14px;
+  border-bottom: 1px solid var(--bdr);
+}
+
+.ph-logo-row {
+  display: flex; align-items: center; gap: 7px;
+  font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 800; color: var(--tx);
+}
+
+.ph-logo-icon {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: linear-gradient(135deg, var(--blue), var(--prpl));
+  display: grid; place-items: center;
+}
+
+.ph-tier {
+  font-size: 10px; font-weight: 600;
+  padding: 3px 8px; border-radius: 20px;
+  background: var(--pdim); color: var(--prpl);
+  border: 1px solid rgba(160,124,248,.28);
+  letter-spacing: .04em;
+}
+
+.ph-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 9px; padding: 14px 12px 10px;
+}
+
+.ph-tile {
+  background: var(--surf); border: 1px solid var(--bdr);
+  border-radius: 15px; padding: 13px 11px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.ph-tile.b { background: var(--bdim); border-color: rgba(78,143,250,.22); }
+.ph-tile.p { background: var(--pdim); border-color: rgba(160,124,248,.22); }
+
+.ph-ti { line-height: 1; margin-bottom: 3px; }
+.ph-ti svg { width: 16px; height: 16px; }
+.ph-tl { font-size: 11px; font-weight: 600; color: var(--tx); }
+.ph-ts { font-size: 9.5px; color: var(--mut); line-height: 1.4; }
+
+.ph-bal {
+  margin: 0 12px 0;
+  background: var(--surf); border: 1px solid var(--bdr);
+  border-radius: 13px; padding: 9px 12px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.ph-bal-item { text-align: center; }
+.ph-bal-val  { font-size: 13px; font-weight: 700; color: var(--tx); font-variant-numeric: tabular-nums; }
+.ph-bal-lbl  { font-size: 9px; color: var(--mut); margin-top: 1px; }
+.ph-sep      { width: 1px; height: 26px; background: var(--bdr); }
+
+/* ─── LAYOUT HELPERS ─── */
+hr.div { border: none; border-top: 1px solid var(--bdr); margin: 0; }
+
+.wrap { max-width: 1080px; margin: 0 auto; }
+
+.sec { padding-block: 64px; }
+
+.sec-lbl {
+  font-size: 12px; font-weight: 500;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--blue); margin-bottom: 12px;
+}
+
+h2 {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(26px, 4vw, 44px);
+  font-weight: 800; letter-spacing: -0.025em;
+  text-wrap: balance; line-height: 1.1; margin-bottom: 14px;
+}
+
+.sec-sub {
+  font-size: 16px; color: var(--mut); max-width: 500px; font-weight: 300;
+}
+
+/* ─── FEATURE GRID ─── */
+.feat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px; margin-top: 44px;
+}
+
+.feat-card {
+  background: var(--surf); border: 1px solid var(--bdr);
+  border-radius: 20px; padding: 26px 24px;
+  transition: background .18s, border-color .18s;
+}
+.feat-card:hover { background: var(--sf2); border-color: rgba(255,255,255,.14); }
+
+.feat-ico {
+  width: 46px; height: 46px; border-radius: 13px;
+  display: grid; place-items: center; margin-bottom: 16px;
+}
+.feat-ico svg { width: 22px; height: 22px; }
+.feat-ico.b { background: var(--bdim); }
+.feat-ico.p { background: var(--pdim); }
+.feat-ico.n { background: var(--sf2); }
+
+.feat-name {
+  font-family: 'Syne', sans-serif; font-size: 17px;
+  font-weight: 700; letter-spacing: -0.01em; margin-bottom: 8px;
+}
+
+.feat-desc { font-size: 14px; color: var(--mut); line-height: 1.65; font-weight: 300; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+
+.tag {
+  font-size: 11px; font-weight: 500;
+  padding: 3px 9px; border-radius: 20px;
+  background: var(--surf); border: 1px solid var(--bdr); color: var(--mut);
+}
+.tag.b { background: var(--bdim); border-color: rgba(78,143,250,.22); color: var(--blue); }
+.tag.p { background: var(--pdim); border-color: rgba(160,124,248,.22); color: var(--prpl); }
+
+/* ─── TIERS ─── */
+.tier-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 44px; }
+@media (max-width: 560px) { .tier-grid { grid-template-columns: 1fr; } }
+
+.tier-card {
+  border-radius: 22px; padding: 30px 26px;
+  border: 1px solid var(--bdr); background: var(--surf);
+  display: flex; flex-direction: column;
+}
+
+.tier-card.pro {
+  background: linear-gradient(150deg, rgba(160,124,248,.12), rgba(78,143,250,.07));
+  border-color: rgba(160,124,248,.32);
+  position: relative; overflow: hidden;
+}
+
+.tier-card.pro::before {
+  content: '';
+  position: absolute; top: -50px; right: -50px;
+  width: 160px; height: 160px; background: var(--pglw);
+  border-radius: 50%; filter: blur(55px); pointer-events: none;
+}
+
+.tier-name {
+  font-family: 'Syne', sans-serif;
+  font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 3px;
+}
+.tier-card.pro .tier-name { color: var(--prpl); }
+
+.tier-tag { font-size: 13px; color: var(--mut); font-weight: 300; margin-bottom: 22px; }
+
+.tier-list { list-style: none; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+
+.tier-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 14px; color: var(--tx); line-height: 1.5;
+}
+
+.chk { flex-shrink: 0; margin-top: 2px; }
+.chk svg { width: 15px; height: 15px; display: block; }
+
+.tier-cta { margin-top: 26px; }
+
+/* ─── FOOTER ─── */
+footer {
+  border-top: 1px solid var(--bdr);
+  padding-block: 28px;
+  max-width: 1080px; margin: 0 auto;
+}
+
+.foot-main {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; margin-bottom: 14px;
+}
+
+.foot-logo {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 14px; color: var(--mut);
+}
+
+.foot-note { font-size: 12px; color: var(--dim); line-height: 1.65; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+</style>
+
+<!-- ═══════════════════════════════ NAV ═══════════════════════════════ -->
+<nav>
+  <a href="#" class="logo">
+    <div class="logo-mark">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+    </div>
+    PampGram
+  </a>
+  <div class="nav-r">
+    <span class="badge">v1.5.2</span>
+    <a href="#download" class="btn btn-blue">Скачать</a>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<div class="hero">
+  <div class="hero-copy">
+    <div class="eyebrow">Мод для Telegram iOS</div>
+    <h1>Твой Telegram,<br><span class="grad">по-другому.</span></h1>
+    <p class="hero-sub">
+      Локальные подарки, Ghost-режим, визуальный профиль и пресеты интерфейса — всё, чего не хватало официальному клиенту.
+    </p>
+    <div class="hero-cta">
+      <a href="#download" class="btn btn-blue btn-lg">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16l-5-5m5 5 5-5M12 3v13"/><path d="M3 20h18"/>
+        </svg>
+        Скачать PampGram
+      </a>
+      <a href="#features" class="btn btn-ghost btn-lg">Функции</a>
+    </div>
+    <p class="hero-note">iOS 16+&nbsp;&nbsp;·&nbsp;&nbsp;Без джейлбрейка&nbsp;&nbsp;·&nbsp;&nbsp;Не затрагивает аккаунт</p>
+  </div>
+
+  <!-- Phone mockup -->
+  <div class="phone-col">
+    <div class="phone">
+      <div class="ph">
+        <div class="ph-status">
+          <span>9:41</span>
+          <svg width="40" height="11" viewBox="0 0 40 11" fill="var(--tx)">
+            <rect x="0" y="2" width="6" height="7" rx="1" opacity=".35"/>
+            <rect x="8" y="2" width="6" height="7" rx="1" opacity=".6"/>
+            <rect x="16" y="0" width="6" height="11" rx="1"/>
+            <rect x="24" y="3" width="10" height="5" rx="1.5"/>
+            <rect x="35" y="1" width="3" height="9" rx="1"/>
+          </svg>
+        </div>
+        <div class="ph-head">
+          <div class="ph-logo-row">
+            <div class="ph-logo-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            PampGram
+          </div>
+          <span class="ph-tier">PRO</span>
+        </div>
+        <div class="ph-grid">
+          <div class="ph-tile b">
+            <div class="ph-ti">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 12v10H4V12"/><rect x="2" y="7" width="20" height="5" rx="2"/>
+                <path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+              </svg>
+            </div>
+            <div class="ph-tl">Подарки</div>
+            <div class="ph-ts">Stars · TON · ₽</div>
+          </div>
+          <div class="ph-tile">
+            <div class="ph-ti">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--mut)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/>
+              </svg>
+            </div>
+            <div class="ph-tl">Ghost</div>
+            <div class="ph-ts">Приватность</div>
+          </div>
+          <div class="ph-tile">
+            <div class="ph-ti">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--mut)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <div class="ph-tl">Профиль</div>
+            <div class="ph-ts">+888 · Рейтинг</div>
+          </div>
+          <div class="ph-tile p">
+            <div class="ph-ti">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--prpl)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+              </svg>
+            </div>
+            <div class="ph-tl">Внешний вид</div>
+            <div class="ph-ts">Glass · Compact</div>
+          </div>
+        </div>
+        <div class="ph-bal">
+          <div class="ph-bal-item">
+            <div class="ph-bal-val">2 450</div>
+            <div class="ph-bal-lbl">Stars</div>
+          </div>
+          <div class="ph-sep"></div>
+          <div class="ph-bal-item">
+            <div class="ph-bal-val">1.50</div>
+            <div class="ph-bal-lbl">TON</div>
+          </div>
+          <div class="ph-sep"></div>
+          <div class="ph-bal-item">
+            <div class="ph-bal-val">890</div>
+            <div class="ph-bal-lbl">₽</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="div">
+
+<!-- ═════════════════════════════ FEATURES ═════════════════════════════ -->
+<div class="wrap">
+  <section class="sec" id="features">
+    <div class="sec-lbl">Возможности</div>
+    <h2>Всё хранится на устройстве</h2>
+    <p class="sec-sub">Никаких изменений аккаунта, баланса или прав в Telegram — только локальные данные на вашем iPhone.</p>
+
+    <div class="feat-grid">
+
+      <div class="feat-card">
+        <div class="feat-ico b">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 12v10H4V12"/><rect x="2" y="7" width="20" height="5" rx="2"/><path d="M12 22V7"/>
+            <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+          </svg>
+        </div>
+        <div class="feat-name">Подарки</div>
+        <p class="feat-desc">Визуально отправленный подарок показывается в сетке профиля получателя только на этом устройстве. Коллекция с закреплением, скрытием, ношением и передачей.</p>
+        <div class="tags">
+          <span class="tag b">Сетка профиля</span>
+          <span class="tag">Коллекция</span>
+          <span class="tag">Маркет</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-ico b">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="1" x2="12" y2="23"/>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+        </div>
+        <div class="feat-name">Балансы</div>
+        <p class="feat-desc">Визуальные балансы Stars, TON и рублей. Покупка Stars за локальные рубли, отдельная история и статистика по каждой валюте с ручными корректировками.</p>
+        <div class="tags">
+          <span class="tag b">Stars</span>
+          <span class="tag">TON</span>
+          <span class="tag">Рубли</span>
+          <span class="tag">История</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-ico n">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--tx)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/>
+          </svg>
+        </div>
+        <div class="feat-name">Ghost режим</div>
+        <p class="feat-desc">Тонкий контроль приватности: отметки о прочтении, статус набора текста, статус онлайн, просмотры историй. Автоофлайн и точечные исключения по чатам.</p>
+        <div class="tags">
+          <span class="tag">Прочтения</span>
+          <span class="tag">Онлайн</span>
+          <span class="tag">Истории</span>
+          <span class="tag">Набор текста</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-ico p">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--prpl)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+        </div>
+        <div class="feat-name">Визуальный профиль</div>
+        <p class="feat-desc">«Визуальный +888» — переключатель, скрывающий настоящий номер в собственном профиле. Редактор рейтинга с уровнями 1–100 и независимым ползунком очков.</p>
+        <div class="tags">
+          <span class="tag p">+888</span>
+          <span class="tag p">Рейтинг 1–100</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-ico n">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--tx)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div class="feat-name">Чаты</div>
+        <p class="feat-desc">Локальное сохранение удалённых сообщений и визуальное редактирование текста. Блокировка выбранных чатов, карта для геопозиции и ускорение передачи файлов.</p>
+        <div class="tags">
+          <span class="tag">Удалённые</span>
+          <span class="tag">Редактор</span>
+          <span class="tag">Блокировка</span>
+          <span class="tag">Файлы</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-ico p">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--prpl)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+          </svg>
+        </div>
+        <div class="feat-name">Внешний вид</div>
+        <p class="feat-desc">Три пресета интерфейса: Standard, Glass и Compact. Параметры сохраняются как локальный пресет, выбор иконки применяется через штатный механизм iOS.</p>
+        <div class="tags">
+          <span class="tag">Standard</span>
+          <span class="tag b">Glass</span>
+          <span class="tag">Compact</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<hr class="div">
+
+<!-- ══════════════════════════════ TIERS ══════════════════════════════ -->
+<div class="wrap">
+  <section class="sec" id="download">
+    <div class="sec-lbl">Тарифы</div>
+    <h2>Standard или Pro</h2>
+    <p class="sec-sub">Базовые функции доступны всем. Pro открывает расширенные возможности по запросу администратора.</p>
+
+    <div class="tier-grid">
+
+      <div class="tier-card">
+        <div class="tier-name">Standard</div>
+        <div class="tier-tag">Бесплатно · Основные функции</div>
+        <ul class="tier-list">
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--mut)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Визуальные подарки и коллекция
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--mut)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Балансы Stars, TON и рублей
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--mut)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Ghost-режим полностью
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--mut)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Редактор рейтинга и +888
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--mut)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Сохранение удалённых сообщений
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--mut)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Пресеты внешнего вида
+          </li>
+        </ul>
+        <div class="tier-cta">
+          <a href="#" class="btn btn-flat">Скачать бесплатно</a>
+        </div>
+      </div>
+
+      <div class="tier-card pro">
+        <div class="tier-name">Pro</div>
+        <div class="tier-tag">Расширенные возможности</div>
+        <ul class="tier-list">
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--prpl)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Всё из Standard
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--prpl)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Расширенный маркет подарков
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--prpl)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Передача подарков между пользователями
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--prpl)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Расширенная история операций
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--prpl)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Приоритетные обновления
+          </li>
+          <li class="tier-item">
+            <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="var(--prpl)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            Поддержка Pro-пользователей
+          </li>
+        </ul>
+        <div class="tier-cta">
+          <a href="#" class="btn btn-grad">Получить Pro</a>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<!-- ═════════════════════════════ FOOTER ═════════════════════════════ -->
+<footer>
+  <div class="foot-main">
+    <div class="foot-logo">
+      <div class="logo-mark" style="width:28px;height:28px;border-radius:8px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </div>
+      <span>PampGram v1.5.2</span>
+    </div>
+    <span style="font-size:13px;color:var(--dim)">Мод для Telegram iOS</span>
+  </div>
+  <p class="foot-note">
+    PampGram — неофициальный мод для Telegram iOS. Все локальные изменения хранятся исключительно на вашем устройстве и не затрагивают серверы Telegram. Telegram является зарегистрированным товарным знаком Telegram Messenger LLP.
+  </p>
+</footer>
