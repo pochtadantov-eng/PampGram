@@ -9,6 +9,22 @@ import PresentationDataUtils
 import AccountContext
 import PampGramCore
 
+private func modSettingsChangedSignal() -> Signal<Void, NoError> {
+    return Signal { subscriber in
+        let token = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("ModSettingsDidChange"),
+            object: nil,
+            queue: nil
+        ) { _ in
+            subscriber.putNext(())
+        }
+        subscriber.putNext(())
+        return ActionDisposable {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+}
+
 private final class PampGramAdditionalArguments {
     let toggleVoiceChanger: (Bool) -> Void
     let openVoicePreset: () -> Void
@@ -20,8 +36,31 @@ private final class PampGramAdditionalArguments {
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
+    let toggleBypassCopyProtection: (Bool) -> Void
+    let toggleAlwaysKeepForwardAuthor: (Bool) -> Void
+    let toggleDisableAutoDelete: (Bool) -> Void
+    let toggleBypassScreenshotProtection: (Bool) -> Void
+    let toggleHideChatOnScreenshot: (Bool) -> Void
+    let toggleBlockAds: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(
+        toggleVoiceChanger: @escaping (Bool) -> Void,
+        openVoicePreset: @escaping () -> Void,
+        openUploadSpeed: @escaping () -> Void,
+        openDownloadSpeed: @escaping () -> Void,
+        openFakeLocation: @escaping () -> Void,
+        openChatLock: @escaping () -> Void,
+        openCallOverrides: @escaping () -> Void,
+        openFakeAdmin: @escaping () -> Void,
+        toggleInfinitePins: @escaping (Bool) -> Void,
+        toggleLegalPremium: @escaping (Bool) -> Void,
+        toggleBypassCopyProtection: @escaping (Bool) -> Void,
+        toggleAlwaysKeepForwardAuthor: @escaping (Bool) -> Void,
+        toggleDisableAutoDelete: @escaping (Bool) -> Void,
+        toggleBypassScreenshotProtection: @escaping (Bool) -> Void,
+        toggleHideChatOnScreenshot: @escaping (Bool) -> Void,
+        toggleBlockAds: @escaping (Bool) -> Void
+    ) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -32,6 +71,12 @@ private final class PampGramAdditionalArguments {
         self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
+        self.toggleBypassCopyProtection = toggleBypassCopyProtection
+        self.toggleAlwaysKeepForwardAuthor = toggleAlwaysKeepForwardAuthor
+        self.toggleDisableAutoDelete = toggleDisableAutoDelete
+        self.toggleBypassScreenshotProtection = toggleBypassScreenshotProtection
+        self.toggleHideChatOnScreenshot = toggleHideChatOnScreenshot
+        self.toggleBlockAds = toggleBlockAds
     }
 }
 
@@ -41,6 +86,7 @@ private enum PampGramAdditionalSection: Int32 {
     case speed
     case premium
     case extras
+    case features
 }
 
 private enum PampGramAdditionalEntry: ItemListNodeEntry {
@@ -68,6 +114,15 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case fakeAdminRow(String)
     case extrasFooter(String)
 
+    case featuresHeader(String)
+    case bypassCopyProtectionToggle(String, Bool)
+    case alwaysKeepForwardAuthorToggle(String, Bool)
+    case disableAutoDeleteToggle(String, Bool)
+    case bypassScreenshotProtectionToggle(String, Bool)
+    case hideChatOnScreenshotToggle(String, Bool)
+    case blockAdsToggle(String, Bool)
+    case featuresFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .aboutText:
@@ -80,49 +135,40 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.premium.rawValue
         case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
+        case .featuresHeader, .bypassCopyProtectionToggle, .alwaysKeepForwardAuthorToggle, .disableAutoDeleteToggle, .bypassScreenshotProtectionToggle, .hideChatOnScreenshotToggle, .blockAdsToggle, .featuresFooter:
+            return PampGramAdditionalSection.features.rawValue
         }
     }
 
     var stableId: Int32 {
         switch self {
-        case .aboutText:
-            return 0
-        case .voiceHeader:
-            return 1
-        case .voiceToggle:
-            return 2
-        case .voicePresetRow:
-            return 3
-        case .voiceFooter:
-            return 4
-        case .speedHeader:
-            return 5
-        case .uploadSpeedRow:
-            return 6
-        case .downloadSpeedRow:
-            return 7
-        case .speedFooter:
-            return 8
-        case .premiumHeader:
-            return 9
-        case .infinitePinsToggle:
-            return 10
-        case .legalPremiumToggle:
-            return 11
-        case .premiumFooter:
-            return 12
-        case .extrasHeader:
-            return 13
-        case .fakeLocationRow:
-            return 14
-        case .chatLockRow:
-            return 15
-        case .callOverridesRow:
-            return 16
-        case .fakeAdminRow:
-            return 17
-        case .extrasFooter:
-            return 18
+        case .aboutText: return 0
+        case .voiceHeader: return 1
+        case .voiceToggle: return 2
+        case .voicePresetRow: return 3
+        case .voiceFooter: return 4
+        case .speedHeader: return 5
+        case .uploadSpeedRow: return 6
+        case .downloadSpeedRow: return 7
+        case .speedFooter: return 8
+        case .premiumHeader: return 9
+        case .infinitePinsToggle: return 10
+        case .legalPremiumToggle: return 11
+        case .premiumFooter: return 12
+        case .extrasHeader: return 13
+        case .fakeLocationRow: return 14
+        case .chatLockRow: return 15
+        case .callOverridesRow: return 16
+        case .fakeAdminRow: return 17
+        case .extrasFooter: return 18
+        case .featuresHeader: return 19
+        case .bypassCopyProtectionToggle: return 20
+        case .alwaysKeepForwardAuthorToggle: return 21
+        case .disableAutoDeleteToggle: return 22
+        case .bypassScreenshotProtectionToggle: return 23
+        case .hideChatOnScreenshotToggle: return 24
+        case .blockAdsToggle: return 25
+        case .featuresFooter: return 26
         }
     }
 
@@ -133,9 +179,9 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text), let .featuresFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text), let .featuresHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -177,12 +223,37 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openFakeAdmin()
             })
+        case let .bypassCopyProtectionToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "doc.on.doc.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBypassCopyProtection(value)
+            })
+        case let .alwaysKeepForwardAuthorToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrowshape.turn.up.right.fill", backgroundColor: UIColor(rgb: 0x007aff)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleAlwaysKeepForwardAuthor(value)
+            })
+        case let .disableAutoDeleteToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "timer", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleDisableAutoDelete(value)
+            })
+        case let .bypassScreenshotProtectionToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "camera.fill", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBypassScreenshotProtection(value)
+            })
+        case let .hideChatOnScreenshotToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideChatOnScreenshot(value)
+            })
+        case let .blockAdsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "xmark.circle.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBlockAds(value)
+            })
         }
     }
 }
 
 private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramAdditionalEntry] {
     var entries: [PampGramAdditionalEntry] = []
+    let mod = ModSettings.shared
 
     entries.append(.aboutText("Другие возможности PampGram: голос и скорость передачи файлов."))
 
@@ -207,6 +278,15 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.fakeAdminRow("Фейк админ"))
     entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас."))
+
+    entries.append(.featuresHeader("ПРОЧЕЕ"))
+    entries.append(.bypassCopyProtectionToggle("Обход защиты от копирования", mod.bypassCopyProtection))
+    entries.append(.alwaysKeepForwardAuthorToggle("Добавлять от кого переслано", mod.alwaysKeepForwardAuthor))
+    entries.append(.disableAutoDeleteToggle("Отключить автоудаление исчезающих", mod.disableAutoDelete))
+    entries.append(.bypassScreenshotProtectionToggle("Обход защиты от скриншотов", mod.bypassScreenshotProtection))
+    entries.append(.hideChatOnScreenshotToggle("Скрывать чат на скриншотах", mod.hideChatOnScreenshot))
+    entries.append(.blockAdsToggle("Блокировать рекламу", mod.blockAds))
+    entries.append(.featuresFooter("«Обход защиты от копирования» разрешает копировать текст из чатов с запретом. «Обход защиты от скриншотов» убирает системный запрет скриншотов. «Блокировать рекламу» скрывает спонсорские сообщения."))
 
     return entries
 }
@@ -329,15 +409,34 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                 settings.legalPremiumEnabled = value
                 return settings
             }).start()
+        },
+        toggleBypassCopyProtection: { value in
+            ModSettings.shared.bypassCopyProtection = value
+        },
+        toggleAlwaysKeepForwardAuthor: { value in
+            ModSettings.shared.alwaysKeepForwardAuthor = value
+        },
+        toggleDisableAutoDelete: { value in
+            ModSettings.shared.disableAutoDelete = value
+        },
+        toggleBypassScreenshotProtection: { value in
+            ModSettings.shared.bypassScreenshotProtection = value
+        },
+        toggleHideChatOnScreenshot: { value in
+            ModSettings.shared.hideChatOnScreenshot = value
+        },
+        toggleBlockAds: { value in
+            ModSettings.shared.blockAds = value
         }
     )
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        modSettingsChangedSignal()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, _ -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Дополнительно"),

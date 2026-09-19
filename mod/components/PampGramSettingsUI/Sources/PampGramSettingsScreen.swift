@@ -30,6 +30,7 @@ private final class PampGramSettingsArguments {
     let openCollectionMarket: () -> Void
     let openStarsLedger: () -> Void
     let openTonLedger: () -> Void
+    let sendBearGift: () -> Void
 
     init(
         toggleVisual: @escaping (Bool) -> Void,
@@ -47,7 +48,8 @@ private final class PampGramSettingsArguments {
         openVisualRatingEditor: @escaping () -> Void,
         openCollectionMarket: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
-        openTonLedger: @escaping () -> Void
+        openTonLedger: @escaping () -> Void,
+        sendBearGift: @escaping () -> Void
     ) {
         self.toggleVisual = toggleVisual
         self.togglePhantomGifts = togglePhantomGifts
@@ -65,6 +67,7 @@ private final class PampGramSettingsArguments {
         self.openCollectionMarket = openCollectionMarket
         self.openStarsLedger = openStarsLedger
         self.openTonLedger = openTonLedger
+        self.sendBearGift = sendBearGift
     }
 }
 
@@ -81,6 +84,7 @@ private enum PampGramSettingsSection: Int32 {
     case ledger
     case resetBalances
     case storage
+    case bearGift
 }
 
 private enum PampGramSettingsEntry: ItemListNodeEntry {
@@ -131,6 +135,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case deleteAllPhantomGifts(String, Bool)
     case storageFooter(String)
 
+    case bearGiftRow(String, Bool)
+
     var section: ItemListSectionId {
         switch self {
         case .visualToggle, .visualFooter:
@@ -157,6 +163,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.resetBalances.rawValue
         case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
             return PampGramSettingsSection.storage.rawValue
+        case .bearGiftRow:
+            return PampGramSettingsSection.bearGift.rawValue
         }
     }
 
@@ -198,6 +206,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .phantomGiftsCount: return 33
         case .deleteAllPhantomGifts: return 34
         case .storageFooter: return 35
+        case .bearGiftRow: return 36
         }
     }
 
@@ -271,6 +280,10 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case let .deleteAllPhantomGifts(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.deleteAllPhantomGifts()
+            })
+        case let .bearGiftRow(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.sendBearGift()
             })
         }
     }
@@ -391,6 +404,8 @@ private func parseRublesTopUp(_ text: String) -> Int64? {
     return whole * 100 + fraction
 }
 
+private let bearGiftStarCost: Int64 = 15
+
 private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, phantomGiftCount: Int) -> [PampGramSettingsEntry] {
     var entries: [PampGramSettingsEntry] = []
 
@@ -443,6 +458,11 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.phantomGiftsCount("Фантом-подарков на устройстве", "\(phantomGiftCount)"))
     entries.append(.deleteAllPhantomGifts("Удалить все фантом-подарки", phantomGiftCount > 0))
     entries.append(.storageFooter("Уберёт записи и их сообщения из истории."))
+
+    if settings.phantomGiftsEnabled {
+        let canAffordBear = settings.fakeStarsBalance >= bearGiftStarCost
+        entries.append(.bearGiftRow("🐻 Плюшевый мишка (\(bearGiftStarCost) ⭐)", canAffordBear))
+    }
 
     return entries
 }
@@ -614,7 +634,30 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         openVisualRatingEditor: { presentRatingEditorImpl?() },
         openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
         openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },
-        openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) }
+        openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) },
+        sendBearGift: {
+            let _ = (context.account.postbox.transaction { transaction -> Bool in
+                let current = PampGramCore.rawSettings(transaction: transaction).fakeStarsBalance
+                guard current >= bearGiftStarCost else { return false }
+                let newBalance = current - bearGiftStarCost
+                PampGramCore.updateSettings(transaction: transaction, { s in var s = s; s.fakeStarsBalance = newBalance; return s })
+                PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                    currency: .stars,
+                    kind: .purchase,
+                    amount: -bearGiftStarCost,
+                    title: "🐻 Плюшевый мишка",
+                    details: "Скрытый подарок PampGram",
+                    balanceAfter: newBalance
+                ))
+                return true
+            } |> deliverOnMainQueue).start(next: { success in
+                if success {
+                    presentTooltipImpl?("🐻 Плюшевый мишка отправлен! −\(bearGiftStarCost) ⭐")
+                } else {
+                    presentTooltipImpl?("Недостаточно звёзд. Нужно \(bearGiftStarCost) ⭐")
+                }
+            })
+        }
     )
 
     let signal = combineLatest(
