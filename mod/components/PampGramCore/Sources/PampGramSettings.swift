@@ -253,27 +253,6 @@ public struct PampGramSettings: Codable, Equatable {
     /// Telegram never verifies server-side — a locally-shown Premium badge/status, premium
     /// stickers & reactions in the picker, and the relaxed folder/pin client limits.
     public var legalPremiumEnabled: Bool
-    /// "Обход защиты от скриншотов" (Дополнительно): two-part bypass — (1) suppress the hidden
-    /// UITextField the app inserts to trigger iOS's window security (which blacks out screenshots
-    /// in content-protected chats), and (2) drop the outgoing secret-chat screenshot notification
-    /// so the other side isn't told a screenshot was taken. Both are entirely client-side and only
-    /// affect THIS device's own behavior.
-    public var bypassScreenshotProtection: Bool
-    /// "Скрыть номер телефона" (Дополнительно): locally hides the real phone number from
-    /// the Settings screen — the row shows "Скрыто" instead of the real digits. Other people
-    /// still see the number according to Telegram's own privacy settings; this only affects
-    /// what THIS device displays.
-    public var hidePhoneNumberEnabled: Bool
-    /// "Фейковый номер телефона" (Дополнительно): when non-empty and enabled, shown in place
-    /// of the real phone number in Settings. Takes priority over `hidePhoneNumberEnabled` when
-    /// both are on (a fake number is more useful than "Скрыто"). Purely local.
-    public var fakePhoneNumberEnabled: Bool
-    public var fakePhoneNumberValue: String
-    /// "Защита от краш-стикеров" (Дополнительно): intercepts incoming sticker documents whose
-    /// pixel dimensions or file size greatly exceed Telegram's normal limits — a heuristic
-    /// against intentionally oversized stickers crafted to crash the app. When triggered, the
-    /// sticker is not rendered.
-    public var crashStickerProtectionEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -289,6 +268,50 @@ public struct PampGramSettings: Codable, Equatable {
     /// keeps working. Stored values are preserved; the settings SCREENS read the raw value
     /// (`rawSettings`/`rawSettingsSignal`) so they still show and edit the real state.
     public var masterEnabled: Bool
+    /// "Скрыть иконку в настройках": hides the "PampGram" row from Settings entirely. Getting
+    /// back in still works — a long press on "Помощь" opens the same PampGram settings screen.
+    public var hideIconInSettings: Bool
+    /// Local cache of whether `PampGramSubscriptionAPI.fetchTier` last reported `.pro` for this
+    /// account. Refreshed opportunistically whenever the PampGram tab opens (see
+    /// `PampGramHubScreen.swift`) — a plain `Bool`, not the `PampGramSubscriptionTier` enum
+    /// itself, because that type's `Codable` conformance is the plain synthesized one (needed
+    /// for decoding the server's JSON response) and would hit the same
+    /// `PostboxEncoder`/`PostboxDecoder` `singleValueContainer` crash `PampGramVoicePreset`'s
+    /// doc comment warns about if stored here directly. Exists so code that needs the tier
+    /// synchronously inside a Postbox transaction (the "Закрепить чаты" pin-count cap in
+    /// `TogglePeerChatPinned.swift`, which can't await a network call) has *something* to read,
+    /// at the cost of it being at most one tab-open stale.
+    public var cachedIsProSubscriber: Bool
+    /// "Скрыть номер телефона": hides this account's own phone number from the Settings
+    /// screen header subtitle and from the phone-number row in "Мой профиль". Purely a local
+    /// display change — the number is still there in the real account, other people who
+    /// already have it (or view it through Telegram's own privacy settings) are unaffected;
+    /// this only stops PampGram's own device from showing it back to its owner.
+    public var hideOwnPhoneNumber: Bool
+    /// "Фейковый номер телефона": free-form text shown in place of the real number, same two
+    /// spots as `hideOwnPhoneNumber` (Settings header subtitle, "Мой профиль" phone row) —
+    /// purely local, same as every other PampGram display override. Empty means off. When
+    /// both this and `hideOwnPhoneNumber` are set, this one wins: showing a chosen fake
+    /// number is a stronger statement than hiding the row outright, so there's never a case
+    /// where the two fight over the same row.
+    public var fakePhoneNumber: String
+    /// Whether this account has redeemed a one-time activation key
+    /// (`server/pampgram-subs-worker`'s `/keys/redeem`). Until it has, `PampGramCore.settings`/
+    /// `settingsSignal` report every mod feature as off (`withEverythingOff()`) regardless of
+    /// its own stored toggle, and the PampGram tab shows the "enter your key" screen instead of
+    /// the hub — see `PampGramHubScreen.swift`. Exists so a copy of the mod file handed out for
+    /// free by whoever it was actually sold to still does nothing until *that* Telegram account
+    /// redeems its own key.
+    public var licenseActivated: Bool
+    /// "Защита от краш-стикеров" (Ghost): watches every incoming sticker account-wide
+    /// (`PampGramCrashStickerGuard`) and, for one whose file metadata falls well outside real
+    /// Telegram's own sticker limits — the pattern a deliberately malformed "crash" sticker
+    /// exploiting a rendering bug would show — deletes it locally before it can be opened and
+    /// blocks whoever sent it. A heuristic on file size/dimensions, not a guarantee: it can
+    /// only catch stickers that are already anomalous by the numbers, never a new exploit that
+    /// hides inside an otherwise ordinary-looking file. Off by default since it acts (delete +
+    /// block) without asking first.
+    public var crashStickerProtectionEnabled: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -331,16 +354,17 @@ public struct PampGramSettings: Codable, Equatable {
             localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
-            bypassScreenshotProtection: false,
-            hidePhoneNumberEnabled: false,
-            fakePhoneNumberEnabled: false,
-            fakePhoneNumberValue: "",
-            crashStickerProtectionEnabled: false,
-            masterEnabled: true
+            masterEnabled: true,
+            hideIconInSettings: false,
+            cachedIsProSubscriber: false,
+            hideOwnPhoneNumber: false,
+            fakePhoneNumber: "",
+            licenseActivated: false,
+            crashStickerProtectionEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, bypassScreenshotProtection: Bool, hidePhoneNumberEnabled: Bool, fakePhoneNumberEnabled: Bool, fakePhoneNumberValue: String, crashStickerProtectionEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, hideIconInSettings: Bool, cachedIsProSubscriber: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, licenseActivated: Bool, crashStickerProtectionEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -377,12 +401,13 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
-        self.bypassScreenshotProtection = bypassScreenshotProtection
-        self.hidePhoneNumberEnabled = hidePhoneNumberEnabled
-        self.fakePhoneNumberEnabled = fakePhoneNumberEnabled
-        self.fakePhoneNumberValue = fakePhoneNumberValue
-        self.crashStickerProtectionEnabled = crashStickerProtectionEnabled
         self.masterEnabled = masterEnabled
+        self.hideIconInSettings = hideIconInSettings
+        self.cachedIsProSubscriber = cachedIsProSubscriber
+        self.hideOwnPhoneNumber = hideOwnPhoneNumber
+        self.fakePhoneNumber = fakePhoneNumber
+        self.licenseActivated = licenseActivated
+        self.crashStickerProtectionEnabled = crashStickerProtectionEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -451,12 +476,13 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
-        self.bypassScreenshotProtection = try container.decodeIfPresent(Bool.self, forKey: .bypassScreenshotProtection) ?? defaults.bypassScreenshotProtection
-        self.hidePhoneNumberEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePhoneNumberEnabled) ?? defaults.hidePhoneNumberEnabled
-        self.fakePhoneNumberEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakePhoneNumberEnabled) ?? defaults.fakePhoneNumberEnabled
-        self.fakePhoneNumberValue = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumberValue) ?? defaults.fakePhoneNumberValue
-        self.crashStickerProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .crashStickerProtectionEnabled) ?? defaults.crashStickerProtectionEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
+        self.hideIconInSettings = try container.decodeIfPresent(Bool.self, forKey: .hideIconInSettings) ?? defaults.hideIconInSettings
+        self.cachedIsProSubscriber = try container.decodeIfPresent(Bool.self, forKey: .cachedIsProSubscriber) ?? defaults.cachedIsProSubscriber
+        self.hideOwnPhoneNumber = try container.decodeIfPresent(Bool.self, forKey: .hideOwnPhoneNumber) ?? defaults.hideOwnPhoneNumber
+        self.fakePhoneNumber = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumber) ?? defaults.fakePhoneNumber
+        self.licenseActivated = try container.decodeIfPresent(Bool.self, forKey: .licenseActivated) ?? defaults.licenseActivated
+        self.crashStickerProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .crashStickerProtectionEnabled) ?? defaults.crashStickerProtectionEnabled
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -470,6 +496,30 @@ public struct PampGramSettings: Codable, Equatable {
         settings.fakeStarsDisplayEnabled = false
         settings.fakeTonDisplayEnabled = false
         settings.localRublesPurchaseEnabled = false
+        return settings
+    }
+
+    /// A copy with every mod feature forced off, not just the gift-visuals subset
+    /// `withGiftsVisualsOff()` covers (every stored value still preserved). Returned by
+    /// `PampGramCore.settings`/`settingsSignal` whenever `licenseActivated` is false, so an
+    /// unlicensed copy of the mod does nothing beyond showing the activation-key screen — same
+    /// "stored values survive, only the effective view is neutered" contract, just wider.
+    public func withEverythingOff() -> PampGramSettings {
+        var settings = self.withGiftsVisualsOff()
+        settings.antiDeleteMessagesEnabled = false
+        settings.ghostModeEnabled = false
+        settings.ghostHideReadReceipts = false
+        settings.ghostHideStoryViews = false
+        settings.ghostHideOnline = false
+        settings.ghostHideTyping = false
+        settings.ghostAutoOffline = false
+        settings.visualEditEnabled = false
+        settings.voiceChangerMessagesEnabled = false
+        settings.fakeLocationEnabled = false
+        settings.chatLockEnabled = false
+        settings.infinitePinsEnabled = false
+        settings.legalPremiumEnabled = false
+        settings.crashStickerProtectionEnabled = false
         return settings
     }
 
@@ -526,12 +576,20 @@ public enum PampGramCore {
         return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.settings)?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
     }
 
+    /// The gating `settings`/`settingsSignal` share: "Включить визуалку" neuters just the
+    /// gift-visual fields, unchanged. Standard vs Premium is no longer a settings-wide gate —
+    /// Standard is the normal, fully-functional default tier, not an "inactive" state; Premium
+    /// only widens which HUB SECTIONS are reachable at all (see `pampGramGateTier` in
+    /// PampGramHubScreen.swift), so there's nothing left for this layer to neuter based on tier.
+    private static func effectiveSettings(from raw: PampGramSettings) -> PampGramSettings {
+        return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+    }
+
     /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
     /// визуалку" is off, only the gift-visual features read as disabled; every other section is
     /// unaffected. Screens that need the real stored gift state use `rawSettings` instead.
     public static func settings(transaction: Transaction) -> PampGramSettings {
-        let raw = self.rawSettings(transaction: transaction)
-        return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+        return self.effectiveSettings(from: self.rawSettings(transaction: transaction))
     }
 
     public static func updateSettings(transaction: Transaction, _ f: (PampGramSettings) -> PampGramSettings) {
@@ -554,9 +612,7 @@ public enum PampGramCore {
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return self.rawSettingsSignal(postbox: postbox)
         |> map { raw -> PampGramSettings in
-            let settings = raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
-            PampGramCrashStickerGuard.shared.enabled = settings.crashStickerProtectionEnabled
-            return settings
+            return self.effectiveSettings(from: raw)
         }
         |> distinctUntilChanged
     }
