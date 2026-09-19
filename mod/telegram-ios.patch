@@ -20832,7 +20832,7 @@ diff --git a/submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m 
 +        [layer setAssociatedObject:@(NO) forKey:layerDisableScreenshotsKey associationPolicy:NSObjectAssociationPolicyRetain];
 +        return;
 +    }
-
+     
      CALayer *previousLayer = secureView.layer;
      [secureView setValue:layer forKey:@"layer"];
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypass.swift b/submodules/TelegramUI/Sources/PampGram/PampGramScreenshotBypass.swift
