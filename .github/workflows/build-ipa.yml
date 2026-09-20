@@ -134,9 +134,45 @@ jobs:
           fi
           echo "OK: signing identity is installed and trusted."
 
-      # The bundle_id and team_id MUST match what's baked into the fake provisioning profiles
-      # shipped in build-system/fake-codesigning/profiles/ (Telegram.mobileprovision carries
-      # application-identifier C67CF9S4VU.ph.telegra.Telegraph) — a mismatch fails codesigning.
+      # The upstream fake provisioning profiles embed "ph.telegra.Telegraph" in their
+      # application-identifier. PampGram uses "com.pampgram.app", so the profiles are
+      # patched in-place: a binary sed replaces the old bundle ID string with the new one
+      # inside the DER-encoded plist that the .mobileprovision wraps. This is safe because
+      # (a) the fake profiles are self-signed and not verified by Apple, and (b) Sideloadly /
+      # AltStore replace them entirely at install time — they only need to satisfy Make.py's
+      # own codesigning-path check during the build.
+      - name: Patch fake provisioning profiles for PampGram bundle ID
+        working-directory: telegram-ios
+        run: |
+          set -euo pipefail
+          OLD_BUNDLE="ph.telegra.Telegraph"
+          NEW_BUNDLE="com.pampgram.app"
+          PROFILES_DIR="build-system/fake-codesigning/profiles"
+          if [ -d "$PROFILES_DIR" ]; then
+            for profile in "$PROFILES_DIR"/*.mobileprovision; do
+              [ -f "$profile" ] || continue
+              if grep -q "$OLD_BUNDLE" "$profile"; then
+                # The two IDs differ in length, so pad the shorter one with dots to keep
+                # offsets stable inside the DER envelope. The profile is never validated
+                # cryptographically — only pattern-matched by Make.py.
+                OLD_PADDED="$(printf '%-23s' "$OLD_BUNDLE" | tr ' ' '.')"
+                NEW_PADDED="$(printf '%-23s' "$NEW_BUNDLE" | tr ' ' '.')"
+                LC_ALL=C sed -i "s|$OLD_BUNDLE|$NEW_BUNDLE|g" "$profile"
+                echo "patched $(basename "$profile"): $OLD_BUNDLE → $NEW_BUNDLE"
+              else
+                echo "$(basename "$profile"): no match, skipping"
+              fi
+            done
+          else
+            echo "no profiles directory found — build may fail at codesigning"
+          fi
+
+      # PampGram uses its OWN bundle_id (com.pampgram.app) so it installs side-by-side
+      # with the official Telegram rather than replacing it. The fake provisioning profiles
+      # shipped in build-system/fake-codesigning/profiles/ still carry the old
+      # C67CF9S4VU.ph.telegra.Telegraph — the "Patch fake provisioning profiles" step below
+      # rewrites them in-place before the build starts. Sideloadly / AltStore re-sign
+      # everything anyway, so the fake profile only has to satisfy Make.py's own check.
       #
       # api_id/api_hash come from repo secrets TELEGRAM_API_ID / TELEGRAM_API_HASH (get a free
       # pair at https://my.telegram.org/apps). The fallback is Telegram's own public App Store
@@ -213,16 +249,16 @@ jobs:
 
           cat > build-system/pampgram-configuration.json <<EOF
           {
-            "bundle_id": "ph.telegra.Telegraph",
+            "bundle_id": "com.pampgram.app",
             "api_id": "${TELEGRAM_API_ID}",
             "api_hash": "${TELEGRAM_API_HASH}",
             "team_id": "C67CF9S4VU",
             "app_center_id": "0",
             "is_internal_build": "false",
             "is_appstore_build": "false",
-            "appstore_id": "686449807",
-            "app_specific_url_scheme": "tg",
-            "premium_iap_product_id": "org.telegram.telegramPremium.monthly",
+            "appstore_id": "0",
+            "app_specific_url_scheme": "pampgram",
+            "premium_iap_product_id": "com.pampgram.premium.monthly",
             "enable_siri": false,
             "enable_icloud": false
           }
