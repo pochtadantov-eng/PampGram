@@ -276,6 +276,132 @@ public enum PampGramSubscriptionAPI {
         }.resume()
     }
 
+    // MARK: - One-time keys
+
+    private struct GenerateKeyRequestBody: Encodable {
+        let token: String
+        let tier: String
+        let count: Int
+    }
+
+    private struct GenerateKeyResponse: Decodable {
+        let ok: Bool
+        let keys: [String]
+    }
+
+    public static func generateKeys(tier: PampGramSubscriptionTier, count: Int, adminToken: String, completion: @escaping ([String]?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/generate-key") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: tier.rawValue, count: count))
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            var keys: [String]?
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200,
+               let data, let decoded = try? JSONDecoder().decode(GenerateKeyResponse.self, from: data) {
+                keys = decoded.keys
+            }
+            DispatchQueue.main.async { completion(keys) }
+        }.resume()
+    }
+
+    private struct RedeemKeyRequestBody: Encodable {
+        let id: Int64
+        let key: String
+    }
+
+    private struct RedeemKeyResponse: Decodable {
+        let ok: Bool?
+        let tier: String?
+        let error: String?
+    }
+
+    public enum RedeemResult {
+        case success(PampGramSubscriptionTier)
+        case notFound
+        case alreadyUsed
+        case failed
+    }
+
+    public static func redeemKey(userId: Int64, key: String, completion: @escaping (RedeemResult) -> Void) {
+        guard let url = URL(string: "\(baseURL)/redeem-key") else {
+            completion(.failed)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(RedeemKeyRequestBody(id: userId, key: key))
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
+            var result: RedeemResult = .failed
+            if let data, let decoded = try? JSONDecoder().decode(RedeemKeyResponse.self, from: data) {
+                if httpStatus == 200, let tierRaw = decoded.tier {
+                    result = .success(PampGramSubscriptionTier(rawValue: tierRaw) ?? .standard)
+                } else if httpStatus == 404 {
+                    result = .notFound
+                } else if httpStatus == 409 {
+                    result = .alreadyUsed
+                }
+            }
+            DispatchQueue.main.async { completion(result) }
+        }.resume()
+    }
+
+    public struct OneTimeKeyInfo: Decodable {
+        public let key: String
+        public let tier: String
+        public let used: Bool
+        public let usedBy: String?
+        public let createdAt: Int64?
+    }
+
+    private struct ListKeysRequestBody: Encodable {
+        let token: String
+    }
+
+    private struct ListKeysResponse: Decodable {
+        let keys: [OneTimeKeyInfo]
+    }
+
+    public static func fetchKeysList(adminToken: String, completion: @escaping ([OneTimeKeyInfo]) -> Void) {
+        guard let url = URL(string: "\(baseURL)/list-keys") else {
+            completion([])
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(ListKeysRequestBody(token: adminToken))
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            var keys: [OneTimeKeyInfo] = []
+            if let data, let decoded = try? JSONDecoder().decode(ListKeysResponse.self, from: data) {
+                keys = decoded.keys
+            }
+            DispatchQueue.main.async { completion(keys) }
+        }.resume()
+    }
+
+    // MARK: - Ban with reset
+
+    public static func applyBanReset(postbox: Postbox) {
+        let _ = postbox.transaction { transaction in
+            PampGramCore.updateSettings(transaction: transaction) { settings in
+                return settings.withBanReset()
+            }
+            PampGramProfileVisualStore.update(transaction: transaction) { _ in
+                return .default
+            }
+            PampGramLocalLedgerStore.clear(transaction: transaction)
+        }.start()
+    }
+
     /// This device's locally-stored admin token, if the admin has entered one. Read inside a
     /// Postbox transaction, same pattern as `PampGramCore.settings(transaction:)`.
     public static func adminToken(transaction: Transaction) -> String? {

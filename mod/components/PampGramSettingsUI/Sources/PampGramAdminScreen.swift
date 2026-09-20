@@ -15,13 +15,17 @@ import PampGramCore
 private final class PampGramAdminArguments {
     let setAdminToken: () -> Void
     let grantSubscription: () -> Void
+    let generateKeys: () -> Void
+    let listKeys: () -> Void
     let banFull: () -> Void
     let banSection: () -> Void
     let openBannedList: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, generateKeys: @escaping () -> Void, listKeys: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
+        self.generateKeys = generateKeys
+        self.listKeys = listKeys
         self.banFull = banFull
         self.banSection = banSection
         self.openBannedList = openBannedList
@@ -32,6 +36,7 @@ private enum PampGramAdminSection: Int32 {
     case about
     case token
     case grant
+    case keys
     case ban
 }
 
@@ -44,6 +49,11 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
 
     case grantAction(String, Bool)
     case grantFooter(String)
+
+    case keysHeader(String)
+    case generateKeysAction(String, Bool)
+    case listKeysAction(String, Bool)
+    case keysFooter(String)
 
     case banHeader(String)
     case banFullAction(String, Bool)
@@ -59,6 +69,8 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return PampGramAdminSection.token.rawValue
         case .grantAction, .grantFooter:
             return PampGramAdminSection.grant.rawValue
+        case .keysHeader, .generateKeysAction, .listKeysAction, .keysFooter:
+            return PampGramAdminSection.keys.rawValue
         case .banHeader, .banFullAction, .banSectionAction, .unbanAction, .banFooter:
             return PampGramAdminSection.ban.rawValue
         }
@@ -78,16 +90,24 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 4
         case .grantFooter:
             return 5
-        case .banHeader:
+        case .keysHeader:
             return 6
-        case .banFullAction:
+        case .generateKeysAction:
             return 7
-        case .banSectionAction:
+        case .listKeysAction:
             return 8
-        case .unbanAction:
+        case .keysFooter:
             return 9
-        case .banFooter:
+        case .banHeader:
             return 10
+        case .banFullAction:
+            return 11
+        case .banSectionAction:
+            return 12
+        case .unbanAction:
+            return 13
+        case .banFooter:
+            return 14
         }
     }
 
@@ -104,6 +124,14 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let (.grantAction(lhsTitle, lhsEnabled), .grantAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.grantFooter(lhsText), .grantFooter(rhsText)):
+            return lhsText == rhsText
+        case let (.keysHeader(lhsText), .keysHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.generateKeysAction(lhsTitle, lhsEnabled), .generateKeysAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.listKeysAction(lhsTitle, lhsEnabled), .listKeysAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.keysFooter(lhsText), .keysFooter(rhsText)):
             return lhsText == rhsText
         case let (.banHeader(lhsText), .banHeader(rhsText)):
             return lhsText == rhsText
@@ -138,6 +166,14 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let .grantAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.grantSubscription()
+            })
+        case let .generateKeysAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.generateKeys()
+            })
+        case let .listKeysAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.listKeys()
             })
         case let .banFullAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -276,6 +312,30 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
         presentControllerImpl?(sheet)
     }
 
+    let showKeysList: (String) -> Void = { adminToken in
+        PampGramSubscriptionAPI.fetchKeysList(adminToken: adminToken) { keys in
+            let availableKeys = keys.filter { !$0.used }
+            let usedKeys = keys.filter { $0.used }
+            var text = "Доступные ключи (\(availableKeys.count)):\n"
+            for key in availableKeys {
+                text += "\(key.key) — \(key.tier.uppercased())\n"
+            }
+            if !usedKeys.isEmpty {
+                text += "\nИспользованные (\(usedKeys.count)):\n"
+                for key in usedKeys.prefix(10) {
+                    text += "\(key.key) — \(key.tier.uppercased()) → ID \(key.usedBy ?? "?")\n"
+                }
+                if usedKeys.count > 10 {
+                    text += "... и ещё \(usedKeys.count - 10)\n"
+                }
+            }
+            if keys.isEmpty {
+                text = "Ключей пока нет. Сгенерируй их кнопкой выше."
+            }
+            presentTooltipImpl?(text)
+        }
+    }
+
     let arguments = PampGramAdminArguments(
         setAdminToken: {
             let _ = (context.account.postbox.transaction { transaction -> String? in
@@ -342,6 +402,60 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                     }
                 ))
             })
+        },
+        generateKeys: {
+            requireAdminToken { adminToken in
+                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+                let tierSheet = ActionSheetController(presentationData: presentationData)
+                let generate: (PampGramSubscriptionTier) -> Void = { tier in
+                    presentControllerImpl?(promptController(
+                        context: context,
+                        text: "Количество ключей",
+                        subtitle: "Тариф: \(tier == .pro ? "PRO" : "STANDARD"). Сколько ключей сгенерировать? (1–50)",
+                        value: "5",
+                        placeholder: "5",
+                        characterLimit: 3,
+                        apply: { value in
+                            guard let value, let count = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)), count > 0 else {
+                                return
+                            }
+                            PampGramSubscriptionAPI.generateKeys(tier: tier, count: min(count, 50), adminToken: adminToken) { keys in
+                                if let keys {
+                                    let keyText = keys.joined(separator: "\n")
+                                    UIPasteboard.general.string = keyText
+                                    presentTooltipImpl?("\(keys.count) ключей создано и скопировано в буфер обмена.")
+                                } else {
+                                    presentTooltipImpl?("Не получилось — проверь токен и сервер.")
+                                }
+                            }
+                        }
+                    ))
+                }
+                tierSheet.setItemGroups([
+                    ActionSheetItemGroup(items: [
+                        ActionSheetTextItem(title: "Какой тариф у ключей?"),
+                        ActionSheetButtonItem(title: "PRO", color: .accent, action: { [weak tierSheet] in
+                            tierSheet?.dismissAnimated()
+                            generate(.pro)
+                        }),
+                        ActionSheetButtonItem(title: "STANDARD", color: .accent, action: { [weak tierSheet] in
+                            tierSheet?.dismissAnimated()
+                            generate(.standard)
+                        })
+                    ]),
+                    ActionSheetItemGroup(items: [
+                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak tierSheet] in
+                            tierSheet?.dismissAnimated()
+                        })
+                    ])
+                ])
+                presentControllerImpl?(tierSheet)
+            }
+        },
+        listKeys: {
+            requireAdminToken { adminToken in
+                showKeysList(adminToken)
+            }
         },
         banFull: {
             requireAdminToken { adminToken in
@@ -426,6 +540,10 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .tokenFooter("Секрет для авторизации на сервере — задаётся один раз, хранится только на этом устройстве."),
             .grantAction("Выдать подписку", adminToken != nil),
             .grantFooter("Меняет тариф человека на всех его устройствах — это единственная функция PampGram, которая обращается к серверу, а не хранит всё локально."),
+            .keysHeader("ОДНОРАЗОВЫЕ КЛЮЧИ"),
+            .generateKeysAction("Сгенерировать ключи", adminToken != nil),
+            .listKeysAction("Список ключей", adminToken != nil),
+            .keysFooter("Ключи копируются в буфер обмена при генерации. Пользователь активирует ключ в разделе Дополнительно → Одноразовые ключи."),
             .banHeader("ДОСТУП"),
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),

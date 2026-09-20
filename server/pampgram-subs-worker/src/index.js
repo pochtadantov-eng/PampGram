@@ -232,6 +232,110 @@ async function handleUnban(request, env) {
 	return jsonResponse({ ok: true });
 }
 
+async function handleGenerateKey(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { token, tier, count } = payload ?? {};
+
+	if (!isAuthorized(token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	if (!ALLOWED_TIERS.has(tier)) {
+		return jsonResponse({ error: "invalid tier" }, 400);
+	}
+	const keyCount = Math.min(Math.max(parseInt(count) || 1, 1), 50);
+	const keys = [];
+	for (let i = 0; i < keyCount; i++) {
+		const keyId = crypto.randomUUID().replace(/-/g, "").substring(0, 16).toUpperCase();
+		const keyData = JSON.stringify({ tier, createdAt: Date.now(), used: false });
+		await env.SUBS.put(`key:${keyId}`, keyData);
+		keys.push(keyId);
+	}
+
+	return jsonResponse({ ok: true, keys });
+}
+
+async function handleRedeemKey(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { id, key } = payload ?? {};
+
+	const idString = typeof id === "number" ? String(id) : id;
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	if (typeof key !== "string" || key.length === 0) {
+		return jsonResponse({ error: "invalid key" }, 400);
+	}
+
+	const stored = await env.SUBS.get(`key:${key}`);
+	if (!stored) {
+		return jsonResponse({ error: "key_not_found" }, 404);
+	}
+
+	let keyData;
+	try {
+		keyData = JSON.parse(stored);
+	} catch {
+		return jsonResponse({ error: "corrupted_key" }, 500);
+	}
+
+	if (keyData.used) {
+		return jsonResponse({ error: "key_already_used" }, 409);
+	}
+
+	keyData.used = true;
+	keyData.usedBy = idString;
+	keyData.usedAt = Date.now();
+	await env.SUBS.put(`key:${key}`, JSON.stringify(keyData));
+
+	if (keyData.tier !== "standard") {
+		await env.SUBS.put(`sub:${idString}`, keyData.tier);
+	}
+
+	return jsonResponse({ ok: true, tier: keyData.tier });
+}
+
+async function handleListKeys(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	if (!isAuthorized(payload?.token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+
+	const { keys: keyList } = await env.SUBS.list({ prefix: "key:" });
+	const keys = [];
+	for (const entry of keyList) {
+		const keyId = entry.name.slice("key:".length);
+		const stored = await env.SUBS.get(entry.name);
+		if (stored) {
+			try {
+				const data = JSON.parse(stored);
+				keys.push({ key: keyId, tier: data.tier, used: data.used, usedBy: data.usedBy || null, createdAt: data.createdAt });
+			} catch {
+				// skip corrupted entries
+			}
+		}
+	}
+
+	return jsonResponse({ keys });
+}
+
 async function handleBannedList(request, env) {
 	let payload;
 	try {
@@ -276,6 +380,15 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/banned-list") {
 			return handleBannedList(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/generate-key") {
+			return handleGenerateKey(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/redeem-key") {
+			return handleRedeemKey(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/list-keys") {
+			return handleListKeys(request, env);
 		}
 		return jsonResponse({ error: "not found" }, 404);
 	},

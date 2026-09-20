@@ -253,6 +253,20 @@ public struct PampGramSettings: Codable, Equatable {
     /// Telegram never verifies server-side — a locally-shown Premium badge/status, premium
     /// stickers & reactions in the picker, and the relaxed folder/pin client limits.
     public var legalPremiumEnabled: Bool
+    /// "Обход защиты от скриншотов" (Дополнительно → Telegram): allows taking screenshots in
+    /// chats/channels that have screenshot protection enabled by the other side.
+    public var screenshotBypassEnabled: Bool
+    /// "Скрыть чат при скриншоте" (Дополнительно → Telegram): blurs the screen for a moment
+    /// right after a screenshot is taken, so the captured image shows the blur instead of content.
+    public var screenshotBlurOnCapture: Bool
+    /// "Обход защиты от копирования" (Дополнительно → Telegram): allows copying messages in
+    /// chats where copy/forward protection is enabled by the channel/chat admin.
+    public var copyProtectionBypassEnabled: Bool
+    /// "Отключить автоудаление" (Дополнительно → Telegram): prevents auto-delete timer from
+    /// removing messages locally — the message stays on this device regardless of the TTL.
+    public var autoDeleteBypassEnabled: Bool
+    /// "Блокировка рекламы" (Дополнительно → Telegram): hides sponsored/ad messages from chats.
+    public var blockAdsEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -310,11 +324,16 @@ public struct PampGramSettings: Codable, Equatable {
             localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
+            screenshotBypassEnabled: false,
+            screenshotBlurOnCapture: false,
+            copyProtectionBypassEnabled: false,
+            autoDeleteBypassEnabled: false,
+            blockAdsEnabled: false,
             masterEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, screenshotBypassEnabled: Bool, screenshotBlurOnCapture: Bool, copyProtectionBypassEnabled: Bool, autoDeleteBypassEnabled: Bool, blockAdsEnabled: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -351,6 +370,11 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
+        self.screenshotBypassEnabled = screenshotBypassEnabled
+        self.screenshotBlurOnCapture = screenshotBlurOnCapture
+        self.copyProtectionBypassEnabled = copyProtectionBypassEnabled
+        self.autoDeleteBypassEnabled = autoDeleteBypassEnabled
+        self.blockAdsEnabled = blockAdsEnabled
         self.masterEnabled = masterEnabled
     }
 
@@ -420,6 +444,11 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
+        self.screenshotBypassEnabled = try container.decodeIfPresent(Bool.self, forKey: .screenshotBypassEnabled) ?? defaults.screenshotBypassEnabled
+        self.screenshotBlurOnCapture = try container.decodeIfPresent(Bool.self, forKey: .screenshotBlurOnCapture) ?? defaults.screenshotBlurOnCapture
+        self.copyProtectionBypassEnabled = try container.decodeIfPresent(Bool.self, forKey: .copyProtectionBypassEnabled) ?? defaults.copyProtectionBypassEnabled
+        self.autoDeleteBypassEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoDeleteBypassEnabled) ?? defaults.autoDeleteBypassEnabled
+        self.blockAdsEnabled = try container.decodeIfPresent(Bool.self, forKey: .blockAdsEnabled) ?? defaults.blockAdsEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
     }
 
@@ -434,6 +463,42 @@ public struct PampGramSettings: Codable, Equatable {
         settings.fakeStarsDisplayEnabled = false
         settings.fakeTonDisplayEnabled = false
         settings.localRublesPurchaseEnabled = false
+        return settings
+    }
+
+    /// A copy with all visual balances zeroed and all features disabled — applied when the
+    /// admin bans an account fully. Stored values are overwritten so the ban is immediate and
+    /// permanent until unbanned.
+    public func withBanReset() -> PampGramSettings {
+        var settings = self
+        settings.phantomGiftsEnabled = false
+        settings.fakeStarsBalance = 0
+        settings.fakeTonBalanceNanos = 0
+        settings.fakeStarsDisplayEnabled = false
+        settings.fakeTonDisplayEnabled = false
+        settings.antiDeleteMessagesEnabled = false
+        settings.ghostModeEnabled = false
+        settings.ghostHideReadReceipts = false
+        settings.ghostHideStoryViews = false
+        settings.ghostHideOnline = false
+        settings.ghostHideTyping = false
+        settings.ghostAutoOffline = false
+        settings.ghostReadOnAction = false
+        settings.visualEditEnabled = false
+        settings.fromHimGiftsEnabled = false
+        settings.voiceChangerMessagesEnabled = false
+        settings.fakeLocationEnabled = false
+        settings.chatLockEnabled = false
+        settings.localRublesBalanceKopecks = 0
+        settings.localRublesPurchaseEnabled = false
+        settings.infinitePinsEnabled = false
+        settings.legalPremiumEnabled = false
+        settings.screenshotBypassEnabled = false
+        settings.screenshotBlurOnCapture = false
+        settings.copyProtectionBypassEnabled = false
+        settings.autoDeleteBypassEnabled = false
+        settings.blockAdsEnabled = false
+        settings.masterEnabled = false
         return settings
     }
 

@@ -3,149 +3,62 @@ import UIKit
 import Postbox
 import SwiftSignalKit
 
-// MARK: - Хранилище настроек (UserDefaults-based для быстрого доступа)
-public final class ModSettings {
-    public static let shared = ModSettings()
-    private let defaults = UserDefaults.standard
-    private let notificationCenter = NotificationCenter.default
-    
-    private init() {
-        setupObservers()
-    }
-    
-    private func setupObservers() {
-        // При изменении любого параметра отправляем уведомление для обновления UI
-        notificationCenter.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: defaults,
-            queue: .main
-        ) { [weak self] _ in
-            self?.notificationCenter.post(name: NSNotification.Name("ModSettingsDidChange"), object: nil)
-        }
-    }
-    
-    // MARK: Copy Protection
-    @objc public dynamic var bypassCopyProtection: Bool {
-        get { defaults.bool(forKey: "mod_bypassCopyProtection") }
-        set {
-            defaults.set(newValue, forKey: "mod_bypassCopyProtection")
-            broadcastChange()
-        }
-    }
-    
-    @objc public dynamic var alwaysKeepForwardAuthor: Bool {
-        get { defaults.bool(forKey: "mod_alwaysKeepForwardAuthor") }
-        set {
-            defaults.set(newValue, forKey: "mod_alwaysKeepForwardAuthor")
-            broadcastChange()
-        }
-    }
-    
-    // MARK: Auto-Delete
-    @objc public dynamic var disableAutoDelete: Bool {
-        get { defaults.bool(forKey: "mod_disableAutoDelete") }
-        set {
-            defaults.set(newValue, forKey: "mod_disableAutoDelete")
-            broadcastChange()
-        }
-    }
-    
-    // MARK: Screenshot Protection
-    @objc public dynamic var bypassScreenshotProtection: Bool {
-        get { defaults.bool(forKey: "mod_bypassScreenshotProtection") }
-        set {
-            defaults.set(newValue, forKey: "mod_bypassScreenshotProtection")
-            broadcastChange()
-        }
-    }
-    
-    @objc public dynamic var hideChatOnScreenshot: Bool {
-        get { defaults.bool(forKey: "mod_hideChatOnScreenshot") }
-        set {
-            defaults.set(newValue, forKey: "mod_hideChatOnScreenshot")
-            broadcastChange()
-        }
-    }
-    
-    // MARK: Ads Blocking
-    @objc public dynamic var blockAds: Bool {
-        get { defaults.bool(forKey: "mod_blockAds") }
-        set {
-            defaults.set(newValue, forKey: "mod_blockAds")
-            broadcastChange()
-        }
-    }
-    
-    private func broadcastChange() {
-        DispatchQueue.main.async {
-            self.notificationCenter.post(name: NSNotification.Name("ModSettingsDidChange"), object: nil)
-        }
-    }
-}
-
-// MARK: - Главный контроллер модификаций
+/// Bridge between Telegram's runtime hooks and PampGram's Postbox-stored settings.
+/// The old UserDefaults-based `ModSettings` is replaced: all state now lives in
+/// `PampGramSettings` (Postbox), ensuring it survives across sessions and gets reset
+/// on ban like every other PampGram feature.
 public final class ModFeaturesController {
     public static let shared = ModFeaturesController()
-    
-    private var screenshotBlurView: UIVisualEffectView?
-    private var copyObservationToken: NSObjectProtocol?
-    private var messageInterceptionActive = false
-    
+
     private init() {
         setupScreenshotObserver()
-        setupSettingsObserver()
     }
-    
-    // MARK: - Copy Protection Integration
-    /// Вызвать Перед попыткой копирования сообщения
-    /// Используется в: TelegramUI/Views/Chat/TextSelectionController
+
+    private var cachedScreenshotBypass = false
+    private var cachedScreenshotBlur = false
+    private var cachedCopyBypass = false
+    private var cachedAutoDeleteBypass = false
+    private var cachedBlockAds = false
+
+    public func updateFromSettings(_ settings: PampGramSettings) {
+        self.cachedScreenshotBypass = settings.screenshotBypassEnabled
+        self.cachedScreenshotBlur = settings.screenshotBlurOnCapture
+        self.cachedCopyBypass = settings.copyProtectionBypassEnabled
+        self.cachedAutoDeleteBypass = settings.autoDeleteBypassEnabled
+        self.cachedBlockAds = settings.blockAdsEnabled
+    }
+
+    // MARK: - Copy Protection
+
     public func canCopyMessage(from message: Any?, withDefaultValue defaultCanCopy: Bool) -> Bool {
-        // Если включена защита от копирования, проверяем bypassCopyProtection
-        if ModSettings.shared.bypassCopyProtection {
-            return true // Разрешаем копирование, несмотря на защиту
+        if self.cachedCopyBypass {
+            return true
         }
         return defaultCanCopy
     }
-    
-    /// Обработка скопированного текста перед сохранением в буфер обмена
-    /// Используется в: TelegramUI/Views/Chat/ChatController
-    public func processCopiedText(_ text: String) -> String {
-        var result = text
-        
-        // Если включено "Всегда сохранять автора при пересылке"
-        if ModSettings.shared.alwaysKeepForwardAuthor {
-            // Добавляем информацию об авторе, если её нет
-            if !result.contains("via @") {
-                result += "\n\n[Source preserved]"
-            }
-        }
-        
-        return result
-    }
-    
-    // MARK: - Auto-Delete Override
-    /// Перехватывает TTL (Time-To-Live) сообщения перед удалением
-    /// Используется в: TelegramCore/Messages/MessageCleanupManager
+
+    // MARK: - Auto-Delete
+
     public func shouldAutoDeleteMessage(with ttlSeconds: Int32?) -> Bool {
-        if ModSettings.shared.disableAutoDelete {
-            return false // Отключаем автоудаление
+        if self.cachedAutoDeleteBypass {
+            return false
         }
         return ttlSeconds != nil && ttlSeconds! > 0
     }
-    
+
     // MARK: - Screenshot Protection
-    /// Применяется к UIView, чтобы сделать его невидимым при скриншоте
-    /// Используется в: TelegramUI/Views/Chat/ChatController viewDidLoad()
+
+    public var isScreenshotBypassEnabled: Bool {
+        return self.cachedScreenshotBypass
+    }
+
     public func applyScreenshotProtection(to view: UIView) {
-        if ModSettings.shared.bypassScreenshotProtection {
-            // Если защита отключена, ничего не делаем
+        if self.cachedScreenshotBypass {
             return
         }
-        
-        // Используем UITextView-style подход для пеумышленной защиты
         view.layer.setValue(NSNumber(value: true), forKey: "hideFromScreenshot")
     }
-    
+
     private func setupScreenshotObserver() {
         NotificationCenter.default.addObserver(
             forName: UIApplication.userDidTakeScreenshotNotification,
@@ -155,29 +68,25 @@ public final class ModFeaturesController {
             self?.handleScreenshotTaken()
         }
     }
-    
+
     private func handleScreenshotTaken() {
-        guard ModSettings.shared.hideChatOnScreenshot else { return }
-        guard !ModSettings.shared.bypassScreenshotProtection else { return }
-        
-        // Находим main window
+        guard self.cachedScreenshotBlur else { return }
+        guard !self.cachedScreenshotBypass else { return }
+
         guard let window = UIApplication.shared.windows.first(where: { $0.isKeyWindow }) else {
             return
         }
-        
-        // Создаём blur view
+
         let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterialDark))
         blur.frame = window.bounds
-        blur.tag = 9999 // Специальный тег для идентификации
+        blur.tag = 9999
         blur.alpha = 0.0
-        
+
         window.addSubview(blur)
-        
-        // Анимируем появление и исчезновение
+
         UIView.animate(withDuration: 0.2, animations: {
             blur.alpha = 1.0
         }) { _ in
-            // Продержим blur 0.5 секунды
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 UIView.animate(withDuration: 0.3, animations: {
                     blur.alpha = 0.0
@@ -187,51 +96,18 @@ public final class ModFeaturesController {
             }
         }
     }
-    
-    // MARK: - Sponsored Messages Filter
-    /// Фильтрует спонсорские/рекламные сообщения перед отображением
-    /// Используется в: TelegramUI/Views/Chat/ChatMessageItemView
+
+    // MARK: - Ads
+
     public func shouldDisplayMessage(_ message: Any?, isSponsoredContent: Bool) -> Bool {
-        if isSponsoredContent && ModSettings.shared.blockAds {
-            return false // Скрываем рекламу
+        if isSponsoredContent && self.cachedBlockAds {
+            return false
         }
         return true
     }
-    
-    /// Альтернативный способ для фильтрации в списке сообщений
+
     public func filterOutAdsFromMessages(_ messages: [Any]) -> [Any] {
-        guard ModSettings.shared.blockAds else { return messages }
-        
-        // Фильтруем спонсорские сообщения
-        return messages.filter { message in
-            // Здесь нужна логика определения спонсорского контента
-            // В реальности это проверяется через свойство message.isSponsoredMessage
-            return true
-        }
-    }
-    
-    // MARK: - Settings Observer
-    private func setupSettingsObserver() {
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("ModSettingsDidChange"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Обновляем UI при изменении настроек
-            self?.notifyAboutSettingsChange()
-        }
-    }
-    
-    private func notifyAboutSettingsChange() {
-        NotificationCenter.default.post(
-            name: NSNotification.Name("ModFeaturesDidChange"),
-            object: nil
-        )
-    }
-    
-    deinit {
-        if let token = copyObservationToken {
-            NotificationCenter.default.removeObserver(token)
-        }
+        guard self.cachedBlockAds else { return messages }
+        return messages
     }
 }

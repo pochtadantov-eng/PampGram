@@ -122,6 +122,8 @@ private final class PampGramBannedViewController: UIViewController {
 }
 
 public func pampGramPresentBannedScreen(context: AccountContext, reason: String) {
+    PampGramSubscriptionAPI.applyBanReset(postbox: context.account.postbox)
+
     guard let presentingController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController else {
         return
     }
