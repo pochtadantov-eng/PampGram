@@ -269,6 +269,18 @@ public struct PampGramSettings: Codable, Equatable {
     /// without the user tapping the entry. Purely local: nothing is sent back to Telegram, and
     /// the message's real timer, consumption, and deletion are untouched.
     public var saveInstantVideosEnabled: Bool
+    /// "Скриншоты историй" (Дополнительно): lets a screenshot of a story that has forwarding
+    /// disabled (`StoryItem.isForwardingDisabled`) come out normal instead of black. Stock
+    /// Telegram renders such a story's image through a `UITextField.isSecureTextEntry` view
+    /// (`StoryItemImageView.swift`) specifically so iOS blacks it out in any screenshot or
+    /// screen recording — a real OS-level effect, not a UI overlay, so there's nothing to
+    /// "clean up" after the fact. This setting just stops that secure wrapper from being used
+    /// for this account, in `StoryItemContentComponent.swift`, read synchronously by
+    /// `PampGramStoryScreenshotDisplay` (same pattern as `PampGramTemporaryMediaDisplay`).
+    /// Purely local and purely visual: Telegram has no "story was screenshotted" report to
+    /// begin with (that only exists for Secret Chats), so this doesn't change what anyone else
+    /// sees or is told — it only changes what this device's own screenshot captures.
+    public var storyScreenshotsEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -328,11 +340,12 @@ public struct PampGramSettings: Codable, Equatable {
             legalPremiumEnabled: false,
             showTemporaryMediaEnabled: false,
             saveInstantVideosEnabled: false,
+            storyScreenshotsEnabled: false,
             masterEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, saveInstantVideosEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, saveInstantVideosEnabled: Bool, storyScreenshotsEnabled: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -371,6 +384,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.legalPremiumEnabled = legalPremiumEnabled
         self.showTemporaryMediaEnabled = showTemporaryMediaEnabled
         self.saveInstantVideosEnabled = saveInstantVideosEnabled
+        self.storyScreenshotsEnabled = storyScreenshotsEnabled
         self.masterEnabled = masterEnabled
     }
 
@@ -442,6 +456,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
         self.showTemporaryMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .showTemporaryMediaEnabled) ?? defaults.showTemporaryMediaEnabled
         self.saveInstantVideosEnabled = try container.decodeIfPresent(Bool.self, forKey: .saveInstantVideosEnabled) ?? defaults.saveInstantVideosEnabled
+        self.storyScreenshotsEnabled = try container.decodeIfPresent(Bool.self, forKey: .storyScreenshotsEnabled) ?? defaults.storyScreenshotsEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
     }
 
