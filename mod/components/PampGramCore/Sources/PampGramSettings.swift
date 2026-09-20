@@ -261,6 +261,17 @@ public struct PampGramSettings: Codable, Equatable {
     /// Opening the media still goes through Telegram's own secret-media viewer untouched — this
     /// never changes the message's real timer, consumption, or deletion.
     public var showTemporaryMediaEnabled: Bool
+    /// "Сохранение видео" (Ghost): the moment an incoming round-video message ("кружочек")
+    /// sent as view-once or with a self-destruct timer is laid out in an open chat, save it
+    /// into this device's Photos library — bypassing the restriction stock Telegram puts on
+    /// secret media (its own "Save to Camera Roll" action is hidden for it, see
+    /// `ChatInterfaceStateContextMenus.swift`). Read synchronously by
+    /// `PampGramInstantVideoSaveRuntime` (`PampGramMediaKit`) from
+    /// `ChatMessageInteractiveInstantVideoNode`. Saves at most once per message — an in-memory
+    /// guard plus a Postbox-persisted marker (`PampGramSavedInstantVideoStore`) stop duplicate
+    /// Photos entries across scroll churn and app relaunches. Purely local: nothing is sent
+    /// back to Telegram, and the message's real timer, consumption, and deletion are untouched.
+    public var saveInstantVideosEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -319,11 +330,12 @@ public struct PampGramSettings: Codable, Equatable {
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
             showTemporaryMediaEnabled: false,
+            saveInstantVideosEnabled: false,
             masterEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, saveInstantVideosEnabled: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -361,6 +373,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
         self.showTemporaryMediaEnabled = showTemporaryMediaEnabled
+        self.saveInstantVideosEnabled = saveInstantVideosEnabled
         self.masterEnabled = masterEnabled
     }
 
@@ -431,6 +444,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
         self.showTemporaryMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .showTemporaryMediaEnabled) ?? defaults.showTemporaryMediaEnabled
+        self.saveInstantVideosEnabled = try container.decodeIfPresent(Bool.self, forKey: .saveInstantVideosEnabled) ?? defaults.saveInstantVideosEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
     }
 
@@ -492,6 +506,7 @@ public enum PampGramPreferencesKeys {
     public static let appearance = key(900_600)
     public static let behavior = key(900_700)
     public static let fakeAdmin = key(900_800)
+    public static let savedInstantVideos = key(900_900)
 }
 
 public enum PampGramCore {
