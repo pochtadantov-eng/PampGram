@@ -91,6 +91,13 @@ mod/
   сообщения несут настоящий `TelegramMediaAction`, спецобработки не требуется);
 - `PeerInfoScreen.swift`, `PeerInfoScreenSettingsActions.swift`, `PeerInfoSettingsItems.swift`
   — строка «PampGram» в настройках и переход на её экран;
+- `AccountContext.swift` — запускает `PampGramTemporaryMediaDisplay.shared.start(...)` при
+  создании аккаунта (тем же способом, что уже используется для `PampGramFakeAdminRuntime`);
+- `ChatMessageInteractiveMediaNode.swift` — «Показывать временную медиа»: если настройка
+  включена, локальный флаг `isSecretMedia` для фото/видео с таймером принудительно сбрасывается
+  в `false` в обоих местах, откуда он читается (`asyncLayout()` и `updateStatus()`), — после
+  этого весь существующий код бабла рисует медиа как обычное фото/видео (без размытия, бейджа
+  таймера и жеста «посмотреть один раз»). Экран, куда сообщение открывается по тапу, не тронут;
 - четыре `BUILD`-файла (Bazel).
 
 ## Как собрать

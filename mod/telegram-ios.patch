@@ -20698,7 +20698,7 @@ index 57ecb9d..f0a68ec 100644
      }
      
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd..7bb0216 100644
+index 4d971fd..f6260cb 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -20710,7 +20710,7 @@ index 4d971fd..7bb0216 100644
  import TemporaryCachedPeerDataManager
  import PhoneNumberFormat
  import TelegramUIPreferences
-@@ -271,7 +272,11 @@ public final class AccountContextImpl: AccountContext {
+@@ -271,7 +273,11 @@ public final class AccountContextImpl: AccountContext {
      public private(set) var isFrozen: Bool
      
      public let imageCache: AnyObject?
@@ -20723,16 +20723,17 @@ index 4d971fd..7bb0216 100644
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -295,6 +300,8 @@ public final class AccountContextImpl: AccountContext {
+@@ -295,6 +301,9 @@ public final class AccountContextImpl: AccountContext {
          }
          self.fetchManager = FetchManagerImpl(postbox: account.postbox, storeManager: self.downloadedMediaStoreManager)
          if sharedContext.applicationBindings.isMainApp && !temp {
 +            self.pampGramGiftReceiveDisposable.set(PampGramPhantomGiftManager.observeIncomingGiftTransfers(account: account))
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
++            PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
              self.prefetchManager = PrefetchManagerImpl(sharedContext: sharedContext, account: account, engine: self.engine, fetchManager: self.fetchManager)
              self.wallpaperUploadManager = WallpaperUploadManagerImpl(sharedContext: sharedContext, account: account, presentationData: sharedContext.presentationData)
              self.themeUpdateManager = ThemeUpdateManagerImpl(sharedContext: sharedContext, account: account)
-@@ -505,6 +513,7 @@ public final class AccountContextImpl: AccountContext {
+@@ -505,6 +514,7 @@ public final class AccountContextImpl: AccountContext {
      }
      
      deinit {
@@ -20798,3 +20799,57 @@ diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/Tel
 +        }
 +        
          let _ = (self.shouldDivertMessagesToScheduled(messages: messages)
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD
+index 85b0e37..e3ad1ca 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD
+@@ -45,6 +45,7 @@ swift_library(
+         "//submodules/Utils/RangeSet",
+         "//submodules/MediaResources",
+         "//submodules/UIKitRuntimeUtils",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
+index f2177bb..fbc3dae 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
+@@ -11,6 +11,7 @@ import TelegramUIPreferences
+ import UniversalMediaPlayer
+ import TextFormat
+ import AccountContext
++import PampGramCore
+ import RadialStatusNode
+ import StickerResources
+ import PhotoResources
+@@ -922,7 +923,14 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+             
+             var nativeSize: CGSize
+             
+-            let isSecretMedia = message.containsSecretMedia
++            var isSecretMedia = message.containsSecretMedia
++            // PampGram "Показывать временную медиа": draw view-once/self-destructing media
++            // exactly like a normal photo in the bubble (no blur, no badge, no view-once
++            // gesture). Purely local display — opening the message still goes through
++            // Telegram's own secret-media viewer untouched.
++            if isSecretMedia && PampGramTemporaryMediaDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) {
++                isSecretMedia = false
++            }
+             var secretBeginTimeAndTimeout: (Double, Double)?
+             if isSecretMedia {
+                 if let attribute = message.autoclearAttribute {
+@@ -2563,7 +2571,12 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+         }*/
+         
+         var secretBeginTimeAndTimeout: (Double?, Double)?
+-        let isSecretMedia = message.containsSecretMedia
++        var isSecretMedia = message.containsSecretMedia
++        // PampGram "Показывать временную медиа": see the matching override in asyncLayout()
++        // above — same reasoning, this is the status/badge/spoiler-overlay update path.
++        if isSecretMedia, let context = self.context, PampGramTemporaryMediaDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) {
++            isSecretMedia = false
++        }
+         if isSecretMedia {
+             if let attribute = message.autoclearAttribute {
+                 if let countdownBeginTime = attribute.countdownBeginTime {

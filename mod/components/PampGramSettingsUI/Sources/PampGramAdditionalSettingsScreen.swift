@@ -20,8 +20,9 @@ private final class PampGramAdditionalArguments {
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
+    let toggleShowTemporaryMedia: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleShowTemporaryMedia: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -32,6 +33,7 @@ private final class PampGramAdditionalArguments {
         self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
+        self.toggleShowTemporaryMedia = toggleShowTemporaryMedia
     }
 }
 
@@ -39,6 +41,7 @@ private enum PampGramAdditionalSection: Int32 {
     case about
     case voice
     case speed
+    case media
     case premium
     case extras
 }
@@ -55,6 +58,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case uploadSpeedRow(String, String)
     case downloadSpeedRow(String, String)
     case speedFooter(String)
+
+    case mediaHeader(String)
+    case mediaToggle(String, Bool)
+    case mediaFooter(String)
 
     case premiumHeader(String)
     case infinitePinsToggle(String, Bool)
@@ -76,6 +83,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
+        case .mediaHeader, .mediaToggle, .mediaFooter:
+            return PampGramAdditionalSection.media.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
         case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .extrasFooter:
@@ -103,26 +112,32 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 7
         case .speedFooter:
             return 8
-        case .premiumHeader:
+        case .mediaHeader:
             return 9
-        case .infinitePinsToggle:
+        case .mediaToggle:
             return 10
-        case .legalPremiumToggle:
+        case .mediaFooter:
             return 11
-        case .premiumFooter:
+        case .premiumHeader:
             return 12
-        case .extrasHeader:
+        case .infinitePinsToggle:
             return 13
-        case .fakeLocationRow:
+        case .legalPremiumToggle:
             return 14
-        case .chatLockRow:
+        case .premiumFooter:
             return 15
-        case .callOverridesRow:
+        case .extrasHeader:
             return 16
-        case .fakeAdminRow:
+        case .fakeLocationRow:
             return 17
-        case .extrasFooter:
+        case .chatLockRow:
             return 18
+        case .callOverridesRow:
+            return 19
+        case .fakeAdminRow:
+            return 20
+        case .extrasFooter:
+            return 21
         }
     }
 
@@ -133,10 +148,14 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .mediaFooter(text), let .premiumFooter(text), let .extrasFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .mediaHeader(text), let .premiumHeader(text), let .extrasHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .mediaToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleShowTemporaryMedia(value)
+            })
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleInfinitePins(value)
@@ -184,7 +203,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
 private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramAdditionalEntry] {
     var entries: [PampGramAdditionalEntry] = []
 
-    entries.append(.aboutText("Другие возможности PampGram: голос и скорость передачи файлов."))
+    entries.append(.aboutText("Другие возможности PampGram: голос, скорость передачи файлов и отображение временной медиа."))
 
     entries.append(.voiceHeader("ИЗМЕНЕНИЕ ГОЛОСА"))
     entries.append(.voiceToggle("Изменять голос в сообщениях", settings.voiceChangerMessagesEnabled))
@@ -195,6 +214,10 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.uploadSpeedRow("Ускорение загрузки", settings.uploadSpeedMode.displayName))
     entries.append(.downloadSpeedRow("Ускорение скачивания", settings.downloadSpeedMode.displayName))
     entries.append(.speedFooter("Меняет, насколько параллельно Telegram передаёт части файлов. «Турбо» задействует потолок, уже используемый самим приложением для переноса истории — реальная скорость всё равно зависит от сети и сервера."))
+
+    entries.append(.mediaHeader("ВРЕМЕННАЯ МЕДИА"))
+    entries.append(.mediaToggle("Показывать временную медиа", settings.showTemporaryMediaEnabled))
+    entries.append(.mediaFooter("Фото и видео с таймером (в том числе «посмотреть один раз») показываются в чате сразу, как обычные медиа — без размытия и без ограничения «только один просмотр». Открытие всё ещё идёт через обычный просмотрщик Telegram: реальный таймер, статус просмотра и удаление сообщения не меняются, меняется только то, как оно выглядит в ленте на этом устройстве."))
 
     entries.append(.premiumHeader("ПРЕМИУМ"))
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
@@ -256,9 +279,10 @@ private func pampGramPresentVoicePresetPicker(context: AccountContext, presentCo
 }
 
 /// "Дополнительно": the voice-message pitch/tempo changer (5 fixed presets, messages only —
-/// never live calls, see `PampGramVoiceChanger.swift`) and the upload/download speed presets
+/// never live calls, see `PampGramVoiceChanger.swift`), the upload/download speed presets
 /// (Стандарт/Быстрый/Турбо — each just toggles existing, already-used parallelism knobs in
-/// Telegram's own upload/download code).
+/// Telegram's own upload/download code), and "Показывать временную медиа" — display-only,
+/// see `PampGramTemporaryMediaDisplay` and its use in `ChatMessageInteractiveMediaNode.swift`.
 public func pampGramAdditionalSettingsController(context: AccountContext) -> ViewController {
     var presentControllerImpl: ((ViewController) -> Void)?
     var pushControllerImpl: ((ViewController) -> Void)?
@@ -327,6 +351,13 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.legalPremiumEnabled = value
+                return settings
+            }).start()
+        },
+        toggleShowTemporaryMedia: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.showTemporaryMediaEnabled = value
                 return settings
             }).start()
         }
