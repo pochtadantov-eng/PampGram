@@ -214,8 +214,8 @@ private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, 
     entries.append(.exceptionsRow("Добавить исключение", exceptionCount == 0 ? "" : "\(exceptionCount)", on))
     entries.append(.exceptionsFooter("Режим призрака не действует в выбранных чатах, типах чатов или папках. Для папок учитываются чаты, добавленные в папку вручную."))
 
-    entries.append(.mediaHeader("СОХРАНЕНИЕ ВИДЕО"))
-    entries.append(.saveInstantVideosToggle("Сохранение видео", settings.saveInstantVideosEnabled))
+    entries.append(.mediaHeader("СОХРАНЕНИЕ ОДНОРАЗОВЫХ"))
+    entries.append(.saveInstantVideosToggle("Сохранение Одноразовых", settings.saveInstantVideosEnabled))
     entries.append(.mediaFooter("Когда включено, на кружочке (видеосообщении), который вам прислали как «посмотреть один раз» или с таймером, при долгом нажатии появляется пункт «Сохранить Медиа» — сохраняет его в «Фото» на этом устройстве. Ничего не сохраняется само по себе, только по нажатию. При первом сохранении система один раз спросит доступ к «Фото». Работает независимо от «Режима призрака» выше. Реальный таймер, статус просмотра и удаление сообщения у Telegram не меняются — это только локальная копия на этом устройстве."))
 
     return entries

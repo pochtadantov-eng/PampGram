@@ -261,7 +261,7 @@ public struct PampGramSettings: Codable, Equatable {
     /// Opening the media still goes through Telegram's own secret-media viewer untouched — this
     /// never changes the message's real timer, consumption, or deletion.
     public var showTemporaryMediaEnabled: Bool
-    /// "Сохранение видео" (Ghost): adds a "Сохранить Медиа" entry to the long-press menu of an
+    /// "Сохранение Одноразовых" (Ghost): adds a "Сохранить Медиа" entry to the long-press menu of an
     /// incoming round-video message ("кружочек") sent as view-once or with a self-destruct
     /// timer, saving it into this device's Photos library on tap — bypassing the restriction
     /// stock Telegram puts on secret media (its own "Save Video" action is hidden for it, see
