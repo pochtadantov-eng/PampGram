@@ -261,16 +261,13 @@ public struct PampGramSettings: Codable, Equatable {
     /// Opening the media still goes through Telegram's own secret-media viewer untouched — this
     /// never changes the message's real timer, consumption, or deletion.
     public var showTemporaryMediaEnabled: Bool
-    /// "Сохранение видео" (Ghost): the moment an incoming round-video message ("кружочек")
-    /// sent as view-once or with a self-destruct timer is laid out in an open chat, save it
-    /// into this device's Photos library — bypassing the restriction stock Telegram puts on
-    /// secret media (its own "Save to Camera Roll" action is hidden for it, see
-    /// `ChatInterfaceStateContextMenus.swift`). Read synchronously by
-    /// `PampGramInstantVideoSaveRuntime` (`PampGramMediaKit`) from
-    /// `ChatMessageInteractiveInstantVideoNode`. Saves at most once per message — an in-memory
-    /// guard plus a Postbox-persisted marker (`PampGramSavedInstantVideoStore`) stop duplicate
-    /// Photos entries across scroll churn and app relaunches. Purely local: nothing is sent
-    /// back to Telegram, and the message's real timer, consumption, and deletion are untouched.
+    /// "Сохранение видео" (Ghost): adds a "Сохранить Медиа" entry to the long-press menu of an
+    /// incoming round-video message ("кружочек") sent as view-once or with a self-destruct
+    /// timer, saving it into this device's Photos library on tap — bypassing the restriction
+    /// stock Telegram puts on secret media (its own "Save Video" action is hidden for it, see
+    /// `ChatInterfaceStateContextMenus.swift`). A manual, explicit action: nothing is saved
+    /// without the user tapping the entry. Purely local: nothing is sent back to Telegram, and
+    /// the message's real timer, consumption, and deletion are untouched.
     public var saveInstantVideosEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
@@ -506,7 +503,6 @@ public enum PampGramPreferencesKeys {
     public static let appearance = key(900_600)
     public static let behavior = key(900_700)
     public static let fakeAdmin = key(900_800)
-    public static let savedInstantVideos = key(900_900)
 }
 
 public enum PampGramCore {
