@@ -286,7 +286,7 @@ private final class PampGramProfileRatingEditorController: ViewController {
             self.presetStackView.centerYAnchor.constraint(equalTo: self.presetScrollView.frameLayoutGuide.centerYAnchor)
         ])
 
-        for level in [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100] {
+        for level in [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 99] {
             let button = PampGramRatingPresetButton(level: level)
             button.addTarget(self, action: #selector(self.presetPressed(_:)), for: .touchUpInside)
             self.presetButtons.append(button)
@@ -306,7 +306,7 @@ private final class PampGramProfileRatingEditorController: ViewController {
         panel.addSubview(self.levelValueLabel)
         self.configureSlider(self.levelSlider)
         self.levelSlider.minimumValue = 1.0
-        self.levelSlider.maximumValue = 100.0
+        self.levelSlider.maximumValue = 99.0
         self.levelSlider.addTarget(self, action: #selector(self.levelChanged(_:)), for: .valueChanged)
         panel.addSubview(self.levelSlider)
         NSLayoutConstraint.activate([
@@ -395,7 +395,7 @@ private final class PampGramProfileRatingEditorController: ViewController {
             return
         }
         self.didLoadInitialState = true
-        let storedLevel = min(Int64(100), max(Int64(1), state.ratingValue))
+        let storedLevel = min(Int64(99), max(Int64(1), state.ratingValue))
         self.selectedLevel = Int(storedLevel)
         if state.ratingPoints > 0 {
             self.pointsProgress = self.progress(for: state.ratingPoints, at: self.selectedLevel)
@@ -422,7 +422,7 @@ private final class PampGramProfileRatingEditorController: ViewController {
     }
 
     @objc private func levelChanged(_ slider: UISlider) {
-        self.selectedLevel = min(100, max(1, Int(slider.value.rounded())))
+        self.selectedLevel = min(99, max(1, Int(slider.value.rounded())))
         self.updateUI()
     }
 
@@ -470,40 +470,32 @@ private final class PampGramProfileRatingEditorController: ViewController {
         }
     }
 
-    /// PampGram's own approximation of Telegram's real level thresholds. Telegram computes
-    /// these per-account on the server and sends the next one down as `next_level_stars` (see
-    /// the official `StarsRating` schema at core.telegram.org/type/StarsRating) — there's no
-    /// published client-side formula to copy exactly. This curve is anchored on the one
-    /// concrete real number available (Level 1 tops out at 5 000, confirmed straight off the
-    /// in-app "Рейтинг" screen) and grows just fast enough afterward to land in the right rough
-    /// order of magnitude reported for later levels (on the order of a million total by the
-    /// high 70s/80s) — a deliberately smooth curve, not a claim to Telegram's exact numbers.
+    /// Telegram's real per-level point thresholds (min, max), levels 1–99 — the actual server
+    /// values, not an approximation. 99 is the real maximum level; there is no level 100.
+    private static let levelPointRanges: [(Int64, Int64)] = [
+        (1, 4999), (5000, 11999), (12000, 18999), (19000, 26999), (27000, 35999), (36000, 45999),
+        (46000, 56999), (57000, 67999), (68000, 80999), (81000, 93999), (94000, 106999), (107000, 119999),
+        (120000, 132999), (133000, 145999), (146000, 159999), (160000, 172999), (173000, 185999), (186000, 198999),
+        (199000, 211999), (212000, 224999), (225000, 237999), (238000, 250999), (251000, 264999), (265000, 277999),
+        (278000, 290999), (291000, 303999), (304000, 316999), (317000, 329999), (330000, 342999), (343000, 355999),
+        (356000, 369999), (370000, 382999), (383000, 395999), (396000, 408999), (409000, 421999), (422000, 434999),
+        (435000, 447999), (448000, 460999), (461000, 474999), (475000, 487999), (488000, 500999), (501000, 513999),
+        (514000, 526999), (527000, 539999), (540000, 552999), (553000, 565999), (566000, 579999), (580000, 592999),
+        (593000, 605999), (606000, 618999), (619000, 631999), (632000, 644999), (645000, 657999), (658000, 670999),
+        (671000, 684999), (685000, 697999), (698000, 710999), (711000, 723999), (724000, 736999), (737000, 749999),
+        (750000, 762999), (763000, 775999), (776000, 789999), (790000, 802999), (803000, 815999), (816000, 828999),
+        (829000, 841999), (842000, 854999), (855000, 867999), (868000, 880999), (881000, 884999), (885000, 907999),
+        (908000, 920999), (921000, 933999), (934000, 946999), (947000, 959999), (960000, 972999), (973000, 985999),
+        (986000, 999999), (1000000, 1399999), (1400000, 1959999), (1960000, 2743999), (2744000, 3841999), (3842000, 5378999),
+        (5379000, 7530999), (7531000, 10542999), (10543000, 14759999), (14760000, 20663999), (20664000, 28929999), (28930000, 40501999),
+        (40502000, 56702999), (56703000, 79383999), (79384000, 111138948), (111138949, 155596416), (155596417, 217837626), (217837627, 304976378),
+        (304976379, 426972111), (426972112, 597768210), (597768211, 836885651)
+    ]
+
     private func pointsRange(for level: Int) -> ClosedRange<Int64> {
-        let clampedLevel = min(100, max(1, level))
-        let lowerBound = self.cumulativePoints(throughLevel: clampedLevel - 1)
-        let width = self.levelWidth(clampedLevel)
-        return lowerBound...(lowerBound + width - 1)
-    }
-
-    /// How many points levels 1...`level` need in total, i.e. the points value at which
-    /// `level + 1` begins.
-    private func cumulativePoints(throughLevel level: Int) -> Int64 {
-        guard level >= 1 else {
-            return 0
-        }
-        var total: Int64 = 0
-        for n in 1...level {
-            total += self.levelWidth(n)
-        }
-        return total
-    }
-
-    /// How many points `level` itself spans, before moving to the next one. Rounded to the
-    /// nearest 100 so the thresholds read like Telegram's own round numbers rather than an
-    /// obviously-computed curve.
-    private func levelWidth(_ level: Int) -> Int64 {
-        let raw = 5_000.0 * pow(Double(level), 0.3)
-        return Int64((raw / 100.0).rounded()) * 100
+        let clampedLevel = min(99, max(1, level))
+        let (lowerBound, upperBound) = Self.levelPointRanges[clampedLevel - 1]
+        return lowerBound...upperBound
     }
 
     private func points(for level: Int, progress: Float) -> Int64 {
