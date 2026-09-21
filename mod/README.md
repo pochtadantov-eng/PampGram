@@ -110,6 +110,21 @@ mod/
   и для каждого одноразового/таймерного сообщения молча запускает `fetchedMediaResource` (фото →
   `ImageMediaReference`, видео/голосовое → `FileMediaReference`), до открытия пользователем.
   Один тумблер на всё — тот же `antiDeleteMessagesEnabled`, отдельной настройки нет;
+- Тот же `AccountStateManagementUtils.swift` — ещё один случай в `replayFinalState`,
+  `.UpdateMinAvailableMessage(id)`: единственный путь, которым канал/супергруппа теряет сразу
+  весь диапазон истории (плавающая нижняя граница доступных сообщений — `updateChannelAvailableMessages`
+  в API), в отличие от `.DeleteMessages`/`.DeleteMessagesWithGlobalIds`, которые несут явный
+  список id. Перед `transaction.deleteMessagesInRange(...)` весь диапазон перебирается через
+  `transaction.withAllMessages(...)`, и получившийся список id идёт в те же самые
+  `PampGramSecretMediaPrefetch.prefetchIfNeeded`/`PampGramDeletedMessageCapture.captureBeforeDelete`,
+  что и для обычного удаления, — код капчура и превентивной подкачки медиа не дублируется;
+- `TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift`, `openBotForumMoreMenu` (меню «⋯» в
+  шапке приватного чата) — пункт «Восстановить чат»: не отдельный механизм перехвата, а просто
+  подтверждение того, что уже сохранено `PampGramDeletedMessageStore`-ем для этого собеседника
+  (обе капчур-функции выше уже отрабатывают на любой заход `replayFinalState`, живой или после
+  оффлайна — `getDifference` при следующем запуске прогоняет всё пропущенное через тот же путь).
+  Нажатие считает записи для текущего peerId и показывает `UndoOverlayController`-тост с
+  количеством — если больше нуля, сообщения уже в истории чата, восстановлены автоматически;
 - `StoryItemContentComponent.swift` и `StoryItemSetContainerComponent.swift` — «Сохранение
   историй», два независимых изменения за одной настройкой:
   1. В обоих местах, где строится `isCaptureProtected` для `StoryItemImageView`

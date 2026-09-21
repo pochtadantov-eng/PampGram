@@ -17346,7 +17346,7 @@ index 6cf628f0..e27ba816 100644
       * If it is a support account, mark messages as read here as they are
       * not marked as read when chat is opened.
 diff --git a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
-index 58db6c7..eff55c2 100644
+index 58db6c7..902b45b 100644
 --- a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
 +++ b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
 @@ -4126,6 +4126,14 @@ func replayFinalState(
@@ -17386,6 +17386,80 @@ index 58db6c7..eff55c2 100644
                  _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: ids, manualAddMessageThreadStatsDifference: { id, add, remove in
                      addMessageThreadStatsDifference(threadKey: id, remove: remove, addedMessagePeer: nil, addedMessageId: nil, isOutgoing: false)
                  })
+@@ -4457,6 +4473,20 @@ func replayFinalState(
+                 if let message = transaction.getMessage(id) {
+                     updatePeerChatInclusionWithMinTimestamp(transaction: transaction, id: id.peerId, minTimestamp: message.timestamp, forceRootGroupIfNotExists: false)
+                 }
++                // PampGram: this is a channel's available-message floor moving forward — the
++                // bulk-clear counterpart to the two individual-delete cases above, for a
++                // channel/supergroup's whole history rather than one message at a time. Same
++                // capture, same prefetch, just enumerated over the range about to disappear
++                // instead of an explicit id list, since the server never sends one here.
++                var pampGramRangeMessageIds: [MessageId] = []
++                transaction.withAllMessages(peerId: id.peerId, namespace: id.namespace) { rangeMessage in
++                    if rangeMessage.id.id <= id.id {
++                        pampGramRangeMessageIds.append(rangeMessage.id)
++                    }
++                    return true
++                }
++                PampGramSecretMediaPrefetch.prefetchIfNeeded(transaction: transaction, mediaBox: mediaBox, messageIds: pampGramRangeMessageIds)
++                PampGramDeletedMessageCapture.captureBeforeDelete(transaction: transaction, accountPeerId: accountPeerId, messageIds: pampGramRangeMessageIds)
+                 var resourceIds: [MediaResourceId] = []
+                 transaction.deleteMessagesInRange(peerId: id.peerId, namespace: id.namespace, minId: 1, maxId: id.id, forEachMedia: { media in
+                     addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
+index a48582f..fd84f10 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
+@@ -33,6 +33,7 @@ import InstantPageUI
+ import LocationUI
+ import BotPaymentsUI
+ import DeleteChatPeerActionSheetItem
++import PampGramCore
+ import HashtagSearchUI
+ import LegacyMediaPickerUI
+ import Emoji
+@@ -365,6 +366,40 @@ extension ChatControllerImpl {
+             self?.beginMessageSearch("")
+         })))
+         
++        // PampGram "Восстановить чат": a manual, always-available confirmation/repair action
++        // for "Восстановление удалённых сообщений" (Ghost) — every deletion this account's
++        // sync ever replays through `replayFinalState`, live or caught up after being offline,
++        // already gets captured and shown automatically (see `PampGramDeletedMessageCapture`
++        // and, for a channel's bulk-cleared history, the newer `.UpdateMinAvailableMessage`
++        // hook in `AccountStateManagementUtils.swift`) — this button doesn't gate anything on
++        // its own. It just reports how much is on record for *this* chat, so pressing it after
++        // reopening the app to a conversation the other side wiped tells you plainly that
++        // nothing was lost, rather than leaving that to be inferred silently.
++        items.append(.action(ContextMenuActionItem(text: "Восстановить чат", icon: { theme in
++            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Resend"), color: theme.contextMenu.primaryColor)
++        }, action: { [weak self] action in
++            action.dismissWithResult(.default)
++            
++            guard let self else {
++                return
++            }
++            let _ = (self.context.account.postbox.transaction { transaction -> Int in
++                return PampGramDeletedMessageStore.all(transaction: transaction).filter { $0.peerId == peerId }.count
++            }
++            |> deliverOnMainQueue).startStandalone(next: { [weak self] count in
++                guard let self else {
++                    return
++                }
++                let text: String
++                if count > 0 {
++                    text = "Сохранено удалённых сообщений в этом чате: \(count). Они уже в истории чата — фото, видео, кружочки и голосовые можно открыть как обычно."
++                } else {
++                    text = "Для этого чата пока нет сохранённых удалённых сообщений."
++                }
++                self.presentInGlobalOverlay(UndoOverlayController(presentationData: self.presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }))
++            })
++        })))
++        
+         if let threadId = self.chatLocation.threadId, let peer = self.presentationInterfaceState.renderedPeer?.chatMainPeer, (peer is TelegramChannel || peer is TelegramGroup) {
+             items.append(.action(ContextMenuActionItem(text: strings.CreateTopic_EditTitle, icon: { theme in
+                 return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Edit"), color: theme.contextMenu.primaryColor)
 diff --git a/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift b/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift
 index 7acc37a1..67e05581 100644
 --- a/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift
