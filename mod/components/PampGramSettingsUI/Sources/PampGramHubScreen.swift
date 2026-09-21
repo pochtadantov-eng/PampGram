@@ -302,6 +302,11 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
 /// features (gifts/balances, message history, and whatever future PampGram screens need) each
 /// get their own page instead of piling into a single scroll.
 public func pampGramSettingsController(context: AccountContext) -> ViewController {
+    // Idempotent: starts the screenshot-flash observer (see PampGramScreenshotGuard) the
+    // first time this hub is opened in the app's lifetime, so "Затемнять экран при
+    // скриншоте" takes effect without needing its own hook into app launch.
+    PampGramScreenshotGuard.shared.activate(postbox: context.account.postbox)
+
     var pushControllerImpl: ((ViewController) -> Void)?
     var presentControllerImpl: ((ViewController) -> Void)?
     var navigationControllerImpl: (() -> NavigationController?)?

@@ -245,6 +245,16 @@ public struct PampGramSettings: Codable, Equatable {
     public var chatLockEnabled: Bool
     public var chatLockPin: String
     public var lockedChatPeerIds: [PeerId]
+    /// "Затемнять экран при скриншоте" (Дополнительно): on `UIApplication.
+    /// userDidTakeScreenshotNotification`, briefly covers this device's own window in black
+    /// (`PampGramScreenshotGuard`). Purely cosmetic and purely local: iOS gives a third-party
+    /// app no way to stop the screenshot shortcut itself (unlike Android's FLAG_SECURE), and
+    /// the notification this reacts to only fires *after* the image is already saved to
+    /// Photos, so turning this off (or leaving it off — it defaults off) never removes any
+    /// real protection, only the on-screen flash. Telegram's own server-side "screenshot
+    /// taken" notice to the other side in a real Secret Chat is a separate mechanism this
+    /// does not touch.
+    public var screenshotGuardEnabled: Bool
     /// "Закрепить чаты" (Дополнительно): bypass the client-side pinned-chats limit so more than
     /// the usual 5/10 chats can be pinned. Client-side only — Telegram's server keeps its own
     /// limit, so pins beyond it may not sync to other devices, but on this device they pin.
@@ -306,6 +316,7 @@ public struct PampGramSettings: Codable, Equatable {
             chatLockEnabled: false,
             chatLockPin: "",
             lockedChatPeerIds: [],
+            screenshotGuardEnabled: false,
             localRublesBalanceKopecks: 0,
             localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
@@ -314,7 +325,7 @@ public struct PampGramSettings: Codable, Equatable {
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], screenshotGuardEnabled: Bool, localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -347,6 +358,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.chatLockEnabled = chatLockEnabled
         self.chatLockPin = chatLockPin
         self.lockedChatPeerIds = lockedChatPeerIds
+        self.screenshotGuardEnabled = screenshotGuardEnabled
         self.localRublesBalanceKopecks = localRublesBalanceKopecks
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
         self.infinitePinsEnabled = infinitePinsEnabled
@@ -416,6 +428,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.chatLockEnabled = try container.decodeIfPresent(Bool.self, forKey: .chatLockEnabled) ?? defaults.chatLockEnabled
         self.chatLockPin = try container.decodeIfPresent(String.self, forKey: .chatLockPin) ?? defaults.chatLockPin
         self.lockedChatPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .lockedChatPeerIds) ?? defaults.lockedChatPeerIds
+        self.screenshotGuardEnabled = try container.decodeIfPresent(Bool.self, forKey: .screenshotGuardEnabled) ?? defaults.screenshotGuardEnabled
         self.localRublesBalanceKopecks = try container.decodeIfPresent(Int64.self, forKey: .localRublesBalanceKopecks) ?? defaults.localRublesBalanceKopecks
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled

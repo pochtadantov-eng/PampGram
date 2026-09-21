@@ -20,8 +20,9 @@ private final class PampGramAdditionalArguments {
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
+    let toggleScreenshotGuard: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleScreenshotGuard: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -32,6 +33,7 @@ private final class PampGramAdditionalArguments {
         self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
+        self.toggleScreenshotGuard = toggleScreenshotGuard
     }
 }
 
@@ -66,6 +68,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case chatLockRow(String, String)
     case callOverridesRow(String)
     case fakeAdminRow(String)
+    case screenshotGuardToggle(String, Bool)
     case extrasFooter(String)
 
     var section: ItemListSectionId {
@@ -78,7 +81,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.speed.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .screenshotGuardToggle, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -121,8 +124,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 16
         case .fakeAdminRow:
             return 17
-        case .extrasFooter:
+        case .screenshotGuardToggle:
             return 18
+        case .extrasFooter:
+            return 19
         }
     }
 
@@ -177,6 +182,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openFakeAdmin()
             })
+        case let .screenshotGuardToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x636366)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleScreenshotGuard(value)
+            })
         }
     }
 }
@@ -206,7 +215,8 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.fakeAdminRow("Фейк админ"))
-    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас."))
+    entries.append(.screenshotGuardToggle("Затемнять экран при скриншоте", settings.screenshotGuardEnabled))
+    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Затемнять экран при скриншоте» на 0,5 секунды закрывает экран чёрным после того, как вы сделали скриншот в приложении — сам скриншот к этому моменту уже сохранён обычным образом, это лишь визуальный эффект, а не защита от сохранения содержимого."))
 
     return entries
 }
@@ -327,6 +337,13 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.legalPremiumEnabled = value
+                return settings
+            }).start()
+        },
+        toggleScreenshotGuard: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.screenshotGuardEnabled = value
                 return settings
             }).start()
         }
