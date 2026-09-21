@@ -156,6 +156,25 @@ mod/
      `|| PampGramStorySavingDisplay.shared.isEnabled(...)`. Само сохранение
      (`requestSave()`/`saveToCameraRoll`) не тронуто: работает и требует Premium точно так
      же, как для обычной истории — меняется только видимость пункта меню;
+- «Обход защиты от скриншотов» (Дополнительно, `PampGramScreenshotBypassDisplay` — тот же
+  паттерн синхронного зеркала настройки, что и у `PampGramStorySavingDisplay`) — тот же
+  `isSecureTextEntry`-трюк, что и для историй, теперь ещё в четырёх местах, где стоковый
+  Telegram комбинирует признак копи-протекшена канала/группы/чата с признаком секретного чата
+  через `||`, — в патче меняется **только** копи-протекшен-член выражения, признак секретного
+  чата рядом остаётся нетронутым в каждом из них:
+  - `ChatMessageInteractiveMediaNode.swift` — `captureProtected` для фото/видео в медиасообщении
+    (`associatedData.isCopyProtectionEnabled || message.isCopyProtected()`, оба независимы от
+    типа чата — `Message.isCopyProtected()` проверяет только `TelegramGroup`/`TelegramChannel`);
+  - `ChatControllerNode.swift` — `isSecret` для всего экрана чата (`copyProtectionEnabled`,
+    рядом остаются `SecretChat`/`isVerificationCodes`);
+  - `ChatController.swift` — `isSecret` для pinch-zoom галереи;
+  - `ChatControllerOpenMessageContextMenu.swift` — `isSecret` для превью в контекстном меню
+    (`copyProtectionEnabled`/`myCopyProtectionEnabled`).
+  Секретные чаты сознательно не входят в этот тумблер ни с одной из сторон: чёрный экран для
+  них рисуется точно так же, как и без мода, и уведомление собеседнику о скриншоте (реальный
+  сигнал «кто-то знает, что тебя сфотографировали») никак не трогается — это единственное
+  место в Telegram, где защита от скриншота существует именно как сигнал согласия между двумя
+  людьми, а не просто техническое ограничение;
 - `PeerInfoSettingsItems.swift` — «Скрыть иконку в настройках»: строка «PampGram» в стоковом
   экране настроек оборачивается в `if !pampGramSettings.hidePampGramIconEnabled`. Долгое
   нажатие на строку «Помощь» там же всегда открывает PampGram напрямую — способ вернуться,

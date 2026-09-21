@@ -21080,7 +21080,7 @@ index 57ecb9d..f0a68ec 100644
      }
      
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd..e1fa0de 100644
+index 4d971fd3..da7f2000 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -21105,7 +21105,7 @@ index 4d971fd..e1fa0de 100644
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -295,6 +301,10 @@ public final class AccountContextImpl: AccountContext {
+@@ -295,6 +301,11 @@ public final class AccountContextImpl: AccountContext {
          }
          self.fetchManager = FetchManagerImpl(postbox: account.postbox, storeManager: self.downloadedMediaStoreManager)
          if sharedContext.applicationBindings.isMainApp && !temp {
@@ -21113,10 +21113,11 @@ index 4d971fd..e1fa0de 100644
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
++            PampGramScreenshotBypassDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
              self.prefetchManager = PrefetchManagerImpl(sharedContext: sharedContext, account: account, engine: self.engine, fetchManager: self.fetchManager)
              self.wallpaperUploadManager = WallpaperUploadManagerImpl(sharedContext: sharedContext, account: account, presentationData: sharedContext.presentationData)
              self.themeUpdateManager = ThemeUpdateManagerImpl(sharedContext: sharedContext, account: account)
-@@ -505,6 +515,7 @@ public final class AccountContextImpl: AccountContext {
+@@ -505,6 +516,7 @@ public final class AccountContextImpl: AccountContext {
      }
      
      deinit {
@@ -21150,16 +21151,31 @@ diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift b
                          return (currentPanel, nil)
                      } else {
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
+index 23695c21..e3349600 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
-@@ -53,4 +53,6 @@ import MediaResources
+@@ -53,6 +53,8 @@ import StatisticsUI
  import MediaResources
  import GalleryData
  import ChatInterfaceState
 +import PampGramCore
 +import PampGramSettingsUI
  import InviteLinksUI
-@@ -8985,3 +8987,22 @@ extension ChatControllerImpl {
+ import Markdown
+ import TelegramPermissionsUI
+@@ -2193,7 +2195,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                 }
+             }
+ 
+-            let isSecret = strongSelf.presentationInterfaceState.copyProtectionEnabled || strongSelf.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat
++            // PampGram "Обход защиты от скриншотов": only the copy-protection term, never the
++            // secret-chat term next to it — see PampGramScreenshotBypassDisplay.swift.
++            let isSecret = (strongSelf.presentationInterfaceState.copyProtectionEnabled && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: strongSelf.context.account.peerId.toInt64())) || strongSelf.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat
+             let pinchController = makePinchController(sourceNode: sourceNode, disableScreenshots: isSecret, getContentAreaInScreenSpace: {
+                 guard let strongSelf = self else {
+                     return CGRect()
+@@ -8984,6 +8988,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+             return
          }
          
 +        // PampGram фейк админ: в канале с включённым фейк-админом «пост» вставляется только в
@@ -21182,6 +21198,56 @@ diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/Tel
 +        }
 +        
          let _ = (self.shouldDivertMessagesToScheduled(messages: messages)
+         |> deliverOnMainQueue).startStandalone(next: { [weak self] shouldDivert in
+             guard let self else {
+diff --git a/submodules/TelegramUI/Sources/ChatControllerNode.swift b/submodules/TelegramUI/Sources/ChatControllerNode.swift
+index 83c19884..c027da76 100644
+--- a/submodules/TelegramUI/Sources/ChatControllerNode.swift
++++ b/submodules/TelegramUI/Sources/ChatControllerNode.swift
+@@ -13,6 +13,7 @@ import TelegramNotices
+ import TelegramUniversalVideoContent
+ import ChatInterfaceState
+ import FastBlur
++import PampGramCore
+ import ConfettiEffect
+ import WallpaperBackgroundNode
+ import GridMessageSelectionNode
+@@ -1205,7 +1206,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+             }
+         }
+         
+-        let isSecret = self.chatPresentationInterfaceState.copyProtectionEnabled || self.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat || self.chatLocation.peerId?.isVerificationCodes == true
++        // PampGram "Обход защиты от скриншотов": only the copy-protection term is gated by the
++        // bypass — the secret-chat/verification-codes terms next to it are untouched on purpose,
++        // see PampGramScreenshotBypassDisplay.swift.
++        let isSecret = (self.chatPresentationInterfaceState.copyProtectionEnabled && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: self.context.account.peerId.toInt64())) || self.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat || self.chatLocation.peerId?.isVerificationCodes == true
+         if self.historyNodeContainer.isSecret != isSecret {
+             #if DEBUG
+             self.historyNodeContainer.isSecret = false
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
+index e6eff30b..dfbc4bf7 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
+@@ -18,6 +18,7 @@ import TopMessageReactions
+ import TelegramNotices
+ import PresentationDataUtils
+ import ChatPresentationInterfaceState
++import PampGramCore
+ 
+ extension ChatControllerImpl {
+     func openMessageContextMenu(message: EngineMessage, selectAll: Bool, node: ASDisplayNode, frame: CGRect, anyRecognizer: UIGestureRecognizer?, location: CGPoint?) -> Void {
+@@ -331,7 +332,10 @@ extension ChatControllerImpl {
+                     }
+                 }
+                 
+-                let isSecret = self.presentationInterfaceState.copyProtectionEnabled || self.presentationInterfaceState.myCopyProtectionEnabled || self.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat
++                // PampGram "Обход защиты от скриншотов": only the two copy-protection terms,
++                // never the secret-chat term next to them — see PampGramScreenshotBypassDisplay.swift.
++                let pampGramScreenshotBypassEnabled = PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: self.context.account.peerId.toInt64())
++                let isSecret = ((self.presentationInterfaceState.copyProtectionEnabled || self.presentationInterfaceState.myCopyProtectionEnabled) && !pampGramScreenshotBypassEnabled) || self.chatLocation.peerId?.namespace == Namespaces.Peer.SecretChat
+                 let controller = makeContextController(presentationData: self.presentationData, source: source, items: actionsSignal, recognizer: recognizer, gesture: gesture, disableScreenshots: isSecret, hideReactionPanelTail: hideReactionPanelTail)
+                 controller.dismissed = { [weak self] in
+                     self?.canReadHistory.set(true)
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD
 index 85b0e37..e3ad1ca 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD
@@ -21195,7 +21261,7 @@ index 85b0e37..e3ad1ca 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
-index f2177bb..fbc3dae 100644
+index f2177bb6..a205e460 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
 @@ -11,6 +11,7 @@ import TelegramUIPreferences
@@ -21222,6 +21288,24 @@ index f2177bb..fbc3dae 100644
              var secretBeginTimeAndTimeout: (Double, Double)?
              if isSecretMedia {
                  if let attribute = message.autoclearAttribute {
+@@ -2015,7 +2023,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+                                             autoFetchFullSizeThumbnail: true,
+                                             continuePlayingWithoutSoundOnLostAudioSession: isInlinePlayableVideo,
+                                             placeholderColor: emptyColor,
+-                                            captureProtected: associatedData.isCopyProtectionEnabled || message.isCopyProtected() || isExtendedMedia,
++                                            captureProtected: (associatedData.isCopyProtectionEnabled || message.isCopyProtected()) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || isExtendedMedia,
+                                             storeAfterDownload: { [weak context] in
+                                                 guard let context, let peerId else {
+                                                     return
+@@ -2317,7 +2325,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+                             }
+                             
+                             if let updateImageSignal = updateImageSignal {
+-                                strongSelf.imageNode.captureProtected = associatedData.isCopyProtectionEnabled || message.isCopyProtected() || isExtendedMedia
++                                strongSelf.imageNode.captureProtected = (associatedData.isCopyProtectionEnabled || message.isCopyProtected()) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || isExtendedMedia
+                                 strongSelf.imageNode.setSignal(updateImageSignal(synchronousLoads, false), attemptSynchronously: synchronousLoads)
+ 
+                                 var imageDimensions: CGSize?
 @@ -2563,7 +2571,12 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
          }*/
          

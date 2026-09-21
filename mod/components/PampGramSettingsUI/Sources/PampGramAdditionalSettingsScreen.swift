@@ -22,8 +22,9 @@ private final class PampGramAdditionalArguments {
     let toggleLegalPremium: (Bool) -> Void
     let toggleShowTemporaryMedia: (Bool) -> Void
     let toggleStorySaving: (Bool) -> Void
+    let toggleScreenshotBypass: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleShowTemporaryMedia: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleShowTemporaryMedia: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -36,6 +37,7 @@ private final class PampGramAdditionalArguments {
         self.toggleLegalPremium = toggleLegalPremium
         self.toggleShowTemporaryMedia = toggleShowTemporaryMedia
         self.toggleStorySaving = toggleStorySaving
+        self.toggleScreenshotBypass = toggleScreenshotBypass
     }
 }
 
@@ -69,6 +71,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case screenshotsHeader(String)
     case screenshotsToggle(String, Bool)
     case screenshotsFooter(String)
+    case chatScreenshotsToggle(String, Bool)
+    case chatScreenshotsFooter(String)
 
     case premiumHeader(String)
     case infinitePinsToggle(String, Bool)
@@ -92,7 +96,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.speed.rawValue
         case .mediaHeader, .mediaToggle, .mediaFooter:
             return PampGramAdditionalSection.media.rawValue
-        case .screenshotsHeader, .screenshotsToggle, .screenshotsFooter:
+        case .screenshotsHeader, .screenshotsToggle, .screenshotsFooter, .chatScreenshotsToggle, .chatScreenshotsFooter:
             return PampGramAdditionalSection.screenshots.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
@@ -133,6 +137,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 13
         case .screenshotsFooter:
             return 14
+        case .chatScreenshotsToggle:
+            return 141
+        case .chatScreenshotsFooter:
+            return 142
         case .premiumHeader:
             return 15
         case .infinitePinsToggle:
@@ -175,6 +183,12 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "camera.viewfinder", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleStorySaving(value)
             })
+        case let .chatScreenshotsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.trianglebadge.exclamationmark", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleScreenshotBypass(value)
+            })
+        case let .chatScreenshotsFooter(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleInfinitePins(value)
@@ -238,9 +252,11 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.mediaToggle("Показывать временную медиа", settings.showTemporaryMediaEnabled))
     entries.append(.mediaFooter("Фото и видео с таймером (в том числе «посмотреть один раз») показываются в чате сразу, как обычные медиа — без размытия и без ограничения «только один просмотр». Открытие всё ещё идёт через обычный просмотрщик Telegram: реальный таймер, статус просмотра и удаление сообщения не меняются, меняется только то, как оно выглядит в ленте на этом устройстве."))
 
-    entries.append(.screenshotsHeader("СОХРАНЕНИЕ ИСТОРИЙ"))
+    entries.append(.screenshotsHeader("СКРИНШОТЫ"))
     entries.append(.screenshotsToggle("Сохранение историй", settings.storySavingEnabled))
     entries.append(.screenshotsFooter("Истории, защищённые от пересылки и сохранения: скриншот и запись экрана перестают чернеть (это делает сама iOS, а не подсказка поверх экрана — автору по-прежнему ничего не сообщается, у Story нет уведомления о скриншоте вне секретных чатов), а в «…» на самой истории появляется пункт «Сохранить», которого иначе для такой истории нет. Сохранение работает так же, как для обычной истории — требует Premium, если оно у вас есть."))
+    entries.append(.chatScreenshotsToggle("Обход защиты от скриншотов", settings.bypassScreenshotProtectionEnabled))
+    entries.append(.chatScreenshotsFooter("Для каналов, групп и чатов с защитой контента (своей или собеседника) — то же самое: скриншот и запись экрана выходят обычными, без чёрного экрана. Секретных чатов это не касается: там, как и в стоке, при скриншоте собеседнику по-прежнему приходит уведомление — этот тумблер его не отключает."))
 
     entries.append(.premiumHeader("ПРЕМИУМ"))
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
@@ -390,6 +406,13 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.storySavingEnabled = value
+                return settings
+            }).start()
+        },
+        toggleScreenshotBypass: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.bypassScreenshotProtectionEnabled = value
                 return settings
             }).start()
         }
