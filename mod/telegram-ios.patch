@@ -20412,7 +20412,7 @@ index 5637c9e3..beaabb04 100644
      }
      
 diff --git a/submodules/TelegramUI/Sources/SharedWakeupManager.swift b/submodules/TelegramUI/Sources/SharedWakeupManager.swift
-index 97de6187..e8a64ca1 100644
+index 97de618..9b36774 100644
 --- a/submodules/TelegramUI/Sources/SharedWakeupManager.swift
 +++ b/submodules/TelegramUI/Sources/SharedWakeupManager.swift
 @@ -9,6 +9,7 @@ import AccountContext
@@ -20423,7 +20423,7 @@ index 97de6187..e8a64ca1 100644
  
  private struct AccountTasks {
      let stateSynchronization: Bool
-@@ -1147,7 +1148,25 @@ public final class SharedWakeupManager {
+@@ -1147,7 +1148,31 @@ public final class SharedWakeupManager {
                      account.shouldBeServiceTaskMaster.set(.single(.never))
                  }
                  account.shouldExplicitelyKeepWorkerConnections.set(.single(tasks.backgroundAudio || tasks.backgroundLocation || tasks.importantTasks.pendingStoryCount != 0 || tasks.importantTasks.pendingMessageCount != 0))
@@ -20432,25 +20432,31 @@ index 97de6187..e8a64ca1 100644
 +                // signal, so the per-peer exception set never applies here):
 +                //   "Не отправлять «онлайн»" forces presence off even in the foreground — this
 +                //     account never broadcasts online.
-+                //   "Автоматический «офлайн»" keeps the default (online only while in the
-+                //     foreground) and, together with the inactive branch below being false,
-+                //     drops any background-online keep-alive.
++                //   "Автоматический «офлайн»", when ON, drops the short background-online
++                //     keep-alive below and goes offline the instant the app leaves the
++                //     foreground; OFF (the default) keeps that keep-alive — same grace window
++                //     `shouldExplicitelyKeepWorkerConnections` above already grants real
++                //     background work, so presence doesn't drop out from under it.
 +                // Set as a live signal, not a snapshot, so toggling a setting takes effect
 +                // immediately without waiting for the next foreground/background transition.
 +                let pampGramInForegroundNow = self.inForeground
++                let pampGramHasBackgroundKeepAliveWork = tasks.backgroundAudio || tasks.backgroundLocation || tasks.importantTasks.pendingStoryCount != 0 || tasks.importantTasks.pendingMessageCount != 0
 +                account.shouldKeepOnlinePresence.set(
 +                    PampGramCore.settingsSignal(postbox: account.postbox)
 +                    |> map { settings -> Bool in
 +                        if settings.ghostModeEnabled && settings.ghostHideOnline {
 +                            return false
 +                        }
-+                        return primary && pampGramInForegroundNow
++                        if settings.ghostModeEnabled && settings.ghostAutoOffline {
++                            return primary && pampGramInForegroundNow
++                        }
++                        return primary && (pampGramInForegroundNow || pampGramHasBackgroundKeepAliveWork)
 +                    }
 +                )
                  account.shouldKeepBackgroundDownloadConnections.set(.single(tasks.backgroundDownloads))
              }
              
-@@ -1194,6 +1213,10 @@ public final class SharedWakeupManager {
+@@ -1194,6 +1219,10 @@ public final class SharedWakeupManager {
                      checkCompletionState(accountId)
                  })
                  account.shouldBeServiceTaskMaster.set(.single(.never))
@@ -20462,26 +20468,28 @@ index 97de6187..e8a64ca1 100644
                  account.shouldKeepBackgroundDownloadConnections.set(.single(false))
              }
 diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
-index b1e8596..db7e43b 100644
+index b1e8596..4a6ef79 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
-@@ -21,6 +21,7 @@ swift_library(
+@@ -21,6 +21,8 @@ swift_library(
          "//submodules/Components/BalancedTextComponent",
          "//submodules/TelegramPresentationData",
          "//submodules/AccountContext",
 +        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
          "//submodules/AppBundle",
          "//submodules/ItemListUI",
          "//submodules/TelegramStringFormatting",
 diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
-index 9e0f9fb..c5a15d1 100644
+index 9e0f9fb..955bc48 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
-@@ -25,16 +25,20 @@ import PremiumStarComponent
+@@ -25,16 +25,21 @@ import PremiumStarComponent
  import BundleIconComponent
  import ConfettiEffect
  import ItemShimmeringLoadingComponent
 +import PhantomGiftKit
++import PampGramCore
  
  private struct StarsProduct: Equatable {
      enum Option: Equatable {
@@ -20501,7 +20509,7 @@ index 9e0f9fb..c5a15d1 100644
      var count: Int64 {
          switch self.option {
          case let .topUp(option):
-@@ -54,11 +58,47 @@ private struct StarsProduct: Equatable {
+@@ -54,11 +59,47 @@ private struct StarsProduct: Equatable {
      }
      
      var id: String {
@@ -20551,7 +20559,7 @@ index 9e0f9fb..c5a15d1 100644
      }
  }
  
-@@ -348,7 +388,7 @@ private final class StarsPurchaseScreenContentComponent: CombinedComponent {
+@@ -348,7 +389,7 @@ private final class StarsPurchaseScreenContentComponent: CombinedComponent {
                      ))
                      
                      let backgroundComponent: AnyComponent<Empty>?
@@ -20560,7 +20568,7 @@ index 9e0f9fb..c5a15d1 100644
                          backgroundComponent = AnyComponent(
                              ItemShimmeringLoadingComponent(
                                  color: environment.theme.list.itemAccentColor,
-@@ -623,9 +663,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+@@ -623,9 +664,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
                  |> map { availableProducts, options in
                      var products: [StarsProduct] = []
                      for option in options {
@@ -20574,7 +20582,7 @@ index 9e0f9fb..c5a15d1 100644
                      }
                      return products
                  }
-@@ -640,9 +681,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+@@ -640,9 +682,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
                  |> map { availableProducts, options in
                      var products: [StarsProduct] = []
                      for option in options {
@@ -20588,7 +20596,7 @@ index 9e0f9fb..c5a15d1 100644
                      }
                      return products
                  }
-@@ -679,72 +721,34 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+@@ -679,15 +722,65 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
          }
          
          func buy(product: StarsProduct) {
@@ -20597,93 +20605,84 @@ index 9e0f9fb..c5a15d1 100644
                  return
              }
 -            
-+            // PampGram: visual star purchase — Telegram's real StoreKit path is intercepted
-+            // entirely. Show the imitation Apple Pay sheet; on confirm the local fake Stars
-+            // balance is credited (PampGramStarsHook) and the screen's own success/close runs.
-+            // No StoreKit, no money, no server call.
              self.progressProduct = product
              self.updateInProgress(true)
              self.updated(transition: .easeInOut(duration: 0.2))
 -            
 -            let (currency, amount) = product.storeProduct.priceCurrencyAndAmount
--            let purpose: AppStoreTransactionPurpose
--            switch self.purpose {
--            case let .gift(peerId):
--                purpose = .starsGift(peerId: peerId, count: product.count, currency: currency, amount: amount)
--            default:
--                purpose = .stars(count: product.count, currency: currency, amount: amount, peerId: self.purpose.commercialPeerId)
--            }
--            
--            let _ = (self.context.engine.payments.canPurchasePremium(purpose: purpose)
--            |> deliverOnMainQueue).start(next: { [weak self] available in
--                if let strongSelf = self {
--                    let presentationData = strongSelf.context.sharedContext.currentPresentationData.with { $0 }
--                    if available {
--                        strongSelf.paymentDisposable.set((inAppPurchaseManager.buyProduct(product.storeProduct, purpose: purpose)
--                        |> deliverOnMainQueue).start(next: { [weak self] status in
--                            if let self, case .purchased = status {
--                                self.updateInProgress(false)
--                                
--                                self.updated(transition: .easeInOut(duration: 0.2))
--                                self.completion(product.count)
--                            }
--                        }, error: { [weak self] error in
--                            if let strongSelf = self {
--                                strongSelf.progressProduct = nil
--                                strongSelf.updateInProgress(false)
--                                strongSelf.updated(transition: .easeInOut(duration: 0.2))
--
--                                var errorText: String?
--                                switch error {
--                                    case .generic:
--                                        errorText = presentationData.strings.Premium_Purchase_ErrorUnknown
--                                    case .network:
--                                        errorText = presentationData.strings.Premium_Purchase_ErrorNetwork
--                                    case .notAllowed:
--                                        errorText = presentationData.strings.Premium_Purchase_ErrorNotAllowed
--                                    case .cantMakePayments:
--                                        errorText = presentationData.strings.Premium_Purchase_ErrorCantMakePayments
--                                    case .assignFailed:
--                                        errorText = presentationData.strings.Premium_Purchase_ErrorUnknown
--                                    case .tryLater:
--                                        errorText = presentationData.strings.Premium_Purchase_ErrorTryLater
--                                    case .cancelled:
--                                        break
--                                }
--                                
--                                if let errorText = errorText {
--                                    let alertController = textAlertController(context: strongSelf.context, title: nil, text: errorText, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})])
--                                    strongSelf.present(alertController)
--                                }
--                            }
--                        }))
--                    } else {
--                        strongSelf.progressProduct = nil
--                        strongSelf.updateInProgress(false)
--                        strongSelf.updated(transition: .easeInOut(duration: 0.2))
--                    }
-+            // The purchase is settled against the local ruble wallet; pass the price in kopecks
-+            // when the store currency is RUB, otherwise 0 (no ruble gating).
-+            let priceKopecks: Int64 = product.currencyCode == "RUB" ? product.amountMinorUnits : 0
-+            PampGramStarsHook.presentFakeApplePay(context: self.context, count: product.count, priceText: product.price, priceKopecks: priceKopecks, onCancel: { [weak self] in
++
++            // "Покупка звёзд за рубли" (Дополнительно → Рубли для пополнения звёзд): when on,
++            // intercept Telegram's real StoreKit path entirely and show the imitation Apple Pay
++            // sheet instead — on confirm the local fake Stars balance is credited
++            // (PampGramStarsHook), no StoreKit, no money, no server call. When off, this falls
++            // straight through to stock Telegram's real purchase flow below, unmodified.
++            let _ = (PampGramCore.settingsSignal(postbox: self.context.account.postbox)
++            |> take(1)
++            |> deliverOnMainQueue).start(next: { [weak self] settings in
 +                guard let self else {
 +                    return
 +                }
-+                self.progressProduct = nil
-+                self.updateInProgress(false)
-+                self.updated(transition: .easeInOut(duration: 0.2))
-+            }, onConfirm: { [weak self] in
-+                guard let self else {
++                if settings.localRublesPurchaseEnabled {
++                    // The purchase is settled against the local ruble wallet; pass the price in
++                    // kopecks when the store currency is RUB, otherwise 0 (no ruble gating).
++                    let priceKopecks: Int64 = product.currencyCode == "RUB" ? product.amountMinorUnits : 0
++                    PampGramStarsHook.presentFakeApplePay(context: self.context, count: product.count, priceText: product.price, priceKopecks: priceKopecks, onCancel: { [weak self] in
++                        guard let self else {
++                            return
++                        }
++                        self.progressProduct = nil
++                        self.updateInProgress(false)
++                        self.updated(transition: .easeInOut(duration: 0.2))
++                    }, onConfirm: { [weak self] in
++                        guard let self else {
++                            return
++                        }
++                        self.progressProduct = nil
++                        self.updateInProgress(false)
++                        self.updated(transition: .easeInOut(duration: 0.2))
++                        self.completion(product.count)
++                    })
 +                    return
-                 }
++                }
++
++                self.buyForReal(product: product)
++            })
++        }
++
++        // The original, unmodified stock Telegram purchase flow — real StoreKit, real money.
++        // Only reached when "Покупка звёзд за рубли" is off. `product.storeProduct` is nil on a
++        // sideloaded build (no real StoreKit product for this tier) — there's no way to run a
++        // real purchase in that case either, so it's treated the same as StoreKit being
++        // unavailable.
++        private func buyForReal(product: StarsProduct) {
++            guard let inAppPurchaseManager = self.context.inAppPurchaseManager, let storeProduct = product.storeProduct else {
 +                self.progressProduct = nil
 +                self.updateInProgress(false)
 +                self.updated(transition: .easeInOut(duration: 0.2))
-+                self.completion(product.count)
-             })
-         }
-         
-@@ -888,7 +892,7 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
++                return
++            }
++
++            let (currency, amount) = storeProduct.priceCurrencyAndAmount
+             let purpose: AppStoreTransactionPurpose
+             switch self.purpose {
+             case let .gift(peerId):
+@@ -695,13 +788,13 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
+             default:
+                 purpose = .stars(count: product.count, currency: currency, amount: amount, peerId: self.purpose.commercialPeerId)
+             }
+-            
++
+             let _ = (self.context.engine.payments.canPurchasePremium(purpose: purpose)
+             |> deliverOnMainQueue).start(next: { [weak self] available in
+                 if let strongSelf = self {
+                     let presentationData = strongSelf.context.sharedContext.currentPresentationData.with { $0 }
+                     if available {
+-                        strongSelf.paymentDisposable.set((inAppPurchaseManager.buyProduct(product.storeProduct, purpose: purpose)
++                        strongSelf.paymentDisposable.set((inAppPurchaseManager.buyProduct(storeProduct, purpose: purpose)
+                         |> deliverOnMainQueue).start(next: { [weak self] status in
+                             if let self, case .purchased = status {
+                                 self.updateInProgress(false)
+@@ -888,7 +981,7 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
                          balance: state.starsState?.balance,
                          options: context.component.options,
                          purpose: context.component.purpose,
@@ -20692,7 +20691,7 @@ index 9e0f9fb..c5a15d1 100644
                          forceDark: context.component.forceDark,
                          products: state.products,
                          expanded: state.isExpanded,
-@@ -1150,8 +1154,32 @@ func generateStarsIcon(amount: Int64) -> UIImage {
+@@ -1150,8 +1243,32 @@ func generateStarsIcon(amount: Int64) -> UIImage {
          25000: 7,
          35000: 7
      ]
