@@ -470,10 +470,40 @@ private final class PampGramProfileRatingEditorController: ViewController {
         }
     }
 
+    /// PampGram's own approximation of Telegram's real level thresholds. Telegram computes
+    /// these per-account on the server and sends the next one down as `next_level_stars` (see
+    /// the official `StarsRating` schema at core.telegram.org/type/StarsRating) — there's no
+    /// published client-side formula to copy exactly. This curve is anchored on the one
+    /// concrete real number available (Level 1 tops out at 5 000, confirmed straight off the
+    /// in-app "Рейтинг" screen) and grows just fast enough afterward to land in the right rough
+    /// order of magnitude reported for later levels (on the order of a million total by the
+    /// high 70s/80s) — a deliberately smooth curve, not a claim to Telegram's exact numbers.
     private func pointsRange(for level: Int) -> ClosedRange<Int64> {
-        let value = Int64(min(100, max(1, level)))
-        let lowerBound = value * 10_840 + value * value * 24
-        return lowerBound...(lowerBound + 13_100)
+        let clampedLevel = min(100, max(1, level))
+        let lowerBound = self.cumulativePoints(throughLevel: clampedLevel - 1)
+        let width = self.levelWidth(clampedLevel)
+        return lowerBound...(lowerBound + width - 1)
+    }
+
+    /// How many points levels 1...`level` need in total, i.e. the points value at which
+    /// `level + 1` begins.
+    private func cumulativePoints(throughLevel level: Int) -> Int64 {
+        guard level >= 1 else {
+            return 0
+        }
+        var total: Int64 = 0
+        for n in 1...level {
+            total += self.levelWidth(n)
+        }
+        return total
+    }
+
+    /// How many points `level` itself spans, before moving to the next one. Rounded to the
+    /// nearest 100 so the thresholds read like Telegram's own round numbers rather than an
+    /// obviously-computed curve.
+    private func levelWidth(_ level: Int) -> Int64 {
+        let raw = 5_000.0 * pow(Double(level), 0.3)
+        return Int64((raw / 100.0).rounded()) * 100
     }
 
     private func points(for level: Int, progress: Float) -> Int64 {
