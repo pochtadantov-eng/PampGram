@@ -13,6 +13,21 @@ public enum PampGramSubscriptionTier: String, Codable {
     case pro
 }
 
+/// `fetchStatus`'s result: a tier plus, when the admin granted it (or a key granting it was
+/// redeemed) for a limited time rather than permanently, the moment it runs out. `expiresAt ==
+/// nil` covers both "standard" and a permanent "pro" grant — the server itself already folds
+/// an expired grant back to `.standard` before this ever reaches the client, so there's no
+/// "expired but still reporting pro" state to represent here.
+public struct PampGramSubscriptionStatus: Equatable {
+    public let tier: PampGramSubscriptionTier
+    public let expiresAt: Date?
+
+    public init(tier: PampGramSubscriptionTier, expiresAt: Date?) {
+        self.tier = tier
+        self.expiresAt = expiresAt
+    }
+}
+
 /// The PampGram hub sections an admin can ban independently of a full-account ban. Raw values
 /// are the server's own section keys — see `server/pampgram-subs-worker/src/index.js`.
 public enum PampGramBanSection: String, Codable, CaseIterable {
@@ -95,30 +110,35 @@ public enum PampGramSubscriptionAPI {
 
     private struct StatusResponse: Decodable {
         let tier: String
+        let expiresAt: Double?
     }
 
     private struct GrantRequestBody: Encodable {
         let id: Int64
         let tier: String
         let token: String
+        let durationHours: Double?
     }
 
-    /// Live-ish (one-shot per subscription) read of `userId`'s tier. Never fails outward:
-    /// any network problem, bad response, or the baseURL placeholder still being unfilled all
-    /// resolve to `.standard` — the safe default — rather than erroring the screen that asked.
-    public static func fetchTier(userId: Int64) -> Signal<PampGramSubscriptionTier, NoError> {
+    /// Live-ish (one-shot per subscription) read of `userId`'s tier and, for a time-limited
+    /// grant or redeemed key, when it runs out. Never fails outward: any network problem, bad
+    /// response, or the baseURL placeholder still being unfilled all resolve to
+    /// `.standard`/`nil` — the safe default — rather than erroring the screen that asked.
+    public static func fetchStatus(userId: Int64) -> Signal<PampGramSubscriptionStatus, NoError> {
         return Signal { subscriber in
             guard let url = URL(string: "\(baseURL)/status?id=\(userId)") else {
-                subscriber.putNext(.standard)
+                subscriber.putNext(PampGramSubscriptionStatus(tier: .standard, expiresAt: nil))
                 subscriber.putCompletion()
                 return EmptyDisposable
             }
             let task = URLSession.shared.dataTask(with: url) { data, _, _ in
-                var tier: PampGramSubscriptionTier = .standard
+                var status = PampGramSubscriptionStatus(tier: .standard, expiresAt: nil)
                 if let data, let decoded = try? JSONDecoder().decode(StatusResponse.self, from: data) {
-                    tier = PampGramSubscriptionTier(rawValue: decoded.tier) ?? .standard
+                    let tier = PampGramSubscriptionTier(rawValue: decoded.tier) ?? .standard
+                    let expiresAt = decoded.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000) }
+                    status = PampGramSubscriptionStatus(tier: tier, expiresAt: expiresAt)
                 }
-                subscriber.putNext(tier)
+                subscriber.putNext(status)
                 subscriber.putCompletion()
             }
             task.resume()
@@ -128,12 +148,13 @@ public enum PampGramSubscriptionAPI {
         }
     }
 
-    /// Admin-only: sets `userId`'s tier on the server. Called only from the admin screen,
-    /// which is itself only ever shown to `adminAccountId`. `adminToken` is read from this
-    /// device's local storage (see `adminToken(transaction:)`/`setAdminToken`) — never a
-    /// source-code constant. `completion` reports whether the server actually accepted it,
-    /// always dispatched on the main queue.
-    public static func grantTier(userId: Int64, tier: PampGramSubscriptionTier, adminToken: String, completion: @escaping (Bool) -> Void) {
+    /// Admin-only: sets `userId`'s tier on the server, either permanently (`durationHours ==
+    /// nil`) or until `durationHours` hours from the moment the server accepts this call.
+    /// Called only from the admin screen, which is itself only ever shown to `adminAccountId`.
+    /// `adminToken` is read from this device's local storage (see
+    /// `adminToken(transaction:)`/`setAdminToken`) — never a source-code constant. `completion`
+    /// reports whether the server actually accepted it, always dispatched on the main queue.
+    public static func grantTier(userId: Int64, tier: PampGramSubscriptionTier, durationHours: Double?, adminToken: String, completion: @escaping (Bool) -> Void) {
         guard let url = URL(string: "\(baseURL)/grant") else {
             completion(false)
             return
@@ -141,7 +162,7 @@ public enum PampGramSubscriptionAPI {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(GrantRequestBody(id: userId, tier: tier.rawValue, token: adminToken))
+        request.httpBody = try? JSONEncoder().encode(GrantRequestBody(id: userId, tier: tier.rawValue, token: adminToken, durationHours: durationHours))
 
         URLSession.shared.dataTask(with: request) { _, response, error in
             let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
@@ -280,6 +301,7 @@ public enum PampGramSubscriptionAPI {
     private struct GenerateKeyRequestBody: Encodable {
         let token: String
         let tier: String
+        let durationHours: Double?
     }
 
     private struct GenerateKeyResponse: Decodable {
@@ -287,12 +309,15 @@ public enum PampGramSubscriptionAPI {
         let key: String?
     }
 
-    /// Admin-only: mints one fresh, unused activation key for `tier` — the self-service
-    /// counterpart to `grantTier`, meant to be sold or handed out once and redeemed by
-    /// whoever gets it first (see `redeemKey`). `completion` reports the key string on
-    /// success, `nil` on any failure (network, auth, or a malformed response) — never
+    /// Admin-only: mints one fresh, unused activation key for `tier`, either permanent
+    /// (`durationHours == nil`) or good for `durationHours` hours once redeemed — the
+    /// self-service counterpart to `grantTier`, meant to be sold or handed out once and
+    /// redeemed by whoever gets it first (see `redeemKey`). The clock only starts at
+    /// redemption, not now: two people can sit on the same freshly generated 24-hour key for a
+    /// week and whoever redeems it still gets the full 24 hours. `completion` reports the key
+    /// string on success, `nil` on any failure (network, auth, or a malformed response) — never
     /// dispatched off the main queue, same contract as `grantTier`.
-    public static func generateKey(tier: PampGramSubscriptionTier, adminToken: String, completion: @escaping (String?) -> Void) {
+    public static func generateKey(tier: PampGramSubscriptionTier, durationHours: Double?, adminToken: String, completion: @escaping (String?) -> Void) {
         guard let url = URL(string: "\(baseURL)/generate-key") else {
             completion(nil)
             return
@@ -300,7 +325,7 @@ public enum PampGramSubscriptionAPI {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: tier.rawValue))
+        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: tier.rawValue, durationHours: durationHours))
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             var key: String?
@@ -321,16 +346,18 @@ public enum PampGramSubscriptionAPI {
     private struct RedeemKeyResponse: Decodable {
         let ok: Bool
         let tier: String?
+        let expiresAt: Double?
     }
 
     /// Not admin-only — this is the buyer-facing half of the key system, called from any
-    /// install once its owner has a key someone generated for them. Grants that key's tier to
-    /// `userId` (this device's own account, always) exactly like an admin's `grantTier` would,
-    /// and the key is gone the moment the server accepts it — a second redemption attempt with
-    /// the same string, from this device or any other, fails exactly like an unknown key would.
-    /// `completion` reports the granted tier on success, `nil` on any failure (network, an
+    /// install once its owner has a key someone generated for them. Grants that key's tier
+    /// (and, if the key was minted with a duration, an expiry starting now) to `userId` (this
+    /// device's own account, always) exactly like an admin's `grantTier` would, and the key is
+    /// gone the moment the server accepts it — a second redemption attempt with the same
+    /// string, from this device or any other, fails exactly like an unknown key would.
+    /// `completion` reports the granted status on success, `nil` on any failure (network, an
     /// already-used/unknown key, or a malformed response).
-    public static func redeemKey(userId: Int64, key: String, completion: @escaping (PampGramSubscriptionTier?) -> Void) {
+    public static func redeemKey(userId: Int64, key: String, completion: @escaping (PampGramSubscriptionStatus?) -> Void) {
         guard let url = URL(string: "\(baseURL)/redeem-key") else {
             completion(nil)
             return
@@ -341,12 +368,13 @@ public enum PampGramSubscriptionAPI {
         request.httpBody = try? JSONEncoder().encode(RedeemKeyRequestBody(id: userId, key: key))
 
         URLSession.shared.dataTask(with: request) { data, response, error in
-            var tier: PampGramSubscriptionTier?
-            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(RedeemKeyResponse.self, from: data), let tierRaw = decoded.tier {
-                tier = PampGramSubscriptionTier(rawValue: tierRaw)
+            var status: PampGramSubscriptionStatus?
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(RedeemKeyResponse.self, from: data), let tierRaw = decoded.tier, let tier = PampGramSubscriptionTier(rawValue: tierRaw) {
+                let expiresAt = decoded.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000) }
+                status = PampGramSubscriptionStatus(tier: tier, expiresAt: expiresAt)
             }
             DispatchQueue.main.async {
-                completion(tier)
+                completion(status)
             }
         }.resume()
     }

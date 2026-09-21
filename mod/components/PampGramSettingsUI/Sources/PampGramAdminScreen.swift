@@ -12,6 +12,52 @@ import PromptUI
 import UndoUI
 import PampGramCore
 
+/// Parses free-text durations like "3д 12ч", "5д", "18ч" or a bare "18" (taken as hours) into
+/// total hours. Returns `nil` for empty input or a string with no recognizable number — the
+/// caller treats that as "didn't understand it" rather than silently granting zero hours.
+private func parseDurationHours(_ raw: String) -> Double? {
+    let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !value.isEmpty else {
+        return nil
+    }
+    if let plainHours = Double(value.replacingOccurrences(of: ",", with: ".")), plainHours > 0 {
+        return plainHours
+    }
+    guard let regex = try? NSRegularExpression(pattern: "(\\d+(?:[.,]\\d+)?)\\s*(д|ч)") else {
+        return nil
+    }
+    let nsRange = NSRange(value.startIndex..., in: value)
+    var totalHours: Double = 0
+    var matched = false
+    regex.enumerateMatches(in: value, range: nsRange) { match, _, _ in
+        guard let match, let numberRange = Range(match.range(at: 1), in: value), let unitRange = Range(match.range(at: 2), in: value) else {
+            return
+        }
+        guard let number = Double(value[numberRange].replacingOccurrences(of: ",", with: ".")) else {
+            return
+        }
+        matched = true
+        totalHours += value[unitRange] == "д" ? number * 24 : number
+    }
+    return matched && totalHours > 0 ? totalHours : nil
+}
+
+/// The inverse of `parseDurationHours`, for tooltips — "27" becomes "1д 3ч", "24" becomes "1д",
+/// "3" becomes "3ч".
+private func formatDurationHours(_ hours: Double) -> String {
+    let totalHours = max(1, Int((hours * 60).rounded()) / 60)
+    let days = totalHours / 24
+    let remainingHours = totalHours % 24
+    var parts: [String] = []
+    if days > 0 {
+        parts.append("\(days)д")
+    }
+    if remainingHours > 0 || parts.isEmpty {
+        parts.append("\(remainingHours)ч")
+    }
+    return parts.joined(separator: " ")
+}
+
 private final class PampGramAdminArguments {
     let setAdminToken: () -> Void
     let grantSubscription: () -> Void
@@ -266,16 +312,81 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
         })
     }
 
+    // Shared by both the "Выдать подписку" and "Сгенерировать ключ" flows below, once a tier is
+    // already picked. Standard never reaches this: the server drops any duration for it (it's
+    // just "no subscription"), so both call sites skip straight to `completion(nil)` for it.
+    let showDurationChoice: (String, @escaping (Double?) -> Void) -> Void = { subtitle, completion in
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        let sheet = ActionSheetController(presentationData: presentationData)
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: [
+                ActionSheetTextItem(title: subtitle),
+                ActionSheetButtonItem(title: "Навсегда", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(nil)
+                }),
+                ActionSheetButtonItem(title: "1 час", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(1)
+                }),
+                ActionSheetButtonItem(title: "24 часа", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(24)
+                }),
+                ActionSheetButtonItem(title: "7 дней", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(7 * 24)
+                }),
+                ActionSheetButtonItem(title: "30 дней", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(30 * 24)
+                }),
+                ActionSheetButtonItem(title: "Свой срок…", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    presentControllerImpl?(promptController(
+                        context: context,
+                        text: "Свой срок",
+                        subtitle: "Например «3д 12ч», «5д» или «18ч»",
+                        value: "",
+                        placeholder: "3д 12ч",
+                        characterLimit: 32,
+                        apply: { value in
+                            guard let hours = parseDurationHours(value ?? "") else {
+                                presentTooltipImpl?("Не разобрал срок — попробуй, например, «3д 12ч».")
+                                return
+                            }
+                            completion(hours)
+                        }
+                    ))
+                })
+            ]),
+            ActionSheetItemGroup(items: [
+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                })
+            ])
+        ])
+        presentControllerImpl?(sheet)
+    }
+
     let showTierChoice: (Int64, String, String) -> Void = { userId, displayName, adminToken in
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
 
         let apply: (PampGramSubscriptionTier) -> Void = { tier in
-            PampGramSubscriptionAPI.grantTier(userId: userId, tier: tier, adminToken: adminToken) { ok in
-                if ok {
-                    presentTooltipImpl?("\(displayName): выдан тариф \(tier == .pro ? "PRO" : "STANDARD").")
-                } else {
-                    presentTooltipImpl?("Не получилось — проверь, что бэкенд задеплоен, baseURL заполнен, а токен совпадает с ADMIN_TOKEN на сервере.")
+            let grant: (Double?) -> Void = { durationHours in
+                PampGramSubscriptionAPI.grantTier(userId: userId, tier: tier, durationHours: durationHours, adminToken: adminToken) { ok in
+                    if ok {
+                        let durationText = durationHours.map { " (\(formatDurationHours($0)))" } ?? ""
+                        presentTooltipImpl?("\(displayName): выдан тариф \(tier == .pro ? "PRO" : "STANDARD")\(durationText).")
+                    } else {
+                        presentTooltipImpl?("Не получилось — проверь, что бэкенд задеплоен, baseURL заполнен, а токен совпадает с ADMIN_TOKEN на сервере.")
+                    }
                 }
+            }
+            if tier == .pro {
+                showDurationChoice("На какой срок для \(displayName)?", grant)
+            } else {
+                grant(nil)
             }
         }
 
@@ -305,13 +416,21 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
 
         let apply: (PampGramSubscriptionTier) -> Void = { tier in
-            PampGramSubscriptionAPI.generateKey(tier: tier, adminToken: adminToken) { key in
-                guard let key else {
-                    presentTooltipImpl?("Не получилось — проверь, что бэкенд задеплоен, baseURL заполнен, а токен совпадает с ADMIN_TOKEN на сервере.")
-                    return
+            let generate: (Double?) -> Void = { durationHours in
+                PampGramSubscriptionAPI.generateKey(tier: tier, durationHours: durationHours, adminToken: adminToken) { key in
+                    guard let key else {
+                        presentTooltipImpl?("Не получилось — проверь, что бэкенд задеплоен, baseURL заполнен, а токен совпадает с ADMIN_TOKEN на сервере.")
+                        return
+                    }
+                    UIPasteboard.general.string = key
+                    let durationText = durationHours.map { " (\(formatDurationHours($0)))" } ?? ""
+                    presentTooltipImpl?("Ключ \(tier == .pro ? "PRO" : "STANDARD")\(durationText) скопирован: \(key)")
                 }
-                UIPasteboard.general.string = key
-                presentTooltipImpl?("Ключ \(tier == .pro ? "PRO" : "STANDARD") скопирован: \(key)")
+            }
+            if tier == .pro {
+                showDurationChoice("Срок действия ключа", generate)
+            } else {
+                generate(nil)
             }
         }
 
@@ -491,10 +610,10 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .tokenRow("Админ-токен", adminToken == nil ? "Не задан" : "Задан"),
             .tokenFooter("Секрет для авторизации на сервере — задаётся один раз, хранится только на этом устройстве."),
             .grantAction("Выдать подписку", adminToken != nil),
-            .grantFooter("Меняет тариф человека на всех его устройствах. Это и ключи ниже — единственные функции PampGram, которые обращаются к серверу, а не хранят всё локально."),
+            .grantFooter("Меняет тариф человека на всех его устройствах. Для PRO можно выбрать срок (часы или дни) или выдать навсегда. Это и ключи ниже — единственные функции PampGram, которые обращаются к серверу, а не хранят всё локально."),
             .keysHeader("КЛЮЧИ АКТИВАЦИИ"),
             .generateKeyAction("Сгенерировать ключ", adminToken != nil),
-            .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются."),
+            .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются. Для PRO можно выбрать срок (часы или дни) — он начинает отсчитываться с момента активации, а не с момента генерации ключа."),
             .banHeader("ДОСТУП"),
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),

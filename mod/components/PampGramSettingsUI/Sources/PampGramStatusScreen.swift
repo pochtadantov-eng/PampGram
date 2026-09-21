@@ -51,8 +51,16 @@ func pampGramIconDisplayName(_ icon: PresentationAppIcon) -> String {
     return result.isEmpty ? icon.name : result
 }
 
+/// A short "до 21.10, 14:32"-style label for a subscription's expiry, for the status badge.
+private func pampGramFormatExpiry(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .short
+    formatter.timeStyle = .short
+    return "до \(formatter.string(from: date))"
+}
+
 private enum PampGramStatusEntry: ItemListNodeEntry {
-    case badge(Bool)
+    case badge(PampGramSubscriptionStatus)
 
     case activationHeader(String)
     case redeemKeyAction(String)
@@ -126,7 +134,9 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramStatusArguments
         switch self {
-        case let .badge(isPro):
+        case let .badge(status):
+            let isPro = status.tier == .pro
+            let detailLabel = status.expiresAt.map(pampGramFormatExpiry) ?? "Выбери свой стиль приложения и подписку"
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
@@ -135,7 +145,7 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
                 titleFont: .bold,
                 titleBadge: isPro ? "PRO" : "STANDARD",
                 label: "",
-                additionalDetailLabel: "Выбери свой стиль приложения и подписку",
+                additionalDetailLabel: detailLabel,
                 sectionId: self.section,
                 style: .blocks,
                 disclosureStyle: .none,
@@ -212,10 +222,10 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
     }
 }
 
-private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], currentIconName: String?, settings: PampGramSettings, profileVisuals: PampGramProfileVisualState) -> [PampGramStatusEntry] {
+private func pampGramStatusEntries(status: PampGramSubscriptionStatus, icons: [PresentationAppIcon], currentIconName: String?, settings: PampGramSettings, profileVisuals: PampGramProfileVisualState) -> [PampGramStatusEntry] {
     var entries: [PampGramStatusEntry] = []
 
-    entries.append(.badge(isPro))
+    entries.append(.badge(status))
 
     entries.append(.activationHeader("АКТИВАЦИЯ"))
     entries.append(.redeemKeyAction("Активировать ключ"))
@@ -302,12 +312,13 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
                         return
                     }
                     let accountId = context.account.peerId.id._internalGetInt64Value()
-                    PampGramSubscriptionAPI.redeemKey(userId: accountId, key: key) { tier in
-                        guard let tier else {
+                    PampGramSubscriptionAPI.redeemKey(userId: accountId, key: key) { status in
+                        guard let status else {
                             presentTooltipImpl?("Ключ не подошёл — проверь, что он введён верно и ещё не использован.")
                             return
                         }
-                        presentTooltipImpl?("Активировано: тариф \(tier == .pro ? "PRO" : "STANDARD"). Открой «Статус» заново, чтобы увидеть обновлённый значок.")
+                        let durationText = status.expiresAt.map { " (\(pampGramFormatExpiry($0)))" } ?? ""
+                        presentTooltipImpl?("Активировано: тариф \(status.tier == .pro ? "PRO" : "STANDARD")\(durationText). Открой «Статус» заново, чтобы увидеть обновлённый значок.")
                     }
                 }
             ))
@@ -318,11 +329,11 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
         context.sharedContext.presentationData,
         PampGramCore.settingsSignal(postbox: context.account.postbox),
         PampGramProfileVisualStore.signal(postbox: context.account.postbox),
-        PampGramSubscriptionAPI.fetchTier(userId: context.account.peerId.id._internalGetInt64Value()),
+        PampGramSubscriptionAPI.fetchStatus(userId: context.account.peerId.id._internalGetInt64Value()),
         currentIconName.get()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings, profileVisuals, subscriptionTier, currentIconName -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, profileVisuals, subscriptionStatus, currentIconName -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Статус"),
@@ -331,10 +342,9 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),
             animateChanges: false
         )
-        let isPro = subscriptionTier == .pro
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramStatusEntries(isPro: isPro, icons: appIcons, currentIconName: currentIconName, settings: settings, profileVisuals: profileVisuals),
+            entries: pampGramStatusEntries(status: subscriptionStatus, icons: appIcons, currentIconName: currentIconName, settings: settings, profileVisuals: profileVisuals),
             style: .blocks,
             animateChanges: true
         )
