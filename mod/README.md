@@ -118,13 +118,29 @@ mod/
   `transaction.withAllMessages(...)`, и получившийся список id идёт в те же самые
   `PampGramSecretMediaPrefetch.prefetchIfNeeded`/`PampGramDeletedMessageCapture.captureBeforeDelete`,
   что и для обычного удаления, — код капчура и превентивной подкачки медиа не дублируется;
-- `TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift`, `openBotForumMoreMenu` (меню «⋯» в
-  шапке приватного чата) — пункт «Восстановить чат»: не отдельный механизм перехвата, а просто
-  подтверждение того, что уже сохранено `PampGramDeletedMessageStore`-ем для этого собеседника
-  (обе капчур-функции выше уже отрабатывают на любой заход `replayFinalState`, живой или после
-  оффлайна — `getDifference` при следующем запуске прогоняет всё пропущенное через тот же путь).
-  Нажатие считает записи для текущего peerId и показывает `UndoOverlayController`-тост с
-  количеством — если больше нуля, сообщения уже в истории чата, восстановлены автоматически;
+- `TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift` —
+  расширяет капчур на удаления, которые делает сам владелец устройства, а не только на то, что
+  приходит через `replayFinalState` (то есть удаления собеседника). `deleteMessagesInteractively`
+  — единственная функция, через которую проходит любое «Удалить» в приложении — теперь тоже
+  вызывает `PampGramDeletedMessageCapture.captureBeforeDelete`, но с `includeOwnMessages: true`,
+  так что и свои собственные отправленные сообщения тоже остаются в чате при удалении. Та же
+  капча добавлена в `_internal_clearHistoryInteractively`/`_internal_clearHistoryInRangeInteractively`
+  (полная и по датам очистка истории) — весь диапазон сначала перебирается через
+  `transaction.withAllMessages`, как и для канального `.UpdateMinAvailableMessage` выше. Новый
+  параметр `accountPeerId` — не `nil` только когда вызов идёт от реального действия пользователя
+  (`TelegramEngineMessages.swift`/`SparseMessageList.swift` его передают); внутренний служебный
+  вызов `deleteMessagesInteractively` в `AccountStateManagementUtils.swift` (чистка
+  дублирующихся исходящих сообщений) оставляет его `nil`, так что ничего лишнего не захватывается;
+- `PampGramDeletedMessageCapture.restoreChatToNormal` (новая функция в том же файле, что и
+  `captureBeforeDelete`) и `TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift`,
+  `openBotForumMoreMenu` (меню «⋯» в шапке приватного чата) — пункт «Восстановить чат» теперь не
+  просто тост, а настоящее восстановление: снимает `PampGramDeletedByRemoteAttribute` с каждого
+  уже сохранённого для этого собеседника локального сообщения, из-за чего
+  `ChatMessageBubbleItemNode` перестаёт рисовать затемнение и бейдж-корзину — переписка
+  выглядит как обычная, без каких-либо пометок об удалении. `PampGramDeletedMessageStore` при
+  этом не трогается: счётчик в «История» и на самой кнопке остаётся точным, меняется только то,
+  как сообщение нарисовано в чате. Новое удаление в этом чате снова получит свежий бейдж как
+  обычно — восстановление разовое, а не постоянный режим отображения;
 - `StoryItemContentComponent.swift` и `StoryItemSetContainerComponent.swift` — «Сохранение
   историй», два независимых изменения за одной настройкой:
   1. В обоих местах, где строится `isCaptureProtected` для `StoryItemImageView`

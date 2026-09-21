@@ -17131,10 +17131,10 @@ index b761375c..34aab950 100644
              if encrypt {
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift b/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift
 new file mode 100644
-index 00000000..824b8e40
+index 00000000..106ebf87
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,178 @@
 +import Foundation
 +import Postbox
 +import PampGramCore
@@ -17150,11 +17150,21 @@ index 00000000..824b8e40
 +/// `TelegramMediaAction`/`TextEntitiesMessageAttribute`/`Namespaces`, all TelegramCore types,
 +/// and `PampGramCore` — which it does depend on — must never depend back on `TelegramCore`,
 +/// so the reusable record/attribute/store types it calls into live there instead of here.
-+enum PampGramDeletedMessageCapture {
++public enum PampGramDeletedMessageCapture {
 +    /// `messageIds` must already be resolved to peer-scoped `MessageId`s — for the "global id"
 +    /// deletion path (regular private chats and basic groups), resolve with
 +    /// `transaction.messageIdsForGlobalIds(_:)` before calling this.
-+    static func captureBeforeDelete(transaction: Transaction, accountPeerId: PeerId, messageIds: [MessageId]) {
++    ///
++    /// `includeOwnMessages` controls whether a message authored by `accountPeerId` is also
++    /// captured. The `replayFinalState` call sites (server-synced deletions, where the actor
++    /// who deleted isn't directly known) leave this `false` and rely on authorship as a proxy
++    /// for "the other side did this" — a message you sent that later shows up deleted via sync
++    /// is usually an echo of your own action on another device, not something to resurrect.
++    /// The local, this-device delete path (`deleteMessagesInteractively`, `clearHistory...`) is
++    /// unambiguous — the user just chose to delete these specific messages right now — so it
++    /// passes `true` to also keep its own sent messages, same as it already keeps the other
++    /// side's.
++    static func captureBeforeDelete(transaction: Transaction, accountPeerId: PeerId, messageIds: [MessageId], includeOwnMessages: Bool = false) {
 +        let settings = PampGramCore.settings(transaction: transaction)
 +        guard settings.antiDeleteMessagesEnabled else {
 +            return
@@ -17176,9 +17186,10 @@ index 00000000..824b8e40
 +            guard let message = transaction.getMessage(id) else {
 +                continue
 +            }
-+            // Only messages the *other* side sent — a message this account's own user deleted
-+            // (on this device or another) is a real, intentional delete and is left alone.
-+            guard let author = message.author, author.id != accountPeerId else {
++            guard let author = message.author else {
++                continue
++            }
++            if !includeOwnMessages && author.id == accountPeerId {
 +                continue
 +            }
 +            // Service messages (join/leave, calls, real gift actions, etc.) aren't content the
@@ -17231,6 +17242,49 @@ index 00000000..824b8e40
 +                localMessageId: localMessageId
 +            ))
 +        }
++    }
++
++    /// "Восстановить чат": strips `PampGramDeletedByRemoteAttribute` from every resurrected
++    /// local message recorded for `peerId`, so `ChatMessageBubbleItemNode`'s dim-overlay/
++    /// trash-badge check (`attributes.contains(where: { $0 is PampGramDeletedByRemoteAttribute })`)
++    /// stops matching and the bubble renders exactly like any other message — same
++    /// correspondence, no marks. Doesn't touch `PampGramDeletedMessageStore` — the "История"
++    /// screen and this chat's own restored-count keep counting the same records; only the
++    /// in-chat decoration goes away. A later, newly-captured deletion in this chat gets its own
++    /// fresh badge as usual; this only clears what's already there at the moment it's pressed.
++    /// Returns how many messages were actually touched.
++    @discardableResult
++    public static func restoreChatToNormal(transaction: Transaction, peerId: PeerId) -> Int {
++        let records = PampGramDeletedMessageStore.all(transaction: transaction).filter { $0.peerId == peerId }
++        var restoredCount = 0
++        for record in records {
++            guard let currentMessage = transaction.getMessage(record.localMessageId), currentMessage.attributes.contains(where: { $0 is PampGramDeletedByRemoteAttribute }) else {
++                continue
++            }
++            restoredCount += 1
++            transaction.updateMessage(record.localMessageId, update: { currentMessage in
++                let attributes = currentMessage.attributes.filter { !($0 is PampGramDeletedByRemoteAttribute) }
++                let storeForwardInfo = currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init)
++                return .update(StoreMessage(
++                    id: currentMessage.id,
++                    customStableId: nil,
++                    globallyUniqueId: currentMessage.globallyUniqueId,
++                    groupingKey: currentMessage.groupingKey,
++                    threadId: currentMessage.threadId,
++                    timestamp: currentMessage.timestamp,
++                    flags: StoreMessageFlags(currentMessage.flags),
++                    tags: currentMessage.tags,
++                    globalTags: currentMessage.globalTags,
++                    localTags: currentMessage.localTags,
++                    forwardInfo: storeForwardInfo,
++                    authorId: currentMessage.author?.id,
++                    text: currentMessage.text,
++                    attributes: attributes,
++                    media: currentMessage.media
++                ))
++            })
++        }
++        return restoredCount
 +    }
 +
 +    private static func mediaPreview(_ media: Media) -> String {
@@ -17407,8 +17461,132 @@ index 58db6c7..902b45b 100644
                  var resourceIds: [MediaResourceId] = []
                  transaction.deleteMessagesInRange(peerId: id.peerId, namespace: id.namespace, minId: 1, maxId: id.id, forEachMedia: { media in
                      addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
+diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift b/submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift
+index 5f3ee4c4..8b780471 100644
+--- a/submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift
++++ b/submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift
+@@ -3,6 +3,7 @@ import Postbox
+ import SwiftSignalKit
+ import TelegramApi
+ import MtProtoKit
++import PampGramCore
+ 
+ private struct EphemeralDeleteMessageRequest {
+     let peer: Api.InputPeer
+@@ -33,7 +34,7 @@ func _internal_deleteMessagesInteractively(account: Account, messageIds: [Messag
+             }
+         }
+ 
+-        deleteMessagesInteractively(transaction: transaction, stateManager: account.stateManager, postbox: account.postbox, messageIds: messageIds, type: type, removeIfPossiblyDelivered: true)
++        deleteMessagesInteractively(transaction: transaction, stateManager: account.stateManager, postbox: account.postbox, messageIds: messageIds, type: type, removeIfPossiblyDelivered: true, accountPeerId: account.peerId)
+         return ephemeralRequests
+     }
+     |> mapToSignal { ephemeralRequests -> Signal<Void, NoError> in
+@@ -56,7 +57,7 @@ func _internal_deleteMessagesInteractively(account: Account, messageIds: [Messag
+     }
+ }
+     
+-func deleteMessagesInteractively(transaction: Transaction, stateManager: AccountStateManager?, postbox: Postbox, messageIds initialMessageIds: [MessageId], type: InteractiveMessagesDeletionType, deleteAllInGroup: Bool = false, removeIfPossiblyDelivered: Bool) {
++func deleteMessagesInteractively(transaction: Transaction, stateManager: AccountStateManager?, postbox: Postbox, messageIds initialMessageIds: [MessageId], type: InteractiveMessagesDeletionType, deleteAllInGroup: Bool = false, removeIfPossiblyDelivered: Bool, accountPeerId: PeerId? = nil) {
+     var messageIds: [MessageAndThreadId] = []
+     if deleteAllInGroup {
+         var tempIds: [MessageId] = initialMessageIds
+@@ -151,8 +152,19 @@ func deleteMessagesInteractively(transaction: Transaction, stateManager: Account
+             }
+         }
+     }
++    // PampGram "Удалённые сообщения": capture this account's own deletions made right here, on
++    // this device — deleteMessagesInteractively is the single path every "Delete" action in the
++    // app funnels through, so this is symmetric with the other side's deletions already
++    // captured via replayFinalState (which, unlike here, can't tell who actually pressed
++    // delete and so only keeps messages authored by the other side). accountPeerId is nil only
++    // for the internal duplicate-outgoing-message cleanup in AccountStateManagementUtils.swift,
++    // which isn't a real user delete and should stay exactly as invisible as before.
++    if let accountPeerId {
++        PampGramDeletedMessageCapture.captureBeforeDelete(transaction: transaction, accountPeerId: accountPeerId, messageIds: messageIds.map(\.messageId), includeOwnMessages: true)
++    }
++
+     _internal_deleteMessages(transaction: transaction, mediaBox: postbox.mediaBox, ids: messageIds.map(\.messageId))
+-    
++
+     stateManager?.notifyDeletedMessages(messageIds: messageIds.map(\.messageId))
+     
+     if !uniqueIds.isEmpty && removeIfPossiblyDelivered {
+@@ -160,9 +172,22 @@ func deleteMessagesInteractively(transaction: Transaction, stateManager: Account
+     }
+ }
+ 
+-func _internal_clearHistoryInRangeInteractively(postbox: Postbox, peerId: PeerId, threadId: Int64?, minTimestamp: Int32, maxTimestamp: Int32, type: InteractiveHistoryClearingType) -> Signal<Void, NoError> {
++func _internal_clearHistoryInRangeInteractively(postbox: Postbox, peerId: PeerId, threadId: Int64?, minTimestamp: Int32, maxTimestamp: Int32, type: InteractiveHistoryClearingType, accountPeerId: PeerId? = nil) -> Signal<Void, NoError> {
+     return postbox.transaction { transaction -> Void in
+         if peerId.namespace == Namespaces.Peer.CloudUser || peerId.namespace == Namespaces.Peer.CloudGroup || peerId.namespace == Namespaces.Peer.CloudChannel {
++            // PampGram "Удалённые сообщения": this account clearing a date range of its own
++            // chat history, on this device, is just as unambiguous as deleting one message —
++            // capture the range before it's gone, own messages included.
++            if let accountPeerId {
++                var pampGramRangeMessageIds: [MessageId] = []
++                transaction.withAllMessages(peerId: peerId) { message in
++                    if message.timestamp >= minTimestamp && message.timestamp <= maxTimestamp {
++                        pampGramRangeMessageIds.append(message.id)
++                    }
++                    return true
++                }
++                PampGramDeletedMessageCapture.captureBeforeDelete(transaction: transaction, accountPeerId: accountPeerId, messageIds: pampGramRangeMessageIds, includeOwnMessages: true)
++            }
+             cloudChatAddClearHistoryOperation(transaction: transaction, peerId: peerId, threadId: threadId, explicitTopMessageId: nil, minTimestamp: minTimestamp, maxTimestamp: maxTimestamp, type: CloudChatClearHistoryType(type))
+             if type == .scheduledMessages {
+             } else {
+@@ -193,9 +218,21 @@ func _internal_clearHistoryInRangeInteractively(postbox: Postbox, peerId: PeerId
+     }
+ }
+ 
+-func _internal_clearHistoryInteractively(postbox: Postbox, peerId: PeerId, threadId: Int64?, type: InteractiveHistoryClearingType) -> Signal<Void, NoError> {
++func _internal_clearHistoryInteractively(postbox: Postbox, peerId: PeerId, threadId: Int64?, type: InteractiveHistoryClearingType, accountPeerId: PeerId? = nil) -> Signal<Void, NoError> {
+     return postbox.transaction { transaction -> Void in
+         if peerId.namespace == Namespaces.Peer.CloudUser || peerId.namespace == Namespaces.Peer.CloudGroup || peerId.namespace == Namespaces.Peer.CloudChannel {
++            // PampGram "Удалённые сообщения": same capture as the ranged clear above, for a
++            // full "Очистить историю" of this account's own chat on this device — the whole
++            // point of "если прям весь чат удалился" being recoverable, not just individual
++            // messages the other side removes.
++            if let accountPeerId {
++                var pampGramAllMessageIds: [MessageId] = []
++                transaction.withAllMessages(peerId: peerId) { message in
++                    pampGramAllMessageIds.append(message.id)
++                    return true
++                }
++                PampGramDeletedMessageCapture.captureBeforeDelete(transaction: transaction, accountPeerId: accountPeerId, messageIds: pampGramAllMessageIds, includeOwnMessages: true)
++            }
+             cloudChatAddClearHistoryOperation(transaction: transaction, peerId: peerId, threadId: threadId, explicitTopMessageId: nil, minTimestamp: nil, maxTimestamp: nil, type: CloudChatClearHistoryType(type))
+             if type == .scheduledMessages {
+                 _internal_clearHistory(transaction: transaction, mediaBox: postbox.mediaBox, peerId: peerId, threadId: threadId, namespaces: .just(Namespaces.Message.allScheduled))
+diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift b/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift
+index 2ff38f33..3f62865d 100644
+--- a/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift
++++ b/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift
+@@ -195,7 +195,7 @@ public extension TelegramEngine {
+         }
+ 
+         public func clearHistoryInteractively(peerId: PeerId, threadId: Int64?, type: InteractiveHistoryClearingType) -> Signal<Void, NoError> {
+-            return _internal_clearHistoryInteractively(postbox: self.account.postbox, peerId: peerId, threadId: threadId, type: type)
++            return _internal_clearHistoryInteractively(postbox: self.account.postbox, peerId: peerId, threadId: threadId, type: type, accountPeerId: self.account.peerId)
+         }
+ 
+         public func clearAuthorHistory(peerId: PeerId, memberId: PeerId) -> Signal<Void, NoError> {
+diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Messages/SparseMessageList.swift b/submodules/TelegramCore/Sources/TelegramEngine/Messages/SparseMessageList.swift
+index b6c5942e..e78d5282 100644
+--- a/submodules/TelegramCore/Sources/TelegramEngine/Messages/SparseMessageList.swift
++++ b/submodules/TelegramCore/Sources/TelegramEngine/Messages/SparseMessageList.swift
+@@ -830,7 +830,7 @@ public final class SparseMessageCalendar {
+ 
+             self.statePromise.set(.single(self.state))
+ 
+-            return _internal_clearHistoryInRangeInteractively(postbox: self.account.postbox, peerId: self.peerId, threadId: self.threadId, minTimestamp: minTimestamp, maxTimestamp: maxTimestamp, type: type).start(completed: {
++            return _internal_clearHistoryInRangeInteractively(postbox: self.account.postbox, peerId: self.peerId, threadId: self.threadId, minTimestamp: minTimestamp, maxTimestamp: maxTimestamp, type: type, accountPeerId: self.account.peerId).start(completed: {
+                 completion()
+             })
+         }
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
-index a48582f..fd84f10 100644
+index a48582f5..b086aeeb 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
 @@ -33,6 +33,7 @@ import InstantPageUI
@@ -17419,39 +17597,45 @@ index a48582f..fd84f10 100644
  import HashtagSearchUI
  import LegacyMediaPickerUI
  import Emoji
-@@ -365,6 +366,40 @@ extension ChatControllerImpl {
+@@ -365,6 +366,46 @@ extension ChatControllerImpl {
              self?.beginMessageSearch("")
          })))
          
-+        // PampGram "Восстановить чат": a manual, always-available confirmation/repair action
-+        // for "Восстановление удалённых сообщений" (Ghost) — every deletion this account's
-+        // sync ever replays through `replayFinalState`, live or caught up after being offline,
-+        // already gets captured and shown automatically (see `PampGramDeletedMessageCapture`
-+        // and, for a channel's bulk-cleared history, the newer `.UpdateMinAvailableMessage`
-+        // hook in `AccountStateManagementUtils.swift`) — this button doesn't gate anything on
-+        // its own. It just reports how much is on record for *this* chat, so pressing it after
-+        // reopening the app to a conversation the other side wiped tells you plainly that
-+        // nothing was lost, rather than leaving that to be inferred silently.
++        // PampGram "Восстановить чат": for "Восстановление удалённых сообщений" (Ghost) —
++        // every deletion this account's sync ever replays through `replayFinalState`, live or
++        // caught up after being offline, plus (as of the own-message capture added alongside
++        // this) every message or history range this account deletes right here on this device,
++        // already gets captured and shown automatically, dimmed with a trash badge (see
++        // `PampGramDeletedMessageCapture`). Pressing this button additionally clears that
++        // dimming/badge for every already-captured message in *this* chat
++        // (`PampGramDeletedMessageCapture.restoreChatToNormal`) — the chat then reads as the
++        // same, intact correspondence again, with no visible trace that anything was ever
++        // deleted here. Nothing is re-fetched or re-captured by this action itself; it only
++        // changes how what's already on this device is drawn.
 +        items.append(.action(ContextMenuActionItem(text: "Восстановить чат", icon: { theme in
 +            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Resend"), color: theme.contextMenu.primaryColor)
 +        }, action: { [weak self] action in
 +            action.dismissWithResult(.default)
-+            
++
 +            guard let self else {
 +                return
 +            }
-+            let _ = (self.context.account.postbox.transaction { transaction -> Int in
-+                return PampGramDeletedMessageStore.all(transaction: transaction).filter { $0.peerId == peerId }.count
++            let _ = (self.context.account.postbox.transaction { transaction -> (total: Int, restored: Int) in
++                let total = PampGramDeletedMessageStore.all(transaction: transaction).filter { $0.peerId == peerId }.count
++                let restored = PampGramDeletedMessageCapture.restoreChatToNormal(transaction: transaction, peerId: peerId)
++                return (total, restored)
 +            }
-+            |> deliverOnMainQueue).startStandalone(next: { [weak self] count in
++            |> deliverOnMainQueue).startStandalone(next: { [weak self] result in
 +                guard let self else {
 +                    return
 +                }
 +                let text: String
-+                if count > 0 {
-+                    text = "Сохранено удалённых сообщений в этом чате: \(count). Они уже в истории чата — фото, видео, кружочки и голосовые можно открыть как обычно."
-+                } else {
++                if result.total == 0 {
 +                    text = "Для этого чата пока нет сохранённых удалённых сообщений."
++                } else if result.restored > 0 {
++                    text = "Чат восстановлен: \(result.total) сообщений отображаются как обычные, без пометок об удалении."
++                } else {
++                    text = "Сохранено удалённых сообщений в этом чате: \(result.total) — уже без пометок об удалении."
 +                }
 +                self.presentInGlobalOverlay(UndoOverlayController(presentationData: self.presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }))
 +            })

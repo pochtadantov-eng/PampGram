@@ -129,7 +129,7 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
 
     entries.append(.antiDeleteToggle("Удалённые сообщения", settings.antiDeleteMessagesEnabled))
     entries.append(.exclusionsRow("Исключения", "\(settings.antiDeleteExcludedPeerIds.count)"))
-    entries.append(.antiDeleteFooter("Удалённое собеседником сообщение остаётся в чате затемнённым, с иконкой корзины. В исключённых чатах — как обычно."))
+    entries.append(.antiDeleteFooter("Удалённое сообщение — своё или собеседника — остаётся в чате затемнённым, с иконкой корзины. Снять пометки можно кнопкой «Восстановить чат» в конкретном чате. В исключённых чатах — как обычно."))
 
     entries.append(.visualEditToggle("Изменить визуально", settings.visualEditEnabled))
     entries.append(.visualEditFooter("Добавляет в меню сообщения собеседника (зажать → PampGram) кнопку «Изменить визуально» — меняет текст только у вас."))
