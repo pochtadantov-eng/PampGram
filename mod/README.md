@@ -106,14 +106,21 @@ mod/
   «Сохранить видео», который для медиа с таймером специально скрыт условием
   `!message.containsSecretMedia` чуть ниже в том же файле. Пункт чисто ручной — ничего не
   сохраняется без нажатия, дедупликация не нужна, поведение как у обычного «Сохранить видео»;
-- `StoryItemContentComponent.swift` — «Скриншоты историй»: в обоих местах, где строится
-  `isCaptureProtected` для `StoryItemImageView` (`isCaptureProtected: item.isForwardingDisabled`),
-  добавлено `&& !PampGramStoryScreenshotDisplay.shared.isEnabled(...)`. `isCaptureProtected`
-  решает, оборачивать ли изображение истории в `UITextField.isSecureTextEntry` — это
-  единственное, из-за чего скриншот/запись экрана такой истории выходит чёрными на iOS
-  (`StoryItemImageView.swift`), самой Telegram-протокольной отметки «историю
-  заскриншотили» не существует (это есть только у секретных чатов). Настройка просто не даёт
-  этой обёртке появиться для этого аккаунта;
+- `StoryItemContentComponent.swift` и `StoryItemSetContainerComponent.swift` — «Сохранение
+  историй», два независимых изменения за одной настройкой:
+  1. В обоих местах, где строится `isCaptureProtected` для `StoryItemImageView`
+     (`isCaptureProtected: item.isForwardingDisabled`), добавлено
+     `&& !PampGramStorySavingDisplay.shared.isEnabled(...)`. `isCaptureProtected` решает,
+     оборачивать ли изображение истории в `UITextField.isSecureTextEntry` — это единственное,
+     из-за чего скриншот/запись экрана такой истории выходит чёрными на iOS
+     (`StoryItemImageView.swift`), самой Telegram-протокольной отметки «историю
+     заскриншотили» не существует (это есть только у секретных чатов). Настройка просто не
+     даёт этой обёртке появиться для этого аккаунта;
+  2. В `performOtherMoreAction` (меню «…» на чужой истории) условие показа пункта
+     «Сохранить» — `!component.slice.item.storyItem.isForwardingDisabled` — получает
+     `|| PampGramStorySavingDisplay.shared.isEnabled(...)`. Само сохранение
+     (`requestSave()`/`saveToCameraRoll`) не тронуто: работает и требует Premium точно так
+     же, как для обычной истории — меняется только видимость пункта меню;
 - `PeerInfoSettingsItems.swift` — «Скрыть иконку в настройках»: строка «PampGram» в стоковом
   экране настроек оборачивается в `if !pampGramSettings.hidePampGramIconEnabled`. Долгое
   нажатие на строку «Помощь» там же всегда открывает PampGram напрямую — способ вернуться,
@@ -124,7 +131,7 @@ mod/
   обычному короткому тапу. Параметр опциональный со значением по умолчанию — остальные ~100
   мест, где этот тип уже используется в стоке, не меняются;
 - четыре `BUILD`-файла (Bazel) в оригинальной фиче плюс один на файл, тронутый
-  «Показывать временную медиа» и «Скриншоты историй».
+  «Показывать временную медиа» и «Сохранение историй».
 
 `server/pampgram-subs-worker/` получил два новых маршрута — `/generate-key` (админ создаёт
 одноразовый ключ под тариф) и `/redeem-key` (любой аккаунт активирует ключ на себя, ключ

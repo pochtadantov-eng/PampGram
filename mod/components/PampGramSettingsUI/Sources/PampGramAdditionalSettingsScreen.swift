@@ -21,9 +21,9 @@ private final class PampGramAdditionalArguments {
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
     let toggleShowTemporaryMedia: (Bool) -> Void
-    let toggleStoryScreenshots: (Bool) -> Void
+    let toggleStorySaving: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleShowTemporaryMedia: @escaping (Bool) -> Void, toggleStoryScreenshots: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleShowTemporaryMedia: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -35,7 +35,7 @@ private final class PampGramAdditionalArguments {
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
         self.toggleShowTemporaryMedia = toggleShowTemporaryMedia
-        self.toggleStoryScreenshots = toggleStoryScreenshots
+        self.toggleStorySaving = toggleStorySaving
     }
 }
 
@@ -173,7 +173,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             })
         case let .screenshotsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "camera.viewfinder", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
-                arguments.toggleStoryScreenshots(value)
+                arguments.toggleStorySaving(value)
             })
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -238,9 +238,9 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.mediaToggle("Показывать временную медиа", settings.showTemporaryMediaEnabled))
     entries.append(.mediaFooter("Фото и видео с таймером (в том числе «посмотреть один раз») показываются в чате сразу, как обычные медиа — без размытия и без ограничения «только один просмотр». Открытие всё ещё идёт через обычный просмотрщик Telegram: реальный таймер, статус просмотра и удаление сообщения не меняются, меняется только то, как оно выглядит в ленте на этом устройстве."))
 
-    entries.append(.screenshotsHeader("СКРИНШОТЫ ИСТОРИЙ"))
-    entries.append(.screenshotsToggle("Скриншоты историй", settings.storyScreenshotsEnabled))
-    entries.append(.screenshotsFooter("Истории, которые защищены от пересылки и сохранения, Telegram специально чернит на скриншоте и в записи экрана — это делает сама iOS, а не подсказка поверх экрана. Эта настройка отключает такое затемнение для вас: скриншот такой истории выглядит как обычно. Автору истории по-прежнему ничего не сообщается — у Story нет уведомления о скриншоте, оно есть только в секретных чатах."))
+    entries.append(.screenshotsHeader("СОХРАНЕНИЕ ИСТОРИЙ"))
+    entries.append(.screenshotsToggle("Сохранение историй", settings.storySavingEnabled))
+    entries.append(.screenshotsFooter("Истории, защищённые от пересылки и сохранения: скриншот и запись экрана перестают чернеть (это делает сама iOS, а не подсказка поверх экрана — автору по-прежнему ничего не сообщается, у Story нет уведомления о скриншоте вне секретных чатов), а в «…» на самой истории появляется пункт «Сохранить», которого иначе для такой истории нет. Сохранение работает так же, как для обычной истории — требует Premium, если оно у вас есть."))
 
     entries.append(.premiumHeader("ПРЕМИУМ"))
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
@@ -306,8 +306,8 @@ private func pampGramPresentVoicePresetPicker(context: AccountContext, presentCo
 /// (Стандарт/Быстрый/Турбо — each just toggles existing, already-used parallelism knobs in
 /// Telegram's own upload/download code), "Показывать временную медиа" — display-only, see
 /// `PampGramTemporaryMediaDisplay` and its use in `ChatMessageInteractiveMediaNode.swift` — and
-/// "Скриншоты историй" — display-only, see `PampGramStoryScreenshotDisplay` and its use in
-/// `StoryItemContentComponent.swift`.
+/// "Сохранение историй" — see `PampGramStorySavingDisplay` and its use in
+/// `StoryItemContentComponent.swift` and `StoryItemSetContainerComponent.swift`.
 public func pampGramAdditionalSettingsController(context: AccountContext) -> ViewController {
     var presentControllerImpl: ((ViewController) -> Void)?
     var pushControllerImpl: ((ViewController) -> Void)?
@@ -386,10 +386,10 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                 return settings
             }).start()
         },
-        toggleStoryScreenshots: { value in
+        toggleStorySaving: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
-                settings.storyScreenshotsEnabled = value
+                settings.storySavingEnabled = value
                 return settings
             }).start()
         }

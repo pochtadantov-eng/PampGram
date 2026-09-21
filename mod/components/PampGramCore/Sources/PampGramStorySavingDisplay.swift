@@ -2,12 +2,13 @@ import Foundation
 import Postbox
 import SwiftSignalKit
 
-/// Synchronous, in-memory mirror of "Скриншоты историй" (Дополнительно), so
-/// `StoryItemContentComponent` can check the setting without an async Postbox read — its
-/// layout runs off the main thread and can't open a transaction there. Warmed once per account
-/// at `AccountContextImpl` init (see the patch), same pattern as `PampGramTemporaryMediaDisplay`.
-public final class PampGramStoryScreenshotDisplay {
-    public static let shared = PampGramStoryScreenshotDisplay()
+/// Synchronous, in-memory mirror of "Сохранение историй" (Дополнительно), so
+/// `StoryItemContentComponent` and `StoryItemSetContainerComponent` can check the setting
+/// without an async Postbox read — their layout runs off the main thread and can't open a
+/// transaction there. Warmed once per account at `AccountContextImpl` init (see the patch),
+/// same pattern as `PampGramTemporaryMediaDisplay`.
+public final class PampGramStorySavingDisplay {
+    public static let shared = PampGramStorySavingDisplay()
 
     private let lock = NSLock()
     private var enabledByAccount: [Int64: Bool] = [:]
@@ -39,7 +40,7 @@ public final class PampGramStoryScreenshotDisplay {
                 return
             }
             self.lock.lock()
-            self.enabledByAccount[accountKey] = settings.storyScreenshotsEnabled
+            self.enabledByAccount[accountKey] = settings.storySavingEnabled
             self.lock.unlock()
         })
 

@@ -20752,7 +20752,7 @@ index 57ecb9d..f0a68ec 100644
      }
      
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd..5b758f3 100644
+index 4d971fd..e1fa0de 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -20784,7 +20784,7 @@ index 4d971fd..5b758f3 100644
 +            self.pampGramGiftReceiveDisposable.set(PampGramPhantomGiftManager.observeIncomingGiftTransfers(account: account))
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
-+            PampGramStoryScreenshotDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
++            PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
              self.prefetchManager = PrefetchManagerImpl(sharedContext: sharedContext, account: account, engine: self.engine, fetchManager: self.fetchManager)
              self.wallpaperUploadManager = WallpaperUploadManagerImpl(sharedContext: sharedContext, account: account, presentationData: sharedContext.presentationData)
              self.themeUpdateManager = ThemeUpdateManagerImpl(sharedContext: sharedContext, account: account)
@@ -20921,7 +20921,7 @@ index 63a3f53..7de7c03 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemContentComponent.swift b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemContentComponent.swift
-index b476f08..ac1dbf8 100644
+index b476f08..b531294 100644
 --- a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemContentComponent.swift
 +++ b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemContentComponent.swift
 @@ -4,6 +4,7 @@ import Display
@@ -20937,7 +20937,7 @@ index b476f08..ac1dbf8 100644
                          media: messageMedia,
                          size: availableSize,
 -                        isCaptureProtected: component.item.isForwardingDisabled,
-+                        isCaptureProtected: component.item.isForwardingDisabled && !PampGramStoryScreenshotDisplay.shared.isEnabled(accountKey: component.context.account.peerId.toInt64()),
++                        isCaptureProtected: component.item.isForwardingDisabled && !PampGramStorySavingDisplay.shared.isEnabled(accountKey: component.context.account.peerId.toInt64()),
                          attemptSynchronous: synchronousLoad,
                          transition: transition
                      )
@@ -20946,10 +20946,36 @@ index b476f08..ac1dbf8 100644
                          media: messageMedia,
                          size: availableSize,
 -                        isCaptureProtected: component.item.isForwardingDisabled,
-+                        isCaptureProtected: component.item.isForwardingDisabled && !PampGramStoryScreenshotDisplay.shared.isEnabled(accountKey: component.context.account.peerId.toInt64()),
++                        isCaptureProtected: component.item.isForwardingDisabled && !PampGramStorySavingDisplay.shared.isEnabled(accountKey: component.context.account.peerId.toInt64()),
                          attemptSynchronous: synchronousLoad,
                          transition: transition
                      )
+diff --git a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemSetContainerComponent.swift b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemSetContainerComponent.swift
+index 8e9b727..ea1b715 100644
+--- a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemSetContainerComponent.swift
++++ b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemSetContainerComponent.swift
+@@ -45,6 +45,7 @@ import SliderContextItem
+ import SaveProgressScreen
+ import DirectMediaImageCache
+ import PromptUI
++import PampGramCore
+ 
+ public final class StoryAvailableReactions: Equatable {
+     let reactionItems: [ReactionItem]
+@@ -7421,7 +7422,12 @@ public final class StoryItemSetContainerComponent: Component {
+                             }
+                             self.beginPictureInPicture()
+                         })))
+-                    } else if !component.slice.item.storyItem.isForwardingDisabled {
++                    } else if !component.slice.item.storyItem.isForwardingDisabled || PampGramStorySavingDisplay.shared.isEnabled(accountKey: component.context.account.peerId.toInt64()) {
++                        // PampGram "Сохранение историй": stock Telegram hides "Сохранить" for a
++                        // story with forwarding disabled entirely — the item below is the same
++                        // one shown for a normal story, and `requestSave()` below is completely
++                        // unmodified (still requires Premium, still goes through the same
++                        // `saveToCameraRoll`), only the visibility check changed.
+                         let saveText: String = component.strings.Story_Context_SaveToGallery
+                         items.append(.action(ContextMenuActionItem(text: saveText, icon: { theme in
+                             return generateTintedImage(image: UIImage(bundleImageName: accountUser.isPremium ? "Chat/Context Menu/Download" : "Chat/Context Menu/DownloadLocked"), color: theme.contextMenu.primaryColor)
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift
 index f788f65..c690805 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift
