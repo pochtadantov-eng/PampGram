@@ -242,8 +242,9 @@ private final class PampGramHubArguments {
     let openAbout: () -> Void
     let openSupport: () -> Void
     let openSearch: () -> Void
+    let openPremium: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSearch: @escaping () -> Void, openSupport: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSearch: @escaping () -> Void, openSupport: @escaping () -> Void, openPremium: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
@@ -254,6 +255,7 @@ private final class PampGramHubArguments {
         self.openAbout = openAbout
         self.openSupport = openSupport
         self.openSearch = openSearch
+        self.openPremium = openPremium
     }
 }
 
@@ -319,14 +321,18 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         },
         openGhost: {
             pampGramGateSection(context: context, section: .ghost) {
-                pushControllerImpl?(pampGramGhostSettingsController(context: context))
+                pampGramGateTier(context: context) {
+                    pushControllerImpl?(pampGramGhostSettingsController(context: context))
+                }
             }
         },
         openAppearance: {
             pushControllerImpl?(pampGramAppearanceController(context: context))
         },
         openAdditional: {
-            pushControllerImpl?(pampGramAdditionalSettingsController(context: context))
+            pampGramGateTier(context: context) {
+                pushControllerImpl?(pampGramAdditionalSettingsController(context: context))
+            }
         },
         openAdmin: {
             pushControllerImpl?(pampGramAdminController(context: context))
@@ -399,6 +405,9 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
                 ])
             ])
             presentControllerImpl?(mainSheet)
+        },
+        openPremium: {
+            pampGramPresentPremiumScreen(context: context)
         }
     )
 
@@ -424,7 +433,9 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
             presentationData: ItemListPresentationData(presentationData),
             title: .text("PampGram"),
             leftNavigationButton: nil,
-            rightNavigationButton: nil,
+            rightNavigationButton: ItemListNavigationButton(content: .text("Premium"), style: .bold, enabled: true, action: {
+                arguments.openPremium()
+            }),
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),
             animateChanges: false
         )

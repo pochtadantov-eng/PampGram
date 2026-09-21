@@ -9,7 +9,6 @@ import ItemListUI
 import PresentationDataUtils
 import AccountContext
 import AppBundle
-import PromptUI
 import UndoUI
 import PampGramCore
 
@@ -49,14 +48,6 @@ func pampGramIconDisplayName(_ icon: PresentationAppIcon) -> String {
         result.append(character)
     }
     return result.isEmpty ? icon.name : result
-}
-
-/// A short "до 21.10, 14:32"-style label for a subscription's expiry, for the status badge.
-private func pampGramFormatExpiry(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .short
-    return "до \(formatter.string(from: date))"
 }
 
 private enum PampGramStatusEntry: ItemListNodeEntry {
@@ -136,7 +127,7 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         switch self {
         case let .badge(status):
             let isPro = status.tier == .pro
-            let detailLabel = status.expiresAt.map(pampGramFormatExpiry) ?? "Выбери свой стиль приложения и подписку"
+            let detailLabel = status.expiresAt.map(pampGramFormatSubscriptionExpiry) ?? "Выбери свой стиль приложения и подписку"
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
@@ -300,28 +291,11 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
             }
         },
         redeemKey: {
-            presentControllerImpl?(promptController(
-                context: context,
-                text: "Активировать ключ",
-                subtitle: "Ключ, который тебе дали или продали — например, XXXX-XXXX-XXXX-XXXX",
-                value: "",
-                placeholder: "ключ",
-                characterLimit: 64,
-                apply: { value in
-                    guard let key = value?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
-                        return
-                    }
-                    let accountId = context.account.peerId.id._internalGetInt64Value()
-                    PampGramSubscriptionAPI.redeemKey(userId: accountId, key: key) { status in
-                        guard let status else {
-                            presentTooltipImpl?("Ключ не подошёл — проверь, что он введён верно и ещё не использован.")
-                            return
-                        }
-                        let durationText = status.expiresAt.map { " (\(pampGramFormatExpiry($0)))" } ?? ""
-                        presentTooltipImpl?("Активировано: тариф \(status.tier == .pro ? "PRO" : "STANDARD")\(durationText). Открой «Статус» заново, чтобы увидеть обновлённый значок.")
-                    }
-                }
-            ))
+            pampGramPresentRedeemKeyFlow(context: context, presentController: { controller in
+                presentControllerImpl?(controller)
+            }, presentTooltip: { text in
+                presentTooltipImpl?(text + " Открой «Статус» заново, чтобы увидеть обновлённый значок.")
+            })
         }
     )
 

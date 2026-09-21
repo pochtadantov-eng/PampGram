@@ -208,6 +208,27 @@ cp -R /путь/до/PampGram/mod/components/. submodules/TelegramUI/Components/
 кладутся в секреты репозитория `TELEGRAM_API_ID` и `TELEGRAM_API_HASH` — workflow подхватит
 их автоматически.
 
+- `PampGramSettingsUI/PampGramOnboardingScreen.swift` (новый) и
+  `TelegramUI/Sources/AppDelegate.swift` — карусель первого запуска. `viewDidLoad`/paging —
+  чистый UIKit, без Postbox: на этот момент ещё нет ни аккаунта, ни его Postbox, так что
+  "показано один раз" хранится в обычном `UserDefaults` (`PampGram_OnboardingShown_v1`), а не в
+  `PampGramSettings`. Вызывается из `didFinishLaunchingWithOptions` сразу после
+  `self.window?.makeKeyAndVisible()` — поверх уже отрисованного окна, не подменяя решение
+  Telegram о том, что показать дальше (вход или список чатов): под каруселью всё точно так же,
+  как без неё, и баг в этом экране не может сломать сам вход;
+- `PampGramSettingsUI/PampGramPremiumScreen.swift` (новый) — платный экран: те же реальные
+  PRO-функции, что скрыты в `pampGramGateTier`, с иконкой/описанием на карточке, статус текущего
+  тарифа (тот же `PampGramSubscriptionAPI.fetchStatus`, что и «Статус») и кнопка активации,
+  которая ведёт на уже существующий ключ-флоу — никакой настоящей Apple-покупки тут нет и быть
+  не может (сборка сайдлоуд, не из App Store, реальный StoreKit не заработает);
+- `PampGramSettingsUI/PampGramSubscriptionUI.swift` (новый) — вынесенный из
+  `PampGramStatusScreen.swift` общий флоу «Активировать ключ» (промпт + вызов
+  `PampGramSubscriptionAPI.redeemKey` + тултип), теперь используется и «Статус»-экраном, и
+  Premium-экраном, без дублирования;
+- `PampGramHubScreen.swift` — кнопка «Premium» в правом верхнем углу (открывает Premium-экран),
+  разделы «Ghost» и «Дополнительно» обёрнуты в `pampGramGateTier`, который открывает Premium
+  вместо раздела, если тариф не PRO. «Подарки», «Чаты» и «Внешний вид» остаются бесплатными.
+
 ## Что ещё не сделано
 
 - **Грид подарков в профиле** («Профиль → Подарки»). Рендеринг живёт в

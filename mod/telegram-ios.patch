@@ -19996,10 +19996,34 @@ index 87c58b5f..78a3939e 100644
          }
          
 diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/TelegramUI/Sources/AppDelegate.swift
-index b1ea96b8..fa3a4959 100644
+index b1ea96b8..7b96dcac 100644
 --- a/submodules/TelegramUI/Sources/AppDelegate.swift
 +++ b/submodules/TelegramUI/Sources/AppDelegate.swift
-@@ -948,24 +948,23 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
+@@ -40,6 +40,7 @@ import DeviceProximity
+ import MediaEditor
+ import TelegramUIDeclareEncodables
+ import ContextMenuScreen
++import PampGramSettingsUI
+ import MetalEngine
+ import RecaptchaEnterprise
+ import NavigationBarImpl
+@@ -778,7 +779,14 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
+         GlobalExperimentalSettings.enableFeed = false
+         
+         self.window?.makeKeyAndVisible()
+-        
++
++        // PampGram: first-launch onboarding — shown once, on top of whatever the app already
++        // put on screen. Doesn't touch the real launch decision (auth vs. chat list) at all, so
++        // a bug here can't break getting into the app; see PampGramOnboardingScreen.swift.
++        if let window = self.window {
++            pampGramPresentOnboardingIfNeeded(on: window)
++        }
++
+         var hasActiveCalls: Signal<Bool, NoError> = .single(false)
+         if CallKitIntegration.isAvailable, let callKitIntegration = CallKitIntegration.shared {
+             hasActiveCalls = callKitIntegration.hasActiveCalls
+@@ -948,24 +956,23 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
              self.window?.rootViewController?.dismiss(animated: true, completion: nil)
          }, getAvailableAlternateIcons: {
              if #available(iOS 10.3, *) {
