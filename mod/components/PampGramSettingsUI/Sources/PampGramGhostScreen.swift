@@ -22,9 +22,9 @@ private final class PampGramGhostArguments {
     let toggleExcludeAllGroups: (Bool) -> Void
     let openFolders: () -> Void
     let openExceptions: () -> Void
-    let toggleSaveInstantVideos: (Bool) -> Void
+    let toggleSaveSecretMedia: (Bool) -> Void
 
-    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void, toggleSaveInstantVideos: @escaping (Bool) -> Void) {
+    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void, toggleSaveSecretMedia: @escaping (Bool) -> Void) {
         self.toggleMaster = toggleMaster
         self.toggleHideReadReceipts = toggleHideReadReceipts
         self.toggleHideStoryViews = toggleHideStoryViews
@@ -36,7 +36,7 @@ private final class PampGramGhostArguments {
         self.toggleExcludeAllGroups = toggleExcludeAllGroups
         self.openFolders = openFolders
         self.openExceptions = openExceptions
-        self.toggleSaveInstantVideos = toggleSaveInstantVideos
+        self.toggleSaveSecretMedia = toggleSaveSecretMedia
     }
 }
 
@@ -68,7 +68,7 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     case exceptionsFooter(String)
 
     case mediaHeader(String)
-    case saveInstantVideosToggle(String, Bool)
+    case saveSecretMediaToggle(String, Bool)
     case mediaFooter(String)
 
     var section: ItemListSectionId {
@@ -79,7 +79,7 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return PampGramGhostSection.features.rawValue
         case .exceptionsHeader, .excludeAllChannels, .excludeAllGroups, .foldersRow, .exceptionsRow, .exceptionsFooter:
             return PampGramGhostSection.exceptions.rawValue
-        case .mediaHeader, .saveInstantVideosToggle, .mediaFooter:
+        case .mediaHeader, .saveSecretMediaToggle, .mediaFooter:
             return PampGramGhostSection.media.rawValue
         }
     }
@@ -120,7 +120,7 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return 15
         case .mediaHeader:
             return 16
-        case .saveInstantVideosToggle:
+        case .saveSecretMediaToggle:
             return 17
         case .mediaFooter:
             return 18
@@ -138,9 +138,9 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .featuresHeader(text), let .exceptionsHeader(text), let .mediaHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .saveInstantVideosToggle(title, value):
+        case let .saveSecretMediaToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrow.down.circle.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
-                arguments.toggleSaveInstantVideos(value)
+                arguments.toggleSaveSecretMedia(value)
             })
         case let .masterToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -215,8 +215,8 @@ private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, 
     entries.append(.exceptionsFooter("Режим призрака не действует в выбранных чатах, типах чатов или папках. Для папок учитываются чаты, добавленные в папку вручную."))
 
     entries.append(.mediaHeader("СОХРАНЕНИЕ ОДНОРАЗОВЫХ"))
-    entries.append(.saveInstantVideosToggle("Сохранение Одноразовых", settings.saveInstantVideosEnabled))
-    entries.append(.mediaFooter("Когда включено, на кружочке (видеосообщении), который вам прислали как «посмотреть один раз» или с таймером, при долгом нажатии появляется пункт «Сохранить Медиа» — сохраняет его в «Фото» на этом устройстве. Ничего не сохраняется само по себе, только по нажатию. При первом сохранении система один раз спросит доступ к «Фото». Работает независимо от «Режима призрака» выше. Реальный таймер, статус просмотра и удаление сообщения у Telegram не меняются — это только локальная копия на этом устройстве."))
+    entries.append(.saveSecretMediaToggle("Сохранение Одноразовых", settings.saveSecretMediaEnabled))
+    entries.append(.mediaFooter("Когда включено, на фото, видео или кружочке (видеосообщении), которые вам прислали как «посмотреть один раз» или с таймером, при долгом нажатии появляется пункт «Сохранить Медиа» — сохраняет их в «Фото» на этом устройстве. Ничего не сохраняется само по себе, только по нажатию. При первом сохранении система один раз спросит доступ к «Фото». Работает независимо от «Режима призрака» выше. Реальный таймер, статус просмотра и удаление сообщения у Telegram не меняются — это только локальная копия на этом устройстве."))
 
     return entries
 }
@@ -303,10 +303,10 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
         openExceptions: {
             pushControllerImpl?(pampGramGhostExceptionsController(context: context))
         },
-        toggleSaveInstantVideos: { value in
+        toggleSaveSecretMedia: { value in
             updateSettings { settings in
                 var settings = settings
-                settings.saveInstantVideosEnabled = value
+                settings.saveSecretMediaEnabled = value
                 return settings
             }
         }

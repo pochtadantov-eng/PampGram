@@ -19924,7 +19924,7 @@ index a1a8f61d..8d28620c 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5b..18b74ce 100644
+index 07cef5b..a325d4b 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -19938,7 +19938,7 @@ index 07cef5b..18b74ce 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,124 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,130 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -19963,32 +19963,38 @@ index 07cef5b..18b74ce 100644
 +        var items = items
 +        var newList = list
 +
-+        // "Сохранение видео" (Ghost): a "Сохранить Медиа" entry on an incoming round-video
-+        // ("кружочек") message sent as view-once or with a self-destruct timer, saving it into
-+        // Photos on tap — stock Telegram hides its own "Save Video" action for secret media
-+        // (see the `!message.containsSecretMedia` guard further down in this file), so this is
-+        // the only way to keep a copy before the timer removes it from the chat. Manual only:
-+        // nothing is saved without this being tapped. Independent of "Изменить визуально" below.
++        // "Сохранение Одноразовых" (Ghost): a "Сохранить Медиа" entry on an incoming photo,
++        // video, or round-video ("кружочек") message sent as view-once or with a
++        // self-destruct timer, saving it into Photos on tap — stock Telegram hides its own
++        // "Save Image"/"Save Video" action for secret media entirely (see the
++        // `!message.containsSecretMedia` guard further down in this file, which is the exact
++        // same media-detection logic mirrored here), so this is the only way to keep a copy
++        // before the timer removes it from the chat. Manual only: nothing is saved without
++        // this being tapped. Independent of "Изменить визуально" below.
 +        let isCopyProtected = chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()
-+        if settings.saveInstantVideosEnabled, message.containsSecretMedia, !isCopyProtected, message.effectivelyIncoming(context.account.peerId) {
-+            var instantVideoFile: TelegramMediaFile?
++        if settings.saveSecretMediaEnabled, message.containsSecretMedia, !isCopyProtected, message.effectivelyIncoming(context.account.peerId) {
++            var secretMediaReference: AnyMediaReference?
++            var isSecretMediaVideo = false
 +            for media in message.effectiveMedia {
-+                if let file = media as? TelegramMediaFile, file.isInstantVideo {
-+                    instantVideoFile = file
++                if let image = media as? TelegramMediaImage, let _ = largestImageRepresentation(image.representations) {
++                    secretMediaReference = ImageMediaReference.standalone(media: image).abstract
++                    break
++                } else if let file = media as? TelegramMediaFile, file.isVideo || file.isInstantVideo {
++                    secretMediaReference = FileMediaReference.standalone(media: file).abstract
++                    isSecretMediaVideo = true
 +                    break
 +                }
 +            }
-+            if let instantVideoFile {
-+                let mediaReference = FileMediaReference.standalone(media: instantVideoFile).abstract
++            if let secretMediaReference {
 +                newList.insert(.action(ContextMenuActionItem(text: "Сохранить Медиа", textColor: .primary, icon: { theme in
 +                    return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Save"), color: theme.actionSheet.primaryTextColor)
 +                }, iconSource: nil, action: { _, f in
 +                    f(.default)
-+                    let _ = (saveToCameraRoll(context: context, userLocation: .peer(message.id.peerId), mediaReference: mediaReference)
++                    let _ = (saveToCameraRoll(context: context, userLocation: .peer(message.id.peerId), mediaReference: secretMediaReference)
 +                             |> deliverOnMainQueue).startStandalone(completed: {
 +                        Queue.mainQueue().after(0.2) {
 +                            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-+                            controllerInteraction?.presentControllerInCurrent(UndoOverlayController(presentationData: presentationData, content: .mediaSaved(text: presentationData.strings.Gallery_VideoSaved), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return true }), nil)
++                            controllerInteraction?.presentControllerInCurrent(UndoOverlayController(presentationData: presentationData, content: .mediaSaved(text: isSecretMediaVideo ? presentationData.strings.Gallery_VideoSaved : presentationData.strings.Gallery_ImageSaved), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return true }), nil)
 +                        }
 +                    })
 +                })), at: 0)

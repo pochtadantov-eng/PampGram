@@ -262,13 +262,14 @@ public struct PampGramSettings: Codable, Equatable {
     /// never changes the message's real timer, consumption, or deletion.
     public var showTemporaryMediaEnabled: Bool
     /// "Сохранение Одноразовых" (Ghost): adds a "Сохранить Медиа" entry to the long-press menu of an
-    /// incoming round-video message ("кружочек") sent as view-once or with a self-destruct
-    /// timer, saving it into this device's Photos library on tap — bypassing the restriction
-    /// stock Telegram puts on secret media (its own "Save Video" action is hidden for it, see
-    /// `ChatInterfaceStateContextMenus.swift`). A manual, explicit action: nothing is saved
-    /// without the user tapping the entry. Purely local: nothing is sent back to Telegram, and
-    /// the message's real timer, consumption, and deletion are untouched.
-    public var saveInstantVideosEnabled: Bool
+    /// incoming photo, video, or round-video message ("кружочек") sent as view-once or with a
+    /// self-destruct timer, saving it into this device's Photos library on tap — bypassing the
+    /// restriction stock Telegram puts on secret media (its own "Save Image"/"Save Video"
+    /// action is hidden for it entirely, see `ChatInterfaceStateContextMenus.swift`, which this
+    /// mirrors). A manual, explicit action: nothing is saved without the user tapping the
+    /// entry. Purely local: nothing is sent back to Telegram, and the message's real timer,
+    /// consumption, and deletion are untouched.
+    public var saveSecretMediaEnabled: Bool
     /// "Сохранение историй" (Дополнительно): two related effects for a story that has
     /// forwarding disabled (`StoryItem.isForwardingDisabled`):
     /// 1. A screenshot or screen recording of it comes out normal instead of black. Stock
@@ -352,14 +353,14 @@ public struct PampGramSettings: Codable, Equatable {
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
             showTemporaryMediaEnabled: false,
-            saveInstantVideosEnabled: false,
+            saveSecretMediaEnabled: false,
             storySavingEnabled: false,
             masterEnabled: true,
             hidePampGramIconEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, saveInstantVideosEnabled: Bool, storySavingEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, saveSecretMediaEnabled: Bool, storySavingEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -397,7 +398,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
         self.showTemporaryMediaEnabled = showTemporaryMediaEnabled
-        self.saveInstantVideosEnabled = saveInstantVideosEnabled
+        self.saveSecretMediaEnabled = saveSecretMediaEnabled
         self.storySavingEnabled = storySavingEnabled
         self.masterEnabled = masterEnabled
         self.hidePampGramIconEnabled = hidePampGramIconEnabled
@@ -470,7 +471,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
         self.showTemporaryMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .showTemporaryMediaEnabled) ?? defaults.showTemporaryMediaEnabled
-        self.saveInstantVideosEnabled = try container.decodeIfPresent(Bool.self, forKey: .saveInstantVideosEnabled) ?? defaults.saveInstantVideosEnabled
+        self.saveSecretMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .saveSecretMediaEnabled) ?? defaults.saveSecretMediaEnabled
         self.storySavingEnabled = try container.decodeIfPresent(Bool.self, forKey: .storySavingEnabled) ?? defaults.storySavingEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
         self.hidePampGramIconEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePampGramIconEnabled) ?? defaults.hidePampGramIconEnabled
