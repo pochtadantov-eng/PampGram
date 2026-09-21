@@ -22,9 +22,8 @@ private final class PampGramGhostArguments {
     let toggleExcludeAllGroups: (Bool) -> Void
     let openFolders: () -> Void
     let openExceptions: () -> Void
-    let toggleSaveSecretMedia: (Bool) -> Void
 
-    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void, toggleSaveSecretMedia: @escaping (Bool) -> Void) {
+    init(toggleMaster: @escaping (Bool) -> Void, toggleHideReadReceipts: @escaping (Bool) -> Void, toggleHideStoryViews: @escaping (Bool) -> Void, toggleHideOnline: @escaping (Bool) -> Void, toggleHideTyping: @escaping (Bool) -> Void, toggleAutoOffline: @escaping (Bool) -> Void, toggleReadOnAction: @escaping (Bool) -> Void, toggleExcludeAllChannels: @escaping (Bool) -> Void, toggleExcludeAllGroups: @escaping (Bool) -> Void, openFolders: @escaping () -> Void, openExceptions: @escaping () -> Void) {
         self.toggleMaster = toggleMaster
         self.toggleHideReadReceipts = toggleHideReadReceipts
         self.toggleHideStoryViews = toggleHideStoryViews
@@ -36,7 +35,6 @@ private final class PampGramGhostArguments {
         self.toggleExcludeAllGroups = toggleExcludeAllGroups
         self.openFolders = openFolders
         self.openExceptions = openExceptions
-        self.toggleSaveSecretMedia = toggleSaveSecretMedia
     }
 }
 
@@ -44,7 +42,6 @@ private enum PampGramGhostSection: Int32 {
     case master
     case features
     case exceptions
-    case media
 }
 
 private enum PampGramGhostEntry: ItemListNodeEntry {
@@ -67,10 +64,6 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     case exceptionsRow(String, String, Bool)
     case exceptionsFooter(String)
 
-    case mediaHeader(String)
-    case saveSecretMediaToggle(String, Bool)
-    case mediaFooter(String)
-
     var section: ItemListSectionId {
         switch self {
         case .masterToggle, .masterFooter:
@@ -79,8 +72,6 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return PampGramGhostSection.features.rawValue
         case .exceptionsHeader, .excludeAllChannels, .excludeAllGroups, .foldersRow, .exceptionsRow, .exceptionsFooter:
             return PampGramGhostSection.exceptions.rawValue
-        case .mediaHeader, .saveSecretMediaToggle, .mediaFooter:
-            return PampGramGhostSection.media.rawValue
         }
     }
 
@@ -118,12 +109,6 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return 14
         case .exceptionsFooter:
             return 15
-        case .mediaHeader:
-            return 16
-        case .saveSecretMediaToggle:
-            return 17
-        case .mediaFooter:
-            return 18
         }
     }
 
@@ -134,14 +119,10 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramGhostArguments
         switch self {
-        case let .masterFooter(text), let .featuresFooter(text), let .exceptionsFooter(text), let .mediaFooter(text):
+        case let .masterFooter(text), let .featuresFooter(text), let .exceptionsFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .featuresHeader(text), let .exceptionsHeader(text), let .mediaHeader(text):
+        case let .featuresHeader(text), let .exceptionsHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .saveSecretMediaToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrow.down.circle.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
-                arguments.toggleSaveSecretMedia(value)
-            })
         case let .masterToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleMaster(value)
@@ -214,9 +195,6 @@ private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, 
     entries.append(.exceptionsRow("Добавить исключение", exceptionCount == 0 ? "" : "\(exceptionCount)", on))
     entries.append(.exceptionsFooter("Режим призрака не действует в выбранных чатах, типах чатов или папках. Для папок учитываются чаты, добавленные в папку вручную."))
 
-    entries.append(.mediaHeader("СОХРАНЕНИЕ ОДНОРАЗОВЫХ"))
-    entries.append(.saveSecretMediaToggle("Сохранение Одноразовых", settings.saveSecretMediaEnabled))
-    entries.append(.mediaFooter("Когда включено, на фото, видео или кружочке (видеосообщении), которые вам прислали как «посмотреть один раз» или с таймером, при долгом нажатии появляется пункт «Сохранить Медиа» — сохраняет их в «Фото» на этом устройстве. Ничего не сохраняется само по себе, только по нажатию. При первом сохранении система один раз спросит доступ к «Фото». Работает независимо от «Режима призрака» выше. Реальный таймер, статус просмотра и удаление сообщения у Telegram не меняются — это только локальная копия на этом устройстве."))
 
     return entries
 }
@@ -302,13 +280,6 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
         },
         openExceptions: {
             pushControllerImpl?(pampGramGhostExceptionsController(context: context))
-        },
-        toggleSaveSecretMedia: { value in
-            updateSettings { settings in
-                var settings = settings
-                settings.saveSecretMediaEnabled = value
-                return settings
-            }
         }
     )
 

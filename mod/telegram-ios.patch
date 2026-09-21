@@ -17259,6 +17259,69 @@ index 00000000..824b8e40
 +        }
 +    }
 +}
+diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift b/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift
+new file mode 100644
+index 0000000..185deb1
+--- /dev/null
++++ b/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift
+@@ -0,0 +1,57 @@
++import Foundation
++import Postbox
++import SwiftSignalKit
++import PampGramCore
++
++/// Silently downloads the real media bytes of an incoming secret/self-destructing photo,
++/// video, or voice message the moment it arrives — before it's ever opened, and long before
++/// any deletion/consumption event removes it. This is the piece "Восстановление удалённых
++/// сообщений" (`PampGramDeletedMessageCapture`) needs to actually work for media: that capture
++/// happily rebuilds the message row when it's deleted, but a resource whose bytes were never
++/// fetched can't be fetched again once the server invalidates it after a one-time view — by
++/// then it's too late. Gated by the very same `antiDeleteMessagesEnabled` toggle, not a
++/// separate setting: the point is to make that feature's own promise ("kept, not vanished")
++/// hold for media too, not to bolt on an unrelated download feature.
++///
++/// Lives here rather than in a separate mod module for the same reason
++/// `PampGramDeletedMessageCapture` does: it needs `TelegramCore`-only types
++/// (`fetchedMediaResource`, `MessageReference`, `TelegramMediaFile`/`TelegramMediaImage`), and
++/// `PampGramCore` must never depend back on `TelegramCore`.
++enum PampGramSecretMediaPrefetch {
++    /// `messageIds` should be newly-arrived, already-stored incoming message ids — see the
++    /// call site in `AccountStateManagementUtils.swift`'s `replayFinalState`, which passes the
++    /// exact same freshly-resolved list stock Telegram uses to decide what to notify about.
++    static func prefetchIfNeeded(transaction: Transaction, mediaBox: MediaBox, messageIds: [MessageId]) {
++        guard !messageIds.isEmpty else {
++            return
++        }
++        let settings = PampGramCore.settings(transaction: transaction)
++        guard settings.antiDeleteMessagesEnabled else {
++            return
++        }
++        let excludedPeerIds = Set(settings.antiDeleteExcludedPeerIds)
++        for id in messageIds {
++            // A chat excluded from anti-delete entirely gets no prefetch either — nothing to
++            // resurrect there, so nothing worth silently downloading.
++            if excludedPeerIds.contains(id.peerId) {
++                continue
++            }
++            guard let message = transaction.getMessage(id), message.containsSecretMedia else {
++                continue
++            }
++            let messageReference = MessageReference(message)
++            for media in message.effectiveMedia {
++                if let image = media as? TelegramMediaImage {
++                    guard let representation = largestImageRepresentation(image.representations) else {
++                        continue
++                    }
++                    let reference = ImageMediaReference.message(message: messageReference, media: image).resourceReference(representation.resource)
++                    let _ = fetchedMediaResource(mediaBox: mediaBox, userLocation: .peer(id.peerId), userContentType: .image, reference: reference).start()
++                } else if let file = media as? TelegramMediaFile {
++                    let reference = FileMediaReference.message(message: messageReference, media: file).resourceReference(file.resource)
++                    let _ = fetchedMediaResource(mediaBox: mediaBox, userLocation: .peer(id.peerId), userContentType: MediaResourceUserContentType(file: file), reference: reference).start()
++                }
++            }
++        }
++    }
++}
 diff --git a/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift b/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift
 index 6cf628f0..e27ba816 100644
 --- a/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift
@@ -17283,10 +17346,25 @@ index 6cf628f0..e27ba816 100644
       * If it is a support account, mark messages as read here as they are
       * not marked as read when chat is opened.
 diff --git a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
-index 58db6c71..095f7870 100644
+index 58db6c7..eff55c2 100644
 --- a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
 +++ b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
-@@ -4440,6 +4440,11 @@ func replayFinalState(
+@@ -4126,6 +4126,14 @@ func replayFinalState(
+         }
+     }
+     
++    // PampGram: "Восстановление удалённых сообщений" only ever resurrects a message's *row* —
++    // for a self-destructing photo/video/voice message that's useless unless the actual media
++    // bytes were already cached before the server invalidates them (typically the moment it's
++    // consumed). `addedIncomingMessageIds` is exactly "new incoming messages, ids already
++    // resolved and confirmed stored" — the same list stock Telegram uses for notifications —
++    // so this is the earliest safe point to kick off a silent background fetch.
++    PampGramSecretMediaPrefetch.prefetchIfNeeded(transaction: transaction, mediaBox: mediaBox, messageIds: addedIncomingMessageIds)
++    
+     var invalidateGroupStats = Set<PeerGroupId>()
+     
+     struct PeerIdAndMessageNamespace: Hashable {
+@@ -4440,6 +4448,11 @@ func replayFinalState(
                      }
                  }
              case let .DeleteMessagesWithGlobalIds(ids):
@@ -17298,7 +17376,7 @@ index 58db6c71..095f7870 100644
                  var resourceIds: [MediaResourceId] = []
                  transaction.deleteMessagesWithGlobalIds(ids, forEachMedia: { media in
                      addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
-@@ -4449,6 +4454,9 @@ func replayFinalState(
+@@ -4449,6 +4462,9 @@ func replayFinalState(
                  }
                  deletedMessageIds.append(contentsOf: ids.map { .global($0) })
              case let .DeleteMessages(ids):
@@ -19924,7 +20002,7 @@ index a1a8f61d..8d28620c 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5b..a325d4b 100644
+index 07cef5b..dda5e21 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -19938,7 +20016,7 @@ index 07cef5b..a325d4b 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,130 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,92 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -19962,44 +20040,6 @@ index 07cef5b..a325d4b 100644
 +        }
 +        var items = items
 +        var newList = list
-+
-+        // "Сохранение Одноразовых" (Ghost): a "Сохранить Медиа" entry on an incoming photo,
-+        // video, or round-video ("кружочек") message sent as view-once or with a
-+        // self-destruct timer, saving it into Photos on tap — stock Telegram hides its own
-+        // "Save Image"/"Save Video" action for secret media entirely (see the
-+        // `!message.containsSecretMedia` guard further down in this file, which is the exact
-+        // same media-detection logic mirrored here), so this is the only way to keep a copy
-+        // before the timer removes it from the chat. Manual only: nothing is saved without
-+        // this being tapped. Independent of "Изменить визуально" below.
-+        let isCopyProtected = chatPresentationInterfaceState.copyProtectionEnabled || message.isCopyProtected()
-+        if settings.saveSecretMediaEnabled, message.containsSecretMedia, !isCopyProtected, message.effectivelyIncoming(context.account.peerId) {
-+            var secretMediaReference: AnyMediaReference?
-+            var isSecretMediaVideo = false
-+            for media in message.effectiveMedia {
-+                if let image = media as? TelegramMediaImage, let _ = largestImageRepresentation(image.representations) {
-+                    secretMediaReference = ImageMediaReference.standalone(media: image).abstract
-+                    break
-+                } else if let file = media as? TelegramMediaFile, file.isVideo || file.isInstantVideo {
-+                    secretMediaReference = FileMediaReference.standalone(media: file).abstract
-+                    isSecretMediaVideo = true
-+                    break
-+                }
-+            }
-+            if let secretMediaReference {
-+                newList.insert(.action(ContextMenuActionItem(text: "Сохранить Медиа", textColor: .primary, icon: { theme in
-+                    return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Save"), color: theme.actionSheet.primaryTextColor)
-+                }, iconSource: nil, action: { _, f in
-+                    f(.default)
-+                    let _ = (saveToCameraRoll(context: context, userLocation: .peer(message.id.peerId), mediaReference: secretMediaReference)
-+                             |> deliverOnMainQueue).startStandalone(completed: {
-+                        Queue.mainQueue().after(0.2) {
-+                            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-+                            controllerInteraction?.presentControllerInCurrent(UndoOverlayController(presentationData: presentationData, content: .mediaSaved(text: isSecretMediaVideo ? presentationData.strings.Gallery_VideoSaved : presentationData.strings.Gallery_ImageSaved), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return true }), nil)
-+                        }
-+                    })
-+                })), at: 0)
-+            }
-+        }
 +
 +        guard settings.visualEditEnabled else {
 +            items.content = .list(newList)

@@ -159,7 +159,14 @@ public struct PampGramSettings: Codable, Equatable {
     public var fakeTonDisplayEnabled: Bool
     /// Whether a message deleted by the other side is kept, visibly marked, in this chat's
     /// history instead of vanishing. Purely local: it never tells Telegram, or the person who
-    /// deleted it, that a copy was kept.
+    /// deleted it, that a copy was kept. Covers self-destructing/view-once photos, videos, and
+    /// voice messages too, and not just their text: `PampGramSecretMediaPrefetch` (in
+    /// `TelegramCore`) silently downloads such a message's media the moment it arrives, before
+    /// it's ever opened, so the bytes are already cached locally by the time
+    /// `PampGramDeletedMessageCapture` rebuilds the message on deletion/consumption — without
+    /// that prefetch the resurrected copy would reference a resource the server has already
+    /// invalidated. One toggle for both, on purpose: there's no separate "also cache media"
+    /// setting, since the point is for this feature's own promise to hold for media too.
     public var antiDeleteMessagesEnabled: Bool
     /// Legacy Ghost toggles, kept only so old stored settings still decode and can be
     /// migrated. The Ghost section is now the granular `ghostMode*` set below; `init(from:)`
@@ -261,15 +268,6 @@ public struct PampGramSettings: Codable, Equatable {
     /// Opening the media still goes through Telegram's own secret-media viewer untouched — this
     /// never changes the message's real timer, consumption, or deletion.
     public var showTemporaryMediaEnabled: Bool
-    /// "Сохранение Одноразовых" (Ghost): adds a "Сохранить Медиа" entry to the long-press menu of an
-    /// incoming photo, video, or round-video message ("кружочек") sent as view-once or with a
-    /// self-destruct timer, saving it into this device's Photos library on tap — bypassing the
-    /// restriction stock Telegram puts on secret media (its own "Save Image"/"Save Video"
-    /// action is hidden for it entirely, see `ChatInterfaceStateContextMenus.swift`, which this
-    /// mirrors). A manual, explicit action: nothing is saved without the user tapping the
-    /// entry. Purely local: nothing is sent back to Telegram, and the message's real timer,
-    /// consumption, and deletion are untouched.
-    public var saveSecretMediaEnabled: Bool
     /// "Сохранение историй" (Дополнительно): two related effects for a story that has
     /// forwarding disabled (`StoryItem.isForwardingDisabled`):
     /// 1. A screenshot or screen recording of it comes out normal instead of black. Stock
@@ -353,14 +351,13 @@ public struct PampGramSettings: Codable, Equatable {
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
             showTemporaryMediaEnabled: false,
-            saveSecretMediaEnabled: false,
             storySavingEnabled: false,
             masterEnabled: true,
             hidePampGramIconEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, saveSecretMediaEnabled: Bool, storySavingEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, storySavingEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -398,7 +395,6 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
         self.showTemporaryMediaEnabled = showTemporaryMediaEnabled
-        self.saveSecretMediaEnabled = saveSecretMediaEnabled
         self.storySavingEnabled = storySavingEnabled
         self.masterEnabled = masterEnabled
         self.hidePampGramIconEnabled = hidePampGramIconEnabled
@@ -471,7 +467,6 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
         self.showTemporaryMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .showTemporaryMediaEnabled) ?? defaults.showTemporaryMediaEnabled
-        self.saveSecretMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .saveSecretMediaEnabled) ?? defaults.saveSecretMediaEnabled
         self.storySavingEnabled = try container.decodeIfPresent(Bool.self, forKey: .storySavingEnabled) ?? defaults.storySavingEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
         self.hidePampGramIconEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePampGramIconEnabled) ?? defaults.hidePampGramIconEnabled
