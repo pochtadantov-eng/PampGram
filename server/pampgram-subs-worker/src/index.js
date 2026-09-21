@@ -9,6 +9,7 @@
  * Storage: a single Workers KV namespace (binding SUBS).
  *   key "sub:<id>"  -> "pro" | "standard"
  *   key "ban:<id>"  -> JSON { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
+ *   key "key:<KEY>" -> "pro" | "standard" (only while the key is still unredeemed)
  * Same posture throughout: a key that would only ever store the "nothing going on" value is
  * deleted instead of written, so the store only ever holds actual overrides.
  *
@@ -58,6 +59,24 @@
  *     Admin-only — backs the admin panel's "Разбанить" screen. Token goes in the body rather
  *     than a query string, same reasoning as /grant: never put the secret somewhere that ends
  *     up in a server log line.
+ *
+ *   POST /generate-key
+ *     body: { "token": "<ADMIN_TOKEN>", "tier": "pro" | "standard" }
+ *     -> { "ok": true, "key": "<KEY>", "tier": "pro" | "standard" }
+ *     Admin-only. Mints one fresh, unused activation key for the given tier and stores it as
+ *     its own KV entry — a key exists only for as long as it's unredeemed, same posture as the
+ *     "nothing going on" fields above. Meant to be sold or given out once; whoever redeems it
+ *     first (see /redeem-key) gets the tier, and the key stops existing.
+ *
+ *   POST /redeem-key
+ *     body: { "id": <telegram account id>, "key": "<KEY>" }
+ *     -> { "ok": true, "tier": "pro" | "standard" }
+ *     Public, no admin token — this is the buyer-facing counterpart to /generate-key, called
+ *     from any install once its owner has a key. Grants the key's tier to `id` exactly like
+ *     /grant would, then deletes the key so it can never be redeemed again. An unknown or
+ *     already-redeemed key returns 404 — there is nothing left in the store to tell the
+ *     difference between the two once a key is gone, and that's intentional: an already-used
+ *     key should look exactly as invalid as one that was never real.
  */
 
 const ALLOWED_TIERS = new Set(["standard", "pro"]);
@@ -255,6 +274,93 @@ async function handleBannedList(request, env) {
 	return jsonResponse({ users });
 }
 
+const KEY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L — hard to tell apart when read off a screen
+
+function generateActivationKey() {
+	const groups = [];
+	for (let g = 0; g < 4; g++) {
+		const randomBytes = new Uint8Array(4);
+		crypto.getRandomValues(randomBytes);
+		let group = "";
+		for (let i = 0; i < 4; i++) {
+			group += KEY_ALPHABET[randomBytes[i] % KEY_ALPHABET.length];
+		}
+		groups.push(group);
+	}
+	return groups.join("-");
+}
+
+async function handleGenerateKey(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { token, tier } = payload ?? {};
+
+	if (!isAuthorized(token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	if (!ALLOWED_TIERS.has(tier)) {
+		return jsonResponse({ error: "invalid tier" }, 400);
+	}
+
+	let key = null;
+	// Practically never collides (32^16 possibilities), but a fresh KV lookup is cheap enough
+	// to just check rather than trust the math.
+	for (let attempt = 0; attempt < 5 && !key; attempt++) {
+		const candidate = generateActivationKey();
+		const existing = await env.SUBS.get(`key:${candidate}`);
+		if (!existing) {
+			key = candidate;
+		}
+	}
+	if (!key) {
+		return jsonResponse({ error: "could not generate key" }, 500);
+	}
+
+	await env.SUBS.put(`key:${key}`, tier);
+	return jsonResponse({ ok: true, key, tier });
+}
+
+async function handleRedeemKey(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { id, key } = payload ?? {};
+	const idString = typeof id === "number" ? String(id) : id;
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	if (typeof key !== "string" || key.trim().length === 0) {
+		return jsonResponse({ error: "invalid key" }, 400);
+	}
+
+	const normalizedKey = key.trim().toUpperCase();
+	const tier = await env.SUBS.get(`key:${normalizedKey}`);
+	if (!ALLOWED_TIERS.has(tier)) {
+		return jsonResponse({ error: "key not found or already used" }, 404);
+	}
+
+	// One-time: gone the moment it's redeemed, so a second attempt with the same string —
+	// whether it's the same buyer trying again or someone else who saw it — fails the same
+	// way an unknown key would.
+	await env.SUBS.delete(`key:${normalizedKey}`);
+	if (tier === "standard") {
+		await env.SUBS.delete(`sub:${idString}`);
+	} else {
+		await env.SUBS.put(`sub:${idString}`, tier);
+	}
+
+	return jsonResponse({ ok: true, tier });
+}
+
 export default {
 	async fetch(request, env) {
 		const url = new URL(request.url);
@@ -276,6 +382,12 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/banned-list") {
 			return handleBannedList(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/generate-key") {
+			return handleGenerateKey(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/redeem-key") {
+			return handleRedeemKey(request, env);
 		}
 		return jsonResponse({ error: "not found" }, 404);
 	},

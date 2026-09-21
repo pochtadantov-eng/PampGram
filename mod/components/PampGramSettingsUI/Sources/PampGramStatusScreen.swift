@@ -9,6 +9,8 @@ import ItemListUI
 import PresentationDataUtils
 import AccountContext
 import AppBundle
+import PromptUI
+import UndoUI
 import PampGramCore
 
 private final class PampGramStatusArguments {
@@ -16,12 +18,14 @@ private final class PampGramStatusArguments {
     let openGifts: () -> Void
     let openMessages: () -> Void
     let openGhost: () -> Void
+    let redeemKey: () -> Void
 
-    init(openIconPicker: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void) {
+    init(openIconPicker: @escaping () -> Void, openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, redeemKey: @escaping () -> Void) {
         self.openIconPicker = openIconPicker
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
+        self.redeemKey = redeemKey
     }
 }
 
@@ -50,6 +54,10 @@ func pampGramIconDisplayName(_ icon: PresentationAppIcon) -> String {
 private enum PampGramStatusEntry: ItemListNodeEntry {
     case badge(Bool)
 
+    case activationHeader(String)
+    case redeemKeyAction(String)
+    case activationFooter(String)
+
     case iconHeader(String)
     case iconSummary(PresentationAppIcon)
     case iconFooter(String)
@@ -67,14 +75,16 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         switch self {
         case .badge:
             return 0
-        case .iconHeader, .iconSummary, .iconFooter:
+        case .activationHeader, .redeemKeyAction, .activationFooter:
             return 1
-        case .giftsHeader, .giftsRow:
+        case .iconHeader, .iconSummary, .iconFooter:
             return 2
-        case .messagesHeader, .messagesRow:
+        case .giftsHeader, .giftsRow:
             return 3
-        case .ghostHeader, .ghostRow:
+        case .messagesHeader, .messagesRow:
             return 4
+        case .ghostHeader, .ghostRow:
+            return 5
         }
     }
 
@@ -82,8 +92,14 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         switch self {
         case .badge:
             return 0
-        case .iconHeader:
+        case .activationHeader:
             return 1
+        case .redeemKeyAction:
+            return 2
+        case .activationFooter:
+            return 3
+        case .iconHeader:
+            return 4
         case .iconSummary:
             return 100
         case .iconFooter:
@@ -125,10 +141,14 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
                 disclosureStyle: .none,
                 action: nil
             )
-        case let .iconHeader(text), let .giftsHeader(text), let .messagesHeader(text), let .ghostHeader(text):
+        case let .activationHeader(text), let .iconHeader(text), let .giftsHeader(text), let .messagesHeader(text), let .ghostHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .iconFooter(text):
+        case let .iconFooter(text), let .activationFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case let .redeemKeyAction(title):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.redeemKey()
+            })
         case let .iconSummary(icon):
             let previewImage = UIImage(named: icon.imageName, in: getAppBundle(), compatibleWith: nil).flatMap { generatePampGramIconPreview($0) }
             return ItemListDisclosureItem(
@@ -197,6 +217,10 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
 
     entries.append(.badge(isPro))
 
+    entries.append(.activationHeader("АКТИВАЦИЯ"))
+    entries.append(.redeemKeyAction("Активировать ключ"))
+    entries.append(.activationFooter("Ключ, который тебе выдали или продали, включает подписку на этом аккаунте — на всех его устройствах сразу. Каждый ключ одноразовый: после активации тариф здесь обновится, если открыть «Статус» заново."))
+
     entries.append(.iconHeader("ИКОНКА ПРИЛОЖЕНИЯ"))
     if let selectedIcon = icons.first(where: { $0.name == currentIconName }) ?? icons.first(where: { $0.isDefault }) ?? icons.first {
         entries.append(.iconSummary(selectedIcon))
@@ -235,6 +259,8 @@ private func pampGramStatusEntries(isPro: Bool, icons: [PresentationAppIcon], cu
 /// home-screen icon), plus a grouped, tap-to-open read-out of every PampGram toggle.
 public func pampGramStatusController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
+    var presentControllerImpl: ((ViewController) -> Void)?
+    var presentTooltipImpl: ((String) -> Void)?
     var currentIconNameValue = context.sharedContext.applicationBindings.getAlternateIconName()
     let currentIconName = ValuePromise<String?>(currentIconNameValue)
 
@@ -262,6 +288,29 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
             pampGramGateSection(context: context, section: .ghost) {
                 pushControllerImpl?(pampGramGhostSettingsController(context: context))
             }
+        },
+        redeemKey: {
+            presentControllerImpl?(promptController(
+                context: context,
+                text: "Активировать ключ",
+                subtitle: "Ключ, который тебе дали или продали — например, XXXX-XXXX-XXXX-XXXX",
+                value: "",
+                placeholder: "ключ",
+                characterLimit: 64,
+                apply: { value in
+                    guard let key = value?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
+                        return
+                    }
+                    let accountId = context.account.peerId.id._internalGetInt64Value()
+                    PampGramSubscriptionAPI.redeemKey(userId: accountId, key: key) { tier in
+                        guard let tier else {
+                            presentTooltipImpl?("Ключ не подошёл — проверь, что он введён верно и ещё не использован.")
+                            return
+                        }
+                        presentTooltipImpl?("Активировано: тариф \(tier == .pro ? "PRO" : "STANDARD"). Открой «Статус» заново, чтобы увидеть обновлённый значок.")
+                    }
+                }
+            ))
         }
     )
 
@@ -295,6 +344,16 @@ public func pampGramStatusController(context: AccountContext) -> ViewController 
     let controller = ItemListController(context: context, state: signal)
     pushControllerImpl = { [weak controller] c in
         controller?.push(c)
+    }
+    presentControllerImpl = { [weak controller] c in
+        controller?.present(c, in: .window(.root))
+    }
+    presentTooltipImpl = { [weak controller] text in
+        guard let controller else {
+            return
+        }
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        controller.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
     }
     return controller
 }

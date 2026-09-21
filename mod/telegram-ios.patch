@@ -18751,7 +18751,7 @@ index 806e652a..af17fef0 100644
              guard let controller = self.controller, !controller.presentAccountFrozenInfoIfNeeded() else {
                  return
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
-index c5f58f4b..48884aa7 100644
+index c5f58f4..cf88a24 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 @@ -12,12 +12,17 @@ import ItemListPeerItem
@@ -18781,20 +18781,24 @@ index c5f58f4b..48884aa7 100644
      guard let data = data else {
          return []
      }
-@@ -221,6 +226,12 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+@@ -221,6 +226,16 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
          interaction.openSettings(.chatFolders)
      }))
      
 +    // PampGram's own section, in its own block so it reads as what it is: a mod, plainly
-+    // separate from Telegram's own settings rather than blended into them.
-+    items[.pampGram]!.append(PeerInfoScreenDisclosureItem(id: 0, text: "PampGram", icon: pampGramSettingsIcon(), action: {
-+        interaction.openSettings(.pampGram)
-+    }))
++    // separate from Telegram's own settings rather than blended into them. Hidden entirely
++    // when "Скрыть иконку в настройках" is on — the long-press on "Помощь" below is the way
++    // back in without this row.
++    if !pampGramSettings.hidePampGramIconEnabled {
++        items[.pampGram]!.append(PeerInfoScreenDisclosureItem(id: 0, text: "PampGram", icon: pampGramSettingsIcon(), action: {
++            interaction.openSettings(.pampGram)
++        }))
++    }
 +
      let notificationsWarning: Bool
      if let settings = data.globalSettings {
          notificationsWarning = shouldDisplayNotificationsPermissionWarning(status: settings.notificationAuthorizationStatus, suppressed:  settings.notificationWarningSuppressed)
-@@ -256,7 +267,19 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+@@ -256,7 +271,19 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
              interaction.openSettings(.premium)
          }))
      }
@@ -18815,7 +18819,7 @@ index c5f58f4b..48884aa7 100644
          if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
              let balanceText: NSAttributedString
              if abs(starsState.balance.value) > 0 {
-@@ -273,18 +296,22 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+@@ -273,18 +300,22 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
              }))
          }
      }
@@ -18849,6 +18853,20 @@ index c5f58f4b..48884aa7 100644
              items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
                  interaction.openSettings(.ton)
              }))
+@@ -316,8 +347,13 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+         }
+     }
+     
++    // PampGram: a long-press here always opens PampGram directly — the recovery path back in
++    // once "Скрыть иконку в настройках" has hidden the row above, but wired unconditionally
++    // rather than only while hidden, since it costs nothing to leave on the rest of the time.
+     items[.support]!.append(PeerInfoScreenDisclosureItem(id: 0, text: presentationData.strings.Settings_Support, icon: PresentationResourcesSettings.support, action: {
+         interaction.openSettings(.support)
++    }, longTapAction: {
++        interaction.openSettings(.pampGram)
+     }))
+     items[.support]!.append(PeerInfoScreenDisclosureItem(id: 1, text: presentationData.strings.Settings_FAQ, icon: PresentationResourcesSettings.faq, action: {
+         interaction.openSettings(.faq)
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
 index ef6fe4b4..9409b119 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
@@ -20933,3 +20951,54 @@ index b476f08..ac1dbf8 100644
                          attemptSynchronous: synchronousLoad,
                          transition: transition
                      )
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift
+index f788f65..c690805 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift
+@@ -54,8 +54,9 @@ final class PeerInfoScreenDisclosureItem: PeerInfoScreenItem {
+     let iconSignal: Signal<UIImage?, NoError>?
+     let hasArrow: Bool
+     let action: (() -> Void)?
++    let longTapAction: (() -> Void)?
+     
+-    init(id: AnyHashable, label: Label = .none, additionalBadgeLabel: String? = nil, additionalBadgeIcon: UIImage? = nil, text: String, icon: UIImage? = nil, iconSignal: Signal<UIImage?, NoError>? = nil, hasArrow: Bool = true, action: (() -> Void)?) {
++    init(id: AnyHashable, label: Label = .none, additionalBadgeLabel: String? = nil, additionalBadgeIcon: UIImage? = nil, text: String, icon: UIImage? = nil, iconSignal: Signal<UIImage?, NoError>? = nil, hasArrow: Bool = true, action: (() -> Void)?, longTapAction: (() -> Void)? = nil) {
+         self.id = id
+         self.label = label
+         self.additionalBadgeLabel = additionalBadgeLabel
+@@ -65,6 +66,7 @@ final class PeerInfoScreenDisclosureItem: PeerInfoScreenItem {
+         self.iconSignal = iconSignal
+         self.hasArrow = hasArrow
+         self.action = action
++        self.longTapAction = longTapAction
+     }
+     
+     func node() -> PeerInfoScreenItemNode {
+@@ -137,12 +139,27 @@ private final class PeerInfoScreenDisclosureItemNode: PeerInfoScreenItemNode {
+         self.addSubnode(self.textNode)
+         self.addSubnode(self.arrowNode)
+         self.addSubnode(self.activateArea)
++        
++        // PampGram: an optional hidden long-press action (see `longTapAction` above), used by
++        // exactly one row today (Settings' own "Помощь") as the way back into PampGram once its own
++        // settings row is hidden. Doesn't touch the existing tap handling above at all: it's a
++        // separate gesture recognizer that lets normal touches (and the short tap `selectionNode`
++        // already handles) pass straight through.
++        let longPressRecognizer = UILongPressGestureRecognizer(target: self, action: #selector(self.longPressGesture(_:)))
++        longPressRecognizer.cancelsTouchesInView = false
++        self.view.addGestureRecognizer(longPressRecognizer)
+     }
+     
+     deinit {
+         self.iconDisposable.dispose()
+     }
+     
++    @objc private func longPressGesture(_ recognizer: UILongPressGestureRecognizer) {
++        if case .began = recognizer.state {
++            self.item?.longTapAction?()
++        }
++    }
++    
+     override func update(context: AccountContext, width: CGFloat, safeInsets: UIEdgeInsets, presentationData: PresentationData, item: PeerInfoScreenItem, topItem: PeerInfoScreenItem?, bottomItem: PeerInfoScreenItem?, hasCorners: Bool, transition: ContainedViewLayoutTransition) -> CGFloat {
+         guard let item = item as? PeerInfoScreenDisclosureItem else {
+             return 10.0

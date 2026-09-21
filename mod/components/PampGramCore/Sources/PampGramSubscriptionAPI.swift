@@ -2,11 +2,12 @@ import Foundation
 import Postbox
 import SwiftSignalKit
 
-/// The one PampGram feature with an actual server behind it. Every other file in this module
-/// changes only what this device shows its own owner — but a subscription an admin grants has
-/// to show up on the *other* person's device too, and there is no way to make that true
-/// without a server both copies of the app can ask. See `server/pampgram-subs-worker/` at the
-/// repo root for that server's source and deployment instructions.
+/// The one part of PampGram with an actual server behind it. Every other file in this module
+/// changes only what this device shows its own owner — but a subscription an admin grants (or
+/// a key someone redeems) has to show up on the *other* person's device too, and there is no
+/// way to make that true without a server both copies of the app can ask. See
+/// `server/pampgram-subs-worker/` at the repo root for that server's source and deployment
+/// instructions.
 public enum PampGramSubscriptionTier: String, Codable {
     case standard
     case pro
@@ -272,6 +273,80 @@ public enum PampGramSubscriptionAPI {
             }
             DispatchQueue.main.async {
                 completion(users)
+            }
+        }.resume()
+    }
+
+    private struct GenerateKeyRequestBody: Encodable {
+        let token: String
+        let tier: String
+    }
+
+    private struct GenerateKeyResponse: Decodable {
+        let ok: Bool
+        let key: String?
+    }
+
+    /// Admin-only: mints one fresh, unused activation key for `tier` — the self-service
+    /// counterpart to `grantTier`, meant to be sold or handed out once and redeemed by
+    /// whoever gets it first (see `redeemKey`). `completion` reports the key string on
+    /// success, `nil` on any failure (network, auth, or a malformed response) — never
+    /// dispatched off the main queue, same contract as `grantTier`.
+    public static func generateKey(tier: PampGramSubscriptionTier, adminToken: String, completion: @escaping (String?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/generate-key") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: tier.rawValue))
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            var key: String?
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(GenerateKeyResponse.self, from: data) {
+                key = decoded.key
+            }
+            DispatchQueue.main.async {
+                completion(key)
+            }
+        }.resume()
+    }
+
+    private struct RedeemKeyRequestBody: Encodable {
+        let id: Int64
+        let key: String
+    }
+
+    private struct RedeemKeyResponse: Decodable {
+        let ok: Bool
+        let tier: String?
+    }
+
+    /// Not admin-only — this is the buyer-facing half of the key system, called from any
+    /// install once its owner has a key someone generated for them. Grants that key's tier to
+    /// `userId` (this device's own account, always) exactly like an admin's `grantTier` would,
+    /// and the key is gone the moment the server accepts it — a second redemption attempt with
+    /// the same string, from this device or any other, fails exactly like an unknown key would.
+    /// `completion` reports the granted tier on success, `nil` on any failure (network, an
+    /// already-used/unknown key, or a malformed response).
+    public static func redeemKey(userId: Int64, key: String, completion: @escaping (PampGramSubscriptionTier?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/redeem-key") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(RedeemKeyRequestBody(id: userId, key: key))
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            var tier: PampGramSubscriptionTier?
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(RedeemKeyResponse.self, from: data), let tierRaw = decoded.tier {
+                tier = PampGramSubscriptionTier(rawValue: tierRaw)
+            }
+            DispatchQueue.main.async {
+                completion(tier)
             }
         }.resume()
     }
