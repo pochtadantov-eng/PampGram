@@ -21531,3 +21531,44 @@ index cb63b006..9a441016 100644
      for (int y = 0; y < targetContextSize.height; y++) {
          for (int x = 0; x < targetContextSize.width; x++) {
              uint32_t *color = ((uint32_t *)&targetMemory[y * targetBytesPerRow + x * 4]);
+diff --git a/submodules/rlottie/rlottie/src/vector/vpath.cpp b/submodules/rlottie/rlottie/src/vector/vpath.cpp
+index 475e144..391f958 100644
+--- a/submodules/rlottie/rlottie/src/vector/vpath.cpp
++++ b/submodules/rlottie/rlottie/src/vector/vpath.cpp
+@@ -514,6 +514,21 @@ void VPath::VPathData::addPolystar(float points, float innerRadius,
+                                    float outerRoundness, float startAngle,
+                                    float cx, float cy, VPath::Direction dir)
+ {
++    // A malformed/malicious animation ("pt" in the Lottie JSON, e.g. 1e38) can hand `points`
++    // here with no bound at all -- it becomes both a `reserve()` size and a loop bound just
++    // below. An oversized value means either an uncaught std::length_error/bad_alloc from
++    // `reserve()` asking a std::vector to hold billions of entries, or, if that somehow
++    // succeeds, an effectively unbounded point-generation loop; either way the process runs
++    // out of memory and crashes, on nothing more than opening a chat containing such a file.
++    // Clamp to a range no real star design needs (AE/Lottie exports run single digits to low
++    // hundreds of points) before any of that runs. The `!(points >= 3.0f)` form (rather than
++    // `points < 3.0f`) also catches NaN, which compares false against every ordering operator.
++    if (!(points >= 3.0f)) {
++        points = 3.0f;
++    } else if (points > 1000.0f) {
++        points = 1000.0f;
++    }
++
+     const static float POLYSTAR_MAGIC_NUMBER = 0.47829f / 0.28f;
+     float              currentAngle = (startAngle - 90.0f) * K_PI / 180.0f;
+     float              x;
+@@ -618,6 +633,14 @@ void VPath::VPathData::addPolygon(float points, float radius, float roundness,
+                                   float startAngle, float cx, float cy,
+                                   VPath::Direction dir)
+ {
++    // Same unbounded reserve()/loop hazard as addPolystar() above for a malicious/malformed
++    // "pt" value -- see the comment there. `!(points >= 3.0f)` also catches NaN.
++    if (!(points >= 3.0f)) {
++        points = 3.0f;
++    } else if (points > 1000.0f) {
++        points = 1000.0f;
++    }
++
+     // TODO: Need to support floating point number for number of points
+     const static float POLYGON_MAGIC_NUMBER = 0.25;
+     float              currentAngle = (startAngle - 90.0f) * K_PI / 180.0f;
