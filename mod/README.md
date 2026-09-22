@@ -175,6 +175,26 @@ mod/
   сигнал «кто-то знает, что тебя сфотографировали») никак не трогается — это единственное
   место в Telegram, где защита от скриншота существует именно как сигнал согласия между двумя
   людьми, а не просто техническое ограничение;
+- Тот же тумблер, ещё пять мест — оказалось, что кружочки, голосовые с таймером и видео шли
+  в обход первой волны патча, у каждого свой собственный путь до `captureProtected`, не
+  связанный с общим `isSecret` экрана чата:
+  - `ChatMessageInteractiveInstantVideoNode.swift` — `captureProtected` видеосообщения-кружка
+    прямо в чате (`associatedData.isCopyProtectionEnabled || message.isCopyProtected()`);
+  - `SharedMediaPlayer.swift` — то же самое для плавающего окошка, в которое кружок уходит,
+    если прокрутить чат во время воспроизведения (`message.isCopyProtected()`, без отдельного
+    peer-члена — `isCopyProtected()` сам проверяет и канал/группу);
+  - `GalleryUI/Sources/GalleryController.swift` — все семь мест, где полноэкранный просмотрщик
+    (открыть фото/видео на весь экран) считает `captureProtected` для `NativeVideoContent`,
+    включая видео из веб-превью (Instagram-эмбеды и т.п.). Как и в первой волне, из выражения
+    выведен только копи-протекшен-член (`message.isCopyProtected() || peerIsCopyProtected`) —
+    `containsSecretMedia`, `minAutoremoveOrClearTimeout == viewOnceTimeout` (просмотр «один раз»)
+    и `paidContent != nil` (платный контент) остаются нетронутыми при любом состоянии тумблера;
+  - `ChatController.swift`, третья ветка `ScreenCaptureDetectionManager` (для обычных, не
+    секретных личных чатов) — стоковый Telegram сам ставит на паузу голосовое/видео с таймером
+    «посмотреть один раз», как только фиксирует начало записи экрана (`UIScreen.main.isCaptured`),
+    чтобы его нельзя было записать. `setPlaylist(nil, ..., .pause)` теперь вызывается, только
+    если тумблер выключен для аккаунта — секретные чаты (первая ветка того же метода) эту логику
+    не трогают вообще, там `screenshot`-хук как в оригинале ставит отметку о скриншоте.
 - `PeerInfoSettingsItems.swift` — «Скрыть иконку в настройках»: строка «PampGram» в стоковом
   экране настроек оборачивается в `if !pampGramSettings.hidePampGramIconEnabled`. Долгое
   нажатие на строку «Помощь» там же всегда открывает PampGram напрямую — способ вернуться,

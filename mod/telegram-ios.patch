@@ -21164,7 +21164,7 @@ diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift b
                          return (currentPanel, nil)
                      } else {
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
-index 23695c21..e3349600 100644
+index 23695c21..aa56ecb7 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
 @@ -53,6 +53,8 @@ import StatisticsUI
@@ -21187,7 +21187,24 @@ index 23695c21..e3349600 100644
              let pinchController = makePinchController(sourceNode: sourceNode, disableScreenshots: isSecret, getContentAreaInScreenSpace: {
                  guard let strongSelf = self else {
                      return CGRect()
-@@ -8984,6 +8988,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -7812,7 +7816,15 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                         |> deliverOnMainQueue).startStandalone(next: { [weak self] playlistStateAndType in
+                             if let self, let (_, playbackState, _) = playlistStateAndType, case let .state(state) = playbackState {
+                                 if let source = state.item.playbackData?.source, case let .telegramFile(_, _, isViewOnce) = source, isViewOnce {
+-                                    self.context.sharedContext.mediaManager.setPlaylist(nil, type: .voice, control: .playback(.pause))
++                                    // PampGram "Обход защиты от скриншотов": stock Telegram force-pauses a
++                                    // playing view-once voice/video message the instant screen recording is
++                                    // detected, so it can't be captured. With the bypass on for this account,
++                                    // let it keep playing -- this is the only place that pause lives; nothing
++                                    // else about view-once messages (their timer, one-time viewing, secret
++                                    // chats) is touched.
++                                    if !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: self.context.account.peerId.toInt64()) {
++                                        self.context.sharedContext.mediaManager.setPlaylist(nil, type: .voice, control: .playback(.pause))
++                                    }
+                                 }
+                             }
+                         })
+@@ -8984,6 +8996,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
              return
          }
          
@@ -21572,3 +21589,119 @@ index 475e144..391f958 100644
      // TODO: Need to support floating point number for number of points
      const static float POLYGON_MAGIC_NUMBER = 0.25;
      float              currentAngle = (startAngle - 90.0f) * K_PI / 180.0f;
+diff --git a/submodules/GalleryUI/BUILD b/submodules/GalleryUI/BUILD
+index e1c6b897..a963d981 100644
+--- a/submodules/GalleryUI/BUILD
++++ b/submodules/GalleryUI/BUILD
+@@ -76,6 +76,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/GlassControls",
+         "//submodules/TelegramUI/Components/VideoPlaybackControlsComponent",
+         "//submodules/UIKitRuntimeUtils",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/GalleryUI/Sources/GalleryController.swift b/submodules/GalleryUI/Sources/GalleryController.swift
+index 018b5fc9..0943a16c 100644
+--- a/submodules/GalleryUI/Sources/GalleryController.swift
++++ b/submodules/GalleryUI/Sources/GalleryController.swift
+@@ -16,6 +16,7 @@ import OpenInExternalAppUI
+ import ScreenCaptureDetection
+ import UndoUI
+ import TranslateUI
++import PampGramCore
+ 
+ private func tagsForMessage(_ message: Message) -> MessageTags? {
+     //TODO:rewrite to take all media (effectiveMedia returns all rich-text media; we stop at the first)
+@@ -291,7 +292,10 @@ public func galleryItemForEntry(
+     
+     if let image = media as? TelegramMediaImage {
+         if let file = image.video {
+-            let captureProtected = message.isCopyProtected() || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil || peerIsCopyProtected
++            // PampGram "Обход защиты от скриншотов": only the two copy-protection terms are
++            // gated by the bypass -- containsSecretMedia/viewOnce/paidContent stay untouched,
++            // same rule as every other capture-protection site this patch touches.
++            let captureProtected = (message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil
+             
+             var originData = GalleryItemOriginData(title: message.effectiveAuthor.flatMap(EnginePeer.init)?.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), timestamp: message.timestamp)
+             if Namespaces.Message.allNonRegular.contains(message.id.namespace) {
+@@ -348,7 +352,10 @@ public func galleryItemForEntry(
+     } else if let file = media as? TelegramMediaFile {
+         if file.isVideo {
+             let content: UniversalVideoContent
+-            let captureProtected = message.isCopyProtected() || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil || peerIsCopyProtected
++            // PampGram "Обход защиты от скриншотов": only the two copy-protection terms are
++            // gated by the bypass -- containsSecretMedia/viewOnce/paidContent stay untouched,
++            // same rule as every other capture-protection site this patch touches.
++            let captureProtected = (message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil
+             if file.isAnimated {
+                 content = NativeVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), imageReference: mediaImage.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), loopVideo: true, enableSound: false, tempFilePath: tempFilePath, captureProtected: captureProtected, storeAfterDownload: generateStoreAfterDownload?(message, file))
+             } else {
+@@ -478,11 +485,11 @@ public func galleryItemForEntry(
+         var content: UniversalVideoContent?
+         switch websiteType(of: webpageContent.websiteName) {
+         case .instagram where webpageContent.file != nil && webpageContent.image != nil && webpageContent.file!.isVideo:
+-            content = NativeVideoContent(id: .message(message.stableId, webpageContent.file?.id ?? webpage.webpageId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: webpageContent.file!), imageReference: webpageContent.image.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, enableSound: true, captureProtected: message.isCopyProtected() || message.containsSecretMedia || peerIsCopyProtected, storeAfterDownload: nil)
++            content = NativeVideoContent(id: .message(message.stableId, webpageContent.file?.id ?? webpage.webpageId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: webpageContent.file!), imageReference: webpageContent.image.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, enableSound: true, captureProtected: (message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || message.containsSecretMedia, storeAfterDownload: nil)
+         default:
+             if let embedUrl = webpageContent.embedUrl, let image = webpageContent.image {
+                 if let file = webpageContent.file, file.isVideo {
+-                    content = NativeVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), imageReference: mediaImage.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, loopVideo: loopVideos, tempFilePath: tempFilePath, captureProtected: message.isCopyProtected() || message.containsSecretMedia || peerIsCopyProtected, storeAfterDownload: generateStoreAfterDownload?(message, file))
++                    content = NativeVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), imageReference: mediaImage.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, loopVideo: loopVideos, tempFilePath: tempFilePath, captureProtected: (message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || message.containsSecretMedia, storeAfterDownload: generateStoreAfterDownload?(message, file))
+                 } else if URL(string: embedUrl)?.pathExtension == "mp4" {
+                     content = SystemVideoContent(userLocation: .peer(message.id.peerId), url: embedUrl, imageReference: .webPage(webPage: WebpageReference(webpage), media: image), dimensions: webpageContent.embedSize?.cgSize ?? CGSize(width: 640.0, height: 640.0), duration: webpageContent.duration.flatMap(Double.init) ?? 0.0)
+                 }
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/BUILD
+index 63595c29..922ee16c 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/BUILD
+@@ -40,6 +40,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/Chat/InstantVideoRadialStatusNode",
+         "//submodules/TelegramUI/Components/Chat/ChatInstantVideoMessageDurationNode",
+         "//submodules/TelegramUI/Components/ChatControllerInteraction",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift
+index ab6d3835..9b4bfa31 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift
+@@ -18,6 +18,7 @@ import AudioTranscriptionButtonComponent
+ import UndoUI
+ import TelegramNotices
+ import Markdown
++import PampGramCore
+ import TextFormat
+ import ChatMessageForwardInfoNode
+ import ChatMessageDateAndStatusNode
+@@ -779,7 +780,7 @@ public class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
+                                         }
+                                     }
+                                 }
+-                            }), content: NativeVideoContent(id: .message(item.message.stableId, telegramFile.fileId), userLocation: .peer(item.message.id.peerId), fileReference: .message(message: MessageReference(item.message), media: telegramFile), streamVideo: streamVideo ? .conservative : .none, enableSound: false, fetchAutomatically: false, isAudioVideoMessage: true, captureProtected: item.associatedData.isCopyProtectionEnabled || item.message.isCopyProtected(), storeAfterDownload: nil), priority: item.associatedData.isStandalone ? .overlay : .embedded, autoplay: item.context.sharedContext.energyUsageSettings.autoplayVideo && !isViewOnceMessage)
++                            }), content: NativeVideoContent(id: .message(item.message.stableId, telegramFile.fileId), userLocation: .peer(item.message.id.peerId), fileReference: .message(message: MessageReference(item.message), media: telegramFile), streamVideo: streamVideo ? .conservative : .none, enableSound: false, fetchAutomatically: false, isAudioVideoMessage: true, captureProtected: (item.associatedData.isCopyProtectionEnabled || item.message.isCopyProtected()) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: item.context.account.peerId.toInt64()), storeAfterDownload: nil), priority: item.associatedData.isStandalone ? .overlay : .embedded, autoplay: item.context.sharedContext.energyUsageSettings.autoplayVideo && !isViewOnceMessage)
+                             if let previousVideoNode = previousVideoNode {
+                                 videoNode.bounds = previousVideoNode.bounds
+                                 videoNode.position = previousVideoNode.position
+diff --git a/submodules/TelegramUI/Sources/SharedMediaPlayer.swift b/submodules/TelegramUI/Sources/SharedMediaPlayer.swift
+index 8e69e293..97767807 100644
+--- a/submodules/TelegramUI/Sources/SharedMediaPlayer.swift
++++ b/submodules/TelegramUI/Sources/SharedMediaPlayer.swift
+@@ -9,6 +9,7 @@ import AccountContext
+ import TelegramUniversalVideoContent
+ import DeviceProximity
+ import PeerMessagesMediaPlaylist
++import PampGramCore
+ 
+ private enum SharedMediaPlaybackItem: Equatable {
+     case audio(MediaPlayer)
+@@ -238,7 +239,7 @@ final class SharedMediaPlayer {
+                                 if let mediaManager = strongSelf.mediaManager, let context = strongSelf.context, let item = item as? MessageMediaPlaylistItem {
+                                     switch playbackData.source {
+                                         case let .telegramFile(fileReference, _, _):
+-                                        let videoNode = OverlayInstantVideoNode(context: context, audioSession: strongSelf.audioSession, manager: mediaManager.universalVideoManager, content: NativeVideoContent(id: .message(item.message.stableId, fileReference.media.fileId), userLocation: .peer(item.message.id.peerId), fileReference: fileReference, enableSound: false, baseRate: rateValue, isAudioVideoMessage: true, captureProtected: item.message.isCopyProtected(), storeAfterDownload: nil), close: { [weak mediaManager] in
++                                        let videoNode = OverlayInstantVideoNode(context: context, audioSession: strongSelf.audioSession, manager: mediaManager.universalVideoManager, content: NativeVideoContent(id: .message(item.message.stableId, fileReference.media.fileId), userLocation: .peer(item.message.id.peerId), fileReference: fileReference, enableSound: false, baseRate: rateValue, isAudioVideoMessage: true, captureProtected: item.message.isCopyProtected() && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()), storeAfterDownload: nil), close: { [weak mediaManager] in
+                                                 mediaManager?.setPlaylist(nil, type: .voice, control: .playback(.pause))
+                                             })
+                                             strongSelf.playbackItem = .instantVideo(videoNode)
