@@ -196,6 +196,13 @@ public enum PampGramSubscriptionAPI {
         }
     }
 
+    /// Convenience wrapper around `fetchStatus` for the many call sites that only ever care
+    /// about the tier itself, not its expiry — same never-fails-outward contract.
+    public static func fetchTier(userId: Int64) -> Signal<PampGramSubscriptionTier, NoError> {
+        return self.fetchStatus(userId: userId)
+        |> map { $0.tier }
+    }
+
     /// Admin-only: sets `userId`'s tier on the server, either permanently (`durationHours ==
     /// nil`) or until `durationHours` hours from the moment the server accepts this call.
     /// Called only from the admin screen, which is itself only ever shown to `adminAccountId`.

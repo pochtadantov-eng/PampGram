@@ -339,7 +339,7 @@ public func pampGramUsersListController(context: AccountContext) -> ViewControll
                     ActionSheetTextItem(title: tierDetailTitle),
                     ActionSheetButtonItem(title: user.tier == .pro ? "Понизить до STANDARD" : "Повысить до PRO", color: .accent, action: { [weak sheet] in
                         sheet?.dismissAnimated()
-                        PampGramSubscriptionAPI.grantTier(userId: userId, tier: targetTier, adminToken: adminToken) { ok in
+                        PampGramSubscriptionAPI.grantTier(userId: userId, tier: targetTier, durationHours: nil, adminToken: adminToken) { ok in
                             presentTooltipImpl?(ok ? "Тариф изменён." : "Не получилось.")
                             reload()
                         }

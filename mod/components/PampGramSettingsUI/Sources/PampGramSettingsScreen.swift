@@ -148,7 +148,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 
     var section: ItemListSectionId {
         switch self {
-        case .visualToggle, .visualFooter, .hideIconToggle, .hideIconFooter:
+        case .visualToggle, .visualFooter:
             return PampGramSettingsSection.visual.rawValue
         case .hideIconToggle, .hideIconFooter:
             return PampGramSettingsSection.hideIcon.rawValue

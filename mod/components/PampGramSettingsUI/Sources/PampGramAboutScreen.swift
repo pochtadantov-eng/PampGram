@@ -6,6 +6,7 @@ import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import UndoUI
 import PampGramCore
 
 private enum PampGramSubscriptionEntry: ItemListNodeEntry {
@@ -133,6 +134,8 @@ private func pampGramOpenUpgradeRequestChat(context: AccountContext) {
 public func pampGramSubscriptionController(context: AccountContext) -> ViewController {
     let selfAccountId = context.account.peerId.id._internalGetInt64Value()
     let tierPromise = Promise<PampGramSubscriptionTier>()
+    var presentControllerImpl: ((ViewController) -> Void)?
+    var presentTooltipImpl: ((String) -> Void)?
 
     func refreshTier() {
         tierPromise.set(PampGramSubscriptionAPI.fetchTier(userId: selfAccountId))
@@ -141,7 +144,11 @@ public func pampGramSubscriptionController(context: AccountContext) -> ViewContr
 
     let arguments = PampGramSubscriptionArguments(
         activatePremium: {
-            pampGramPresentActivationScreen(context: context, onActivated: {
+            pampGramPresentRedeemKeyFlow(context: context, presentController: { controller in
+                presentControllerImpl?(controller)
+            }, presentTooltip: { text in
+                presentTooltipImpl?(text)
+            }, onActivated: { _ in
                 refreshTier()
             })
         },
@@ -189,5 +196,15 @@ public func pampGramSubscriptionController(context: AccountContext) -> ViewContr
     }
 
     let controller = ItemListController(context: context, state: signal)
+    presentControllerImpl = { [weak controller] c in
+        controller?.present(c, in: .window(.root))
+    }
+    presentTooltipImpl = { [weak controller] text in
+        guard let controller else {
+            return
+        }
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        controller.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
+    }
     return controller
 }

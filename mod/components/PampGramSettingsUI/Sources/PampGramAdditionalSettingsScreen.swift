@@ -430,6 +430,13 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                 return settings
             }).start()
         },
+        toggleScreenshotBypass: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.bypassScreenshotProtectionEnabled = value
+                return settings
+            }).start()
+        },
         toggleHideOwnPhone: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
@@ -456,13 +463,6 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                     }
                 ))
             })
-        },
-        toggleScreenshotBypass: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.bypassScreenshotProtectionEnabled = value
-                return settings
-            }).start()
         }
     )
 
