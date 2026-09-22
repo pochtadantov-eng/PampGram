@@ -322,6 +322,18 @@ public struct PampGramSettings: Codable, Equatable {
     /// entry point into it. The way back in without this toggle is a long-press on
     /// Settings' own "Помощь" row, wired the same place.
     public var hidePampGramIconEnabled: Bool
+    /// Mirrors a full ban from the admin panel's server (`PampGramSubscriptionAPI.fetchBanStatus`,
+    /// `full` non-nil) — written locally by `PampGramBanEnforcer`, which polls that endpoint and,
+    /// on first seeing a full ban, sets this to `true` in the same transaction that zeroes the
+    /// visual balances below. `PampGramCore.settings`/`settingsSignal` check this before the
+    /// gifts-only `masterEnabled` gate and, when it's `true`, return `allFeaturesOff()` instead
+    /// of the raw settings — every feature-effect/display call site already reads through one of
+    /// those two functions, so this one flag is enough to make every toggle stop doing anything,
+    /// without each of those call sites needing its own ban check. `rawSettings`/`rawSettingsSignal`
+    /// are unaffected, same as `masterEnabled` — the settings screens still show what's actually
+    /// stored. Cleared back to `false` by the same enforcer once the server reports the ban lifted;
+    /// the zeroed balances are not restored, since zeroing them was itself the point.
+    public var bannedLocally: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -368,11 +380,12 @@ public struct PampGramSettings: Codable, Equatable {
             storySavingEnabled: false,
             bypassScreenshotProtectionEnabled: false,
             masterEnabled: true,
-            hidePampGramIconEnabled: false
+            hidePampGramIconEnabled: false,
+            bannedLocally: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -414,6 +427,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.bypassScreenshotProtectionEnabled = bypassScreenshotProtectionEnabled
         self.masterEnabled = masterEnabled
         self.hidePampGramIconEnabled = hidePampGramIconEnabled
+        self.bannedLocally = bannedLocally
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -487,6 +501,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.bypassScreenshotProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassScreenshotProtectionEnabled) ?? defaults.bypassScreenshotProtectionEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
         self.hidePampGramIconEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePampGramIconEnabled) ?? defaults.hidePampGramIconEnabled
+        self.bannedLocally = try container.decodeIfPresent(Bool.self, forKey: .bannedLocally) ?? defaults.bannedLocally
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -500,6 +515,43 @@ public struct PampGramSettings: Codable, Equatable {
         settings.fakeStarsDisplayEnabled = false
         settings.fakeTonDisplayEnabled = false
         settings.localRublesPurchaseEnabled = false
+        return settings
+    }
+
+    /// The full-ban counterpart of `withGiftsVisualsOff()`: every feature toggle across every
+    /// section turned off, not just the gifts ones, plus the visual balances zeroed out (the
+    /// stored values are already zero by the time this ever runs — `PampGramBanEnforcer` zeroes
+    /// them in the same transaction it sets `bannedLocally`, before this read-side view is ever
+    /// consulted — this only makes that guarantee hold even if something read the balance fields
+    /// directly instead of through here). Non-feature bookkeeping (the chat-lock PIN, voice
+    /// preset, speed modes, exclusion lists, the admin token itself) is left as stored: there's
+    /// nothing to "turn off" about a stored preference the corresponding disabled toggle already
+    /// keeps from being read.
+    public func allFeaturesOff() -> PampGramSettings {
+        var settings = self.withGiftsVisualsOff()
+        settings.fakeStarsBalance = 0
+        settings.fakeTonBalanceNanos = 0
+        settings.localRublesBalanceKopecks = 0
+        settings.antiDeleteMessagesEnabled = false
+        settings.ghostReaderEnabled = false
+        settings.onlineMaskEnabled = false
+        settings.ghostModeEnabled = false
+        settings.ghostHideReadReceipts = false
+        settings.ghostHideStoryViews = false
+        settings.ghostHideOnline = false
+        settings.ghostHideTyping = false
+        settings.ghostAutoOffline = false
+        settings.ghostReadOnAction = false
+        settings.visualEditEnabled = false
+        settings.voiceChangerMessagesEnabled = false
+        settings.fakeLocationEnabled = false
+        settings.chatLockEnabled = false
+        settings.infinitePinsEnabled = false
+        settings.legalPremiumEnabled = false
+        settings.showTemporaryMediaEnabled = false
+        settings.storySavingEnabled = false
+        settings.bypassScreenshotProtectionEnabled = false
+        settings.masterEnabled = false
         return settings
     }
 
@@ -559,8 +611,14 @@ public enum PampGramCore {
     /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
     /// визуалку" is off, only the gift-visual features read as disabled; every other section is
     /// unaffected. Screens that need the real stored gift state use `rawSettings` instead.
+    /// Checked before the gifts-only gate: a full ban (`bannedLocally`, set by
+    /// `PampGramBanEnforcer`) reports every feature off, not just gifts — see
+    /// `allFeaturesOff()`.
     public static func settings(transaction: Transaction) -> PampGramSettings {
         let raw = self.rawSettings(transaction: transaction)
+        if raw.bannedLocally {
+            return raw.allFeaturesOff()
+        }
         return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
     }
 
@@ -580,10 +638,14 @@ public enum PampGramCore {
         |> distinctUntilChanged
     }
 
-    /// Live gifts-gated settings, for feature effect/display code.
+    /// Live gifts-gated settings, for feature effect/display code. See `settings(transaction:)`
+    /// for the `bannedLocally` check this applies first.
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return self.rawSettingsSignal(postbox: postbox)
         |> map { raw -> PampGramSettings in
+            if raw.bannedLocally {
+                return raw.allFeaturesOff()
+            }
             return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
         }
         |> distinctUntilChanged
