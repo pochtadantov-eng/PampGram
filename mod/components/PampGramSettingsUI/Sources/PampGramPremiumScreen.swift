@@ -3,9 +3,21 @@ import UIKit
 import Display
 import SwiftSignalKit
 import AccountContext
-import PromptUI
-import UndoUI
 import PampGramCore
+
+/// Where "Активировать Premium"/"Активировать ещё один ключ" sends the user — the same
+/// t.me-deep-link-with-prefilled-text pattern `PampGramHubScreen.swift`'s "Поддержать проект"
+/// already uses, not the on-device "paste a key you already have" prompt (that one stays put on
+/// the "Статус" screen, for people who already have a key from somewhere). This is the intended
+/// primary path for someone who doesn't have Premium yet: message the account that actually
+/// issues keys.
+private let pampGramPremiumKeysUsername = "Claps228"
+
+private func pampGramPremiumActivationUrl() -> String {
+    let text = "Привет, хочу активировать Premium в PampGram, подскажи, как получить ключ."
+    let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? text
+    return "https://t.me/\(pampGramPremiumKeysUsername)?text=\(encoded)"
+}
 
 /// One row of the feature list below the PampGram logo — a colored icon square, a bold title
 /// and a one-line description. Mirrors the layout used by pretty much every paywall of this
@@ -263,17 +275,11 @@ private final class PampGramPremiumViewController: UIViewController {
     }
 
     @objc private func ctaPressed() {
-        pampGramPresentRedeemKeyFlow(context: self.context, presentController: { [weak self] controller in
-            self?.present(controller, animated: true, completion: nil)
-        }, presentTooltip: { [weak self] text in
-            guard let self else {
-                return
-            }
-            let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
-            self.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), animated: true, completion: nil)
-        }, onActivated: { [weak self] status in
-            self?.apply(status: status)
-        })
+        guard let navigationController = self.context.sharedContext.mainWindow?.viewController as? NavigationController else {
+            return
+        }
+        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: pampGramPremiumActivationUrl(), forceExternal: false, presentationData: presentationData, navigationController: navigationController, dismissInput: {})
     }
 }
 
