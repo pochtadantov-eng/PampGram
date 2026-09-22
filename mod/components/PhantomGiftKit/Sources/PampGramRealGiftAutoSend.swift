@@ -11,7 +11,7 @@ import AccountContext
 /// gift, and the recipient are all as real as tapping through that screen by hand twice in a
 /// row. What's automated is only the tapping: picking the 15-Star gift out of the catalog,
 /// filling in the recipient, and repeating it a second time.
-public enum PampGramRealGiftAutoSendError {
+public enum PampGramRealGiftAutoSendError: Error {
     /// No catalog gift is currently priced at exactly 15 Stars (price changed, or the catalog
     /// hasn't loaded at all yet).
     case giftUnavailable

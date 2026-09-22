@@ -106,6 +106,32 @@ public enum PampGramPhantomGiftStore {
         }
     }
 
+    /// Same as `profileGiftsSignal`, mapped to the real profile grid's own item type with
+    /// `fromPeer` actually resolved — `PampGramPhantomGift` only stores a `fromPeerId`, since
+    /// `ProfileGiftsContext.State.StarGift` needs a full `EnginePeer` for the "Подарок от X"
+    /// attribution a plain (non-unique) gift card shows (`GiftsListView.swift` falls back to
+    /// "Anonymous" whenever `fromPeer` is nil, which `PampGramPhantomGift.asProfileGift` used
+    /// to pass unconditionally). This is what `GiftsListView` should call instead of building
+    /// `.asProfileGift` off `profileGiftsSignal`'s raw list itself.
+    public static func resolvedProfileGiftsSignal(context: AccountContext, peerId: EnginePeer.Id? = nil) -> Signal<[ProfileGiftsContext.State.StarGift], NoError> {
+        return self.profileGiftsSignal(context: context, peerId: peerId)
+        |> mapToSignal { gifts -> Signal<[ProfileGiftsContext.State.StarGift], NoError> in
+            let fromPeerIds = Array(Set(gifts.compactMap { $0.fromPeerId }))
+            let peerSignals = fromPeerIds.map { id in
+                context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: id))
+                |> map { peer -> (EnginePeer.Id, EnginePeer?) in (id, peer) }
+            }
+            return combineLatest(peerSignals)
+            |> map { resolved -> [ProfileGiftsContext.State.StarGift] in
+                let peersById = Dictionary(uniqueKeysWithValues: resolved)
+                return gifts.map { gift in
+                    let fromPeer: EnginePeer? = gift.fromPeerId.flatMap { peersById[$0] ?? nil }
+                    return gift.asProfileGift(fromPeer: fromPeer)
+                }
+            }
+        }
+    }
+
     public static func gift(transaction: Transaction, id: Int64) -> PampGramPhantomGift? {
         return self.allGifts(transaction: transaction).first(where: { $0.id == id })
     }

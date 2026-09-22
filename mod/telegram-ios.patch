@@ -19323,9 +19323,9 @@ index e1c98a1..454a2b5 100644
 +        // these entries (recognized by `reference == nil`) stay local-only too.
 +        let pampGramProfileGifts: Signal<[ProfileGiftsContext.State.StarGift], NoError>
 +        if peerId == context.account.peerId {
-+            pampGramProfileGifts = PampGramPhantomGiftStore.profileGiftsSignal(context: context) |> map { gifts in gifts.map { $0.asProfileGift } }
++            pampGramProfileGifts = PampGramPhantomGiftStore.resolvedProfileGiftsSignal(context: context)
 +        } else {
-+            pampGramProfileGifts = PampGramPhantomGiftStore.profileGiftsSignal(context: context, peerId: peerId) |> map { gifts in gifts.map { $0.asProfileGift } }
++            pampGramProfileGifts = PampGramPhantomGiftStore.resolvedProfileGiftsSignal(context: context, peerId: peerId)
 +        }
 +
          self.dataDisposable = combineLatest(

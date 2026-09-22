@@ -141,11 +141,11 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
         if gift.peerId == context.account.peerId {
             items.append(ActionSheetButtonItem(title: gift.pinnedToTop ? "Открепить в профиле" : "Закрепить в профиле", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
-                let _ = PampGramPhantomGiftManager.setPinnedToTop(context: context, matching: gift.asProfileGift, pinnedToTop: !gift.pinnedToTop).start()
+                let _ = PampGramPhantomGiftManager.setPinnedToTop(context: context, matching: gift.asProfileGift(fromPeer: nil), pinnedToTop: !gift.pinnedToTop).start()
             }))
             items.append(ActionSheetButtonItem(title: gift.savedToProfile ? "Скрыть из профиля" : "Показать в профиле", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
-                let _ = PampGramPhantomGiftManager.setSavedToProfile(context: context, matching: gift.asProfileGift, savedToProfile: !gift.savedToProfile).start()
+                let _ = PampGramPhantomGiftManager.setSavedToProfile(context: context, matching: gift.asProfileGift(fromPeer: nil), savedToProfile: !gift.savedToProfile).start()
             }))
             items.append(ActionSheetButtonItem(title: gift.worn ? "Перестать носить" : "Носить", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
@@ -153,7 +153,7 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
             }))
             items.append(ActionSheetButtonItem(title: "Продать", color: .destructive, action: { [weak sheet] in
                 sheet?.dismissAnimated()
-                let _ = PampGramPhantomGiftManager.sell(context: context, matching: gift.asProfileGift).start()
+                let _ = PampGramPhantomGiftManager.sell(context: context, matching: gift.asProfileGift(fromPeer: nil)).start()
                 present?(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок продан, стоимость зачислена на баланс.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }))
             }))
         }

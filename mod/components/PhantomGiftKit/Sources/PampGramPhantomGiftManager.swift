@@ -45,7 +45,8 @@ public enum PampGramPhantomGiftManager {
                 gift: .unique(ownedGift),
                 price: price,
                 date: Int32(Date().timeIntervalSince1970),
-                localMessageId: nil
+                localMessageId: nil,
+                fromPeerId: peerId == context.account.peerId ? nil : context.account.peerId
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
             let ledgerCurrency: PampGramLocalCurrency = price.currency == .stars ? .stars : .ton
@@ -101,7 +102,8 @@ public enum PampGramPhantomGiftManager {
                 gift: .generic(gift),
                 price: CurrencyAmount(amount: StarsAmount(value: starPrice, nanos: 0), currency: .stars),
                 date: Int32(Date().timeIntervalSince1970),
-                localMessageId: nil
+                localMessageId: nil,
+                fromPeerId: peerId == context.account.peerId ? nil : context.account.peerId
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
             let newBalance = PampGramLocalLedgerStore.addAndApply(
@@ -126,7 +128,7 @@ public enum PampGramPhantomGiftManager {
                 guard let messageId else {
                     return .complete()
                 }
-                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId)
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, fromPeerId: phantomGift.fromPeerId)
                 return context.account.postbox.transaction { transaction in
                     PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
                     PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
@@ -153,6 +155,7 @@ public enum PampGramPhantomGiftManager {
                 price: price,
                 date: Int32(Date().timeIntervalSince1970),
                 localMessageId: nil,
+                fromPeerId: peerId,
                 isReceived: true
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
@@ -176,7 +179,7 @@ public enum PampGramPhantomGiftManager {
                 guard let messageId else {
                     return .single(phantomGift)
                 }
-                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, isReceived: true)
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, fromPeerId: phantomGift.fromPeerId, isReceived: true)
                 return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
                     PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
                     PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
@@ -197,6 +200,7 @@ public enum PampGramPhantomGiftManager {
                 price: CurrencyAmount(amount: StarsAmount(value: gift.price, nanos: 0), currency: .stars),
                 date: Int32(Date().timeIntervalSince1970),
                 localMessageId: nil,
+                fromPeerId: peerId,
                 isReceived: true
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
@@ -220,7 +224,7 @@ public enum PampGramPhantomGiftManager {
                 guard let messageId else {
                     return .complete()
                 }
-                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, isReceived: true)
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, fromPeerId: phantomGift.fromPeerId, isReceived: true)
                 return context.account.postbox.transaction { transaction in
                     PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
                     PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
