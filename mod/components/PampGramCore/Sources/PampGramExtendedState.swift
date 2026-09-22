@@ -222,7 +222,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
             ratingValue: 0,
             ratingPoints: 0,
             anonymousNumberEnabled: false,
-            anonymousNumber: "+888 0000 0000",
+            anonymousNumber: "+888 000 0000 0000",
             anonymousNumberPurchasedAt: Int32(Date().timeIntervalSince1970),
             anonymousNumberPriceTonNanos: 0,
             anonymousNumberPriceUsdCents: 0

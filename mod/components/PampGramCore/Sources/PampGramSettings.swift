@@ -380,7 +380,7 @@ public struct PampGramSettings: Codable, Equatable {
             chatLockPin: "",
             lockedChatPeerIds: [],
             localRublesBalanceKopecks: 0,
-            localRublesPurchaseEnabled: false,
+            localRublesPurchaseEnabled: true,
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
             showTemporaryMediaEnabled: false,

@@ -36,6 +36,22 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
     private var showInProfile = false
     private var didLoadInitialState = false
 
+    /// Fixed, non-editable prefix for the visual "+888" number -- the field always starts with
+    /// this and typing can never remove or move past it.
+    private let numberPrefix = "+888 "
+    /// 3 + 4 + 4 digits, grouped by groupedDigits(_:) below. Once this many digits are entered,
+    /// further digits are rejected outright -- only deleting and retyping changes the number.
+    private let maxAnonymousNumberDigits = 11
+
+    /// Which price field the user actually typed into last -- that one stays the source of
+    /// truth and the other gets recomputed from it whenever the TON/USD rate arrives or the
+    /// purchase date changes. Debounced via `rateSyncTimer` so a live CoinGecko request doesn't
+    /// fire on every keystroke.
+    private weak var lastEditedPriceField: UITextField?
+    private var rateSyncTimer: Foundation.Timer?
+    private var isSyncingPriceFields = false
+    private var rateSyncRequestId = 0
+
     init(context: AccountContext) {
         self.context = context
         self.presentationData = context.sharedContext.currentPresentationData.with { $0 }
@@ -49,6 +65,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
     deinit {
         self.stateDisposable.dispose()
+        self.rateSyncTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -157,7 +174,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         self.stackView.setCustomSpacing(18.0, after: self.stackView.arrangedSubviews.last!)
 
         self.stackView.addArrangedSubview(self.makeSectionLabel("Номер"))
-        self.configureField(self.numberField, placeholder: "+888 0000 0000", keyboard: .numbersAndPunctuation)
+        self.configureField(self.numberField, placeholder: "+888 000 0000 0000", keyboard: .numberPad)
         self.stackView.addArrangedSubview(self.makeFieldPanel(self.numberField))
         self.stackView.setCustomSpacing(18.0, after: self.stackView.arrangedSubviews.last!)
 
@@ -309,7 +326,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         field.backgroundColor = .clear
         field.clearButtonMode = .whileEditing
         field.returnKeyType = .done
-        field.addTarget(self, action: #selector(self.fieldEditingChanged), for: .editingChanged)
+        field.addTarget(self, action: #selector(self.fieldEditingChanged(_:)), for: .editingChanged)
     }
 
     private func applyInitialState(_ state: PampGramProfileVisualState) {
@@ -317,7 +334,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
             return
         }
         self.didLoadInitialState = true
-        self.numberField.text = state.anonymousNumber
+        self.numberField.text = self.normalizedNumberText(state.anonymousNumber)
         self.datePicker.date = Date(timeIntervalSince1970: TimeInterval(state.anonymousNumberPurchasedAt))
         if state.anonymousNumberPriceTonNanos > 0 {
             self.tonField.text = self.trimDecimal(Double(state.anonymousNumberPriceTonNanos) / 1_000_000_000.0)
@@ -345,18 +362,80 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
     @objc private func dateChanged() {
         self.updatePreview()
+        self.scheduleRateSync()
     }
 
     @objc private func toggleDisplay() {
         self.showInProfile = self.displaySwitch.isOn
     }
 
-    @objc private func fieldEditingChanged() {
+    @objc private func fieldEditingChanged(_ sender: UITextField) {
         self.updatePreview()
+        guard !self.isSyncingPriceFields, sender === self.tonField || sender === self.usdField else {
+            return
+        }
+        self.lastEditedPriceField = sender
+        self.scheduleRateSync()
+    }
+
+    /// Debounces the actual network request: a burst of keystrokes (or a fast date-picker drag)
+    /// collapses into a single CoinGecko fetch 0.6s after the user stops.
+    private func scheduleRateSync() {
+        self.rateSyncTimer?.invalidate()
+        self.rateSyncTimer = Foundation.Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { [weak self] _ in
+            self?.performRateSync()
+        }
+    }
+
+    /// Fills in the price field the user *didn't* just type into, from the other one and the
+    /// TON/USD rate for the selected purchase date -- today's live rate for today, CoinGecko's
+    /// historical daily rate for any other date. If neither field has a value yet, there's
+    /// nothing to convert and this is a no-op.
+    private func performRateSync() {
+        let sourceField: UITextField
+        if let lastEdited = self.lastEditedPriceField, self.parseDecimal(lastEdited.text) != nil {
+            sourceField = lastEdited
+        } else if self.parseDecimal(self.tonField.text) != nil {
+            sourceField = self.tonField
+        } else if self.parseDecimal(self.usdField.text) != nil {
+            sourceField = self.usdField
+        } else {
+            return
+        }
+        guard let sourceValue = self.parseDecimal(sourceField.text), sourceValue > 0 else {
+            return
+        }
+
+        self.rateSyncRequestId += 1
+        let requestId = self.rateSyncRequestId
+        let purchaseDate = self.datePicker.date
+        let isToday = Calendar.current.isDateInToday(purchaseDate)
+
+        let applyRate: (Double?) -> Void = { [weak self] rate in
+            guard let self, self.rateSyncRequestId == requestId, let rate, rate > 0 else {
+                return
+            }
+            self.isSyncingPriceFields = true
+            if sourceField === self.tonField {
+                self.usdField.text = self.trimDecimal(((sourceValue * rate) * 100.0).rounded() / 100.0)
+            } else {
+                self.tonField.text = self.trimDecimal(((sourceValue / rate) * 1_000_000_000.0).rounded() / 1_000_000_000.0)
+            }
+            self.isSyncingPriceFields = false
+            self.updatePreview()
+        }
+        if isToday {
+            PampGramTonRateService.currentRate(completion: applyRate)
+        } else {
+            PampGramTonRateService.historicalRate(date: purchaseDate, completion: applyRate)
+        }
     }
 
     func textFieldDidBeginEditing(_ textField: UITextField) {
         self.activeField = textField
+        if textField === self.numberField, textField.text?.hasPrefix(self.numberPrefix) != true {
+            textField.text = self.numberPrefix
+        }
         DispatchQueue.main.async { [weak self] in
             self?.scrollActiveFieldToVisible()
         }
@@ -370,8 +449,10 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
     }
 
     func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
-        // The number field is free-form; the two price fields accept digits plus a single "." or ","
-        // separator, up to 10 digits.
+        if textField === self.numberField {
+            return self.handleNumberFieldChange(range: range, replacementString: string)
+        }
+        // The two price fields accept digits plus a single "." or "," separator, up to 10 digits.
         guard textField === self.tonField || textField === self.usdField else {
             return true
         }
@@ -398,6 +479,96 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
             return false
         }
         return true
+    }
+
+    /// Enforces the "+888" editor's whole contract: the "+888 " prefix can never be edited or
+    /// removed, only digits 0-9 may be typed after it, and once `maxAnonymousNumberDigits` digits
+    /// have been entered no more can be added -- deleting and retyping is the only way to change
+    /// the number. Spaces are inserted automatically (groupedDigits(_:)), so the field's `text`
+    /// is always either the bare prefix or the prefix plus a "XXX XXXX XXXX"-grouped number.
+    private func handleNumberFieldChange(range: NSRange, replacementString string: String) -> Bool {
+        let field = self.numberField
+        let text = field.text?.hasPrefix(self.numberPrefix) == true ? field.text! : self.numberPrefix
+        let prefixLength = self.numberPrefix.count
+
+        // Never allow an edit that reaches into the fixed prefix.
+        if range.location < prefixLength {
+            return false
+        }
+        // Only digits may be typed; deletions (empty replacement) are always fine.
+        if string.contains(where: { !$0.isNumber }) {
+            return false
+        }
+
+        let nsText = text as NSString
+        let suffix = nsText.substring(from: prefixLength)
+        var rangeInSuffix = NSRange(location: range.location - prefixLength, length: range.length)
+        // A single backspace landing on a formatting space we inserted would otherwise be a
+        // no-op (removing the space just makes groupedDigits(_:) put it right back, since the
+        // digit count didn't change) -- extend it one character back so it deletes the digit
+        // before the space instead, matching how a plain (unformatted) field would behave.
+        if string.isEmpty, range.length == 1, rangeInSuffix.location > 0,
+           let spaceRange = Range(rangeInSuffix, in: suffix), suffix[spaceRange] == " " {
+            rangeInSuffix.location -= 1
+            rangeInSuffix.length += 1
+        }
+        guard let suffixTextRange = Range(rangeInSuffix, in: suffix) else {
+            return false
+        }
+
+        // How many digits precede the edit point in the OLD suffix -- used to relocate the caret
+        // after reformatting, since inserted spaces shift everything after them.
+        let digitsBeforeEdit = suffix[suffix.startIndex..<suffixTextRange.lowerBound].filter { $0.isNumber }.count
+
+        let candidateSuffix = suffix.replacingCharacters(in: suffixTextRange, with: string)
+        let newDigits = String(candidateSuffix.filter { $0.isNumber })
+        if newDigits.count > self.maxAnonymousNumberDigits {
+            return false
+        }
+
+        let grouped = self.groupedDigits(newDigits)
+        field.text = self.numberPrefix + grouped
+
+        let caretDigitTarget = digitsBeforeEdit + string.count
+        var seenDigits = 0
+        var caretOffset = prefixLength
+        for ch in grouped {
+            if seenDigits >= caretDigitTarget {
+                break
+            }
+            caretOffset += 1
+            if ch.isNumber {
+                seenDigits += 1
+            }
+        }
+        if let caretPosition = field.position(from: field.beginningOfDocument, offset: caretOffset) {
+            field.selectedTextRange = field.textRange(from: caretPosition, to: caretPosition)
+        }
+
+        self.updatePreview()
+        return false
+    }
+
+    /// "XXXXXXXXXXX" -> "XXX XXXX XXXX" (3 + 4 + 4 digits); any shorter prefix of that digit
+    /// count is grouped the same way, so partial input formats correctly as it's typed.
+    private func groupedDigits(_ digits: String) -> String {
+        var result = ""
+        for (index, ch) in digits.enumerated() {
+            if index == 3 || index == 7 {
+                result.append(" ")
+            }
+            result.append(ch)
+        }
+        return result
+    }
+
+    /// Reformats an arbitrary stored number (older "+888 0000 0000" 4+4 layout, or anything else)
+    /// into the current "+888 " + "XXX XXXX XXXX" shape, so the editor's own input rules always
+    /// see text in the shape they expect once the user starts typing.
+    private func normalizedNumberText(_ stored: String) -> String {
+        let digits = String(stored.filter { $0.isNumber }.dropFirst(stored.hasPrefix("+888") ? 3 : 0))
+        let clamped = String(digits.prefix(self.maxAnonymousNumberDigits))
+        return self.numberPrefix + self.groupedDigits(clamped)
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
