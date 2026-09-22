@@ -37,11 +37,14 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
     private var didLoadInitialState = false
 
     /// Fixed, non-editable prefix for the visual "+888" number -- the field always starts with
-    /// this and typing can never remove or move past it.
+    /// this and typing can never remove or move past it. "888" is itself the number's first
+    /// 3-digit group (the user's own example: "+888 5624 3573" is 11 digits *all told* -- 888
+    /// plus two groups of 4 the user actually types).
     private let numberPrefix = "+888 "
-    /// 3 + 4 + 4 digits, grouped by groupedDigits(_:) below. Once this many digits are entered,
-    /// further digits are rejected outright -- only deleting and retyping changes the number.
-    private let maxAnonymousNumberDigits = 11
+    /// The two 4-digit groups typed after the fixed "888" (groupedDigits(_:) below inserts the
+    /// space between them). Once this many digits are entered, further digits are rejected
+    /// outright -- only deleting and retyping changes the number.
+    private let maxAnonymousNumberDigits = 8
 
     /// Which price field the user actually typed into last -- that one stays the source of
     /// truth and the other gets recomputed from it whenever the TON/USD rate arrives or the
@@ -174,7 +177,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         self.stackView.setCustomSpacing(18.0, after: self.stackView.arrangedSubviews.last!)
 
         self.stackView.addArrangedSubview(self.makeSectionLabel("Номер"))
-        self.configureField(self.numberField, placeholder: "+888 000 0000 0000", keyboard: .numberPad)
+        self.configureField(self.numberField, placeholder: "+888 0000 0000", keyboard: .numberPad)
         self.stackView.addArrangedSubview(self.makeFieldPanel(self.numberField))
         self.stackView.setCustomSpacing(18.0, after: self.stackView.arrangedSubviews.last!)
 
@@ -485,7 +488,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
     /// removed, only digits 0-9 may be typed after it, and once `maxAnonymousNumberDigits` digits
     /// have been entered no more can be added -- deleting and retyping is the only way to change
     /// the number. Spaces are inserted automatically (groupedDigits(_:)), so the field's `text`
-    /// is always either the bare prefix or the prefix plus a "XXX XXXX XXXX"-grouped number.
+    /// is always either the bare prefix or the prefix plus a "XXXX XXXX"-grouped number.
     private func handleNumberFieldChange(range: NSRange, replacementString string: String) -> Bool {
         let field = self.numberField
         let text = field.text?.hasPrefix(self.numberPrefix) == true ? field.text! : self.numberPrefix
@@ -549,12 +552,12 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         return false
     }
 
-    /// "XXXXXXXXXXX" -> "XXX XXXX XXXX" (3 + 4 + 4 digits); any shorter prefix of that digit
-    /// count is grouped the same way, so partial input formats correctly as it's typed.
+    /// "XXXXXXXX" -> "XXXX XXXX" (4 + 4 digits); any shorter prefix of that digit count is
+    /// grouped the same way, so partial input formats correctly as it's typed.
     private func groupedDigits(_ digits: String) -> String {
         var result = ""
         for (index, ch) in digits.enumerated() {
-            if index == 3 || index == 7 {
+            if index == 4 {
                 result.append(" ")
             }
             result.append(ch)
@@ -562,9 +565,9 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
         return result
     }
 
-    /// Reformats an arbitrary stored number (older "+888 0000 0000" 4+4 layout, or anything else)
-    /// into the current "+888 " + "XXX XXXX XXXX" shape, so the editor's own input rules always
-    /// see text in the shape they expect once the user starts typing.
+    /// Reformats an arbitrary stored number (anything that isn't already "+888 " + two groups
+    /// of 4 digits) into that shape, so the editor's own input rules always see text in the
+    /// shape they expect once the user starts typing.
     private func normalizedNumberText(_ stored: String) -> String {
         let digits = String(stored.filter { $0.isNumber }.dropFirst(stored.hasPrefix("+888") ? 3 : 0))
         let clamped = String(digits.prefix(self.maxAnonymousNumberDigits))
