@@ -504,6 +504,12 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                     value: current ?? "",
                     placeholder: "токен",
                     characterLimit: 256,
+                    // The stock prompt field autocapitalizes the first character by default
+                    // (`.sentences`) and lets iOS autocorrect touch what's typed — both silently
+                    // corrupt an opaque secret that has to match the server byte-for-byte. This
+                    // field needs the raw text back exactly as entered.
+                    autocapitalizationType: .none,
+                    autocorrectionType: .no,
                     apply: { value in
                         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
                             return

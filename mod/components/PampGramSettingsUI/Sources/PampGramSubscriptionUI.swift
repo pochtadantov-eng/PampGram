@@ -27,6 +27,10 @@ func pampGramPresentRedeemKeyFlow(context: AccountContext, presentController: @e
         value: "",
         placeholder: "ключ",
         characterLimit: 64,
+        // Same reasoning as the admin-token prompt — an activation key has to match the
+        // server's stored value exactly, so autocapitalize/autocorrect must stay off.
+        autocapitalizationType: .none,
+        autocorrectionType: .no,
         apply: { value in
             guard let key = value?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
                 return

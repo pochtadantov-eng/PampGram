@@ -21808,3 +21808,25 @@ index 8e69e293..97767807 100644
                                                  mediaManager?.setPlaylist(nil, type: .voice, control: .playback(.pause))
                                              })
                                              strongSelf.playbackItem = .instantVideo(videoNode)
+diff --git a/submodules/PromptUI/Sources/PromptController.swift b/submodules/PromptUI/Sources/PromptController.swift
+index 27f583ce..f02baa48 100644
+--- a/submodules/PromptUI/Sources/PromptController.swift
++++ b/submodules/PromptUI/Sources/PromptController.swift
+@@ -211,6 +211,8 @@ public func promptController(
+     placeholder: String? = nil,
+     characterLimit: Int = 1000,
+     displayCharacterLimit: Bool = false,
++    autocapitalizationType: UITextAutocapitalizationType = .sentences,
++    autocorrectionType: UITextAutocorrectionType = .default,
+     apply: @escaping (String?) -> Void,
+     dismissed: @escaping () -> Void = {}
+ ) -> ViewController {
+@@ -251,6 +253,8 @@ public func promptController(
+                 initialValue: value.flatMap { NSAttributedString(string: $0) },
+                 placeholder: placeholder ?? "",
+                 characterLimit: characterLimit,
++                autocapitalizationType: autocapitalizationType,
++                autocorrectionType: autocorrectionType,
+                 formatMenuAvailability: .none,
+                 emptyLineHandling: .notAllowed,
+                 isInitiallyFocused: true,
