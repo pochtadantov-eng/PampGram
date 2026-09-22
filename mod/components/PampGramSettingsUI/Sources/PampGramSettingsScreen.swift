@@ -30,7 +30,6 @@ private final class PampGramSettingsArguments {
     let openCollectionMarket: () -> Void
     let openStarsLedger: () -> Void
     let openTonLedger: () -> Void
-    let openWallet: () -> Void
 
     init(
         toggleVisual: @escaping (Bool) -> Void,
@@ -48,8 +47,7 @@ private final class PampGramSettingsArguments {
         openVisualRatingEditor: @escaping () -> Void,
         openCollectionMarket: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
-        openTonLedger: @escaping () -> Void,
-        openWallet: @escaping () -> Void
+        openTonLedger: @escaping () -> Void
     ) {
         self.toggleVisual = toggleVisual
         self.togglePhantomGifts = togglePhantomGifts
@@ -67,7 +65,6 @@ private final class PampGramSettingsArguments {
         self.openCollectionMarket = openCollectionMarket
         self.openStarsLedger = openStarsLedger
         self.openTonLedger = openTonLedger
-        self.openWallet = openWallet
     }
 }
 
@@ -84,7 +81,6 @@ private enum PampGramSettingsSection: Int32 {
     case ledger
     case resetBalances
     case storage
-    case wallet
 }
 
 private enum PampGramSettingsEntry: ItemListNodeEntry {
@@ -135,10 +131,6 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case deleteAllPhantomGifts(String, Bool)
     case storageFooter(String)
 
-    case walletHeader(String)
-    case wallet(String, String)
-    case walletFooter(String)
-
     var section: ItemListSectionId {
         switch self {
         case .visualToggle, .visualFooter:
@@ -165,8 +157,6 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.resetBalances.rawValue
         case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
             return PampGramSettingsSection.storage.rawValue
-        case .walletHeader, .wallet, .walletFooter:
-            return PampGramSettingsSection.wallet.rawValue
         }
     }
 
@@ -208,9 +198,6 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .phantomGiftsCount: return 33
         case .deleteAllPhantomGifts: return 34
         case .storageFooter: return 35
-        case .walletHeader: return 40
-        case .wallet: return 41
-        case .walletFooter: return 42
         }
     }
 
@@ -229,9 +216,9 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .profileVisualsHeader(text), let .collectionHeader(text), let .ledgerHeader(text), let .storageHeader(text), let .walletHeader(text):
+        case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .profileVisualsHeader(text), let .collectionHeader(text), let .ledgerHeader(text), let .storageHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .collectionFooter(text), let .ledgerFooter(text), let .resetBalancesFooter(text), let .storageFooter(text), let .walletFooter(text):
+        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .collectionFooter(text), let .ledgerFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .localRublesPurchaseToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -275,8 +262,6 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openStarsLedger)
         case let .tonLedger(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openTonLedger)
-        case let .wallet(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openWallet)
         case let .resetBalances(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.resetBalances()
@@ -294,7 +279,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 /// Formats nanotons as a plain TON amount with up to 9 decimals and no trailing zeroes.
 /// Hand-rolled on purpose: the real TON formatters live behind the wallet/Stars UI, and
 /// this is a play-money counter that must never be mistaken for a real wallet balance.
-func formatFakeTon(nanos: Int64) -> String {
+private func formatFakeTon(nanos: Int64) -> String {
     let sign = nanos < 0 ? "-" : ""
     let magnitude = nanos.magnitude
     let whole = magnitude / 1_000_000_000
@@ -316,7 +301,7 @@ func formatFakeTon(nanos: Int64) -> String {
 
 /// Parses what the user typed back into nanotons, accepting both "1.5" and "1,5" and
 /// ignoring spaces. Returns nil for anything that isn't a plain non-negative number.
-func parseFakeTon(_ text: String) -> Int64? {
+private func parseFakeTon(_ text: String) -> Int64? {
     let normalized = text.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: ",", with: ".")
     if normalized.isEmpty {
         return nil
@@ -458,10 +443,6 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.phantomGiftsCount("Фантом-подарков на устройстве", "\(phantomGiftCount)"))
     entries.append(.deleteAllPhantomGifts("Удалить все фантом-подарки", phantomGiftCount > 0))
     entries.append(.storageFooter("Уберёт записи и их сообщения из истории."))
-
-    entries.append(.walletHeader("КОШЕЛЁК"))
-    entries.append(.wallet("Кошелёк", "2 кошелька"))
-    entries.append(.walletFooter("Отдельный экран в стиле TonKeeper поверх баланса TON выше: два локальных кошелька со своим адресом и историей, между которыми можно «отправлять» TON. Адреса нигде не зарегистрированы в сети TON и не могут принять настоящие средства — оба кошелька существуют только в базе PampGram на этом устройстве."))
 
     return entries
 }
@@ -633,8 +614,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         openVisualRatingEditor: { presentRatingEditorImpl?() },
         openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
         openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },
-        openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) },
-        openWallet: { pushControllerImpl?(pampGramWalletController(context: context)) }
+        openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) }
     )
 
     let signal = combineLatest(
