@@ -32,36 +32,33 @@ public enum PampGramPhantomGiftManager {
     /// `GiftViewBuyGift.swift` checks and alerts *before* ever calling this.
     public static func buyUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<BuyResult, NoError> {
         return context.account.postbox.transaction { transaction -> PendingBuy in
-            let newBalance: Int64
-            switch price.currency {
-            case .stars:
-                newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) - price.amount.value
-                PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: newBalance)
-            case .ton:
-                newBalance = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) - price.amount.value
-                PampGramPhantomGiftStore.setFakeTonBalanceNanos(transaction: transaction, nanos: newBalance)
-            }
-
+            // `uniqueGift` is read straight off a real resale-market listing (that's how it was
+            // found to "buy"), so its own `resellAmounts` is still non-empty — left as-is, the
+            // real, unmodified grid card component reads that field directly and would paint a
+            // green "Продажа" ribbon on this gift forever, on this profile and on every profile
+            // it's later transferred to, regardless of PampGram's own market listing being off.
+            // Same cleanup `insertLocalUniqueGiftMessage` already applies to the chat message.
+            let ownedGift = PampGramPhantomGiftMessage.fakedOwnership(of: uniqueGift, newOwnerPeerId: peerId)
             let phantomGift = PampGramPhantomGift(
                 id: Int64.random(in: 1...Int64.max),
                 peerId: peerId,
-                gift: .unique(uniqueGift),
+                gift: .unique(ownedGift),
                 price: price,
                 date: Int32(Date().timeIntervalSince1970),
                 localMessageId: nil
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
             let ledgerCurrency: PampGramLocalCurrency = price.currency == .stars ? .stars : .ton
-            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+            let newBalance = PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
                 currency: ledgerCurrency,
                 kind: .purchase,
                 amount: -price.amount.value,
                 title: "Покупка подарка",
                 details: phantomGift.title,
                 peerId: peerId,
-                giftId: phantomGift.id,
-                balanceAfter: newBalance
-            ))
+                giftId: phantomGift.id
+            )
             return PendingBuy(newBalance: newBalance, phantomGift: phantomGift)
         }
         |> mapToSignal { pending -> Signal<BuyResult, NoError> in
@@ -98,9 +95,6 @@ public enum PampGramPhantomGiftManager {
     /// shows a plain toast with no chat involved at all.
     public static func sendGenericGift(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift.Gift, starPrice: Int64, text: String? = nil, entities: [MessageTextEntity]? = nil, nameHidden: Bool = false) -> Signal<Never, NoError> {
         return context.account.postbox.transaction { transaction -> PendingBuy in
-            let newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) - starPrice
-            PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: newBalance)
-
             let phantomGift = PampGramPhantomGift(
                 id: Int64.random(in: 1...Int64.max),
                 peerId: peerId,
@@ -110,16 +104,16 @@ public enum PampGramPhantomGiftManager {
                 localMessageId: nil
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
-            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+            let newBalance = PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
                 currency: .stars,
                 kind: .purchase,
                 amount: -starPrice,
                 title: "Покупка подарка",
                 details: phantomGift.title,
                 peerId: peerId,
-                giftId: phantomGift.id,
-                balanceAfter: newBalance
-            ))
+                giftId: phantomGift.id
+            )
             return PendingBuy(newBalance: newBalance, phantomGift: phantomGift)
         }
         |> mapToSignal { pending -> Signal<Never, NoError> in
@@ -150,10 +144,12 @@ public enum PampGramPhantomGiftManager {
     /// silently doing nothing to the balance.
     public static func receiveUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<PampGramPhantomGift, NoError> {
         return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
+            // Same resale-listing cleanup as `buyUniqueGift` — see its comment.
+            let ownedGift = PampGramPhantomGiftMessage.fakedOwnership(of: uniqueGift, newOwnerPeerId: peerId)
             let phantomGift = PampGramPhantomGift(
                 id: Int64.random(in: 1...Int64.max),
                 peerId: peerId,
-                gift: .unique(uniqueGift),
+                gift: .unique(ownedGift),
                 price: price,
                 date: Int32(Date().timeIntervalSince1970),
                 localMessageId: nil,
@@ -162,25 +158,16 @@ public enum PampGramPhantomGiftManager {
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
 
             let ledgerCurrency: PampGramLocalCurrency = price.currency == .stars ? .stars : .ton
-            let balanceAfter: Int64
-            switch price.currency {
-            case .stars:
-                balanceAfter = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + price.amount.value
-                PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: balanceAfter)
-            case .ton:
-                balanceAfter = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) + price.amount.value
-                PampGramPhantomGiftStore.setFakeTonBalanceNanos(transaction: transaction, nanos: balanceAfter)
-            }
-            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+            let _ = PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
                 currency: ledgerCurrency,
                 kind: .topUp,
                 amount: price.amount.value,
                 title: "Подарок мне",
                 details: phantomGift.title,
                 peerId: peerId,
-                giftId: phantomGift.id,
-                balanceAfter: balanceAfter
-            ))
+                giftId: phantomGift.id
+            )
             return phantomGift
         }
         |> mapToSignal { phantomGift -> Signal<PampGramPhantomGift, NoError> in
@@ -215,18 +202,16 @@ public enum PampGramPhantomGiftManager {
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
 
             // Received gift → пополнение (Stars), same as receiveUniqueGift.
-            let balanceAfter = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + gift.price
-            PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: balanceAfter)
-            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+            let _ = PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
                 currency: .stars,
                 kind: .topUp,
                 amount: gift.price,
                 title: "Подарок мне",
                 details: phantomGift.title,
                 peerId: peerId,
-                giftId: phantomGift.id,
-                balanceAfter: balanceAfter
-            ))
+                giftId: phantomGift.id
+            )
             return phantomGift
         }
         |> mapToSignal { phantomGift -> Signal<Never, NoError> in
@@ -340,28 +325,17 @@ public enum PampGramPhantomGiftManager {
                 return
             }
             let salePrice = match.marketPrice ?? match.price
-            let newBalance: Int64
-            let ledgerCurrency: PampGramLocalCurrency
-            switch salePrice.currency {
-            case .stars:
-                newBalance = PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) + salePrice.amount.value
-                PampGramPhantomGiftStore.setFakeStarsBalance(transaction: transaction, stars: newBalance)
-                ledgerCurrency = .stars
-            case .ton:
-                newBalance = PampGramPhantomGiftStore.fakeTonBalanceNanos(transaction: transaction) + salePrice.amount.value
-                PampGramPhantomGiftStore.setFakeTonBalanceNanos(transaction: transaction, nanos: newBalance)
-                ledgerCurrency = .ton
-            }
-            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+            let ledgerCurrency: PampGramLocalCurrency = salePrice.currency == .stars ? .stars : .ton
+            let _ = PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
                 currency: ledgerCurrency,
                 kind: .sale,
                 amount: salePrice.amount.value,
                 title: "Продажа подарка",
                 details: match.title,
                 peerId: match.peerId,
-                giftId: match.id,
-                balanceAfter: newBalance
-            ))
+                giftId: match.id
+            )
             PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withSold(date: Int32(Date().timeIntervalSince1970)) })
         }
         |> ignoreValues

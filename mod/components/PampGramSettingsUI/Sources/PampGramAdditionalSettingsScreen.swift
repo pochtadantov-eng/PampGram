@@ -7,6 +7,7 @@ import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import PromptUI
 import PampGramCore
 
 private final class PampGramAdditionalArguments {
@@ -23,8 +24,10 @@ private final class PampGramAdditionalArguments {
     let toggleShowTemporaryMedia: (Bool) -> Void
     let toggleStorySaving: (Bool) -> Void
     let toggleScreenshotBypass: (Bool) -> Void
+    let toggleHideOwnPhone: (Bool) -> Void
+    let openFakePhoneNumber: () -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleShowTemporaryMedia: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleShowTemporaryMedia: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -38,6 +41,8 @@ private final class PampGramAdditionalArguments {
         self.toggleShowTemporaryMedia = toggleShowTemporaryMedia
         self.toggleStorySaving = toggleStorySaving
         self.toggleScreenshotBypass = toggleScreenshotBypass
+        self.toggleHideOwnPhone = toggleHideOwnPhone
+        self.openFakePhoneNumber = openFakePhoneNumber
     }
 }
 
@@ -84,6 +89,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case chatLockRow(String, String)
     case callOverridesRow(String)
     case fakeAdminRow(String)
+    case hideOwnPhoneToggle(String, Bool)
+    case fakePhoneNumberRow(String, String)
     case extrasFooter(String)
 
     var section: ItemListSectionId {
@@ -100,7 +107,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.screenshots.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .fakePhoneNumberRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -159,8 +166,12 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 22
         case .fakeAdminRow:
             return 23
-        case .extrasFooter:
+        case .hideOwnPhoneToggle:
             return 24
+        case .fakePhoneNumberRow:
+            return 25
+        case .extrasFooter:
+            return 26
         }
     }
 
@@ -229,6 +240,14 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openFakeAdmin()
             })
+        case let .hideOwnPhoneToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "phone.down.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideOwnPhone(value)
+            })
+        case let .fakePhoneNumberRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "phone.badge.plus", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openFakePhoneNumber()
+            })
         }
     }
 }
@@ -268,7 +287,9 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.fakeAdminRow("Фейк админ"))
-    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас."))
+    entries.append(.hideOwnPhoneToggle("Скрыть номер телефона", settings.hideOwnPhoneNumber))
+    entries.append(.fakePhoneNumberRow("Фейковый номер телефона", settings.fakePhoneNumber.isEmpty ? "Выключено" : settings.fakePhoneNumber))
+    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Скрыть номер телефона» и «Фейковый номер телефона» меняют, что видно в настройках и в «Моём профиле», — на другие ваш настоящий номер по-прежнему виден по настройкам приватности Telegram. Если задан фейковый номер, он показывается вместо скрытия. «Защита от краш-стикеров» удаляет входящий стикер и блокирует отправителя, если файл стикера по размеру/разрешению сильно превышает лимиты настоящего Telegram — так обычно выглядят стикеры, специально испорченные, чтобы уронить приложение. Это эвристика, а не гарантия: новый, ещё неизвестный способ краша может её не задеть."))
 
     return entries
 }
@@ -408,6 +429,33 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                 settings.storySavingEnabled = value
                 return settings
             }).start()
+        },
+        toggleHideOwnPhone: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.hideOwnPhoneNumber = value
+                return settings
+            }).start()
+        },
+        openFakePhoneNumber: {
+            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Фейковый номер телефона",
+                    subtitle: "Показывается вместо настоящего — в настройках и в «Моём профиле». Пусто — выключено.",
+                    value: settings.fakePhoneNumber,
+                    placeholder: "+1 234 567 89 00",
+                    characterLimit: 32,
+                    apply: { value in
+                        let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                            var settings = settings
+                            settings.fakePhoneNumber = trimmed
+                            return settings
+                        }).start()
+                    }
+                ))
+            })
         },
         toggleScreenshotBypass: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in

@@ -341,6 +341,30 @@ public struct PampGramSettings: Codable, Equatable {
     /// regardless of what the ban/tier server ever reports for it — a ban record or a lapsed
     /// grant landing on this specific id (by mistake or otherwise) has no effect here.
     public var isOwnerAccount: Bool
+    /// "Скрыть номер телефона": hides this account's own phone number from the Settings
+    /// screen header subtitle and from the phone-number row in "Мой профиль". Purely a local
+    /// display change — the number is still there in the real account, other people who
+    /// already have it (or view it through Telegram's own privacy settings) are unaffected;
+    /// this only stops PampGram's own device from showing it back to its owner.
+    public var hideOwnPhoneNumber: Bool
+    /// "Фейковый номер телефона": free-form text shown in place of the real number, same two
+    /// spots as `hideOwnPhoneNumber` (Settings header subtitle, "Мой профиль" phone row) —
+    /// purely local, same as every other PampGram display override. Empty means off. When
+    /// both this and `hideOwnPhoneNumber` are set, this one wins: showing a chosen fake
+    /// number is a stronger statement than hiding the row outright, so there's never a case
+    /// where the two fight over the same row.
+    public var fakePhoneNumber: String
+    /// Local cache of whether `PampGramSubscriptionAPI.fetchTier` last reported `.pro` for this
+    /// account. Refreshed opportunistically whenever the PampGram tab opens (see
+    /// `PampGramHubScreen.swift`) — a plain `Bool`, not the `PampGramSubscriptionTier` enum
+    /// itself, because that type's `Codable` conformance is the plain synthesized one (needed
+    /// for decoding the server's JSON response) and would hit the same
+    /// `PostboxEncoder`/`PostboxDecoder` `singleValueContainer` crash `PampGramVoicePreset`'s
+    /// doc comment warns about if stored here directly. Exists so code that needs the tier
+    /// synchronously inside a Postbox transaction (the "Закрепить чаты" pin-count cap in
+    /// `TogglePeerChatPinned.swift`, which can't await a network call) has *something* to read,
+    /// at the cost of it being at most one tab-open stale.
+    public var cachedIsProSubscriber: Bool
 
     public static let defaultFakeStarsBalance: Int64 = 50_000
     public static let defaultFakeTonBalanceNanos: Int64 = 0
@@ -389,11 +413,14 @@ public struct PampGramSettings: Codable, Equatable {
             masterEnabled: true,
             hidePampGramIconEnabled: false,
             bannedLocally: false,
-            isOwnerAccount: false
+            isOwnerAccount: false,
+            hideOwnPhoneNumber: false,
+            fakePhoneNumber: "",
+            cachedIsProSubscriber: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, isOwnerAccount: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -437,6 +464,9 @@ public struct PampGramSettings: Codable, Equatable {
         self.hidePampGramIconEnabled = hidePampGramIconEnabled
         self.bannedLocally = bannedLocally
         self.isOwnerAccount = isOwnerAccount
+        self.hideOwnPhoneNumber = hideOwnPhoneNumber
+        self.fakePhoneNumber = fakePhoneNumber
+        self.cachedIsProSubscriber = cachedIsProSubscriber
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -512,6 +542,9 @@ public struct PampGramSettings: Codable, Equatable {
         self.hidePampGramIconEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePampGramIconEnabled) ?? defaults.hidePampGramIconEnabled
         self.bannedLocally = try container.decodeIfPresent(Bool.self, forKey: .bannedLocally) ?? defaults.bannedLocally
         self.isOwnerAccount = try container.decodeIfPresent(Bool.self, forKey: .isOwnerAccount) ?? defaults.isOwnerAccount
+        self.hideOwnPhoneNumber = try container.decodeIfPresent(Bool.self, forKey: .hideOwnPhoneNumber) ?? defaults.hideOwnPhoneNumber
+        self.fakePhoneNumber = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumber) ?? defaults.fakePhoneNumber
+        self.cachedIsProSubscriber = try container.decodeIfPresent(Bool.self, forKey: .cachedIsProSubscriber) ?? defaults.cachedIsProSubscriber
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value

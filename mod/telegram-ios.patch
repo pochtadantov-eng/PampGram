@@ -17840,7 +17840,7 @@ index 66242579..6c77a8c0 100644
          return inputSecretChat(postbox: postbox, peerId: peerId)
          |> mapToSignal { inputPeer -> Signal<PeerReadState, PeerReadStateValidationError> in
 diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift b/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
-index aa11e522..635ebf1f 100644
+index aa11e52..5d044de 100644
 --- a/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
 +++ b/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
 @@ -1,6 +1,7 @@
@@ -17858,17 +17858,17 @@ index aa11e522..635ebf1f 100644
 -        let isPremium = transaction.getPeer(accountPeerId)?.isPremium ?? false
 -        
 +        let pampGramSettings = PampGramCore.settings(transaction: transaction)
-+        // "Закрепить чаты" / "Легальный премиум": treat the account as premium for the purpose
-+        // of this client-side limit check, so more than the usual number of chats/folder chats
-+        // can be pinned. Client-side only — the server keeps its own limit for what actually
-+        // syncs, but the pin goes through locally.
-+        let pampGramUnlimitedPins = pampGramSettings.infinitePinsEnabled || pampGramSettings.legalPremiumEnabled
-+        let isPremium = (transaction.getPeer(accountPeerId)?.isPremium ?? false) || pampGramUnlimitedPins
++        // "Легальный премиум": simulate real Telegram Premium for every client-side limit this
++        // function derives from `isPremium` below (the pin count included) — unless "Закрепить
++        // чаты" overrides that count with its own flat cap just below. "Закрепить чаты" no
++        // longer pretends this account is Premium itself; it sets its own number instead,
++        // independent of both real and "Легальный премиум"-simulated status.
++        let isPremium = (transaction.getPeer(accountPeerId)?.isPremium ?? false) || pampGramSettings.legalPremiumEnabled
 +
          let appConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self) ?? .defaultValue
          let userLimitsConfiguration = UserLimitsConfiguration(appConfiguration: appConfiguration, isPremium: isPremium)
          
-@@ -49,13 +56,17 @@ func _internal_toggleItemPinned(postbox: Postbox, accountPeerId: PeerId, locatio
+@@ -49,13 +56,19 @@ func _internal_toggleItemPinned(postbox: Postbox, accountPeerId: PeerId, locatio
                  additionalCount = 1
              }
              
@@ -17880,9 +17880,11 @@ index aa11e522..635ebf1f 100644
                  limitCount = Int(userLimitsConfiguration.maxArchivedPinnedChatCount)
              }
 -            
-+            // "Закрепить чаты": no client-side ceiling at all when on.
-+            if pampGramUnlimitedPins {
-+                limitCount = Int.max
++            // "Закрепить чаты": a flat PampGram-subscription cap, independent of real or
++            // "Легальный премиум"-simulated Telegram Premium — 15 pinned chats without
++            // PampGram PRO, 30 with it (see PampGramSettings.cachedIsProSubscriber).
++            if pampGramSettings.infinitePinsEnabled {
++                limitCount = pampGramSettings.cachedIsProSubscriber ? 30 : 15
 +            }
 +
              let count = sameKind.count + additionalCount
@@ -18040,7 +18042,7 @@ index 1820be66..4590ccc6 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-index 429cf39c..b46cc557 100644
+index 429cf39..bf8ce9b 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 @@ -28,6 +28,7 @@ import GiftViewScreen
@@ -18051,23 +18053,20 @@ index 429cf39c..b46cc557 100644
  
  final class GiftOptionsScreenComponent: Component {
      typealias EnvironmentType = ViewControllerComponentContainer.Environment
-@@ -87,7 +88,9 @@ final class GiftOptionsScreenComponent: Component {
+@@ -87,7 +88,8 @@ final class GiftOptionsScreenComponent: Component {
          case resale
          case stars(Int64)
          case transfer
 -        
-+        case phantom
 +        case phantomReceived
 +
          init(rawValue: Int64) {
              switch rawValue {
              case 0:
-@@ -100,11 +103,15 @@ final class GiftOptionsScreenComponent: Component {
+@@ -100,11 +102,13 @@ final class GiftOptionsScreenComponent: Component {
                  self = .transfer
              case -4:
                  self = .resale
-+            case -5:
-+                self = .phantom
 +            case -6:
 +                self = .phantomReceived
              default:
@@ -18079,27 +18078,25 @@ index 429cf39c..b46cc557 100644
          public var rawValue: Int64 {
              switch self {
              case .all:
-@@ -117,6 +124,10 @@ final class GiftOptionsScreenComponent: Component {
+@@ -117,6 +121,8 @@ final class GiftOptionsScreenComponent: Component {
                  return -3
              case .resale:
                  return -4
-+            case .phantom:
-+                return -5
 +            case .phantomReceived:
 +                return -6
              case let .stars(stars):
                  return stars
              }
-@@ -187,7 +198,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -187,7 +193,7 @@ final class GiftOptionsScreenComponent: Component {
                          }
                          let filteredGifts: [StarGift] = sortedGifts.filter {
                              switch self.starsFilter {
 -                            case .all:
-+                            case .all, .phantom, .phantomReceived:
++                            case .all, .phantomReceived:
                                  return true
                              case .limited:
                                  if case let .generic(gift) = $0 {
-@@ -230,6 +241,33 @@ final class GiftOptionsScreenComponent: Component {
+@@ -230,6 +236,36 @@ final class GiftOptionsScreenComponent: Component {
          private var isUpdating: Bool = false
          
          private var starsStateDisposable: Disposable?
@@ -18110,7 +18107,9 @@ index 429cf39c..b46cc557 100644
 +        // change either while this screen is on top.
 +        private var pampGramFakeStarsBalance = PampGramSettings.defaultSettings.fakeStarsBalance
 +        private var pampGramFakeStarsDisplayEnabled = PampGramSettings.defaultSettings.fakeStarsDisplayEnabled
-+        // PampGram: whether the "Подарок ему" tab (mirrors "Все", but purchases from it are fake) is shown.
++        // PampGram: whether "Все" itself is the fake send flow right now — no separate tab,
++        // so a purchase from the first, default-looking tab is indistinguishable at a glance
++        // from any other gift screen until you actually try to pay for it.
 +        private var pampGramPhantomGiftsEnabled = PampGramSettings.defaultSettings.phantomGiftsEnabled
 +        // PampGram: whether the "Подарок мне" tab (same real market, but the message reads as
 +        // received from the other side) is shown.
@@ -18118,10 +18117,11 @@ index 429cf39c..b46cc557 100644
 +        // PampGram: which fake purchase flow (if any) the current tab selection maps to —
 +        // threaded into every push below instead of a bare Bool, since "send fake" and
 +        // "receive fake" are mutually exclusive alternatives to the real flow, not
-+        // independent toggles.
++        // independent toggles. "Все" carries `.sendFake` itself while the toggle is on
++        // (rather than a separate "Подарок ему" tab next to it) — see `pampGramPhantomGiftsEnabled`.
 +        private var pampGramGiftFlow: PampGramGiftFlow {
 +            switch self.starsFilter {
-+            case .phantom:
++            case .all where self.pampGramPhantomGiftsEnabled:
 +                return .sendFake
 +            case .phantomReceived:
 +                return .receiveFake
@@ -18133,7 +18133,7 @@ index 429cf39c..b46cc557 100644
          private var starsState: StarsContext.State?
          
          private let optionsPromise = Promise<[StarsTopUpOption]?>(nil)
-@@ -280,6 +318,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -280,6 +316,7 @@ final class GiftOptionsScreenComponent: Component {
          deinit {
              self.starsStateDisposable?.dispose()
              self.auctionDisposable.dispose()
@@ -18141,7 +18141,7 @@ index 429cf39c..b46cc557 100644
          }
  
          func scrollToTop() {
-@@ -295,11 +334,12 @@ final class GiftOptionsScreenComponent: Component {
+@@ -295,11 +332,12 @@ final class GiftOptionsScreenComponent: Component {
              guard let component = self.component, let environment = self.environment else {
                  return
              }
@@ -18155,7 +18155,7 @@ index 429cf39c..b46cc557 100644
              if let controller = environment.controller() as? GiftOptionsScreen {
                  let mainController: ViewController
                  if let parentController = controller.parentController() {
-@@ -471,7 +511,8 @@ final class GiftOptionsScreenComponent: Component {
+@@ -471,7 +509,8 @@ final class GiftOptionsScreenComponent: Component {
                                  let storeController = component.context.sharedContext.makeGiftStoreController(
                                      context: component.context,
                                      peerId: component.peerId,
@@ -18165,7 +18165,7 @@ index 429cf39c..b46cc557 100644
                                  )
                                  mainController.push(storeController)
                              } else {
-@@ -495,6 +536,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -495,6 +534,7 @@ final class GiftOptionsScreenComponent: Component {
                                  context: component.context,
                                  peerId: component.peerId,
                                  subject: .starGift(gift, forceUnique),
@@ -18173,7 +18173,7 @@ index 429cf39c..b46cc557 100644
                                  completion: component.completion
                              )
                              mainController.push(giftController)
-@@ -1011,6 +1053,32 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1011,6 +1051,31 @@ final class GiftOptionsScreenComponent: Component {
              self.appliedStarsFilter = self.starsFilter
              
              if self.component == nil {
@@ -18187,10 +18187,9 @@ index 429cf39c..b46cc557 100644
 +                    self.pampGramFakeStarsBalance = fakeStarsBalance
 +                    self.pampGramFakeStarsDisplayEnabled = fakeStarsDisplayEnabled
 +                    if self.pampGramPhantomGiftsEnabled != phantomGiftsEnabled {
++                        // No tab to reset away from: "Все" just stops being the fake flow and
++                        // goes back to being the real one, same tab selected throughout.
 +                        self.pampGramPhantomGiftsEnabled = phantomGiftsEnabled
-+                        if !phantomGiftsEnabled, case .phantom = self.starsFilter {
-+                            self.starsFilter = .all
-+                        }
 +                    }
 +                    if self.pampGramFromHimGiftsEnabled != fromHimGiftsEnabled {
 +                        self.pampGramFromHimGiftsEnabled = fromHimGiftsEnabled
@@ -18206,7 +18205,7 @@ index 429cf39c..b46cc557 100644
                  self.starsStateDisposable = (component.starsContext.state
                  |> deliverOnMainQueue).start(next: { [weak self] state in
                      guard let self else {
-@@ -1219,7 +1287,21 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1219,7 +1284,21 @@ final class GiftOptionsScreenComponent: Component {
                  containerSize: availableSize
              )
              
@@ -18229,18 +18228,11 @@ index 429cf39c..b46cc557 100644
              let smallLabelFont = Font.regular(11.0)
              let labelFont = Font.semibold(14.0)
              let balanceText = tonAmountAttributedString(formattedBalance, integralFont: labelFont, fractionalFont: smallLabelFont, color: theme.actionSheet.primaryTextColor, decimalSeparator: environment.dateTimeFormat.decimalSeparator)
-@@ -1646,7 +1728,21 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1646,7 +1725,14 @@ final class GiftOptionsScreenComponent: Component {
                          title: strings.Gift_Options_Gift_Filter_Collectibles
                      ))
                  }
 -                
-+
-+                if self.pampGramPhantomGiftsEnabled {
-+                    tabSelectorItems.append(TabSelectorComponent.Item(
-+                        id: AnyHashable(StarsFilter.phantom.rawValue),
-+                        title: "Подарок ему"
-+                    ))
-+                }
 +
 +                if self.pampGramFromHimGiftsEnabled {
 +                    tabSelectorItems.append(TabSelectorComponent.Item(
@@ -18266,7 +18258,7 @@ index 7e874b3f..28817174 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
-index 0db09aed..67af292c 100644
+index 0db09ae..8e3959e 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 @@ -39,6 +39,8 @@ import GlassBarButtonComponent
@@ -18402,7 +18394,26 @@ index 0db09aed..67af292c 100644
                      guard let self, let controller = self.environment?.controller(), let navigationController = controller.navigationController as? NavigationController else {
                          return
                      }
-@@ -663,7 +705,34 @@ private final class GiftSetupScreenComponent: Component {
+@@ -585,7 +627,17 @@ private final class GiftSetupScreenComponent: Component {
+                             controllers.append(chatController)
+                         }
+                         navigationController.setViewControllers(controllers, animated: true)
+-                        
++
++                        // PampGram: real Telegram only plays this confetti burst for gifts sent
++                        // to a channel (the branch above) — a regular gift to a person gets none,
++                        // even though the channel branch already proves the visual reads fine
++                        // for a "regular" (non-unique) StarGift. Extending it here to the same
++                        // person-to-person send, for a mid-range 15...100 Stars price, so those
++                        // gifts get the same little celebration instead of nothing.
++                        if case .starGift = component.subject, (15...100).contains(finalPrice) {
++                            navigationController.view.addSubview(ConfettiView(frame: navigationController.view.bounds))
++                        }
++
+                         if case let .starGift(starGift, _) = component.subject, let perUserLimit = starGift.perUserLimit {
+                             Queue.mainQueue().after(0.5) {
+                                 let remains = max(0, perUserLimit.remains - 1)
+@@ -663,7 +715,34 @@ private final class GiftSetupScreenComponent: Component {
                  })
              }
              
@@ -18438,7 +18449,7 @@ index 0db09aed..67af292c 100644
                  let _ = (self.optionsPromise.get()
                  |> filter { $0 != nil }
                  |> take(1)
-@@ -684,7 +753,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -684,7 +763,7 @@ private final class GiftSetupScreenComponent: Component {
                              }
                              self.inProgress = true
                              self.state?.updated()
@@ -18447,7 +18458,7 @@ index 0db09aed..67af292c 100644
                              starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
                              let _ = (starsContext.onUpdate
                              |> deliverOnMainQueue).start(next: {
-@@ -1481,7 +1550,8 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1481,7 +1560,8 @@ private final class GiftSetupScreenComponent: Component {
                                          let storeController = component.context.sharedContext.makeGiftStoreController(
                                              context: component.context,
                                              peerId: component.peerId,
@@ -18457,7 +18468,7 @@ index 0db09aed..67af292c 100644
                                          )
                                          controller.push(storeController)
                                      }
-@@ -2111,15 +2181,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
+@@ -2111,15 +2191,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
          peerId: EnginePeer.Id,
          subject: Subject,
          auctionAcquiredGifts: Signal<[GiftAuctionAcquiredGift], NoError>? = nil,
@@ -18996,7 +19007,7 @@ index 09315ffb..a3aed400 100644
          "//submodules/TelegramUI/Components/TextLoadingEffect",
          "//submodules/TelegramUI/Components/TextProcessingScreen",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
-index fd01930f..a0496a3c 100644
+index fd01930..268178e 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 @@ -113,6 +113,7 @@ import PeerMessagesMediaPlaylist
@@ -19032,7 +19043,7 @@ index fd01930f..a0496a3c 100644
      let activeActionDisposable = MetaDisposable()
      let resolveUrlDisposable = MetaDisposable()
      let toggleShouldChannelMessagesSignaturesDisposable = MetaDisposable()
-@@ -2654,9 +2664,22 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -2654,9 +2664,24 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
                  }
              })
          }
@@ -19046,6 +19057,8 @@ index fd01930f..a0496a3c 100644
 +                return
 +            }
 +            self.pampGramSettings = settings
++            self.headerNode.pampGramHideOwnPhone = settings.hideOwnPhoneNumber
++            self.headerNode.pampGramFakePhoneNumber = settings.fakePhoneNumber
 +            self.requestLayout(animated: false)
 +        })
      }
@@ -19056,17 +19069,89 @@ index fd01930f..a0496a3c 100644
          self.dataDisposable?.dispose()
          self.hiddenMediaDisposable?.dispose()
          self.activeActionDisposable.dispose()
-@@ -5479,7 +5502,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -5479,7 +5504,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
              insets.left += sectionInset
              insets.right += sectionInset
              
 -            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile)
-+            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile)
++            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber)
              
              contentHeight += headerHeight
              if !((self.isSettings || self.isMyProfile) && self.state.isEditing) {
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift
+index fdfd1ce..434b7f6 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift
+@@ -92,6 +92,14 @@ final class PeerInfoHeaderNode: ASDisplayNode {
+     private var threadData: MessageHistoryThreadData?
+     private var isSearching: Bool = false
+     private var avatarSize: CGFloat?
++
++    // PampGram: "Скрыть номер телефона" — when set, the Settings-screen header subtitle
++    // omits the phone number (username, if any, is kept). Set by PeerInfoScreen.swift from
++    // its live-cached PampGramSettings, same pattern as pampGramSettings on PeerInfoScreenNode.
++    var pampGramHideOwnPhone: Bool = false
++    // PampGram: "Фейковый номер телефона" — when non-empty, shown in place of the real
++    // number in that same subtitle (and takes priority over pampGramHideOwnPhone above).
++    var pampGramFakePhoneNumber: String = ""
+     
+     private let isOpenedFromChat: Bool
+     private let isSettings: Bool
+@@ -1236,10 +1244,17 @@ final class PeerInfoHeaderNode: ASDisplayNode {
+             smallTitleAttributes = MultiScaleTextState.Attributes(font: Font.medium(28.0), color: .white, shadowColor: titleShadowColor)
+             
+             if self.isSettings, case let .user(user) = peer {
+-                var subtitle = formatPhoneNumber(context: self.context, number: user.phone ?? "")
+-                
++                var subtitle: String
++                if !self.pampGramFakePhoneNumber.isEmpty {
++                    subtitle = self.pampGramFakePhoneNumber
++                } else if self.pampGramHideOwnPhone {
++                    subtitle = ""
++                } else {
++                    subtitle = formatPhoneNumber(context: self.context, number: user.phone ?? "")
++                }
++
+                 if let mainUsername = user.addressName, !mainUsername.isEmpty {
+-                    subtitle = "\(subtitle) • @\(mainUsername)"
++                    subtitle = subtitle.isEmpty ? "@\(mainUsername)" : "\(subtitle) • @\(mainUsername)"
+                 }
+                 subtitleStringText = subtitle
+                 subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: .white)
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
+index 80b7f20..8363fac 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
+@@ -46,7 +46,9 @@ func infoItems(
+     callMessages: [EngineMessage],
+     chatLocation: ChatLocation,
+     isOpenedFromChat: Bool,
+-    isMyProfile: Bool
++    isMyProfile: Bool,
++    pampGramHideOwnPhone: Bool = false,
++    pampGramFakePhoneNumber: String = ""
+ ) -> [(AnyHashable, [PeerInfoScreenItem])] {
+     guard let data = data else {
+         return []
+@@ -155,7 +157,15 @@ func infoItems(
+             ))
+         }
+         
+-        if let phone = user.phone {
++        if user.id == context.account.peerId, !pampGramFakePhoneNumber.isEmpty {
++            items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemPhoneNumber, label: presentationData.strings.ContactInfo_PhoneLabelMobile, text: pampGramFakePhoneNumber, textColor: .accent, action: { node, progress in
++                interaction.openPhone(pampGramFakePhoneNumber, node, nil, progress)
++            }, longTapAction: nil, contextAction: { node, gesture, _ in
++                interaction.openPhone(pampGramFakePhoneNumber, node, gesture, nil)
++            }, requestLayout: { animated in
++                interaction.requestLayout(animated)
++            }))
++        } else if let phone = user.phone, !(pampGramHideOwnPhone && user.id == context.account.peerId) {
+             let formattedPhone = formatPhoneNumber(context: context, number: phone)
+             let label: String
+             if formattedPhone.hasPrefix("+888 ") {
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
-index 806e652a..af17fef0 100644
+index 806e652a..a073b01a 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 @@ -15,6 +15,7 @@ import TelegramPresentationData
@@ -19082,7 +19167,7 @@ index 806e652a..af17fef0 100644
          case .powerSaving:
              push(energySavingSettingsScreen(context: self.context))
 +        case .pampGram:
-+            push(pampGramSettingsController(context: self.context))
++            pampGramPresentHub(context: self.context, push: push)
          case .businessSetup:
              guard let controller = self.controller, !controller.presentAccountFrozenInfoIfNeeded() else {
                  return
@@ -19216,7 +19301,7 @@ index ef6fe4b4..9409b119 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
-index e1c98a1a..b94501ec 100644
+index e1c98a1..454a2b5 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 @@ -26,6 +26,7 @@ import UndoUI
@@ -19270,75 +19355,27 @@ index e1c98a1a..b94501ec 100644
              let isFirstTime = self.starsProducts == nil
              let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
              self.statusPromise.set(.single(PeerInfoStatusData(text: presentationData.strings.SharedMedia_GiftCount(state.count ?? 0), isActivity: true, key: .gifts)))
-@@ -251,7 +279,54 @@ final class GiftsListView: UIView {
+@@ -251,7 +278,7 @@ final class GiftsListView: UIView {
      deinit {
          self.dataDisposable?.dispose()
      }
 -        
 +
-+    // PampGram: the local-only stand-in for tapping a real gift card into GiftViewScreen —
-+    // same three actions (Pin, Hide/Show, Sell) the long-press menu offers for a Phantom
-+    // Gift, reached instead from a plain tap, entirely local (never calls
-+    // `ProfileGiftsContext` or the network).
-+    private func pampGramPresentPhantomGiftActions(product: ProfileGiftsContext.State.StarGift, presentationData: PresentationData) {
-+        let context = self.context
-+        let title: String
-+        switch product.gift {
-+        case let .generic(gift):
-+            title = gift.title ?? "Gift"
-+        case let .unique(gift):
-+            title = gift.title
-+        }
-+        let sheet = ActionSheetController(presentationData: presentationData)
-+        var items: [ActionSheetItem] = [ActionSheetTextItem(title: title)]
-+
-+        items.append(ActionSheetButtonItem(title: product.pinnedToTop ? presentationData.strings.PeerInfo_Gifts_Context_Unpin : presentationData.strings.PeerInfo_Gifts_Context_Pin, color: .accent, action: { [weak sheet, weak self] in
-+            sheet?.dismissAnimated()
-+            let _ = PampGramPhantomGiftManager.setPinnedToTop(context: context, matching: product, pinnedToTop: !product.pinnedToTop).start()
-+            self?.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: !product.pinnedToTop ? presentationData.strings.PeerInfo_Gifts_ToastPinned_Text : presentationData.strings.PeerInfo_Gifts_ToastUnpinned_Text, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
-+        }))
-+
-+        items.append(ActionSheetButtonItem(title: product.savedToProfile ? presentationData.strings.PeerInfo_Gifts_Context_Hide : presentationData.strings.PeerInfo_Gifts_Context_Show, color: .accent, action: { [weak sheet, weak self] in
-+            sheet?.dismissAnimated()
-+            let added = !product.savedToProfile
-+            let _ = PampGramPhantomGiftManager.setSavedToProfile(context: context, matching: product, savedToProfile: added).start()
-+            let text = added ? presentationData.strings.Gift_Displayed_NewText : presentationData.strings.Gift_Hidden_NewText
-+            self?.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
-+        }))
-+
-+        items.append(ActionSheetButtonItem(title: presentationData.strings.Gift_Convert_Convert, color: .destructive, action: { [weak sheet, weak self] in
-+            sheet?.dismissAnimated()
-+            let _ = PampGramPhantomGiftManager.sell(context: context, matching: product).start()
-+            self?.parentController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: presentationData.strings.Gift_Convert_Success_Title, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
-+        }))
-+
-+        sheet.setItemGroups([
-+            ActionSheetItemGroup(items: items),
-+            ActionSheetItemGroup(items: [
-+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-+                    sheet?.dismissAnimated()
-+                })
-+            ])
-+        ])
-+        self.parentController?.present(sheet, in: .window(.root))
-+    }
-+
      func item(at point: CGPoint) -> (AnyHashable, ComponentView<Empty>)? {
          for (id, visibleItem) in self.starsItems {
              if let view = visibleItem.1.view, view.frame.contains(point), let reference = visibleItem.0, self.isCollection || self.pinnedReferences.contains(reference) {
-@@ -591,10 +666,18 @@ final class GiftsListView: UIView {
-                                             self.reorderedReferences = reorderedReferences
+@@ -592,9 +619,17 @@ final class GiftsListView: UIView {
                                          }
                                      }
-+                                } else if product.reference == nil {
-+                                    // PampGram: this card is one of this device's own Phantom
-+                                    // Gifts — GiftViewScreen is built entirely around real,
-+                                    // server-tracked gifts (transfer/export/upgrade, all real
-+                                    // network actions), so it's never opened for one of these;
-+                                    // the same Pin/Hide/Sell actions the long-press menu offers
-+                                    // are just as reachable from here instead.
-+                                    self.pampGramPresentPhantomGiftActions(product: product, presentationData: presentationData)
                                  } else {
++                                    // PampGram: a Phantom Gift (`product.reference == nil`)
++                                    // opens the same real GiftViewScreen as any other card —
++                                    // every action inside it (pin/sell/transfer/etc.) is gated
++                                    // on a non-nil `arguments.reference` internally, so it just
++                                    // renders read-only for one of these; Pin/Hide are still
++                                    // reachable from the long-press menu (PeerInfoGiftsPaneNode),
++                                    // and Sell from "Коллекция и маркет" in PampGram's own
++                                    // settings (PampGramGiftMarketScreen.swift).
                                      let allSubjects: [GiftViewScreen.Subject] = (self.starsProducts ?? []).map { .profileGift(self.peerId, $0) }
                                      let index = self.starsProducts?.firstIndex(where: { $0 == product }) ?? 0
 -                                    
@@ -19758,7 +19795,7 @@ index 04768a76..fa75dce2 100644
              self.environment = environment
              
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-index 87c58b5f..78a3939e 100644
+index 87c58b5f..672a8c07 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 @@ -25,6 +25,8 @@ import ItemListUI
@@ -19876,7 +19913,27 @@ index 87c58b5f..78a3939e 100644
                              currency: component.starsContext.ton ? .ton : .stars,
                              rate: nil,
                              actionTitle: component.starsContext.ton ? environment.strings.Ton_WithdrawViaFragment : (withdrawAvailable ? environment.strings.Stars_Intro_BuyShort : environment.strings.Stars_Intro_Buy),
-@@ -1084,12 +1121,14 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1051,8 +1088,18 @@ final class StarsTransactionsScreenComponent: Component {
+             }
+             
+             let initialTransactions = self.starsState?.transactions ?? []
++            // The panel (and its three "Все операции"/incoming/outgoing tabs) used to be built
++            // only when the REAL account already had at least one real transaction — reasonable
++            // for stock Telegram, but it means a TON/GRAM balance with zero real ad-revenue
++            // payouts (the overwhelmingly common case) never gets a panel at all, so PampGram's
++            // fake-transaction overlay (`StarsTransactionsListPanelComponent`'s own
++            // `pampGramFakeItems` merge — it doesn't care whether the real list is empty) never
++            // gets anywhere to render into. Building the panel whenever the fake balance display
++            // is on for this screen's currency closes that gap without changing anything for an
++            // account that already has real transactions, or for a screen with the toggle off.
++            let pampGramHasFakeOverlay = component.starsContext.ton ? self.pampGramSettings.fakeTonDisplayEnabled : self.pampGramSettings.fakeStarsDisplayEnabled
+             var panelItems: [StarsTransactionsPanelContainerComponent.Item] = []
+-            if !initialTransactions.isEmpty {
++            if !initialTransactions.isEmpty || pampGramHasFakeOverlay {
+                 let allTransactionsContext: StarsTransactionsContext
+                 if let current = self.allTransactionsContext {
+                     allTransactionsContext = current
+@@ -1084,12 +1131,14 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: allTransactionsContext,
                          isAccount: true,
@@ -19892,7 +19949,7 @@ index 87c58b5f..78a3939e 100644
                  panelItems.append(StarsTransactionsPanelContainerComponent.Item(
                      id: "incoming",
                      title: environment.strings.Stars_Intro_Incoming,
-@@ -1097,12 +1136,14 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1097,12 +1146,14 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: incomingTransactionsContext,
                          isAccount: true,
@@ -19908,7 +19965,7 @@ index 87c58b5f..78a3939e 100644
                  panelItems.append(StarsTransactionsPanelContainerComponent.Item(
                      id: "outgoing",
                      title: environment.strings.Stars_Intro_Outgoing,
-@@ -1110,6 +1151,8 @@ final class StarsTransactionsScreenComponent: Component {
+@@ -1110,6 +1161,8 @@ final class StarsTransactionsScreenComponent: Component {
                          context: component.context,
                          transactionsContext: outgoingTransactionsContext,
                          isAccount: true,
@@ -19917,7 +19974,7 @@ index 87c58b5f..78a3939e 100644
                          action: { transaction in
                              component.openTransaction(transaction)
                          }
-@@ -1324,35 +1367,56 @@ public final class StarsTransactionsScreen: ViewControllerComponentContainer {
+@@ -1324,35 +1377,56 @@ public final class StarsTransactionsScreen: ViewControllerComponentContainer {
              guard let self else {
                  return
              }
@@ -20284,7 +20341,7 @@ index a1a8f61d..8d28620c 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5b..dda5e21 100644
+index 07cef5bb..2fdf752e 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -20298,7 +20355,7 @@ index 07cef5b..dda5e21 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,92 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,138 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -20317,74 +20374,120 @@ index 07cef5b..dda5e21 100644
 +
 +    return combineLatest(baseItems, PampGramCore.settingsSignal(postbox: context.account.postbox))
 +    |> map { items, settings -> ContextController.Items in
-+        guard case let .list(list) = items.content else {
++        guard settings.visualEditEnabled, case let .list(list) = items.content else {
 +            return items
 +        }
 +        var items = items
 +        var newList = list
-+
-+        guard settings.visualEditEnabled else {
-+            items.content = .list(newList)
-+            return items
-+        }
 +        // PampGram entry pinned to the very top of a message's long-press menu (a separator
 +        // then the stock items below it), instead of appended at the bottom.
 +        newList.insert(.separator, at: 0)
 +        newList.insert(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
 +            return pampGramSettingsIcon(size: 24.0)
-+        }, iconSource: nil, action: { c, _ in
-+            var subItems: [ContextMenuItem] = []
-+            subItems.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Common_Back, textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Back"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, iconPosition: .left, action: { c, _ in
-+                c?.popItems()
-+            })))
-+            subItems.append(.separator)
-+            subItems.append(.action(ContextMenuActionItem(text: "Изменить текст", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "pencil"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
++        }, iconSource: nil, action: { _, f in
++            // A full ban blocks this entry point too, not just the hub — checked before the
++            // sheet is built at all, so a banned account never sees "Изменить текст"/"Отправить
++            // фото"/etc. even for a moment. Not banned is the overwhelmingly common case and pays
++            // a round trip to the ban-status endpoint for it, same trade-off pampGramGateSection
++            // and pampGramGateFullAccess already make.
++            //
++            // This used to push a second level onto the SAME context menu (`c?.pushItems`) — the
++            // same overlay stock Telegram uses for the outer message menu. That overlay only
++            // handles overflow via an undiscoverable outer scroll (no indicator, no visible
++            // affordance) with no per-list max-height/scroll option of its own, so a ~9-row
++            // PampGram submenu opened on a message near the bottom of the screen could end up
++            // with rows nobody could find, let alone reach. `ActionSheetController` — a real
++            // bottom sheet with its own genuinely scrolling content node
++            // (`ActionSheetControllerNode`'s `scrollNode`/`scrollView`) — doesn't have that
++            // problem: it always has the full screen height to work with regardless of where the
++            // message sits, and scrolls properly if its content still doesn't fit.
++            let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
++            |> deliverOnMainQueue).start(next: { status in
 +                f(.dismissWithoutContent)
-+                controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
-+            })))
-+            // "Текст от собеседника"/"Текст от меня" moved out of this message menu onto the
-+            // send-button long-press menu (see ChatTextInputPanelNode) — they compose a brand
-+            // new fake message from the input field, so they belong on the send control, not on
-+            // an existing message. The rest of "Изменить визуально" stays here.
-+            subItems.append(.action(ContextMenuActionItem(text: "Отправить фото", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "photo"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                if #available(iOS 14.0, *) {
-+                    pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
++                if let reason = status.full {
++                    pampGramPresentBannedScreen(context: context, reason: reason)
++                    return
 +                }
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Отправить голосовое", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "waveform"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                if #available(iOS 14.0, *) {
-+                    pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
-+                }
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Отправить файл", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "doc"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                if #available(iOS 14.0, *) {
-+                    pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
-+                }
-+            })))
-+            subItems.append(.action(ContextMenuActionItem(text: "Показать звонок", textColor: .primary, icon: { theme in
-+                return generateTintedImage(image: UIImage(systemName: "phone.arrow.down.left"), color: theme.actionSheet.primaryTextColor)
-+            }, iconSource: nil, action: { _, f in
-+                f(.dismissWithoutContent)
-+                pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
-+            })))
-+            c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
++                pampGramPresentMessageActionsSheet(context: context, message: message, controllerInteraction: controllerInteraction, strings: chatPresentationInterfaceState.strings)
++            })
 +        })), at: 0)
 +        items.content = .list(newList)
 +        return items
 +    }
++}
++
++/// The "PampGram" entry's full action list, as an `ActionSheetController` instead of a second
++/// context-menu level — see the comment at this file's "PampGram" `ContextMenuActionItem` call
++/// site for why. `message`/`controllerInteraction` are captured from the same closure that used
++/// to build the old `subItems` list; every action below is unchanged from that list, just
++/// rehomed onto `ActionSheetButtonItem`.
++private func pampGramPresentMessageActionsSheet(context: AccountContext, message: EngineRawMessage, controllerInteraction: ChatControllerInteraction?, strings: PresentationStrings) {
++    guard let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController else {
++        return
++    }
++    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
++    let sheet = ActionSheetController(presentationData: presentationData)
++
++    var buttons: [ActionSheetItem] = [
++        ActionSheetTextItem(title: "PampGram")
++    ]
++    buttons.append(ActionSheetButtonItem(title: "Изменить текст", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Отправить фото", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        if #available(iOS 14.0, *) {
++            pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
++        }
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Отправить голосовое", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        if #available(iOS 14.0, *) {
++            pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
++        }
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Отправить файл", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        if #available(iOS 14.0, *) {
++            pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
++        }
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Показать звонок", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Поставить реакцию", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        pampGramPresentReactionPicker(context: context, messageId: message.id)
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Сохранить одноразовое", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Визуальное фото в канал", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        if #available(iOS 14.0, *) {
++            pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
++        }
++    }))
++    // The only entry in this sheet that spends real Stars and touches a real gift — colored
++    // .destructive (red) to read as distinct from the purely-visual/local actions above it,
++    // same as this menu already colors any other irreversible real action.
++    buttons.append(ActionSheetButtonItem(title: "Подарить 2 мишек", color: .destructive, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        pampGramConfirmSendRealBears(context: context, peerId: message.id.peerId)
++    }))
++
++    sheet.setItemGroups([
++        ActionSheetItemGroup(items: buttons),
++        ActionSheetItemGroup(items: [
++            ActionSheetButtonItem(title: strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
++                sheet?.dismissAnimated()
++            })
++        ])
++    ])
++    topController.present(sheet, in: .window(.root))
 +}
 +
 +private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil) -> Signal<ContextController.Items, NoError> {

@@ -13,7 +13,13 @@ public enum PampGramPhantomGiftMessage {
     /// ownership reassigned to `newOwnerPeerId` and the resale listing cleared, exactly as a
     /// real purchase would leave it — every other field (model/backdrop/pattern/value/etc.)
     /// stays the genuine market data.
-    private static func fakedOwnership(of uniqueGift: StarGift.UniqueGift, newOwnerPeerId: EnginePeer.Id) -> StarGift.UniqueGift {
+    ///
+    /// Not `private`: `PampGramPhantomGiftManager` reuses this same cleanup on the copy it
+    /// stores in `PampGramPhantomGiftStore` (the one the profile grid actually renders), so a
+    /// bought/received gift doesn't show the real, unmodified grid card's green "Продажа"
+    /// ribbon forever — that ribbon reads `resellAmounts` straight off the embedded gift,
+    /// never PampGram's own local `marketPrice`.
+    static func fakedOwnership(of uniqueGift: StarGift.UniqueGift, newOwnerPeerId: EnginePeer.Id) -> StarGift.UniqueGift {
         return StarGift.UniqueGift(
             id: uniqueGift.id,
             giftId: uniqueGift.giftId,
@@ -198,7 +204,7 @@ public enum PampGramPhantomGiftMessage {
             count: starCount,
             cryptoCurrency: nil,
             cryptoAmount: nil,
-            transactionId: "pampgram_topup_\(Int64.random(in: 1...Int64.max))"
+            transactionId: "\(Int64.random(in: 1...Int64.max))"
         ))
     }
 

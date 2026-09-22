@@ -72,19 +72,54 @@ public enum PampGramUnbanScope {
     case all
 }
 
-/// One row of the admin panel's "Разбанить" list — a banned account and why.
-public struct PampGramBannedUser: Codable, Equatable {
-    public let id: String
-    public let full: String?
-    public let sections: [String: String]
+/// One ban — a reason and when it was set. `at` is `nil` for a ban set before this field
+/// existed (the server normalizes an old plain-string record to this shape with `at: nil` on
+/// read; see `server/pampgram-subs-worker/src/index.js`'s own storage doc).
+public struct PampGramBanEntry: Codable, Equatable {
+    public let reason: String
+    public let at: Int64?
 
-    // A `public struct`'s synthesized memberwise initializer is only `internal` unless one
-    // is written explicitly — without this, other modules (the admin panel's UI) can decode
-    // this type from JSON but can't construct one directly themselves.
-    public init(id: String, full: String?, sections: [String: String]) {
+    public init(reason: String, at: Int64?) {
+        self.reason = reason
+        self.at = at
+    }
+}
+
+/// One row of the admin panel's "Пользователи" list — any account PampGram's server knows
+/// about at all (has ever called `/status`, or has ever been banned even if it hasn't), its
+/// current tier and when that was last changed, when it was last seen, and its full ban
+/// picture. Replaces the old separate "Разбанить" list — this is the one merged source for
+/// both ban management and subscription info.
+public struct PampGramUserSummary: Codable, Equatable {
+    public let id: String
+    public let tier: PampGramSubscriptionTier
+    public let tierChangedAt: Int64?
+    public let lastSeen: Int64
+    public let full: PampGramBanEntry?
+    public let sections: [String: PampGramBanEntry]
+
+    public init(id: String, tier: PampGramSubscriptionTier, tierChangedAt: Int64?, lastSeen: Int64, full: PampGramBanEntry?, sections: [String: PampGramBanEntry]) {
         self.id = id
+        self.tier = tier
+        self.tierChangedAt = tierChangedAt
+        self.lastSeen = lastSeen
         self.full = full
         self.sections = sections
+    }
+
+    /// Everything this account is currently banned from, as (section, reason) pairs — `nil`
+    /// section means the full-account ban. Empty when it isn't banned at all.
+    public var activeBans: [(section: PampGramBanSection?, entry: PampGramBanEntry)] {
+        var result: [(section: PampGramBanSection?, entry: PampGramBanEntry)] = []
+        if let full {
+            result.append((nil, full))
+        }
+        for section in PampGramBanSection.allCases {
+            if let entry = self.sections[section.rawValue] {
+                result.append((section, entry))
+            }
+        }
+        return result
     }
 }
 
@@ -107,6 +142,13 @@ public enum PampGramSubscriptionAPI {
 
     /// The deployed `server/pampgram-subs-worker/` instance (see its README).
     private static let baseURL = "https://pampgram.pochtadantov.workers.dev"
+
+    /// This build's own number, bumped by one in source each time a build is shipped that
+    /// should be able to retire everything before it. Compared against the server's
+    /// `min_version` (see `fetchMinVersion`/`setMinVersion`) — a build below that number shows
+    /// "update required" instead of opening PampGram. Nothing reads this from the server; it's
+    /// baked into the binary at compile time, same as `adminAccountId`.
+    public static let currentBuildVersion: Int = 1
 
     private struct StatusResponse: Decodable {
         let tier: String
@@ -193,14 +235,6 @@ public enum PampGramSubscriptionAPI {
         let section: String?
     }
 
-    private struct BannedListRequestBody: Encodable {
-        let token: String
-    }
-
-    private struct BannedListResponse: Decodable {
-        let users: [PampGramBannedUser]
-    }
-
     /// Live-ish read of `userId`'s ban state. Same never-fails-outward contract as
     /// `fetchTier`: any network or decode problem resolves to `.none` (not banned) rather than
     /// erroring the screen that asked — a banned section only ever locks because the server
@@ -282,21 +316,113 @@ public enum PampGramSubscriptionAPI {
         }.resume()
     }
 
-    /// Admin-only: every currently-banned account, for the admin panel's "Разбанить" list.
-    public static func fetchBannedList(adminToken: String, completion: @escaping ([PampGramBannedUser]) -> Void) {
-        guard let url = URL(string: "\(baseURL)/banned-list") else {
+    private struct MinVersionResponse: Decodable {
+        let minVersion: Int
+    }
+
+    private struct SetMinVersionRequestBody: Encodable {
+        let minVersion: Int
+        let token: String
+    }
+
+    /// Live-ish read of the server's current minimum build number. Same never-fails-outward
+    /// contract as `fetchTier`/`fetchBanStatus`: any network or decode problem resolves to `0`
+    /// ("no minimum set") rather than erroring — a network hiccup can never falsely lock
+    /// somebody out of a build the admin never actually retired.
+    public static func fetchMinVersion() -> Signal<Int, NoError> {
+        return Signal { subscriber in
+            guard let url = URL(string: "\(baseURL)/min-version") else {
+                subscriber.putNext(0)
+                subscriber.putCompletion()
+                return EmptyDisposable
+            }
+            let task = URLSession.shared.dataTask(with: url) { data, _, _ in
+                var minVersion = 0
+                if let data, let decoded = try? JSONDecoder().decode(MinVersionResponse.self, from: data) {
+                    minVersion = decoded.minVersion
+                }
+                subscriber.putNext(minVersion)
+                subscriber.putCompletion()
+            }
+            task.resume()
+            return ActionDisposable {
+                task.cancel()
+            }
+        }
+    }
+
+    /// Admin-only: raises (or clears, with 0) the server's minimum build number. Every install
+    /// whose own `currentBuildVersion` falls below this — including ones already sitting on
+    /// someone's device right now — starts showing "update required" instead of PampGram's
+    /// real content the next time they check, with nothing needing to change on their end.
+    public static func setMinVersion(_ minVersion: Int, adminToken: String, completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: "\(baseURL)/set-min-version") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(SetMinVersionRequestBody(minVersion: minVersion, token: adminToken))
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    private struct UsersListRequestBody: Encodable {
+        let token: String
+    }
+
+    private struct UsersListBanEntryResponse: Decodable {
+        let reason: String
+        let at: Int64?
+    }
+
+    private struct UsersListUserResponse: Decodable {
+        let id: String
+        let tier: String
+        let tierChangedAt: Int64?
+        let lastSeen: Int64
+        let full: UsersListBanEntryResponse?
+        let sections: [String: UsersListBanEntryResponse]
+    }
+
+    private struct UsersListResponse: Decodable {
+        let users: [UsersListUserResponse]
+    }
+
+    /// Admin-only: every account PampGram's server knows about — has ever opened the app,
+    /// has ever been blocked, or both — with its current tier and block state, for the admin
+    /// panel's merged "Пользователи" list (which replaced the old separate "Разбанить"
+    /// screen). An unrecognized tier string falls back to `.standard`, same never-fails-
+    /// outward posture as `fetchTier`; the server only ever sends "standard"/"pro" in practice.
+    public static func fetchUsersList(adminToken: String, completion: @escaping ([PampGramUserSummary]) -> Void) {
+        guard let url = URL(string: "\(baseURL)/users-list") else {
             completion([])
             return
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(BannedListRequestBody(token: adminToken))
+        request.httpBody = try? JSONEncoder().encode(UsersListRequestBody(token: adminToken))
 
         URLSession.shared.dataTask(with: request) { data, _, _ in
-            var users: [PampGramBannedUser] = []
-            if let data, let decoded = try? JSONDecoder().decode(BannedListResponse.self, from: data) {
-                users = decoded.users
+            var users: [PampGramUserSummary] = []
+            if let data, let decoded = try? JSONDecoder().decode(UsersListResponse.self, from: data) {
+                users = decoded.users.map { user in
+                    PampGramUserSummary(
+                        id: user.id,
+                        tier: PampGramSubscriptionTier(rawValue: user.tier) ?? .standard,
+                        tierChangedAt: user.tierChangedAt,
+                        lastSeen: user.lastSeen,
+                        full: user.full.map { PampGramBanEntry(reason: $0.reason, at: $0.at) },
+                        sections: user.sections.mapValues { PampGramBanEntry(reason: $0.reason, at: $0.at) }
+                    )
+                }
             }
             DispatchQueue.main.async {
                 completion(users)

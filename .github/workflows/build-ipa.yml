@@ -32,6 +32,7 @@ jobs:
       - name: Check out Telegram-iOS
         run: |
           git clone --recursive --shallow-submodules --depth 1 -j8 \
+            --branch release-12.9.2 \
             https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
 
       # mod/components/* are whole new Bazel packages, dropped in as-is under a single
