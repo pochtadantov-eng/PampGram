@@ -21439,3 +21439,82 @@ index f788f65..c690805 100644
      override func update(context: AccountContext, width: CGFloat, safeInsets: UIEdgeInsets, presentationData: PresentationData, item: PeerInfoScreenItem, topItem: PeerInfoScreenItem?, bottomItem: PeerInfoScreenItem?, hasCorners: Bool, transition: ContainedViewLayoutTransition) -> CGFloat {
          guard let item = item as? PeerInfoScreenDisclosureItem else {
              return 10.0
+diff --git a/submodules/WebPBinding/Sources/UIImage+WebP.m b/submodules/WebPBinding/Sources/UIImage+WebP.m
+index cb63b006..9a441016 100644
+--- a/submodules/WebPBinding/Sources/UIImage+WebP.m
++++ b/submodules/WebPBinding/Sources/UIImage+WebP.m
+@@ -9,34 +9,61 @@
+     if (imgData == nil) {
+         return nil;
+     }
+-    
++
+     int width = 0, height = 0;
+     if (!WebPGetInfo([imgData bytes], [imgData length], &width, &height)) {
+         NSMutableDictionary *errorDetail = [NSMutableDictionary dictionary];
+         [errorDetail setValue:@"Header formatting error." forKey:NSLocalizedDescriptionKey];
+         return nil;
+     }
+-    
++
++    // A malformed/malicious file can make WebPGetInfo report a bogus width or height (zero,
++    // negative, or absurdly large) even though the call "succeeded". Everything below trusts
++    // width/height to size a malloc and a decode target buffer, so an unvalidated value here
++    // was a crash (and, via the truncation this also fixes below, a heap buffer overflow) on
++    // nothing more than opening a chat containing such a file. 1 << 14 (16384) matches WebP's
++    // own container-format limit on each dimension, so this never rejects anything a spec-valid
++    // encoder could have produced.
++    if (width <= 0 || height <= 0 || width > (1 << 14) || height > (1 << 14)) {
++        return nil;
++    }
++
+     const struct { int width, height; } targetContextSize = { width, height};
+-    
+-    size_t targetBytesPerRow = ((4 * (int)targetContextSize.width) + 31) & (~31);
+-    
+-    void *targetMemory = malloc((int)(targetBytesPerRow * targetContextSize.height));
+-    
++
++    size_t targetBytesPerRow = ((4 * (size_t)targetContextSize.width) + 31) & (~31);
++    // Both operands are already size_t here (targetContextSize.height is promoted), so this
++    // multiplication itself doesn't truncate — but it used to be handed to malloc() through an
++    // (int) cast, which on 64-bit iOS silently wraps any size at or above 2 GB down to whatever
++    // fits in 32 bits. malloc() then allocated that much-too-small buffer, and
++    // WebPDecodeBGRAInto below was still told the real (untruncated) size and wrote that much
++    // into it — a heap buffer overflow driven entirely by the file's declared dimensions. The
++    // width/height cap just above already keeps this product well under 2 GB, but the cast is
++    // removed too so nothing here relies on that being the only guard.
++    size_t targetBufferSize = targetBytesPerRow * (size_t)targetContextSize.height;
++    void *targetMemory = malloc(targetBufferSize);
++    if (targetMemory == NULL) {
++        return nil;
++    }
++
+     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+     CGBitmapInfo bitmapInfo = ((uint32_t)kCGImageAlphaPremultipliedFirst) | ((uint32_t)kCGBitmapByteOrder32Host);
+-    
++
+     CGContextRef targetContext = CGBitmapContextCreate(targetMemory, (int)targetContextSize.width, (int)targetContextSize.height, 8, targetBytesPerRow, colorSpace, bitmapInfo);
+-    
++
+     UIGraphicsPushContext(targetContext);
+-    
++
+     CGColorSpaceRelease(colorSpace);
+-    
+-    if (WebPDecodeBGRAInto(imgData.bytes, imgData.length, targetMemory, targetBytesPerRow * targetContextSize.height, (int)targetBytesPerRow) == NULL) {
++
++    if (targetContext == NULL || WebPDecodeBGRAInto(imgData.bytes, imgData.length, targetMemory, targetBufferSize, (int)targetBytesPerRow) == NULL) {
+         //[BridgingTrace objc_trace:@"WebP" what:@"error decoding webp"];
++        UIGraphicsPopContext();
++        if (targetContext != NULL) {
++            CGContextRelease(targetContext);
++        }
++        free(targetMemory);
+         return nil;
+     }
+-    
++
+     for (int y = 0; y < targetContextSize.height; y++) {
+         for (int x = 0; x < targetContextSize.width; x++) {
+             uint32_t *color = ((uint32_t *)&targetMemory[y * targetBytesPerRow + x * 4]);
