@@ -1,0 +1,78 @@
+name: Build PampWallet (unsigned IPA)
+
+# Manual only, same as the mod's own IPA build. This app has nothing to do with the
+# Telegram mod — separate Xcode project, separate workflow, separate artifact.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: wallet-app
+    steps:
+      - name: Check out PampWallet
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.2
+        run: |
+          set -euo pipefail
+          XCODE_APP="/Applications/Xcode_26.2.app"
+          if [ ! -d "$XCODE_APP" ]; then
+            echo "FAIL: Xcode 26.2 is not installed on this runner. Available Xcodes:"
+            ls -1 /Applications | grep -i '^Xcode' || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # project.yml -> PampWallet.xcodeproj. Keeping the generated project out of git means
+      # editing Swift files never requires regenerating/committing a pbxproj diff.
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      # No signing identity anywhere in this job, on purpose: project.yml already sets
+      # CODE_SIGNING_ALLOWED=NO, this just makes the same intent explicit on the command
+      # line. The resulting .app is unsigned — that's expected. Sideloadly / AltStore sign
+      # it with your own Apple ID at install time, the same install path the PampGram mod's
+      # own IPA already documents.
+      - name: Build (device, unsigned)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project PampWallet.xcodeproj \
+            -scheme PampWallet \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      # An .ipa is just a zip with a top-level Payload/App.app directory — no signing tool
+      # involved in producing that structure.
+      - name: Package the IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="build/Build/Products/Release-iphoneos/PampWallet.app"
+          test -d "$APP_PATH"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          rm -f PampWallet.ipa
+          zip -r PampWallet.ipa Payload
+          ls -lh PampWallet.ipa
+
+      - name: Upload IPA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PampWallet-ipa
+          path: wallet-app/PampWallet.ipa
+          if-no-files-found: warn
+          retention-days: 14

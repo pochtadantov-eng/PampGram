@@ -1,0 +1,29 @@
+name: PampWallet
+options:
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  PampWallet:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    info:
+      path: Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pampgram.wallet
+        PRODUCT_NAME: PampWallet
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        ENABLE_BITCODE: NO
+        # No signing identity exists for this app and none is needed: the CI workflow
+        # produces an unsigned .ipa on purpose. Sideloadly / AltStore sign it with the
+        # installer's own Apple ID at install time — same install path the PampGram mod's
+        # own IPA already uses.
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
