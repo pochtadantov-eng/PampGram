@@ -148,7 +148,7 @@ public enum PampGramSubscriptionAPI {
     /// `min_version` (see `fetchMinVersion`/`setMinVersion`) — a build below that number shows
     /// "update required" instead of opening PampGram. Nothing reads this from the server; it's
     /// baked into the binary at compile time, same as `adminAccountId`.
-    public static let currentBuildVersion: Int = 1
+    public static let currentBuildVersion: Int = 2
 
     private struct StatusResponse: Decodable {
         let tier: String
