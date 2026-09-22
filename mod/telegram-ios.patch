@@ -21080,7 +21080,7 @@ index 57ecb9d..f0a68ec 100644
      }
      
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd3..b8890eb6 100644
+index 4d971fd3..6f3abff8 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -21105,7 +21105,7 @@ index 4d971fd3..b8890eb6 100644
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -295,6 +301,12 @@ public final class AccountContextImpl: AccountContext {
+@@ -295,6 +301,24 @@ public final class AccountContextImpl: AccountContext {
          }
          self.fetchManager = FetchManagerImpl(postbox: account.postbox, storeManager: self.downloadedMediaStoreManager)
          if sharedContext.applicationBindings.isMainApp && !temp {
@@ -21115,10 +21115,22 @@ index 4d971fd3..b8890eb6 100644
 +            PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramScreenshotBypassDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramBanEnforcer.shared.start(accountKey: account.peerId.toInt64(), userId: account.peerId.id._internalGetInt64Value(), postbox: account.postbox)
++            // PampGram: marks @kopimastera's own account locally, once, so PampGramCore.settings
++            // always reports allFeaturesOn() for it regardless of anything server-side — see
++            // PampGramSettings.isOwnerAccount.
++            if account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId {
++                let _ = account.postbox.transaction({ transaction in
++                    PampGramCore.updateSettings(transaction: transaction, { settings in
++                        var settings = settings
++                        settings.isOwnerAccount = true
++                        return settings
++                    })
++                }).start()
++            }
              self.prefetchManager = PrefetchManagerImpl(sharedContext: sharedContext, account: account, engine: self.engine, fetchManager: self.fetchManager)
              self.wallpaperUploadManager = WallpaperUploadManagerImpl(sharedContext: sharedContext, account: account, presentationData: sharedContext.presentationData)
              self.themeUpdateManager = ThemeUpdateManagerImpl(sharedContext: sharedContext, account: account)
-@@ -505,6 +517,7 @@ public final class AccountContextImpl: AccountContext {
+@@ -505,6 +529,7 @@ public final class AccountContextImpl: AccountContext {
      }
      
      deinit {

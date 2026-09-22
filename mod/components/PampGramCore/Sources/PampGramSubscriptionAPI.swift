@@ -125,6 +125,12 @@ public enum PampGramSubscriptionAPI {
     /// response, or the baseURL placeholder still being unfilled all resolve to
     /// `.standard`/`nil` — the safe default — rather than erroring the screen that asked.
     public static func fetchStatus(userId: Int64) -> Signal<PampGramSubscriptionStatus, NoError> {
+        // @kopimastera's own account is always PRO, permanently, without a round trip to the
+        // server or a stored grant that could lapse or get overwritten — this is the one id the
+        // tier system itself always treats as fully subscribed.
+        if userId == adminAccountId {
+            return .single(PampGramSubscriptionStatus(tier: .pro, expiresAt: nil))
+        }
         return Signal { subscriber in
             guard let url = URL(string: "\(baseURL)/status?id=\(userId)") else {
                 subscriber.putNext(PampGramSubscriptionStatus(tier: .standard, expiresAt: nil))
