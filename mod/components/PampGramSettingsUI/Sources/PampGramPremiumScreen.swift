@@ -293,18 +293,3 @@ public func pampGramPresentPremiumScreen(context: AccountContext) {
     }
     presentingController.present(PampGramPremiumViewController(context: context), animated: true, completion: nil)
 }
-
-/// Opens `openReal` only when this account's subscription is already PRO; a STANDARD account
-/// sees the Premium paywall instead. Used to gate whole hub sections (Ghost, Дополнительно) the
-/// same way `pampGramGateSection` gates a banned one — separate mechanism, separate concern:
-/// this is PampGram's own tier, not an admin ban.
-public func pampGramGateTier(context: AccountContext, openReal: @escaping () -> Void) {
-    let _ = (PampGramSubscriptionAPI.fetchStatus(userId: context.account.peerId.id._internalGetInt64Value())
-    |> deliverOnMainQueue).start(next: { status in
-        if status.tier == .pro {
-            openReal()
-        } else {
-            pampGramPresentPremiumScreen(context: context)
-        }
-    })
-}

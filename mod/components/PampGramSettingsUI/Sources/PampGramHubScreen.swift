@@ -324,9 +324,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         },
         openGhost: {
             pampGramGateSection(context: context, section: .ghost) {
-                pampGramGateTier(context: context) {
-                    pushControllerImpl?(pampGramGhostSettingsController(context: context))
-                }
+                pushControllerImpl?(pampGramGhostSettingsController(context: context))
             }
         },
         openAppearance: {
@@ -336,9 +334,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
             }
         },
         openAdditional: {
-            pampGramGateTier(context: context) {
-                pushControllerImpl?(pampGramAdditionalSettingsController(context: context))
-            }
+            pushControllerImpl?(pampGramAdditionalSettingsController(context: context))
         },
         openAdmin: {
             pushControllerImpl?(pampGramAdminController(context: context))
