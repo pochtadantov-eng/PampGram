@@ -15,6 +15,7 @@ private enum PampGramHubSection: Int32 {
     case sections
     case status
     case team
+    case plan
 }
 
 private enum PampGramHubEntry: ItemListNodeEntry {
@@ -28,6 +29,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
     case admin
     case status(Int, Int)
     case team
+    case plan(Bool)
 
     var section: ItemListSectionId {
         switch self {
@@ -41,6 +43,8 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return PampGramHubSection.status.rawValue
         case .team:
             return PampGramHubSection.team.rawValue
+        case .plan:
+            return PampGramHubSection.plan.rawValue
         }
     }
 
@@ -66,6 +70,8 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return 8
         case .team:
             return 9
+        case .plan:
+            return 10
         }
     }
 
@@ -227,6 +233,22 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                     arguments.openSupport()
                 }
             )
+        case let .plan(isPro):
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "crown.fill", backgroundColor: UIColor(rgb: 0xffcc00)),
+                title: "Ваш план",
+                titleFont: .bold,
+                label: "",
+                additionalDetailLabel: isPro ? "Premium" : "Standard",
+                additionalDetailLabelColor: isPro ? .constructive : .generic,
+                sectionId: self.section,
+                style: .blocks,
+                action: {
+                    arguments.openAbout()
+                }
+            )
         }
     }
 }
@@ -270,7 +292,7 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
     return "https://t.me/\(pampGramSupportUsername)?text=\(encoded)"
 }
 
-private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, isAdmin: Bool) -> [PampGramHubEntry] {
+private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, isAdmin: Bool, isPro: Bool) -> [PampGramHubEntry] {
     let toggles = [
         settings.phantomGiftsEnabled,
         settings.fakeStarsDisplayEnabled,
@@ -297,6 +319,7 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
     }
     entries.append(.status(activeCount, toggles.count))
     entries.append(.team)
+    entries.append(.plan(isPro))
     return entries
 }
 
@@ -463,7 +486,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramHubEntries(settings: settings, profileVisuals: profileVisuals, isAdmin: isAdmin),
+            entries: pampGramHubEntries(settings: settings, profileVisuals: profileVisuals, isAdmin: isAdmin, isPro: settings.cachedIsProSubscriber),
             style: .blocks,
             animateChanges: true
         )

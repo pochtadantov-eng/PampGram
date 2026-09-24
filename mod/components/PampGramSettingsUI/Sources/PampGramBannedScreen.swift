@@ -6,10 +6,9 @@ import TelegramCore
 import AccountContext
 import PampGramCore
 
-/// Same contact the "Обновить план" and Premium-paywall flows already message — see
-/// `PampGramAboutScreen.swift`'s `pampGramOpenUpgradeRequestChat`. Reused here so "написать мне"
-/// on the ban screen reaches the same place asking for a key or a plan upgrade does: one real
-/// person on the other end of every "contact us" button in the mod, not three different ones.
+/// Same contact `PampGramUpdateRequiredScreen.swift` already messages for "update required" —
+/// reused here so "написать мне" on the ban screen reaches the same person, one real contact
+/// behind every "contact us" button in the mod, not several different ones.
 private let pampGramBanContactUsername = "Claps228"
 
 /// The screen a banned account sees instead of a gated section (or the whole hub, for a full
@@ -280,8 +279,8 @@ public func pampGramGateFullAccess(context: AccountContext, onAllowed: @escaping
 /// status), so this runs as its own check rather than folding into `pampGramGateSection` —
 /// every call site that can reach either of these two sections runs this first, `openReal` only
 /// firing for `.pro`; anything else (including a network hiccup, so a flaky connection can never
-/// grant Premium it shouldn't) pushes the subscription screen instead, which is also where
-/// "Активировать премиум" lives.
+/// grant Premium it shouldn't) pushes the "Подписка" screen instead — the same one the hub's own
+/// "Ваш план" row opens, with "Возможности Premium"/"Обновить план" at the bottom.
 public func pampGramGateTier(context: AccountContext, push: @escaping (ViewController) -> Void, openReal: @escaping () -> Void) {
     let selfAccountId = context.account.peerId.id._internalGetInt64Value()
     let _ = (PampGramSubscriptionAPI.fetchTier(userId: selfAccountId)

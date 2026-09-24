@@ -8,32 +8,40 @@ import PampGramCore
 /// One row of the feature list below the PampGram logo — a colored icon square, a bold title
 /// and a one-line description. Mirrors the layout used by pretty much every paywall of this
 /// kind (icon + title + description on a rounded dark card); nothing here is copied text or
-/// artwork from any specific app, only PampGram's own real PRO-gated features. Listed here are
-/// only what's actually behind `pampGramGateTier` — «Подарки» and «Внешний вид» — never Ghost or
-/// Дополнительно, which are included in Standard (see `PampGramHubScreen.swift`'s openGhost/
-/// openAdditional).
+/// artwork from any specific app, only PampGram's own real features. `isPremiumOnly` marks the
+/// ones actually behind `pampGramGateTier` — «Подарки» and «Внешний вид» — which get a colored
+/// border and a "PRO" tag to stand out; everything already included in Standard (Чаты, Ghost,
+/// Дополнительно — see `PampGramHubScreen.swift`'s openGhost/openAdditional) is listed too, but
+/// plain, so the screen reads as a full plan comparison rather than just a Premium sales pitch.
 private struct PampGramPremiumFeature {
     let systemImageName: String
     let color: UIColor
     let title: String
     let subtitle: String
+    let isPremiumOnly: Bool
 }
 
 private let pampGramPremiumFeatures: [PampGramPremiumFeature] = [
-    PampGramPremiumFeature(systemImageName: "gift.fill", color: UIColor(rgb: 0xff3b30), title: "Визуальные подарки", subtitle: "«Подарок ему»/«Подарок мне» — выглядит как настоящий подарок, без реального списания Stars или TON."),
-    PampGramPremiumFeature(systemImageName: "star.circle.fill", color: UIColor(rgb: 0xffcc00), title: "Локальные звёзды и TON", subtitle: "Свой баланс вместо настоящего — показывается везде, где Telegram показывает баланс."),
-    PampGramPremiumFeature(systemImageName: "cart.fill", color: UIColor(rgb: 0x34c759), title: "Витрина и маркет подарков", subtitle: "Своя коллекция, продажа и передача подарков между чатами."),
-    PampGramPremiumFeature(systemImageName: "paintbrush.fill", color: UIColor(rgb: 0x8e44ec), title: "Внешний вид", subtitle: "Бейджик наверху экрана — Telegram или Swiftgram, на твой выбор."),
-    PampGramPremiumFeature(systemImageName: "app.badge", color: UIColor(rgb: 0x3b82f6), title: "Своя иконка приложения", subtitle: "Набор альтернативных иконок PampGram вместо стандартной."),
+    PampGramPremiumFeature(systemImageName: "gift.fill", color: UIColor(rgb: 0xff3b30), title: "Визуальные подарки", subtitle: "«Подарок ему»/«Подарок мне» — выглядит как настоящий подарок, без реального списания Stars или TON.", isPremiumOnly: true),
+    PampGramPremiumFeature(systemImageName: "star.circle.fill", color: UIColor(rgb: 0xffcc00), title: "Локальные звёзды и TON", subtitle: "Свой баланс вместо настоящего — показывается везде, где Telegram показывает баланс.", isPremiumOnly: true),
+    PampGramPremiumFeature(systemImageName: "cart.fill", color: UIColor(rgb: 0x34c759), title: "Витрина и маркет подарков", subtitle: "Своя коллекция, продажа и передача подарков между чатами.", isPremiumOnly: true),
+    PampGramPremiumFeature(systemImageName: "paintbrush.fill", color: UIColor(rgb: 0x8e44ec), title: "Внешний вид", subtitle: "Бейджик наверху экрана — Telegram или Swiftgram, на твой выбор.", isPremiumOnly: true),
+    PampGramPremiumFeature(systemImageName: "app.badge", color: UIColor(rgb: 0x3b82f6), title: "Своя иконка приложения", subtitle: "Набор альтернативных иконок PampGram вместо стандартной.", isPremiumOnly: true),
+    PampGramPremiumFeature(systemImageName: "message.fill", color: UIColor(rgb: 0x3b82f6), title: "Чаты", subtitle: "Удалённые сообщения остаются в переписке, «Изменить визуально» и история.", isPremiumOnly: false),
+    PampGramPremiumFeature(systemImageName: "eye.slash.fill", color: UIColor(rgb: 0x34c759), title: "Ghost", subtitle: "Скрывай «в сети», «печатает» и отметки о прочтении.", isPremiumOnly: false),
+    PampGramPremiumFeature(systemImageName: "gearshape.fill", color: UIColor(rgb: 0x8e8e93), title: "Дополнительно", subtitle: "Изменение голоса, скорость передачи, фейковая геолокация и другое.", isPremiumOnly: false),
 ]
 
 private final class PampGramPremiumFeatureRow: UIView {
+    private let feature: PampGramPremiumFeature
     private let iconContainer = UIView()
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let subtitleLabel = UILabel()
+    private let proTagLabel = UILabel()
 
     init(feature: PampGramPremiumFeature) {
+        self.feature = feature
         super.init(frame: .zero)
 
         self.backgroundColor = UIColor(rgb: 0x18181f)
@@ -59,10 +67,31 @@ private final class PampGramPremiumFeatureRow: UIView {
         self.subtitleLabel.textColor = UIColor(white: 1.0, alpha: 0.55)
         self.subtitleLabel.numberOfLines = 0
         self.addSubview(self.subtitleLabel)
+
+        self.proTagLabel.text = "  PRO  "
+        self.proTagLabel.font = UIFont.systemFont(ofSize: 10.0, weight: .heavy)
+        self.proTagLabel.textColor = .white
+        self.proTagLabel.backgroundColor = feature.color
+        self.proTagLabel.layer.cornerRadius = 7.0
+        self.proTagLabel.layer.masksToBounds = true
+        self.addSubview(self.proTagLabel)
+
+        // `setLocked` turns this border/tag off once the viewer is actually PRO — at that point
+        // every card is unlocked, so a screen full of "PRO" tags would be noise rather than
+        // information.
+        self.setLocked(feature.isPremiumOnly)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func setLocked(_ locked: Bool) {
+        let showsLock = self.feature.isPremiumOnly && locked
+        self.layer.borderWidth = showsLock ? 1.5 : 0.0
+        self.layer.borderColor = showsLock ? self.feature.color.cgColor : nil
+        self.proTagLabel.isHidden = !showsLock
+        self.setNeedsLayout()
     }
 
     func height(forWidth width: CGFloat) -> CGFloat {
@@ -86,6 +115,9 @@ private final class PampGramPremiumFeatureRow: UIView {
         self.titleLabel.frame = CGRect(x: textX, y: 16.0, width: textWidth, height: titleSize.height)
         let subtitleSize = self.subtitleLabel.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude))
         self.subtitleLabel.frame = CGRect(x: textX, y: self.titleLabel.frame.maxY + 4.0, width: textWidth, height: subtitleSize.height)
+
+        self.proTagLabel.sizeToFit()
+        self.proTagLabel.frame = CGRect(x: self.bounds.width - self.proTagLabel.frame.width - 12.0, y: 12.0, width: self.proTagLabel.frame.width, height: 16.0)
     }
 }
 
@@ -173,7 +205,7 @@ private final class PampGramPremiumViewController: UIViewController {
 
         self.ctaButton.backgroundColor = .white
         self.ctaButton.setTitleColor(.black, for: .normal)
-        self.ctaButton.setTitle("Обновиться до премиума", for: .normal)
+        self.ctaButton.setTitle("Обновить план", for: .normal)
         self.ctaButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
         self.ctaButton.layer.cornerRadius = 14.0
         self.ctaButton.addTarget(self, action: #selector(self.ctaPressed), for: .touchUpInside)
@@ -255,6 +287,9 @@ private final class PampGramPremiumViewController: UIViewController {
         let isPro = status.tier == .pro
         self.badgeLabel.text = isPro ? "  PRO АКТИВЕН  " : "  STANDARD  "
         self.badgeLabel.backgroundColor = isPro ? UIColor(rgb: 0x34c759) : UIColor(rgb: 0x8e44ec)
+        for row in self.featureRows {
+            row.setLocked(!isPro)
+        }
         if isPro {
             let expiryText: String
             if let expiresAt = status.expiresAt {
@@ -308,7 +343,9 @@ private final class PampGramPremiumViewController: UIViewController {
 }
 
 /// The Premium paywall — reached from the "Premium"/"Стандарт" button in the PampGram hub's
-/// top-right corner, and from any section `pampGramGateTier` intercepts. Presented modally (like
+/// top-right corner, and from "Возможности Premium" on the "Подписка" screen
+/// (PampGramAboutScreen.swift), itself reached from the hub's "Ваш план" row or from
+/// `pampGramGateTier` when a Standard account taps a PRO-only section. Presented modally (like
 /// `PampGramBannedScreen.swift`) rather than pushed, so it reads as a distinct "upsell" moment
 /// rather than another settings page.
 public func pampGramPresentPremiumScreen(context: AccountContext) {
