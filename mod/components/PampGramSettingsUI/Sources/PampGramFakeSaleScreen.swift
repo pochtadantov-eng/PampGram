@@ -71,7 +71,6 @@ public func pampGramFakeSaleController(context: AccountContext) -> ViewControlle
     var presentTooltip: ((String) -> Void)?
 
     let args = PampGramFakeSaleArguments(confirmSale: { gift in
-        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
         let baseTitle = gift.title
         let displayTitle: String
         if let number = gift.number {
