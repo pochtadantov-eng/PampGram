@@ -5,6 +5,7 @@ import SwiftSignalKit
 import TelegramCore
 import AccountContext
 import PampGramCore
+import PhantomGiftKit
 
 /// Same contact `PampGramUpdateRequiredScreen.swift` already messages for "update required" —
 /// reused here so "написать мне" on the ban screen reaches the same person, one real contact

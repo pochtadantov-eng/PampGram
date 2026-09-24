@@ -5,6 +5,7 @@ import SwiftSignalKit
 import TelegramCore
 import AccountContext
 import PampGramCore
+import PhantomGiftKit
 
 private let pampGramFreezeChannelUrl = "https://t.me/\(pampGramRequiredChannelUsername)"
 

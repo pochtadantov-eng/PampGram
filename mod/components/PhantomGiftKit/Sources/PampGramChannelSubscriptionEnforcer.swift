@@ -2,6 +2,7 @@ import Foundation
 import Postbox
 import SwiftSignalKit
 import TelegramCore
+import PampGramCore
 
 /// The channel every non-owner account has to stay subscribed to — see
 /// `PampGramChannelSubscriptionEnforcer` and `PampGramFrozenScreen.swift` in
@@ -16,6 +17,14 @@ public let pampGramRequiredChannelUsername = "PampGrams"
 /// (`channels.getParticipant`, via `TelegramEngine.EnginePeers.fetchChannelParticipant`) rather
 /// than anything server-side of PampGram's own — Telegram's membership record already is the
 /// source of truth, so there's nothing to keep in sync on the admin's own backend.
+///
+/// Lives in `PhantomGiftKit`, not `PampGramCore`, even though it's conceptually a core
+/// enforcer just like `PampGramBanEnforcer`: unlike the ban check (a plain HTTP call to
+/// `PampGramSubscriptionAPI`), this needs `Account`/`TelegramEngine` from `TelegramCore` —
+/// and `TelegramCore` itself already depends on `PampGramCore` (for message-attribute types
+/// and settings reads elsewhere in this mod), so `PampGramCore` importing `TelegramCore` back
+/// would be a straight dependency cycle. `PhantomGiftKit` already depends on both and sits
+/// outside `TelegramCore`'s own dependency graph, so it has no such problem.
 public final class PampGramChannelSubscriptionEnforcer {
     public static let shared = PampGramChannelSubscriptionEnforcer()
 
