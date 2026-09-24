@@ -159,7 +159,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 title: "Внешний вид",
                 titleFont: .bold,
                 label: "",
-                additionalDetailLabel: "Темы, иконки, интерфейс",
+                additionalDetailLabel: "Бейджик наверху экрана",
                 sectionId: self.section,
                 style: .blocks,
                 action: {

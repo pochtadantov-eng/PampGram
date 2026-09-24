@@ -18,7 +18,7 @@ private let pampGramOnboardingPages: [PampGramOnboardingPage] = [
     PampGramOnboardingPage(systemImageName: "gift.fill", color: UIColor(rgb: 0x8e44ec), title: "Подарки", subtitle: "Локальные подарки, визуальные балансы Stars и TON, своя коллекция и маркет — видно только тебе."),
     PampGramOnboardingPage(systemImageName: "eye.slash.fill", color: UIColor(rgb: 0x34c759), title: "Ghost", subtitle: "Скрывай «в сети», «печатает» и отметки о прочтении — собеседник не узнает, что ты был здесь."),
     PampGramOnboardingPage(systemImageName: "message.fill", color: UIColor(rgb: 0x3b82f6), title: "Чаты", subtitle: "Удалённые сообщения остаются в переписке — свои и чужие. История никуда не пропадает."),
-    PampGramOnboardingPage(systemImageName: "paintbrush.fill", color: UIColor(rgb: 0xff9500), title: "Внешний вид", subtitle: "Пресеты Standard, Glass и Compact — выбери иконку приложения и стиль интерфейса под себя."),
+    PampGramOnboardingPage(systemImageName: "paintbrush.fill", color: UIColor(rgb: 0xff9500), title: "Внешний вид", subtitle: "Бейджик наверху экрана — Telegram, Swiftgram или совсем без него, на твой выбор."),
 ]
 
 private final class PampGramOnboardingPageView: UIView {

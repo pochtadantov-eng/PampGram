@@ -640,7 +640,6 @@ public enum PampGramPreferencesKeys {
     public static let adminToken = key(900_300)
     public static let localOperations = key(900_400)
     public static let profileVisuals = key(900_500)
-    public static let appearance = key(900_600)
     public static let behavior = key(900_700)
     public static let fakeAdmin = key(900_800)
 }

@@ -20064,7 +20064,7 @@ index b1ea96b8..7b96dcac 100644
  import MetalEngine
  import RecaptchaEnterprise
  import NavigationBarImpl
-@@ -778,7 +779,14 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
+@@ -778,7 +779,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
          GlobalExperimentalSettings.enableFeed = false
          
          self.window?.makeKeyAndVisible()
@@ -20072,9 +20072,12 @@ index b1ea96b8..7b96dcac 100644
 +
 +        // PampGram: first-launch onboarding — shown once, on top of whatever the app already
 +        // put on screen. Doesn't touch the real launch decision (auth vs. chat list) at all, so
-+        // a bug here can't break getting into the app; see PampGramOnboardingScreen.swift.
++        // a bug here can't break getting into the app; see PampGramOnboardingScreen.swift. The
++        // status-bar badge overlay (Внешний вид → «Бейджик») is installed the same way, as a
++        // direct subview of this window — see PampGramStatusBadge.swift.
 +        if let window = self.window {
 +            pampGramPresentOnboardingIfNeeded(on: window)
++            pampGramInstallStatusBadgeOverlay(on: window)
 +        }
 +
          var hasActiveCalls: Signal<Bool, NoError> = .single(false)

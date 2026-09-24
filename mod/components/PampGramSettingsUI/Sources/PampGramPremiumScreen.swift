@@ -23,7 +23,7 @@ private let pampGramPremiumFeatures: [PampGramPremiumFeature] = [
     PampGramPremiumFeature(systemImageName: "gift.fill", color: UIColor(rgb: 0xff3b30), title: "Визуальные подарки", subtitle: "«Подарок ему»/«Подарок мне» — выглядит как настоящий подарок, без реального списания Stars или TON."),
     PampGramPremiumFeature(systemImageName: "star.circle.fill", color: UIColor(rgb: 0xffcc00), title: "Локальные звёзды и TON", subtitle: "Свой баланс вместо настоящего — показывается везде, где Telegram показывает баланс."),
     PampGramPremiumFeature(systemImageName: "cart.fill", color: UIColor(rgb: 0x34c759), title: "Витрина и маркет подарков", subtitle: "Своя коллекция, продажа и передача подарков между чатами."),
-    PampGramPremiumFeature(systemImageName: "paintbrush.fill", color: UIColor(rgb: 0x8e44ec), title: "Внешний вид", subtitle: "Пресеты Standard/Glass/Compact и тонкая настройка пузырей, блюра, плотности списка чатов."),
+    PampGramPremiumFeature(systemImageName: "paintbrush.fill", color: UIColor(rgb: 0x8e44ec), title: "Внешний вид", subtitle: "Бейджик наверху экрана — Telegram или Swiftgram, на твой выбор."),
     PampGramPremiumFeature(systemImageName: "app.badge", color: UIColor(rgb: 0x3b82f6), title: "Своя иконка приложения", subtitle: "Набор альтернативных иконок PampGram вместо стандартной."),
 ]
 

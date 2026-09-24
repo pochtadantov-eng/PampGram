@@ -82,7 +82,6 @@ private enum PampGramSettingsSection: Int32 {
     case starsBalance
     case tonBalance
     case localRubles
-    case fromHimGifts
     case profileVisuals
     case collectionMarket
     case realGifts
@@ -154,7 +153,10 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.hideIcon.rawValue
         case .aboutText:
             return PampGramSettingsSection.about.rawValue
-        case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter:
+        case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter, .fromHimGiftsToggle, .fromHimGiftsFooter:
+            // "«Подарок ему»" and "«Подарок мне»" are the same logical group (send/receive
+            // sides of the same visual-gift toggle) — grouped under one section so they read
+            // together instead of each forcing its own full section gap.
             return PampGramSettingsSection.phantomGifts.rawValue
         case .starsBalanceHeader, .fakeStarsDisplayToggle, .starsBalance, .starsBalanceFooter:
             return PampGramSettingsSection.starsBalance.rawValue
@@ -162,8 +164,6 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.tonBalance.rawValue
         case .localRublesHeader, .localRublesPurchaseToggle, .localRublesBalance, .localRublesFooter:
             return PampGramSettingsSection.localRubles.rawValue
-        case .fromHimGiftsToggle, .fromHimGiftsFooter:
-            return PampGramSettingsSection.fromHimGifts.rawValue
         case .profileVisualsHeader, .visualNumberEditor, .visualRating:
             return PampGramSettingsSection.profileVisuals.rawValue
         case .collectionHeader, .collectionMarket, .collectionFooter:

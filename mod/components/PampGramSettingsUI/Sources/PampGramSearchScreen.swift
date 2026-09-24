@@ -180,7 +180,7 @@ public func pampGramSearchController(context: AccountContext) -> ViewController 
         PampGramSearchItem(title: "Блокировка чатов", subtitle: "PIN на выбранные чаты", sectionName: "Дополнительно", keywords: "lock пин блокировка chat", open: openChatLock),
         PampGramSearchItem(title: "Иконка приложения", subtitle: "Сменить иконку на домашнем экране", sectionName: "Статус", keywords: "icon иконка appearance", open: openStatus),
         PampGramSearchItem(title: "Подписка (PRO/STANDARD)", subtitle: "Статус подписки и её обновление", sectionName: "Статус", keywords: "premium pro подписка обновить", open: openStatus),
-        PampGramSearchItem(title: "Внешний вид", subtitle: "Темы, иконки, интерфейс", sectionName: "Внешний вид", keywords: "appearance тема оформление", open: openAppearance)
+        PampGramSearchItem(title: "Внешний вид", subtitle: "Бейджик наверху экрана", sectionName: "Внешний вид", keywords: "appearance бейджик badge telegram swiftgram", open: openAppearance)
     ]
 
     // The result actions live in `index`; dispatch through a closure that captures it.
