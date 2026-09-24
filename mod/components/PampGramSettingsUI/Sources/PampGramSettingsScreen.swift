@@ -32,6 +32,7 @@ private final class PampGramSettingsArguments {
     let openStarsLedger: () -> Void
     let openTonLedger: () -> Void
     let sellRegularGifts: () -> Void
+    let openFakeSale: () -> Void
 
     init(
         toggleVisual: @escaping (Bool) -> Void,
@@ -51,7 +52,8 @@ private final class PampGramSettingsArguments {
         openCollectionMarket: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
         openTonLedger: @escaping () -> Void,
-        sellRegularGifts: @escaping () -> Void
+        sellRegularGifts: @escaping () -> Void,
+        openFakeSale: @escaping () -> Void
     ) {
         self.toggleVisual = toggleVisual
         self.toggleHideIcon = toggleHideIcon
@@ -71,6 +73,7 @@ private final class PampGramSettingsArguments {
         self.openStarsLedger = openStarsLedger
         self.openTonLedger = openTonLedger
         self.sellRegularGifts = sellRegularGifts
+        self.openFakeSale = openFakeSale
     }
 }
 
@@ -130,6 +133,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
 
     case realGiftsHeader(String)
     case sellRegularGiftsAction(String)
+    case fakeSaleAction(String)
     case realGiftsFooter(String)
 
     case ledgerHeader(String)
@@ -168,7 +172,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.profileVisuals.rawValue
         case .collectionHeader, .collectionMarket, .collectionFooter:
             return PampGramSettingsSection.collectionMarket.rawValue
-        case .realGiftsHeader, .sellRegularGiftsAction, .realGiftsFooter:
+        case .realGiftsHeader, .sellRegularGiftsAction, .fakeSaleAction, .realGiftsFooter:
             return PampGramSettingsSection.realGifts.rawValue
         case .ledgerHeader, .starsLedger, .tonLedger, .ledgerFooter:
             return PampGramSettingsSection.ledger.rawValue
@@ -211,17 +215,18 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .collectionFooter: return 24
         case .realGiftsHeader: return 25
         case .sellRegularGiftsAction: return 26
-        case .realGiftsFooter: return 27
-        case .ledgerHeader: return 28
-        case .starsLedger: return 29
-        case .tonLedger: return 30
-        case .ledgerFooter: return 31
-        case .resetBalances: return 32
-        case .resetBalancesFooter: return 33
-        case .storageHeader: return 34
-        case .phantomGiftsCount: return 35
-        case .deleteAllPhantomGifts: return 36
-        case .storageFooter: return 37
+        case .fakeSaleAction: return 27
+        case .realGiftsFooter: return 28
+        case .ledgerHeader: return 29
+        case .starsLedger: return 30
+        case .tonLedger: return 31
+        case .ledgerFooter: return 32
+        case .resetBalances: return 33
+        case .resetBalancesFooter: return 34
+        case .storageHeader: return 35
+        case .phantomGiftsCount: return 36
+        case .deleteAllPhantomGifts: return 37
+        case .storageFooter: return 38
         }
     }
 
@@ -291,6 +296,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.sellRegularGifts()
             })
+        case let .fakeSaleAction(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bag.fill.badge.plus", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: "", sectionId: self.section, style: .blocks, action: arguments.openFakeSale)
         case let .starsLedger(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "chart.bar.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openStarsLedger)
         case let .tonLedger(title, label):
@@ -469,7 +476,8 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
 
     entries.append(.realGiftsHeader("НАСТОЯЩИЕ ПОДАРКИ"))
     entries.append(.sellRegularGiftsAction("Продать подарки 15–100 ⭐"))
-    entries.append(.realGiftsFooter("Настоящая, необратимая операция: находит в вашем реальном профиле обычные (не NFT) подарки ценой от 15 до 100 звёзд, которые ещё можно обменять, и обменивает каждый на настоящие Stars — тем же способом, что и кнопка «Обменять» у одного подарка. Уникальные подарки не трогает."))
+    entries.append(.fakeSaleAction("Fake покупка TG"))
+    entries.append(.realGiftsFooter("Настоящая, необратимая операция: находит в вашем реальном профиле обычные (не NFT) подарки ценой от 15 до 100 звёзд, которые ещё можно обменять, и обменивает каждый на настоящие Stars — тем же способом, что и кнопка «Обменять» у одного подарка. Уникальные подарки не трогает. «Fake покупка TG» — отдельная, визуальная функция: подтверждает продажу подарков с локального маркета, без реальных операций."))
 
     entries.append(.ledgerHeader("ИСТОРИЯ И СТАТИСТИКА"))
     entries.append(.starsLedger("Stars", "История · статистика"))
@@ -685,7 +693,8 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                 ],
                 actionLayout: .horizontal
             ))
-        }
+        },
+        openFakeSale: { pushControllerImpl?(pampGramFakeSaleController(context: context)) }
     )
 
     let signal = combineLatest(

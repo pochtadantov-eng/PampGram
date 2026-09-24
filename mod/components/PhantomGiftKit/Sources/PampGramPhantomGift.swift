@@ -137,8 +137,16 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     /// the caller (`PampGramPhantomGiftStore.resolvedProfileGiftsSignal`) from `fromPeerId` —
     /// this type only stores an id, never a full `EnginePeer`.
     public func asProfileGift(fromPeer: EnginePeer?) -> ProfileGiftsContext.State.StarGift {
+        // A local market listing (`marketPrice`) never touches the stored `self.gift` — only
+        // this projection, the one GiftViewScreen actually reads `resellAmounts` off of, so
+        // listing/unlisting flips the real "Продать"/"Снять с продажи" button and green
+        // ribbon exactly like a genuine resale listing would.
+        var gift = self.gift
+        if let marketPrice = self.marketPrice, case let .unique(uniqueGift) = gift {
+            gift = .unique(Self.withResellListing(uniqueGift, price: marketPrice))
+        }
         return ProfileGiftsContext.State.StarGift(
-            gift: self.gift,
+            gift: gift,
             reference: nil,
             fromPeer: fromPeer,
             date: self.date,
@@ -151,7 +159,10 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             canUpgrade: false,
             canExportDate: nil,
             upgradeStars: nil,
-            transferStars: nil,
+            // 0, not nil: GiftViewScreen only shows the "Передать" button when this is
+            // non-nil (see its `canTransfer` check) — a phantom gift was never real, so
+            // there's no real transfer fee to reflect, but the button still needs to render.
+            transferStars: 0,
             canTransferDate: nil,
             canResaleDate: nil,
             collectionIds: nil,
@@ -161,6 +172,32 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             number: self.number,
             isRefunded: false,
             canCraftAt: nil
+        )
+    }
+
+    private static func withResellListing(_ uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> StarGift.UniqueGift {
+        return StarGift.UniqueGift(
+            id: uniqueGift.id,
+            giftId: uniqueGift.giftId,
+            title: uniqueGift.title,
+            number: uniqueGift.number,
+            slug: uniqueGift.slug,
+            owner: uniqueGift.owner,
+            attributes: uniqueGift.attributes,
+            availability: uniqueGift.availability,
+            giftAddress: uniqueGift.giftAddress,
+            resellAmounts: [price],
+            resellForTonOnly: price.currency == .ton,
+            releasedBy: uniqueGift.releasedBy,
+            valueAmount: uniqueGift.valueAmount,
+            valueCurrency: uniqueGift.valueCurrency,
+            valueUsdAmount: uniqueGift.valueUsdAmount,
+            flags: uniqueGift.flags,
+            themePeerId: uniqueGift.themePeerId,
+            peerColor: uniqueGift.peerColor,
+            hostPeerId: uniqueGift.hostPeerId,
+            minOfferStars: uniqueGift.minOfferStars,
+            craftChancePermille: uniqueGift.craftChancePermille
         )
     }
 }

@@ -18957,6 +18957,22 @@ index 1a5228a9..d1fa0481 100644
  import TelegramPresentationData
  import PresentationDataUtils
  import ComponentFlow
+@@ -1170,8 +1171,14 @@ private final class GiftViewSheetContent: CombinedComponent {
+         }
+         
+         func transferGift() {
+-            guard let arguments = self.subject.arguments, let controller = self.getController() as? GiftViewScreen, case let .unique(gift) = arguments.gift, let reference = arguments.reference, let transferStars = arguments.transferStars else {
++            guard let arguments = self.subject.arguments, let controller = self.getController() as? GiftViewScreen, case let .unique(gift) = arguments.gift else {
+                 return
+             }
++            // PampGram: real gifts always have both of these; a Phantom Gift (opened from the
++            // profile grid, `arguments.reference == nil`) doesn't, since nothing about it was
++            // ever real — falls back exactly the way resellGift() already does just below,
++            // rather than silently no-op'ing on the guard that used to require them.
++            let reference = arguments.reference ?? .slug(slug: gift.slug)
++            let transferStars = arguments.transferStars ?? 0
+             
+             guard gift.hostPeerId == nil else {
 @@ -1851,6 +1852,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                  skipConfirmation: skipConfirmation,
                  starsTopUpOptions: self.starsTopUpOptionsPromise.get(),
@@ -19368,14 +19384,14 @@ index e1c98a1..454a2b5 100644
                                          }
                                      }
                                  } else {
-+                                    // PampGram: a Phantom Gift (`product.reference == nil`)
-+                                    // opens the same real GiftViewScreen as any other card —
-+                                    // every action inside it (pin/sell/transfer/etc.) is gated
-+                                    // on a non-nil `arguments.reference` internally, so it just
-+                                    // renders read-only for one of these; Pin/Hide are still
-+                                    // reachable from the long-press menu (PeerInfoGiftsPaneNode),
-+                                    // and Sell from "Коллекция и маркет" in PampGram's own
-+                                    // settings (PampGramGiftMarketScreen.swift).
++                                    // PampGram: a Phantom Gift (`product.reference == nil`) opens
++                                    // the same real GiftViewScreen as any other card — Transfer and
++                                    // Sell below route to PampGramPhantomGiftManager instead of the
++                                    // real, network-backed calls, so both work for one of these.
++                                    // Pin/Hide are reachable from the long-press menu
++                                    // (PeerInfoGiftsPaneNode), and the full local market from
++                                    // "Коллекция и маркет" in PampGram's own settings
++                                    // (PampGramGiftMarketScreen.swift).
                                      let allSubjects: [GiftViewScreen.Subject] = (self.starsProducts ?? []).map { .profileGift(self.peerId, $0) }
                                      let index = self.starsProducts?.firstIndex(where: { $0 == product }) ?? 0
 -                                    
@@ -19383,6 +19399,34 @@ index e1c98a1..454a2b5 100644
                                      var dismissImpl: (() -> Void)?
                                      let controller = GiftViewScreen(
                                          context: self.context,
+@@ -623,6 +658,14 @@ final class GiftsListView: UIView {
+                                         transferGift: { [weak self] prepaid, reference, peerId in
+                                             guard let self else {
+                                                 return .complete()
+                                             }
++                                            // PampGram: a Phantom Gift (`product.reference == nil`) routes to the local
++                                            // manager instead of the real, network-backed transferStarGift, which would
++                                            // reject a reference the server never issued.
++                                            if product.reference == nil {
++                                                return PampGramPhantomGiftManager.sendGiftToPeer(context: self.context, matching: product, peerId: peerId)
++                                                |> ignoreValues
++                                                |> castError(TransferStarGiftError.self)
++                                            }
+                                             return self.profileGifts.transferStarGift(prepaid: prepaid, reference: reference, peerId: peerId)
+                                         },
+@@ -641,6 +684,12 @@ final class GiftsListView: UIView {
+                                         updateResellStars: { [weak self] reference, price in
+                                             guard let self else {
+                                                 return .never()
+                                             }
++                                            // PampGram: same Phantom Gift routing as transferGift above — a local
++                                            // marketplace listing instead of the real updateStarGiftResalePrice.
++                                            if product.reference == nil {
++                                                return PampGramPhantomGiftManager.setMarketListing(context: self.context, matching: product, price: price)
++                                                |> castError(UpdateStarGiftPriceError.self)
++                                            }
+                                             return self.profileGifts.updateStarGiftResellPrice(reference: reference, price: price)
+                                         },
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
 index ee9ea2d9..6c47c8bc 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift

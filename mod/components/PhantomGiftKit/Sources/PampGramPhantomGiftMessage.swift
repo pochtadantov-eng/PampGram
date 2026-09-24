@@ -63,8 +63,10 @@ public enum PampGramPhantomGiftMessage {
     /// matching the real resale-purchase text exactly; leaving it nil (as an earlier version
     /// of this function did) instead falls through to the *transfer* caption ("Вы передали
     /// уникальный коллекционный подарок"), which is wrong here — nothing was transferred,
-    /// it was bought. `transferStars` stays nil regardless: that field is for a genuine
-    /// peer-to-peer transfer of an already-owned gift, a different action entirely.
+    /// it was bought. `transferStars` doesn't affect that caption (it's only the fee
+    /// GiftViewScreen shows on a later "Передать" tap) — 0, not nil, so that button actually
+    /// renders when this same message bubble is reopened (see `PampGramPhantomGift.asProfileGift`
+    /// for the identical fix on the profile-grid path).
     public static func insertLocalUniqueGiftMessage(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<EngineMessage.Id?, NoError> {
         let uniqueGift = self.fakedOwnership(of: uniqueGift, newOwnerPeerId: peerId)
         return self.insert(context: context, peerId: peerId, authorId: context.account.peerId, incoming: false, actionType: .starGiftUnique(
@@ -73,7 +75,7 @@ public enum PampGramPhantomGiftMessage {
             isTransferred: false,
             savedToProfile: true,
             canExportDate: nil,
-            transferStars: nil,
+            transferStars: 0,
             isRefunded: false,
             isPrepaidUpgrade: false,
             peerId: nil,
@@ -105,7 +107,7 @@ public enum PampGramPhantomGiftMessage {
             isTransferred: false,
             savedToProfile: true,
             canExportDate: nil,
-            transferStars: nil,
+            transferStars: 0,
             isRefunded: false,
             isPrepaidUpgrade: false,
             peerId: nil,
@@ -208,9 +210,26 @@ public enum PampGramPhantomGiftMessage {
         ))
     }
 
-    private static func insert(context: AccountContext, peerId: EnginePeer.Id, authorId: EnginePeer.Id, incoming: Bool, actionType: TelegramMediaActionType) -> Signal<EngineMessage.Id?, NoError> {
+    /// "Fake покупка TG": drops a local-only "your gift was sold" notification into the
+    /// Telegram service chat (777000) — the same chat `insertLocalStarsTopUpMessage` already
+    /// posts fake Stars top-ups into — so confirming a fake sale on the market reads like a
+    /// real one. Plain text rather than a gift-card action, matching how Telegram's own
+    /// resale-sold notification renders.
+    public static func insertLocalGiftSoldNotification(context: AccountContext, giftTitle: String, price: CurrencyAmount) -> Signal<EngineMessage.Id?, NoError> {
+        let priceText: String
+        switch price.currency {
+        case .stars:
+            priceText = "⭐ \(price.amount.value)"
+        case .ton:
+            priceText = String(format: "%.3f TON", Double(price.amount.value) / 1_000_000_000.0)
+        }
+        let text = "🎁 Ваш подарок «\(giftTitle)» купили за \(priceText). Средства зачислены на ваш баланс."
+        return self.insert(context: context, peerId: self.telegramServicePeerId, authorId: self.telegramServicePeerId, incoming: true, text: text, actionType: nil)
+    }
+
+    private static func insert(context: AccountContext, peerId: EnginePeer.Id, authorId: EnginePeer.Id, incoming: Bool, text: String = "", actionType: TelegramMediaActionType?) -> Signal<EngineMessage.Id?, NoError> {
         return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
-            let action = TelegramMediaAction(action: actionType)
+            let media: [Media] = actionType.map { [TelegramMediaAction(action: $0)] } ?? []
 
             // Postbox returns the assigned MessageId keyed by globallyUniqueId, and only for
             // messages that actually carry one (MessageHistoryTable.addMessages) — with nil
@@ -231,9 +250,9 @@ public enum PampGramPhantomGiftMessage {
                 localTags: [],
                 forwardInfo: nil,
                 authorId: authorId,
-                text: "",
+                text: text,
                 attributes: [],
-                media: [action]
+                media: media
             )
 
             let insertedIds = transaction.addMessages([storeMessage], location: .Random)

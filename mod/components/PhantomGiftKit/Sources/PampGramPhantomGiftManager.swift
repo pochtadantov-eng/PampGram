@@ -286,9 +286,43 @@ public enum PampGramPhantomGiftManager {
     /// network-backed consumer of this type checks before acting, so nothing here piggybacks
     /// an id onto one of its fields and risks a real screen misreading it as real data).
     /// Matched on this account's own gifts by exact `gift`+`date`, which a Phantom Gift never
-    /// shares with another one (each gets its own `Date()` at creation).
+    /// shares with another one (each gets its own `Date()` at creation). Both sides go
+    /// through `matchableGift` first: `asProfileGift` layers a local market listing onto its
+    /// `.unique` projection's `resellAmounts`/`resellForTonOnly` purely for display (see its
+    /// own doc comment), so comparing the raw `StarGift` values would fail to match a
+    /// currently-listed gift against its own stored record.
     private static func findPhantomGift(transaction: Transaction, selfPeerId: EnginePeer.Id, matching gift: ProfileGiftsContext.State.StarGift) -> PampGramPhantomGift? {
-        return PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.peerId == selfPeerId && $0.gift == gift.gift && $0.date == gift.date })
+        let target = Self.matchableGift(gift.gift)
+        return PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.peerId == selfPeerId && Self.matchableGift($0.gift) == target && $0.date == gift.date })
+    }
+
+    private static func matchableGift(_ gift: StarGift) -> StarGift {
+        guard case let .unique(uniqueGift) = gift, uniqueGift.resellAmounts != nil || uniqueGift.resellForTonOnly else {
+            return gift
+        }
+        return .unique(StarGift.UniqueGift(
+            id: uniqueGift.id,
+            giftId: uniqueGift.giftId,
+            title: uniqueGift.title,
+            number: uniqueGift.number,
+            slug: uniqueGift.slug,
+            owner: uniqueGift.owner,
+            attributes: uniqueGift.attributes,
+            availability: uniqueGift.availability,
+            giftAddress: uniqueGift.giftAddress,
+            resellAmounts: nil,
+            resellForTonOnly: false,
+            releasedBy: uniqueGift.releasedBy,
+            valueAmount: uniqueGift.valueAmount,
+            valueCurrency: uniqueGift.valueCurrency,
+            valueUsdAmount: uniqueGift.valueUsdAmount,
+            flags: uniqueGift.flags,
+            themePeerId: uniqueGift.themePeerId,
+            peerColor: uniqueGift.peerColor,
+            hostPeerId: uniqueGift.hostPeerId,
+            minOfferStars: uniqueGift.minOfferStars,
+            craftChancePermille: uniqueGift.craftChancePermille
+        ))
     }
 
     /// "Закрепить" in the profile gifts grid, for a Phantom Gift — a pure local flag flip,
@@ -387,6 +421,21 @@ public enum PampGramPhantomGiftManager {
         |> ignoreValues
     }
 
+    /// The GiftViewScreen `updateResellStars:` override for a Phantom Gift: sets or clears
+    /// the local marketplace listing price, resolved from the profile-grid item the same way
+    /// every other `matching:` entry point here is. This is what makes "Продать" on a real
+    /// gift-card screen work for one of these instead of hitting the real, network-backed
+    /// `updateStarGiftResalePrice` with a reference nothing on the server recognizes.
+    public static func setMarketListing(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift, price: CurrencyAmount?) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
+                return
+            }
+            PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withMarketPrice(price) })
+        }
+        |> ignoreValues
+    }
+
     /// Moves a local gift to another local profile/chat owner. This changes only the
     /// PampGram record and intentionally clears pin/wear/market state.
     public static func transfer(context: AccountContext, giftId: Int64, to peerId: EnginePeer.Id) -> Signal<Never, NoError> {
@@ -429,6 +478,65 @@ public enum PampGramPhantomGiftManager {
                 balanceAfter: nil
             ))
             return true
+        }
+    }
+
+    /// The GiftViewScreen `transferGift:` override for a Phantom Gift: moves the gift to
+    /// `peerId` inside this account's own records and logs the transfer, exactly like
+    /// `sendGiftToPeer(context:giftId:peerId:)`, but resolved from the profile-grid item the
+    /// same way every other `matching:` entry point here is. This is what makes "Передать" on
+    /// a real gift-card screen work for one of these instead of hitting the real,
+    /// network-backed `transferStarGift` with a reference nothing on the server recognizes.
+    public static func sendGiftToPeer(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift, peerId: EnginePeer.Id) -> Signal<Bool, NoError> {
+        return context.account.postbox.transaction { transaction -> Bool in
+            guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
+                return false
+            }
+            PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withPeerId(peerId) })
+            PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
+                currency: match.price.currency == .stars ? .stars : .ton,
+                kind: .transfer,
+                amount: 0,
+                title: "Передача подарка",
+                details: match.title,
+                peerId: peerId,
+                giftId: match.id,
+                balanceAfter: nil
+            ))
+            return true
+        }
+    }
+
+    /// "Fake покупка TG": confirms that a self-listed phantom gift (`marketPrice != nil`) has
+    /// been "bought" by someone on the visual market. Credits the fake balance with the listed
+    /// price, marks the gift sold (same bookkeeping as `sell(context:matching:)`), and posts a
+    /// local "your gift was sold" notification into the Telegram service chat so it looks like
+    /// a genuine resale completed — nothing here calls any real Telegram or TON endpoint.
+    public static func confirmFakeMarketSale(context: AccountContext, giftId: Int64) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> (PampGramPhantomGift, CurrencyAmount)? in
+            guard let gift = PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.id == giftId }), let salePrice = gift.marketPrice else {
+                return nil
+            }
+            let ledgerCurrency: PampGramLocalCurrency = salePrice.currency == .stars ? .stars : .ton
+            let _ = PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
+                currency: ledgerCurrency,
+                kind: .sale,
+                amount: salePrice.amount.value,
+                title: "Продажа на маркете",
+                details: gift.title,
+                peerId: gift.peerId,
+                giftId: gift.id
+            )
+            PampGramPhantomGiftStore.update(transaction: transaction, id: gift.id, { $0.withSold(date: Int32(Date().timeIntervalSince1970)) })
+            return (gift, salePrice)
+        }
+        |> mapToSignal { result -> Signal<Never, NoError> in
+            guard let (gift, salePrice) = result else {
+                return .complete()
+            }
+            return PampGramPhantomGiftMessage.insertLocalGiftSoldNotification(context: context, giftTitle: gift.title, price: salePrice)
+            |> ignoreValues
         }
     }
 
