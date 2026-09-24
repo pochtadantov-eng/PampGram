@@ -2,28 +2,43 @@ import Foundation
 import UIKit
 import Display
 import SwiftSignalKit
+import TelegramCore
 import AccountContext
 import PampGramCore
 
+/// Same contact the "Обновить план" and Premium-paywall flows already message — see
+/// `PampGramAboutScreen.swift`'s `pampGramOpenUpgradeRequestChat`. Reused here so "написать мне"
+/// on the ban screen reaches the same place asking for a key or a plan upgrade does: one real
+/// person on the other end of every "contact us" button in the mod, not three different ones.
+private let pampGramBanContactUsername = "Claps228"
+
 /// The screen a banned account sees instead of a gated section (or the whole hub, for a full
-/// ban) — a continuously animating padlock, the fixed headline the admin panel always uses, and
-/// the admin's own free-text reason underneath in its own row. Plain UIKit presented modally,
-/// same reasoning as `PampGramIconPickerScreen.swift`: this replaces a pushed screen entirely
-/// rather than sitting inside Telegram's own navigation stack, so there's no Display
-/// `ViewController` contract to satisfy here.
+/// ban) — styled as a short personal note from the admin (not a generic "ACCESS DENIED" panel),
+/// with the admin's own free-text reason worked into the body rather than shown as a separate
+/// labeled field, and a real "Написать мне" button that opens an actual chat with the contact
+/// behind every other "contact us" flow in the mod — so someone who wants their access back has
+/// an immediate, obvious way to ask, not just a dead end. Plain UIKit presented modally, same
+/// reasoning as `PampGramIconPickerScreen.swift`: this replaces a pushed screen entirely rather
+/// than sitting inside Telegram's own navigation stack, so there's no Display `ViewController`
+/// contract to satisfy here.
 private final class PampGramBannedViewController: UIViewController {
+    private let context: AccountContext
     private let reason: String
 
     private let lockContainer = UIView()
     private let lockImageView = UIImageView()
     private let titleLabel = UILabel()
-    private let reasonContainer = UIView()
-    private let reasonLabel = UILabel()
+    private let letterCard = UIView()
+    private let letterAccentBar = UIView()
+    private let letterBodyLabel = UILabel()
+    private let letterSignatureLabel = UILabel()
+    private let contactButton = UIButton(type: .system)
     private let closeButton = UIButton(type: .system)
 
     private var isLockOpen = true
 
-    init(reason: String) {
+    init(context: AccountContext, reason: String) {
+        self.context = context
         self.reason = reason
         super.init(nibName: nil, bundle: nil)
         self.modalPresentationStyle = .fullScreen
@@ -40,7 +55,7 @@ private final class PampGramBannedViewController: UIViewController {
         self.view.backgroundColor = UIColor(rgb: 0x0e0e14)
 
         self.lockContainer.backgroundColor = UIColor(rgb: 0xff3b30).withAlphaComponent(0.15)
-        self.lockContainer.layer.cornerRadius = 44.0
+        self.lockContainer.layer.cornerRadius = 36.0
         self.view.addSubview(self.lockContainer)
 
         self.lockImageView.image = UIImage(systemName: "lock.open.fill")?.withRenderingMode(.alwaysTemplate)
@@ -48,27 +63,47 @@ private final class PampGramBannedViewController: UIViewController {
         self.lockImageView.contentMode = .scaleAspectFit
         self.lockContainer.addSubview(self.lockImageView)
 
-        self.titleLabel.text = "Вы были заблокированы в нашем моде по причине, указанной ниже. Если хотите вернуть доступ — пожалуйста, свяжитесь с владельцем."
-        self.titleLabel.font = UIFont.systemFont(ofSize: 20.0, weight: .semibold)
-        self.titleLabel.textColor = .white
+        self.titleLabel.text = "Личное сообщение от администратора"
+        self.titleLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .semibold)
+        self.titleLabel.textColor = UIColor(white: 1.0, alpha: 0.5)
         self.titleLabel.textAlignment = .center
         self.titleLabel.numberOfLines = 0
         self.view.addSubview(self.titleLabel)
 
-        self.reasonContainer.backgroundColor = UIColor(white: 1.0, alpha: 0.08)
-        self.reasonContainer.layer.cornerRadius = 12.0
-        self.view.addSubview(self.reasonContainer)
+        // The "letter": a rounded card with a red accent bar down the left edge (an envelope/
+        // note feel, echoing the lock's own red without repeating the icon), holding the reason
+        // worked directly into a personal paragraph rather than a separate "Причина:" row.
+        self.letterCard.backgroundColor = UIColor(white: 1.0, alpha: 0.06)
+        self.letterCard.layer.cornerRadius = 18.0
+        self.view.addSubview(self.letterCard)
 
-        self.reasonLabel.text = "Причина: \(self.reason)"
-        self.reasonLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .medium)
-        self.reasonLabel.textColor = UIColor(white: 1.0, alpha: 0.85)
-        self.reasonLabel.textAlignment = .center
-        self.reasonLabel.numberOfLines = 0
-        self.reasonContainer.addSubview(self.reasonLabel)
+        self.letterAccentBar.backgroundColor = UIColor(rgb: 0xff3b30)
+        self.letterAccentBar.layer.cornerRadius = 2.0
+        self.letterCard.addSubview(self.letterAccentBar)
+
+        let trimmedReason = self.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.letterBodyLabel.text = "Здравствуйте.\n\nМне пришлось ограничить вам доступ к PampGram — вот причина, как я её вижу:\n\n«\(trimmedReason)»\n\nЕсли считаете, что это ошибка, или хотите всё обсудить и вернуть доступ — напишите мне лично, разберёмся."
+        self.letterBodyLabel.font = UIFont.systemFont(ofSize: 15.5, weight: .regular)
+        self.letterBodyLabel.textColor = UIColor(white: 1.0, alpha: 0.92)
+        self.letterBodyLabel.numberOfLines = 0
+        self.letterCard.addSubview(self.letterBodyLabel)
+
+        self.letterSignatureLabel.text = "— Администратор PampGram"
+        self.letterSignatureLabel.font = UIFont.italicSystemFont(ofSize: 14.0)
+        self.letterSignatureLabel.textColor = UIColor(white: 1.0, alpha: 0.55)
+        self.letterCard.addSubview(self.letterSignatureLabel)
+
+        self.contactButton.setTitle("Написать мне", for: .normal)
+        self.contactButton.setTitleColor(.white, for: .normal)
+        self.contactButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        self.contactButton.backgroundColor = UIColor(rgb: 0xff3b30)
+        self.contactButton.layer.cornerRadius = 14.0
+        self.contactButton.addTarget(self, action: #selector(self.contactPressed), for: .touchUpInside)
+        self.view.addSubview(self.contactButton)
 
         self.closeButton.setTitle("Закрыть", for: .normal)
-        self.closeButton.setTitleColor(UIColor(rgb: 0x8e44ec), for: .normal)
-        self.closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        self.closeButton.setTitleColor(UIColor(white: 1.0, alpha: 0.5), for: .normal)
+        self.closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 15.0, weight: .regular)
         self.closeButton.addTarget(self, action: #selector(self.closePressed), for: .touchUpInside)
         self.view.addSubview(self.closeButton)
 
@@ -84,25 +119,35 @@ private final class PampGramBannedViewController: UIViewController {
         super.viewDidLayoutSubviews()
 
         let width = self.view.bounds.width
-        let centerY = self.view.bounds.height * 0.42
+        let safeTop = self.view.safeAreaInsets.top
+        let textWidth = min(340.0, width - 40.0)
 
-        let containerSide: CGFloat = 88.0
-        self.lockContainer.frame = CGRect(x: (width - containerSide) / 2.0, y: centerY - containerSide - 24.0, width: containerSide, height: containerSide)
-        let iconSide: CGFloat = 40.0
+        var y = safeTop + 28.0
+
+        let containerSide: CGFloat = 72.0
+        self.lockContainer.frame = CGRect(x: (width - containerSide) / 2.0, y: y, width: containerSide, height: containerSide)
+        let iconSide: CGFloat = 32.0
         self.lockImageView.frame = CGRect(x: (containerSide - iconSide) / 2.0, y: (containerSide - iconSide) / 2.0, width: iconSide, height: iconSide)
+        y = self.lockContainer.frame.maxY + 14.0
 
-        let textWidth = min(300.0, width - 48.0)
         let titleSize = self.titleLabel.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude))
-        self.titleLabel.frame = CGRect(x: (width - textWidth) / 2.0, y: self.lockContainer.frame.maxY + 24.0, width: textWidth, height: titleSize.height)
+        self.titleLabel.frame = CGRect(x: (width - textWidth) / 2.0, y: y, width: textWidth, height: titleSize.height)
+        y = self.titleLabel.frame.maxY + 20.0
 
-        let reasonTextWidth = textWidth - 32.0
-        let reasonSize = self.reasonLabel.sizeThatFits(CGSize(width: reasonTextWidth, height: .greatestFiniteMagnitude))
-        let reasonContainerHeight = reasonSize.height + 24.0
-        self.reasonContainer.frame = CGRect(x: (width - textWidth) / 2.0, y: self.titleLabel.frame.maxY + 16.0, width: textWidth, height: reasonContainerHeight)
-        self.reasonLabel.frame = CGRect(x: 16.0, y: 12.0, width: reasonTextWidth, height: reasonSize.height)
+        let cardInnerWidth = textWidth - 24.0 - 16.0
+        let bodySize = self.letterBodyLabel.sizeThatFits(CGSize(width: cardInnerWidth, height: .greatestFiniteMagnitude))
+        self.letterBodyLabel.frame = CGRect(x: 24.0, y: 20.0, width: cardInnerWidth, height: bodySize.height)
+        let signatureSize = self.letterSignatureLabel.sizeThatFits(CGSize(width: cardInnerWidth, height: .greatestFiniteMagnitude))
+        self.letterSignatureLabel.frame = CGRect(x: 24.0, y: self.letterBodyLabel.frame.maxY + 14.0, width: cardInnerWidth, height: signatureSize.height)
+        let cardHeight = self.letterSignatureLabel.frame.maxY + 20.0
+        self.letterCard.frame = CGRect(x: (width - textWidth) / 2.0, y: y, width: textWidth, height: cardHeight)
+        self.letterAccentBar.frame = CGRect(x: 0.0, y: 14.0, width: 4.0, height: cardHeight - 28.0)
+
+        let ctaHeight: CGFloat = 52.0
+        self.contactButton.frame = CGRect(x: (width - textWidth) / 2.0, y: self.letterCard.frame.maxY + 24.0, width: textWidth, height: ctaHeight)
 
         self.closeButton.sizeToFit()
-        self.closeButton.frame = CGRect(x: (width - self.closeButton.frame.width) / 2.0, y: self.view.bounds.height - self.view.safeAreaInsets.bottom - 60.0, width: self.closeButton.frame.width, height: 44.0)
+        self.closeButton.frame = CGRect(x: (width - self.closeButton.frame.width) / 2.0, y: self.contactButton.frame.maxY + 16.0, width: self.closeButton.frame.width, height: 32.0)
     }
 
     /// Keeps re-scheduling itself for as long as the screen is on screen — `self.view.window`
@@ -133,6 +178,36 @@ private final class PampGramBannedViewController: UIViewController {
         })
     }
 
+    @objc private func contactPressed() {
+        guard let navigationController = self.context.sharedContext.mainWindow?.viewController as? NavigationController else {
+            return
+        }
+        let context = self.context
+        let reason = self.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let _ = (context.engine.peers.resolvePeerByName(name: pampGramBanContactUsername, referrer: nil)
+        |> mapToSignal { result -> Signal<EnginePeer?, NoError> in
+            guard case let .result(peer) = result else {
+                return .complete()
+            }
+            return .single(peer)
+        }
+        |> deliverOnMainQueue).startStandalone(next: { [weak self] peer in
+            guard let self, let peer else {
+                return
+            }
+            self.dismiss(animated: true, completion: {
+                context.sharedContext.navigateToChatController(NavigateToChatControllerParams(
+                    navigationController: navigationController,
+                    context: context,
+                    chatLocation: .peer(peer),
+                    updateTextInputState: ChatTextInputState(inputText: NSAttributedString(string: "Здравствуйте! Меня заблокировали в PampGram по причине «\(reason)», хочу это обсудить.")),
+                    activateInput: .text,
+                    keepStack: .always
+                ))
+            })
+        })
+    }
+
     @objc private func closePressed() {
         self.dismiss(animated: true, completion: nil)
     }
@@ -142,7 +217,7 @@ public func pampGramPresentBannedScreen(context: AccountContext, reason: String)
     guard let presentingController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController else {
         return
     }
-    presentingController.present(PampGramBannedViewController(reason: reason), animated: true, completion: nil)
+    presentingController.present(PampGramBannedViewController(context: context, reason: reason), animated: true, completion: nil)
 }
 
 /// Checks this build's version and this account's ban status for `section` FIRST and only calls

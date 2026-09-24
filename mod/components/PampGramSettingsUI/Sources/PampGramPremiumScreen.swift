@@ -5,24 +5,13 @@ import SwiftSignalKit
 import AccountContext
 import PampGramCore
 
-/// Where "Активировать Premium"/"Активировать ещё один ключ" sends the user — the same
-/// t.me-deep-link-with-prefilled-text pattern `PampGramHubScreen.swift`'s "Поддержать проект"
-/// already uses, not the on-device "paste a key you already have" prompt (that one stays put on
-/// the "Статус" screen, for people who already have a key from somewhere). This is the intended
-/// primary path for someone who doesn't have Premium yet: message the account that actually
-/// issues keys.
-private let pampGramPremiumKeysUsername = "Claps228"
-
-private func pampGramPremiumActivationUrl() -> String {
-    let text = "Привет, хочу активировать Premium в PampGram, подскажи, как получить ключ."
-    let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? text
-    return "https://t.me/\(pampGramPremiumKeysUsername)?text=\(encoded)"
-}
-
 /// One row of the feature list below the PampGram logo — a colored icon square, a bold title
 /// and a one-line description. Mirrors the layout used by pretty much every paywall of this
 /// kind (icon + title + description on a rounded dark card); nothing here is copied text or
-/// artwork from any specific app, only PampGram's own real PRO-gated features.
+/// artwork from any specific app, only PampGram's own real PRO-gated features. Listed here are
+/// only what's actually behind `pampGramGateTier` — «Подарки» and «Внешний вид» — never Ghost or
+/// Дополнительно, which are included in Standard (see `PampGramHubScreen.swift`'s openGhost/
+/// openAdditional).
 private struct PampGramPremiumFeature {
     let systemImageName: String
     let color: UIColor
@@ -31,13 +20,11 @@ private struct PampGramPremiumFeature {
 }
 
 private let pampGramPremiumFeatures: [PampGramPremiumFeature] = [
-    PampGramPremiumFeature(systemImageName: "eye.slash.fill", color: UIColor(rgb: 0x34c759), title: "Ghost-режим", subtitle: "Скрывай «в сети», «печатает» и прочтения — плюс автооффлайн, когда не пишешь сам."),
-    PampGramPremiumFeature(systemImageName: "waveform", color: UIColor(rgb: 0x3b82f6), title: "Изменение голоса", subtitle: "5 пресетов для голосовых сообщений, применяется перед отправкой."),
-    PampGramPremiumFeature(systemImageName: "bolt.fill", color: UIColor(rgb: 0xff9500), title: "Ускорение передачи", subtitle: "Турбо-режим для загрузки и скачивания файлов."),
-    PampGramPremiumFeature(systemImageName: "photo.on.rectangle.angled", color: UIColor(rgb: 0x8e44ec), title: "Сохранение историй", subtitle: "Скриншот и запись экрана без чёрного экрана, «Сохранить» даже для защищённых историй."),
-    PampGramPremiumFeature(systemImageName: "timer", color: UIColor(rgb: 0x636366), title: "Показ временной медиа", subtitle: "Фото и видео с таймером — как обычные, без размытия и «одного просмотра»."),
-    PampGramPremiumFeature(systemImageName: "pin.fill", color: UIColor(rgb: 0xff3b30), title: "Без лимитов", subtitle: "Закрепляй сколько угодно чатов и сними клиентские ограничения Premium."),
-    PampGramPremiumFeature(systemImageName: "lock.fill", color: UIColor(rgb: 0x8e8e93), title: "Блокировка и геопозиция", subtitle: "PIN-код на выбранные чаты и фейковая точка для трансляции."),
+    PampGramPremiumFeature(systemImageName: "gift.fill", color: UIColor(rgb: 0xff3b30), title: "Визуальные подарки", subtitle: "«Подарок ему»/«Подарок мне» — выглядит как настоящий подарок, без реального списания Stars или TON."),
+    PampGramPremiumFeature(systemImageName: "star.circle.fill", color: UIColor(rgb: 0xffcc00), title: "Локальные звёзды и TON", subtitle: "Свой баланс вместо настоящего — показывается везде, где Telegram показывает баланс."),
+    PampGramPremiumFeature(systemImageName: "cart.fill", color: UIColor(rgb: 0x34c759), title: "Витрина и маркет подарков", subtitle: "Своя коллекция, продажа и передача подарков между чатами."),
+    PampGramPremiumFeature(systemImageName: "paintbrush.fill", color: UIColor(rgb: 0x8e44ec), title: "Внешний вид", subtitle: "Пресеты Standard/Glass/Compact и тонкая настройка пузырей, блюра, плотности списка чатов."),
+    PampGramPremiumFeature(systemImageName: "app.badge", color: UIColor(rgb: 0x3b82f6), title: "Своя иконка приложения", subtitle: "Набор альтернативных иконок PampGram вместо стандартной."),
 ]
 
 private final class PampGramPremiumFeatureRow: UIView {
@@ -113,7 +100,12 @@ private final class PampGramPremiumViewController: UIViewController {
     private let statusLabel = UILabel()
     private var featureRows: [PampGramPremiumFeatureRow] = []
     private let footerLabel = UILabel()
+    // Only one of these two occupies the bottom CTA slot at a time — the code-entry button while
+    // on Standard, a plain expiry readout once PRO is actually active. Swapping the button out
+    // for text (rather than just re-labeling and disabling it) makes "you're done, nothing left
+    // to tap here" unambiguous.
     private let ctaButton = UIButton(type: .system)
+    private let activatedLabel = UILabel()
 
     init(context: AccountContext) {
         self.context = context
@@ -172,7 +164,7 @@ private final class PampGramPremiumViewController: UIViewController {
             self.featureRows.append(row)
         }
 
-        self.footerLabel.text = "Работает через ключ активации — без покупок Apple ID и подписок в App Store. Ключ выдаёт команда PampGram."
+        self.footerLabel.text = "Активируется кодом, который выдаёт администратор — без покупок Apple ID и подписок в App Store."
         self.footerLabel.font = UIFont.systemFont(ofSize: 12.0, weight: .regular)
         self.footerLabel.textColor = UIColor(white: 1.0, alpha: 0.4)
         self.footerLabel.textAlignment = .center
@@ -181,10 +173,18 @@ private final class PampGramPremiumViewController: UIViewController {
 
         self.ctaButton.backgroundColor = .white
         self.ctaButton.setTitleColor(.black, for: .normal)
+        self.ctaButton.setTitle("Обновиться до премиума", for: .normal)
         self.ctaButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
         self.ctaButton.layer.cornerRadius = 14.0
         self.ctaButton.addTarget(self, action: #selector(self.ctaPressed), for: .touchUpInside)
         self.view.addSubview(self.ctaButton)
+
+        self.activatedLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .medium)
+        self.activatedLabel.textColor = UIColor(rgb: 0x34c759)
+        self.activatedLabel.textAlignment = .center
+        self.activatedLabel.numberOfLines = 0
+        self.activatedLabel.isHidden = true
+        self.view.addSubview(self.activatedLabel)
 
         self.reloadStatus()
     }
@@ -198,11 +198,13 @@ private final class PampGramPremiumViewController: UIViewController {
 
         self.closeButton.frame = CGRect(x: 16.0, y: topInset + 8.0, width: 32.0, height: 32.0)
 
-        let ctaHeight: CGFloat = 52.0
-        let ctaBottomMargin: CGFloat = 12.0
-        self.ctaButton.frame = CGRect(x: 20.0, y: self.view.bounds.height - bottomInset - ctaHeight - ctaBottomMargin, width: width - 40.0, height: ctaHeight)
+        let bottomSlotHeight: CGFloat = 52.0
+        let bottomMargin: CGFloat = 12.0
+        let bottomSlotFrame = CGRect(x: 20.0, y: self.view.bounds.height - bottomInset - bottomSlotHeight - bottomMargin, width: width - 40.0, height: bottomSlotHeight)
+        self.ctaButton.frame = bottomSlotFrame
+        self.activatedLabel.frame = bottomSlotFrame
 
-        self.scrollView.frame = CGRect(x: 0.0, y: 0.0, width: width, height: self.ctaButton.frame.minY)
+        self.scrollView.frame = CGRect(x: 0.0, y: 0.0, width: width, height: bottomSlotFrame.minY)
 
         var y: CGFloat = topInset + 56.0
 
@@ -254,18 +256,23 @@ private final class PampGramPremiumViewController: UIViewController {
         self.badgeLabel.text = isPro ? "  PRO АКТИВЕН  " : "  STANDARD  "
         self.badgeLabel.backgroundColor = isPro ? UIColor(rgb: 0x34c759) : UIColor(rgb: 0x8e44ec)
         if isPro {
+            let expiryText: String
             if let expiresAt = status.expiresAt {
                 let formatter = DateFormatter()
                 formatter.dateStyle = .medium
                 formatter.timeStyle = .short
-                self.statusLabel.text = "Premium активен до \(formatter.string(from: expiresAt))"
+                expiryText = "Ваш Premium активирован до \(formatter.string(from: expiresAt))"
             } else {
-                self.statusLabel.text = "Premium активен — без ограничения по сроку"
+                expiryText = "Ваш Premium активирован — без ограничения по сроку"
             }
-            self.ctaButton.setTitle("Активировать ещё один ключ", for: .normal)
+            self.statusLabel.text = "Все разделы открыты — ниже то, что даёт Premium"
+            self.activatedLabel.text = expiryText
+            self.activatedLabel.isHidden = false
+            self.ctaButton.isHidden = true
         } else {
-            self.statusLabel.text = "Разблокируй Ghost, ускорение передачи и остальные функции ниже"
-            self.ctaButton.setTitle("Активировать Premium", for: .normal)
+            self.statusLabel.text = "Разблокируй «Подарки» и «Внешний вид» — остальное уже входит в Standard"
+            self.activatedLabel.isHidden = true
+            self.ctaButton.isHidden = false
         }
         self.view.setNeedsLayout()
     }
@@ -275,16 +282,33 @@ private final class PampGramPremiumViewController: UIViewController {
     }
 
     @objc private func ctaPressed() {
-        guard let navigationController = self.context.sharedContext.mainWindow?.viewController as? NavigationController else {
-            return
-        }
-        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
-        self.context.sharedContext.openExternalUrl(context: self.context, urlContext: .generic, url: pampGramPremiumActivationUrl(), forceExternal: false, presentationData: presentationData, navigationController: navigationController, dismissInput: {})
+        // Presented directly on self, not on the hub underneath: self is already the topmost
+        // visible controller (this Premium screen is itself a modal over the hub), and
+        // `ViewController` (Display's class, what `promptController` returns) is itself a
+        // `UIViewController` subclass, so plain UIKit presentation works the same as it would
+        // from any other view controller.
+        pampGramPresentRedeemKeyFlow(context: self.context, presentController: { [weak self] controller in
+            self?.present(controller, animated: true, completion: nil)
+        }, presentTooltip: { [weak self] text in
+            // A plain UIAlertController rather than the ItemList-style UndoOverlayController
+            // toast every other PampGram redeem-key call site uses: this screen is a raw
+            // UIViewController presented outside Telegram's own controller-container system
+            // (see `PampGramIconPickerScreen.swift` for the same choice, same reasoning), and
+            // UndoOverlayController's bottom-overlay layout depends on that container.
+            guard let self else {
+                return
+            }
+            let alert = UIAlertController(title: nil, message: text, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+            self.present(alert, animated: true, completion: nil)
+        }, onActivated: { [weak self] status in
+            self?.apply(status: status)
+        })
     }
 }
 
-/// The Premium paywall — reached from the "Premium" button in the PampGram hub's top-right
-/// corner, and from any section `pampGramGateTier` intercepts. Presented modally (like
+/// The Premium paywall — reached from the "Premium"/"Стандарт" button in the PampGram hub's
+/// top-right corner, and from any section `pampGramGateTier` intercepts. Presented modally (like
 /// `PampGramBannedScreen.swift`) rather than pushed, so it reads as a distinct "upsell" moment
 /// rather than another settings page.
 public func pampGramPresentPremiumScreen(context: AccountContext) {

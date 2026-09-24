@@ -455,7 +455,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
             presentationData: ItemListPresentationData(presentationData),
             title: .text("PampGram"),
             leftNavigationButton: nil,
-            rightNavigationButton: ItemListNavigationButton(content: .text("Premium"), style: .bold, enabled: true, action: {
+            rightNavigationButton: ItemListNavigationButton(content: .text(settings.cachedIsProSubscriber ? "Premium" : "Стандарт"), style: .bold, enabled: true, action: {
                 arguments.openPremium()
             }),
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),

@@ -337,9 +337,10 @@ public struct PampGramSettings: Codable, Equatable {
     /// Set once, locally, by `AccountContextImpl.init` when the signed-in account's id equals
     /// `PampGramSubscriptionAPI.adminAccountId` (@kopimastera) — never by anything server-side,
     /// and never for any other account. `PampGramCore.settings`/`settingsSignal` check this
-    /// before `bannedLocally` too, so this account's own device always gets `allFeaturesOn()`
-    /// regardless of what the ban/tier server ever reports for it — a ban record or a lapsed
-    /// grant landing on this specific id (by mistake or otherwise) has no effect here.
+    /// before `bannedLocally`, so this account's own device can never be locked out by a ban
+    /// record landing on this specific id (by mistake or otherwise) — but every individual
+    /// toggle still reads back exactly as stored, same as any other account, so the owner can
+    /// actually test turning a feature off on their own device instead of it silently staying on.
     public var isOwnerAccount: Bool
     /// "Скрыть номер телефона": hides this account's own phone number from the Settings
     /// screen header subtitle and from the phone-number row in "Мой профиль". Purely a local
@@ -598,39 +599,6 @@ public struct PampGramSettings: Codable, Equatable {
         return settings
     }
 
-    /// `isOwnerAccount`'s counterpart to `allFeaturesOff()`: every toggle on instead of off, for
-    /// @kopimastera's own device. Leaves the numeric balances as stored — this unlocks every
-    /// section, it doesn't hand out free Stars/TON/rubles.
-    public func allFeaturesOn() -> PampGramSettings {
-        var settings = self
-        settings.phantomGiftsEnabled = true
-        settings.fromHimGiftsEnabled = true
-        settings.fakeStarsDisplayEnabled = true
-        settings.fakeTonDisplayEnabled = true
-        settings.localRublesPurchaseEnabled = true
-        settings.antiDeleteMessagesEnabled = true
-        settings.ghostReaderEnabled = true
-        settings.onlineMaskEnabled = true
-        settings.ghostModeEnabled = true
-        settings.ghostHideReadReceipts = true
-        settings.ghostHideStoryViews = true
-        settings.ghostHideOnline = true
-        settings.ghostHideTyping = true
-        settings.ghostAutoOffline = true
-        settings.ghostReadOnAction = true
-        settings.visualEditEnabled = true
-        settings.voiceChangerMessagesEnabled = true
-        settings.fakeLocationEnabled = true
-        settings.chatLockEnabled = true
-        settings.infinitePinsEnabled = true
-        settings.legalPremiumEnabled = true
-        settings.showTemporaryMediaEnabled = true
-        settings.storySavingEnabled = true
-        settings.bypassScreenshotProtectionEnabled = true
-        settings.masterEnabled = true
-        return settings
-    }
-
     /// Whether a peer is exempt from Ghost's per-peer suppression, given its type and the
     /// folder ids it belongs to. Pure and primitive-typed on purpose: it's called from hooks
     /// inside TelegramCore, which resolve `isChannel`/`isGroup`/`folderIds` from the peer and
@@ -687,17 +655,14 @@ public enum PampGramCore {
     /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
     /// визуалку" is off, only the gift-visual features read as disabled; every other section is
     /// unaffected. Screens that need the real stored gift state use `rawSettings` instead.
-    /// Checked before the gifts-only gate: @kopimastera's own device (`isOwnerAccount`) always
-    /// gets `allFeaturesOn()`, regardless of anything else stored — checked ahead of the ban
-    /// flag too, so nothing server-side can lock this one account out of its own mod. Otherwise
-    /// a full ban (`bannedLocally`, set by `PampGramBanEnforcer`) reports every feature off, not
-    /// just gifts — see `allFeaturesOff()`.
+    /// A full ban (`bannedLocally`, set by `PampGramBanEnforcer`) reports every feature off, not
+    /// just gifts — see `allFeaturesOff()` — except for @kopimastera's own device
+    /// (`isOwnerAccount`), which a ban record landing on this id (by mistake or otherwise) can
+    /// never lock out. That's the only thing `isOwnerAccount` overrides: every individual toggle
+    /// still comes back exactly as stored, same as any other account.
     public static func settings(transaction: Transaction) -> PampGramSettings {
         let raw = self.rawSettings(transaction: transaction)
-        if raw.isOwnerAccount {
-            return raw.allFeaturesOn()
-        }
-        if raw.bannedLocally {
+        if raw.bannedLocally && !raw.isOwnerAccount {
             return raw.allFeaturesOff()
         }
         return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
@@ -720,14 +685,11 @@ public enum PampGramCore {
     }
 
     /// Live gifts-gated settings, for feature effect/display code. See `settings(transaction:)`
-    /// for the `isOwnerAccount`/`bannedLocally` checks this applies first.
+    /// for the `isOwnerAccount`/`bannedLocally` check this applies first.
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return self.rawSettingsSignal(postbox: postbox)
         |> map { raw -> PampGramSettings in
-            if raw.isOwnerAccount {
-                return raw.allFeaturesOn()
-            }
-            if raw.bannedLocally {
+            if raw.bannedLocally && !raw.isOwnerAccount {
                 return raw.allFeaturesOff()
             }
             return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
