@@ -116,10 +116,10 @@ private final class PampGramSubscriptionArguments {
 /// than jumping straight to the paywall, so there's one canonical "your plan" screen regardless
 /// of how you got here. "Возможности Premium" opens the full paywall
 /// (`PampGramPremiumScreen.swift`, which lists Standard's included sections alongside the
-/// PRO-exclusive ones); "Обновить план" redeems a one-time code the same way
-/// `PampGramStatusScreen.swift`'s "Активировать ключ" always has (a key minted as "pro" — see
-/// the admin panel's "Сгенерировать ключ" — grants tier on redemption, no separate mechanism
-/// needed here).
+/// PRO-exclusive ones); "Обновить план" redeems a one-time code via the same shared
+/// `pampGramPresentRedeemKeyFlow` every other redeem entry point in the mod uses (a key minted
+/// as "pro" — see the admin panel's "Сгенерировать ключ" — grants tier on redemption, no
+/// separate mechanism needed here).
 public func pampGramSubscriptionController(context: AccountContext) -> ViewController {
     let selfAccountId = context.account.peerId.id._internalGetInt64Value()
     let statusPromise = Promise<PampGramSubscriptionStatus>()

@@ -11,23 +11,19 @@ import PampGramCore
 
 private enum PampGramHubSection: Int32 {
     case hero
-    case search
     case sections
-    case status
     case team
     case plan
 }
 
 private enum PampGramHubEntry: ItemListNodeEntry {
     case hero
-    case search
     case gifts
     case messages
     case privacy
     case appearance
     case advanced
     case admin
-    case status(Int, Int)
     case team
     case plan(Bool)
 
@@ -35,12 +31,8 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return PampGramHubSection.hero.rawValue
-        case .search:
-            return PampGramHubSection.search.rawValue
         case .gifts, .messages, .privacy, .appearance, .advanced, .admin:
             return PampGramHubSection.sections.rawValue
-        case .status:
-            return PampGramHubSection.status.rawValue
         case .team:
             return PampGramHubSection.team.rawValue
         case .plan:
@@ -52,8 +44,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return 0
-        case .search:
-            return 1
         case .gifts:
             return 2
         case .messages:
@@ -66,8 +56,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return 6
         case .admin:
             return 7
-        case .status:
-            return 8
         case .team:
             return 9
         case .plan:
@@ -97,19 +85,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 disclosureStyle: .none,
                 action: {
                     arguments.openAbout()
-                }
-            )
-        case .search:
-            return ItemListDisclosureItem(
-                presentationData: presentationData,
-                systemStyle: .glass,
-                icon: generatePampGramSectionIcon(systemName: "magnifyingglass", backgroundColor: UIColor(rgb: 0x636366)),
-                title: "Найти функцию или раздел",
-                label: "",
-                sectionId: self.section,
-                style: .blocks,
-                action: {
-                    arguments.openSearch()
                 }
             )
         case .gifts:
@@ -202,22 +177,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                     arguments.openAdmin()
                 }
             )
-        case let .status(activeCount, totalCount):
-            return ItemListDisclosureItem(
-                presentationData: presentationData,
-                systemStyle: .glass,
-                icon: generatePampGramSectionIcon(systemName: "checkmark.shield.fill", backgroundColor: UIColor(rgb: 0x8e44ec)),
-                title: "Статус",
-                titleFont: .bold,
-                label: "",
-                additionalDetailLabel: "\(activeCount) из \(totalCount) функций активны",
-                additionalDetailLabelColor: activeCount == totalCount ? .constructive : .generic,
-                sectionId: self.section,
-                style: .blocks,
-                action: {
-                    arguments.openStatus()
-                }
-            )
         case .team:
             return ItemListDisclosureItem(
                 presentationData: presentationData,
@@ -260,23 +219,19 @@ private final class PampGramHubArguments {
     let openAppearance: () -> Void
     let openAdditional: () -> Void
     let openAdmin: () -> Void
-    let openStatus: () -> Void
     let openAbout: () -> Void
     let openSupport: () -> Void
-    let openSearch: () -> Void
     let openPremium: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSearch: @escaping () -> Void, openSupport: @escaping () -> Void, openPremium: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void, openPremium: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
         self.openAppearance = openAppearance
         self.openAdditional = openAdditional
         self.openAdmin = openAdmin
-        self.openStatus = openStatus
         self.openAbout = openAbout
         self.openSupport = openSupport
-        self.openSearch = openSearch
         self.openPremium = openPremium
     }
 }
@@ -292,22 +247,9 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
     return "https://t.me/\(pampGramSupportUsername)?text=\(encoded)"
 }
 
-private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, isAdmin: Bool, isPro: Bool) -> [PampGramHubEntry] {
-    let toggles = [
-        settings.phantomGiftsEnabled,
-        settings.fakeStarsDisplayEnabled,
-        settings.fakeTonDisplayEnabled,
-        settings.fromHimGiftsEnabled,
-        profileVisuals.anonymousNumberEnabled,
-        profileVisuals.ratingEnabled,
-        settings.antiDeleteMessagesEnabled,
-        settings.visualEditEnabled,
-        settings.ghostModeEnabled
-    ]
-    let activeCount = toggles.filter { $0 }.count
+private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool, isPro: Bool) -> [PampGramHubEntry] {
     var entries: [PampGramHubEntry] = [
         .hero,
-        .search,
         .gifts,
         .messages,
         .privacy,
@@ -317,7 +259,6 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
     if isAdmin {
         entries.append(.admin)
     }
-    entries.append(.status(activeCount, toggles.count))
     entries.append(.team)
     entries.append(.plan(isPro))
     return entries
@@ -362,14 +303,8 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         openAdmin: {
             pushControllerImpl?(pampGramAdminController(context: context))
         },
-        openStatus: {
-            pushControllerImpl?(pampGramStatusController(context: context))
-        },
         openAbout: {
             pushControllerImpl?(pampGramSubscriptionController(context: context))
-        },
-        openSearch: {
-            pushControllerImpl?(pampGramSearchController(context: context))
         },
         openSupport: {
             let presentationData = context.sharedContext.currentPresentationData.with { $0 }
@@ -449,10 +384,10 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
     // Refreshes `cachedIsProSubscriber` — the tier itself only ever comes from a live network
     // call (`fetchTier`), but "Закрепить чаты"'s pin-count cap needs to read it synchronously
     // inside a Postbox transaction (see `TogglePeerChatPinned.swift`), so this is the closest
-    // thing to "live" that spot can use. One-shot per open; at most one tab-open stale, same
-    // trade-off `PampGramStatusScreen.swift` already accepts for its own PRO badge. This one
-    // isn't a gate (nothing here decides whether the hub is reachable), so it stays here rather
-    // than moving upstream with the ban/activation checks.
+    // thing to "live" that spot can use. One-shot per open; at most one tab-open stale — the
+    // same trade-off the hub's own "Ваш план"/top-right badge already accepts. This one isn't a
+    // gate (nothing here decides whether the hub is reachable), so it stays here rather than
+    // moving upstream with the ban/activation checks.
     let _ = (PampGramSubscriptionAPI.fetchTier(userId: selfAccountId)
     |> deliverOnMainQueue).start(next: { tier in
         let _ = context.account.postbox.transaction { transaction in
@@ -469,11 +404,10 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox),
-        PampGramProfileVisualStore.signal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings, profileVisuals -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("PampGram"),
@@ -486,7 +420,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramHubEntries(settings: settings, profileVisuals: profileVisuals, isAdmin: isAdmin, isPro: settings.cachedIsProSubscriber),
+            entries: pampGramHubEntries(settings: settings, isAdmin: isAdmin, isPro: settings.cachedIsProSubscriber),
             style: .blocks,
             animateChanges: true
         )

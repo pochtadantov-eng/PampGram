@@ -5,6 +5,27 @@ import TelegramPresentationData
 import AccountContext
 import AppBundle
 
+/// Turns a raw alternate-icon codename (e.g. "BlueClassicIcon", "New2") into something
+/// readable without inventing style descriptions we can't verify — just the real name with
+/// word breaks inserted before each capital.
+func pampGramIconDisplayName(_ icon: PresentationAppIcon) -> String {
+    if icon.isDefault {
+        return "Стандартная"
+    }
+    var name = icon.name
+    if name.hasSuffix("Icon") {
+        name.removeLast(4)
+    }
+    var result = ""
+    for (index, character) in name.enumerated() {
+        if index > 0 && character.isUppercase {
+            result += " "
+        }
+        result.append(character)
+    }
+    return result.isEmpty ? icon.name : result
+}
+
 /// One tile in the icon grid: a rounded preview card with the icon centered inside it, the
 /// display name below the card, and — only on the currently applied icon — a colored ring
 /// around the whole card plus a checkmark badge in its corner, so the current choice reads

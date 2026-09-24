@@ -334,6 +334,16 @@ public struct PampGramSettings: Codable, Equatable {
     /// stored. Cleared back to `false` by the same enforcer once the server reports the ban lifted;
     /// the zeroed balances are not restored, since zeroing them was itself the point.
     public var bannedLocally: Bool
+    /// Same kill switch as `bannedLocally`, independent trigger: written locally by
+    /// `PampGramChannelSubscriptionEnforcer`, which polls this account's real membership in
+    /// `pampGramRequiredChannelUsername` (Telegram's own `channels.getParticipant`, not
+    /// anything server-side of PampGram's) and sets this to `true` the moment it's no longer a
+    /// member. `PampGramCore.settings`/`settingsSignal` check this the same way as
+    /// `bannedLocally` — see those functions — so every feature stops doing anything the moment
+    /// this flips, and `pampGramGateSection`/`pampGramGateFullAccess`/`pampGramGateTier` show
+    /// `PampGramFrozenScreen.swift` instead of the real section. Cleared back to `false` the
+    /// same way once the poll sees the account re-subscribed.
+    public var channelUnsubscribedLocally: Bool
     /// Set once, locally, by `AccountContextImpl.init` when the signed-in account's id equals
     /// `PampGramSubscriptionAPI.adminAccountId` (@kopimastera) — never by anything server-side,
     /// and never for any other account. `PampGramCore.settings`/`settingsSignal` check this
@@ -414,6 +424,7 @@ public struct PampGramSettings: Codable, Equatable {
             masterEnabled: true,
             hidePampGramIconEnabled: false,
             bannedLocally: false,
+            channelUnsubscribedLocally: false,
             isOwnerAccount: false,
             hideOwnPhoneNumber: false,
             fakePhoneNumber: "",
@@ -421,7 +432,7 @@ public struct PampGramSettings: Codable, Equatable {
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -464,6 +475,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.masterEnabled = masterEnabled
         self.hidePampGramIconEnabled = hidePampGramIconEnabled
         self.bannedLocally = bannedLocally
+        self.channelUnsubscribedLocally = channelUnsubscribedLocally
         self.isOwnerAccount = isOwnerAccount
         self.hideOwnPhoneNumber = hideOwnPhoneNumber
         self.fakePhoneNumber = fakePhoneNumber
@@ -542,6 +554,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
         self.hidePampGramIconEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePampGramIconEnabled) ?? defaults.hidePampGramIconEnabled
         self.bannedLocally = try container.decodeIfPresent(Bool.self, forKey: .bannedLocally) ?? defaults.bannedLocally
+        self.channelUnsubscribedLocally = try container.decodeIfPresent(Bool.self, forKey: .channelUnsubscribedLocally) ?? defaults.channelUnsubscribedLocally
         self.isOwnerAccount = try container.decodeIfPresent(Bool.self, forKey: .isOwnerAccount) ?? defaults.isOwnerAccount
         self.hideOwnPhoneNumber = try container.decodeIfPresent(Bool.self, forKey: .hideOwnPhoneNumber) ?? defaults.hideOwnPhoneNumber
         self.fakePhoneNumber = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumber) ?? defaults.fakePhoneNumber
@@ -654,14 +667,15 @@ public enum PampGramCore {
     /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
     /// визуалку" is off, only the gift-visual features read as disabled; every other section is
     /// unaffected. Screens that need the real stored gift state use `rawSettings` instead.
-    /// A full ban (`bannedLocally`, set by `PampGramBanEnforcer`) reports every feature off, not
-    /// just gifts — see `allFeaturesOff()` — except for @kopimastera's own device
-    /// (`isOwnerAccount`), which a ban record landing on this id (by mistake or otherwise) can
-    /// never lock out. That's the only thing `isOwnerAccount` overrides: every individual toggle
-    /// still comes back exactly as stored, same as any other account.
+    /// A full ban (`bannedLocally`, set by `PampGramBanEnforcer`) or having left the required
+    /// channel (`channelUnsubscribedLocally`, set by `PampGramChannelSubscriptionEnforcer`)
+    /// reports every feature off, not just gifts — see `allFeaturesOff()` — except for
+    /// @kopimastera's own device (`isOwnerAccount`), which neither can ever lock out. That's the
+    /// only thing `isOwnerAccount` overrides: every individual toggle still comes back exactly
+    /// as stored, same as any other account.
     public static func settings(transaction: Transaction) -> PampGramSettings {
         let raw = self.rawSettings(transaction: transaction)
-        if raw.bannedLocally && !raw.isOwnerAccount {
+        if (raw.bannedLocally || raw.channelUnsubscribedLocally) && !raw.isOwnerAccount {
             return raw.allFeaturesOff()
         }
         return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
@@ -684,11 +698,12 @@ public enum PampGramCore {
     }
 
     /// Live gifts-gated settings, for feature effect/display code. See `settings(transaction:)`
-    /// for the `isOwnerAccount`/`bannedLocally` check this applies first.
+    /// for the `isOwnerAccount`/`bannedLocally`/`channelUnsubscribedLocally` check this applies
+    /// first.
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
         return self.rawSettingsSignal(postbox: postbox)
         |> map { raw -> PampGramSettings in
-            if raw.bannedLocally && !raw.isOwnerAccount {
+            if (raw.bannedLocally || raw.channelUnsubscribedLocally) && !raw.isOwnerAccount {
                 return raw.allFeaturesOff()
             }
             return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()

@@ -5,7 +5,8 @@ import PromptUI
 import PampGramCore
 
 /// A short "до 21.10, 14:32"-style label for a subscription's expiry. Shared between the
-/// "Статус" badge and the redeem-key success tooltip so both read the date the same way.
+/// "Подписка" screen's PRO card and the redeem-key success tooltip so both read the date the
+/// same way.
 func pampGramFormatSubscriptionExpiry(_ date: Date) -> String {
     let formatter = DateFormatter()
     formatter.dateStyle = .short
@@ -13,12 +14,12 @@ func pampGramFormatSubscriptionExpiry(_ date: Date) -> String {
     return "до \(formatter.string(from: date))"
 }
 
-/// The "Активировать ключ" prompt-and-redeem flow, shared by `PampGramStatusScreen.swift` and
-/// `PampGramPremiumScreen.swift` — same prompt copy, same API call, same success/failure
-/// tooltip, so activating a key looks and behaves identically no matter which screen it was
-/// opened from. `presentController`/`presentTooltip` let each caller decide how to present
-/// (pushed `ItemListController` vs. a plain `UIViewController`); `onActivated` lets the caller
-/// refresh its own displayed tier after a successful redeem.
+/// The "Активировать ключ"/"Обновить план" prompt-and-redeem flow, shared by
+/// `PampGramAboutScreen.swift` and `PampGramPremiumScreen.swift` — same prompt copy, same API
+/// call, same success/failure tooltip, so activating a key looks and behaves identically no
+/// matter which screen it was opened from. `presentController`/`presentTooltip` let each caller
+/// decide how to present (pushed `ItemListController` vs. a plain `UIViewController`);
+/// `onActivated` lets the caller refresh its own displayed tier after a successful redeem.
 func pampGramPresentRedeemKeyFlow(context: AccountContext, presentController: @escaping (ViewController) -> Void, presentTooltip: @escaping (String) -> Void, onActivated: ((PampGramSubscriptionStatus) -> Void)? = nil) {
     presentController(promptController(
         context: context,

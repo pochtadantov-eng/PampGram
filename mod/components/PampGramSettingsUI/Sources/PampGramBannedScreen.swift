@@ -232,17 +232,21 @@ public func pampGramPresentBannedScreen(context: AccountContext, reason: String)
 /// that every open — including the overwhelmingly common allowed case — now pays for two round
 /// trips before the section appears; neither `fetchMinVersion` nor `fetchBanStatus` ever fails
 /// outward (any network problem resolves to "not banned"/"no minimum"), so a flaky connection
-/// costs a beat of latency, never a false lockout. Shared by every navigation point that can
-/// reach a gated section — the hub's own rows and "Статус"'s mirror of the same rows both call
-/// this rather than pushing straight through.
+/// costs a beat of latency, never a false lockout (the channel-subscription check added
+/// alongside these two is the one exception — see its own doc comment above). Shared by every
+/// navigation point that can reach a gated section, rather than pushing straight through.
 public func pampGramGateSection(context: AccountContext, section: PampGramBanSection, openReal: @escaping () -> Void) {
+    let isOwner = context.account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId
     let _ = (combineLatest(
         PampGramSubscriptionAPI.fetchMinVersion(),
-        PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
+        PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value()),
+        isOwner ? Signal<Bool, NoError>.single(true) : PampGramChannelSubscriptionEnforcer.checkNow(account: context.account)
     )
-    |> deliverOnMainQueue).start(next: { minVersion, status in
+    |> deliverOnMainQueue).start(next: { minVersion, status, isChannelSubscribed in
         if PampGramSubscriptionAPI.currentBuildVersion < minVersion {
             pampGramPresentUpdateRequiredScreen(context: context)
+        } else if !isChannelSubscribed {
+            pampGramPresentFrozenScreen(context: context)
         } else if let reason = status.full ?? status.reason(for: section) {
             pampGramPresentBannedScreen(context: context, reason: reason)
         } else {
@@ -257,13 +261,17 @@ public func pampGramGateSection(context: AccountContext, section: PampGramBanSec
 /// entry points that live entirely outside the hub (message long-press menu, attachment-button
 /// long-press) so a full ban actually reaches every way into PampGram, not just the hub.
 public func pampGramGateFullAccess(context: AccountContext, onAllowed: @escaping () -> Void) {
+    let isOwner = context.account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId
     let _ = (combineLatest(
         PampGramSubscriptionAPI.fetchMinVersion(),
-        PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
+        PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value()),
+        isOwner ? Signal<Bool, NoError>.single(true) : PampGramChannelSubscriptionEnforcer.checkNow(account: context.account)
     )
-    |> deliverOnMainQueue).start(next: { minVersion, status in
+    |> deliverOnMainQueue).start(next: { minVersion, status, isChannelSubscribed in
         if PampGramSubscriptionAPI.currentBuildVersion < minVersion {
             pampGramPresentUpdateRequiredScreen(context: context)
+        } else if !isChannelSubscribed {
+            pampGramPresentFrozenScreen(context: context)
         } else if let reason = status.full {
             pampGramPresentBannedScreen(context: context, reason: reason)
         } else {
