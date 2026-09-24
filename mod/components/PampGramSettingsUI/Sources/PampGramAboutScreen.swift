@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Display
 import SwiftSignalKit
 import TelegramCore
@@ -13,6 +14,7 @@ private enum PampGramSubscriptionEntry: ItemListNodeEntry {
     case hero
     case planHeader(String)
     case planRow(String)
+    case proPlanRow(String)
     case planFooter(String)
     case activateAction(String)
     case upgradeAction(String)
@@ -21,7 +23,7 @@ private enum PampGramSubscriptionEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return 0
-        case .planHeader, .planRow, .planFooter, .activateAction, .upgradeAction:
+        case .planHeader, .planRow, .proPlanRow, .planFooter, .activateAction, .upgradeAction:
             return 1
         }
     }
@@ -32,7 +34,7 @@ private enum PampGramSubscriptionEntry: ItemListNodeEntry {
             return 0
         case .planHeader:
             return 1
-        case .planRow:
+        case .planRow, .proPlanRow:
             return 2
         case .planFooter:
             return 3
@@ -68,6 +70,21 @@ private enum PampGramSubscriptionEntry: ItemListNodeEntry {
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .planRow(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case let .proPlanRow(expiryText):
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "crown.fill", backgroundColor: UIColor(rgb: 0xffcc00)),
+                title: "Ваш план",
+                titleFont: .bold,
+                titleBadge: "PRO",
+                label: "",
+                additionalDetailLabel: expiryText,
+                sectionId: self.section,
+                style: .blocks,
+                disclosureStyle: .none,
+                action: nil
+            )
         case let .planFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .activateAction(title):
@@ -125,8 +142,8 @@ private func pampGramOpenUpgradeRequestChat(context: AccountContext) {
 }
 
 /// The hub's hero row opens this on tap — what used to be a static "what is this mod" blurb is
-/// now this account's own subscription info, live-fetched (`fetchTier`) each time the screen
-/// opens: Standard's three included sections (Чаты, Ghost, Дополнительно — see
+/// now this account's own subscription info, live-fetched (`fetchStatus`, tier + expiry) each
+/// time the screen opens: Standard's three included sections (Чаты, Ghost, Дополнительно — see
 /// `pampGramGateTier` in PampGramBannedScreen.swift for the other two, which Standard doesn't
 /// reach at all) versus Premium's everything-unlocked. "Активировать премиум" redeems a
 /// one-time key the same way `PampGramStatusScreen.swift`'s "Активировать ключ" always has (a
@@ -135,14 +152,14 @@ private func pampGramOpenUpgradeRequestChat(context: AccountContext) {
 /// account to ask for one.
 public func pampGramSubscriptionController(context: AccountContext) -> ViewController {
     let selfAccountId = context.account.peerId.id._internalGetInt64Value()
-    let tierPromise = Promise<PampGramSubscriptionTier>()
+    let statusPromise = Promise<PampGramSubscriptionStatus>()
     var presentControllerImpl: ((ViewController) -> Void)?
     var presentTooltipImpl: ((String) -> Void)?
 
-    func refreshTier() {
-        tierPromise.set(PampGramSubscriptionAPI.fetchTier(userId: selfAccountId))
+    func refreshStatus() {
+        statusPromise.set(PampGramSubscriptionAPI.fetchStatus(userId: selfAccountId))
     }
-    refreshTier()
+    refreshStatus()
 
     let arguments = PampGramSubscriptionArguments(
         activatePremium: {
@@ -151,7 +168,7 @@ public func pampGramSubscriptionController(context: AccountContext) -> ViewContr
             }, presentTooltip: { text in
                 presentTooltipImpl?(text)
             }, onActivated: { _ in
-                refreshTier()
+                refreshStatus()
             })
         },
         upgradePlan: {
@@ -161,10 +178,10 @@ public func pampGramSubscriptionController(context: AccountContext) -> ViewContr
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        tierPromise.get()
+        statusPromise.get()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, tier -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, status -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Подписка"),
@@ -175,7 +192,7 @@ public func pampGramSubscriptionController(context: AccountContext) -> ViewContr
         )
 
         var entries: [PampGramSubscriptionEntry] = [.hero]
-        switch tier {
+        switch status.tier {
         case .standard:
             entries.append(.planHeader("ВАШ ПЛАН"))
             entries.append(.planRow("Standard"))
@@ -184,7 +201,8 @@ public func pampGramSubscriptionController(context: AccountContext) -> ViewContr
             entries.append(.upgradeAction("Обновить план"))
         case .pro:
             entries.append(.planHeader("ВАШ ПЛАН"))
-            entries.append(.planRow("Premium ⭐"))
+            let expiryText = status.expiresAt.map(pampGramFormatSubscriptionExpiry) ?? "Без ограничения по сроку"
+            entries.append(.proPlanRow(expiryText))
             entries.append(.planFooter("Все разделы открыты — «Чаты», «Ghost», «Дополнительно», «Подарки» и «Внешний вид»."))
         }
 

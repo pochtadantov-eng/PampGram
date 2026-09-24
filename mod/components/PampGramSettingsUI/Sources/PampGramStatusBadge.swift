@@ -45,6 +45,7 @@ public enum PampGramStatusBadgeStore {
 }
 
 private final class PampGramStatusBadgeView: UIView {
+    private let gradientLayer = CAGradientLayer()
     private let iconView = UIImageView()
     private let label = UILabel()
 
@@ -55,11 +56,15 @@ private final class PampGramStatusBadgeView: UIView {
         self.isHidden = true
         self.clipsToBounds = true
 
+        self.gradientLayer.startPoint = CGPoint(x: 0.0, y: 0.5)
+        self.gradientLayer.endPoint = CGPoint(x: 1.0, y: 0.5)
+        self.layer.addSublayer(self.gradientLayer)
+
         self.iconView.contentMode = .scaleAspectFit
         self.iconView.tintColor = .white
         self.addSubview(self.iconView)
 
-        self.label.font = UIFont.systemFont(ofSize: 11.0, weight: .heavy)
+        self.label.font = UIFont.systemFont(ofSize: 13.0, weight: .heavy)
         self.label.textColor = .white
         self.addSubview(self.label)
     }
@@ -74,13 +79,17 @@ private final class PampGramStatusBadgeView: UIView {
             self.isHidden = true
             return
         case .telegram:
+            // Telegram's own brand gradient (its logo uses the same two blues).
             self.isHidden = false
-            self.backgroundColor = UIColor(rgb: 0x229ED9)
+            self.gradientLayer.colors = [UIColor(rgb: 0x2aabee).cgColor, UIColor(rgb: 0x229ed9).cgColor]
             self.iconView.image = nil
             self.label.text = "TELEGRAM"
         case .swiftgram:
+            // Colors sampled directly from Swiftgram's own open-source badge asset
+            // (submodules/TelegramUI/Images.xcassets/Components/AppBadge.imageset) so this
+            // matches theirs pixel-for-pixel rather than an approximation.
             self.isHidden = false
-            self.backgroundColor = UIColor(rgb: 0xff5b2e)
+            self.gradientLayer.colors = [UIColor(rgb: 0xef4525).cgColor, UIColor(rgb: 0xf68045).cgColor]
             self.iconView.image = UIImage(systemName: "bolt.fill")?.withRenderingMode(.alwaysTemplate)
             self.label.text = "SWIFTGRAM"
         }
@@ -90,10 +99,10 @@ private final class PampGramStatusBadgeView: UIView {
     private func sizeAndLayout() {
         self.label.sizeToFit()
         let hasIcon = self.iconView.image != nil
-        let iconSide: CGFloat = 11.0
-        let spacing: CGFloat = 4.0
-        let horizontalPadding: CGFloat = 11.0
-        let height: CGFloat = 22.0
+        let iconSide: CGFloat = 13.0
+        let spacing: CGFloat = 5.0
+        let horizontalPadding: CGFloat = 13.0
+        let height: CGFloat = 24.0
         let contentWidth = self.label.frame.width + (hasIcon ? iconSide + spacing : 0.0)
         let width = contentWidth + horizontalPadding * 2.0
 
@@ -101,6 +110,7 @@ private final class PampGramStatusBadgeView: UIView {
         self.bounds = CGRect(x: 0.0, y: 0.0, width: width, height: height)
         self.center = center
         self.layer.cornerRadius = height / 2.0
+        self.gradientLayer.frame = self.bounds
 
         var x = horizontalPadding
         if hasIcon {
