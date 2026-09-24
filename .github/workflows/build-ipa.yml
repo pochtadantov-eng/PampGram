@@ -51,6 +51,26 @@ jobs:
           python3 ../pampgram/mod/apply-profile-visuals.py
           ls -1 submodules/TelegramUI/Components/PampGram
 
+      # Telegram's own fake-codesigning/profiles/*.mobileprovision all declare
+      # "C67CF9S4VU.ph.telegra.Telegraph[.suffix]" as their application-identifier — the same
+      # bundle id as the real App Store Telegram. Installed side by side, iOS treats the two
+      # as the same app (whichever installs last wins), so PampGram silently replaces or gets
+      # replaced by a real Telegram install. These 9 profiles are regenerated copies —
+      # every occurrence of "ph.telegra.Telegraph" swapped for "ph.telegra.PampGram"
+      # (application-identifier, the app-groups/iCloud container ids, nothing else touched),
+      # re-signed with the exact same self-signed certificate this repo already ships in
+      # build-system/fake-codesigning/certs/SelfSigned.p12 — nothing here required a real
+      # Apple Developer Portal registration. BuildConfiguration.py's copy_profiles_from_directory
+      # matches profiles by application-identifier PREFIX against the configured bundle_id
+      # below, so once these are in place, the matching bundle_id is all Make.py needs to pick
+      # them up as the app's own profiles instead of the stock ones.
+      - name: Swap in PampGram's own bundle id profiles
+        working-directory: telegram-ios
+        run: |
+          set -euo pipefail
+          cp ../pampgram/mod/fake-codesigning-profiles/*.mobileprovision build-system/fake-codesigning/profiles/
+          ls -1 build-system/fake-codesigning/profiles/
+
       # Signing, the whole story in one place.
       #
       # Two separate problems had to be solved here, and the first one masked the second.
@@ -136,8 +156,10 @@ jobs:
           echo "OK: signing identity is installed and trusted."
 
       # The bundle_id and team_id MUST match what's baked into the fake provisioning profiles
-      # shipped in build-system/fake-codesigning/profiles/ (Telegram.mobileprovision carries
-      # application-identifier C67CF9S4VU.ph.telegra.Telegraph) — a mismatch fails codesigning.
+      # in build-system/fake-codesigning/profiles/ — a mismatch fails codesigning. The "Swap
+      # in PampGram's own bundle id profiles" step above already replaced those with copies
+      # carrying application-identifier C67CF9S4VU.ph.telegra.PampGram[.suffix], so bundle_id
+      # below has to say "ph.telegra.PampGram", not the real Telegram app's "ph.telegra.Telegraph".
       #
       # api_id/api_hash come from repo secrets TELEGRAM_API_ID / TELEGRAM_API_HASH (get a free
       # pair at https://my.telegram.org/apps). The fallback is Telegram's own public App Store
@@ -214,7 +236,7 @@ jobs:
 
           cat > build-system/pampgram-configuration.json <<EOF
           {
-            "bundle_id": "ph.telegra.Telegraph",
+            "bundle_id": "ph.telegra.PampGram",
             "api_id": "${TELEGRAM_API_ID}",
             "api_hash": "${TELEGRAM_API_HASH}",
             "team_id": "C67CF9S4VU",
