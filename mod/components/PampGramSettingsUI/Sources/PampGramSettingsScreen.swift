@@ -247,57 +247,60 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .collectionFooter(text), let .realGiftsFooter(text), let .ledgerFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .localRublesPurchaseToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "rublesign.circle.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleLocalRublesPurchase(value)
             })
         case let .localRublesBalance(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "banknote.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.topUpLocalRubles()
             })
         case let .phantomGiftsToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrow.up.forward.circle.fill", backgroundColor: UIColor(rgb: 0x8e44ec)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.togglePhantomGifts(value)
             })
         case let .fakeStarsDisplayToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "star.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFakeStarsDisplay(value)
             })
         case let .fakeTonDisplayToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "diamond.fill", backgroundColor: UIColor(rgb: 0x0098ea)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFakeTonDisplay(value)
             })
         case let .starsBalance(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "star.circle.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editStarsBalance()
             })
         case let .tonBalance(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "diamond.fill", backgroundColor: UIColor(rgb: 0x0098ea)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editTonBalance()
             })
         case let .fromHimGiftsToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrow.down.forward.circle.fill", backgroundColor: UIColor(rgb: 0xff2d55)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFromHimGifts(value)
             })
         case let .visualNumberEditor(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualNumberEditor)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "number.circle.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualNumberEditor)
         case let .visualRating(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualRatingEditor)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "trophy.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualRatingEditor)
         case let .collectionMarket(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openCollectionMarket)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "square.grid.2x2.fill", backgroundColor: UIColor(rgb: 0x30b0c7)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openCollectionMarket)
         case let .sellRegularGiftsAction(title):
+            // ItemListActionItem has no icon support at all (unlike ItemListSwitchItem/
+            // ItemListDisclosureItem) — this and the two other action rows below stay without
+            // one for that reason, not by choice.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.sellRegularGifts()
             })
         case let .starsLedger(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openStarsLedger)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "chart.bar.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openStarsLedger)
         case let .tonLedger(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openTonLedger)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "chart.bar.fill", backgroundColor: UIColor(rgb: 0x0098ea)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openTonLedger)
         case let .resetBalances(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.resetBalances()
             })
         case let .phantomGiftsCount(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: false, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "archivebox.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, enabled: false, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
         case let .deleteAllPhantomGifts(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.deleteAllPhantomGifts()

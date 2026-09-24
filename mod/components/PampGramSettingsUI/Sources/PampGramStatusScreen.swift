@@ -147,6 +147,7 @@ private enum PampGramStatusEntry: ItemListNodeEntry {
         case let .iconFooter(text), let .activationFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .redeemKeyAction(title):
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.redeemKey()
             })

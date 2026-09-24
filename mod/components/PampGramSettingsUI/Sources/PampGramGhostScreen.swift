@@ -124,47 +124,47 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
         case let .featuresHeader(text), let .exceptionsHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .masterToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleMaster(value)
             })
         case let .hideReadReceipts(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "checkmark.message.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleHideReadReceipts(value)
             })
         case let .hideStoryViews(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x8e44ec)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleHideStoryViews(value)
             })
         case let .hideOnline(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "wifi.slash", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleHideOnline(value)
             })
         case let .hideTyping(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "keyboard.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleHideTyping(value)
             })
         case let .autoOffline(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "moon.fill", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleAutoOffline(value)
             })
         case let .readOnAction(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bolt.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleReadOnAction(value)
             })
         case let .excludeAllChannels(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleExcludeAllChannels(value)
             })
         case let .excludeAllGroups(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "person.3.fill", backgroundColor: UIColor(rgb: 0x30b0c7)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleExcludeAllGroups(value)
             })
         case let .foldersRow(title, label, enabled):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "folder.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openFolders()
             })
         case let .exceptionsRow(title, label, enabled):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "person.crop.circle.badge.exclamationmark", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openExceptions()
             })
         }

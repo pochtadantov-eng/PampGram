@@ -89,6 +89,7 @@ private enum PampGramChatLockPeersEntry: ItemListNodeEntry {
         case let .peersHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .addChat(title):
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.addChat()
             })
@@ -96,6 +97,7 @@ private enum PampGramChatLockPeersEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "lock.fill", backgroundColor: UIColor(rgb: 0xff3b30)),
                 title: title,
                 label: "",
                 additionalDetailLabel: "Убрать",

@@ -69,15 +69,15 @@ private enum PampGramFakeLocationEntry: ItemListNodeEntry {
         case let .aboutText(text), let .footer(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .enabledToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "location.fill", backgroundColor: UIColor(rgb: 0x30b0c7)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleEnabled(value)
             })
         case let .coordinateRow(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "location.circle.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editCoordinate()
             })
         case let .mapRow(title):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "map.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.pickOnMap()
             })
         }

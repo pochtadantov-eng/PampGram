@@ -78,7 +78,7 @@ private enum PampGramGhostFoldersEntry: ItemListNodeEntry {
         case let .foldersHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .folder(_, id, title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "folder.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFolder(id, value)
             })
         }

@@ -116,18 +116,20 @@ private enum PampGramLedgerEntry: ItemListNodeEntry {
         let arguments = arguments as! PampGramLedgerArguments
         switch self {
         case let .balance(text):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Текущий баланс", titleFont: .bold, label: text, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "wallet.pass.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: "Текущий баланс", titleFont: .bold, label: text, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
         case let .stats(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .filter(text):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Фильтр", label: text, sectionId: self.section, style: .blocks, action: arguments.chooseFilter)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "line.3.horizontal.decrease.circle.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: "Фильтр", label: text, sectionId: self.section, style: .blocks, action: arguments.chooseFilter)
         case .add:
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Добавить операцию", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: arguments.addOperation)
         case let .operation(_, title, amount, detail):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: amount, additionalDetailLabel: detail, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrow.left.arrow.right.circle.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, label: amount, additionalDetailLabel: detail, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
         case .empty:
             return ItemListTextItem(presentationData: presentationData, text: .plain("По выбранному фильтру операций пока нет."), sectionId: self.section)
         case .clear:
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Очистить историю", kind: .destructive, alignment: .natural, sectionId: self.section, style: .blocks, action: arguments.clear)
         case let .footer(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)

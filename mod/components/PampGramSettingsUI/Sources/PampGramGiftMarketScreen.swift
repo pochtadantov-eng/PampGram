@@ -64,7 +64,7 @@ private enum PampGramGiftMarketEntry: ItemListNodeEntry {
             } else {
                 title = baseTitle
             }
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: detail, sectionId: self.section, style: .blocks, action: { a.openGift(gift) })
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "gift.fill", backgroundColor: UIColor(rgb: 0x8e44ec)), title: title, label: detail, sectionId: self.section, style: .blocks, action: { a.openGift(gift) })
         }
     }
 }

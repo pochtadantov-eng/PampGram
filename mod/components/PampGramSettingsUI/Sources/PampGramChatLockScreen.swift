@@ -70,15 +70,15 @@ private enum PampGramChatLockEntry: ItemListNodeEntry {
         case let .aboutText(text), let .footer(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .enabledToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "lock.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleEnabled(value)
             })
         case let .pinRow(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "number.circle.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editPin()
             })
         case let .peersRow(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "person.2.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openPeers()
             })
         }

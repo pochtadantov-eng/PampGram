@@ -99,22 +99,23 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
         case let .historyHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .antiDeleteToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "trash.slash.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleAntiDelete(value)
             })
         case let .exclusionsRow(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "person.crop.circle.badge.minus", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openExclusions()
             })
         case let .visualEditToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "pencil.circle.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleVisualEdit(value)
             })
         case let .historyList(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "clock.arrow.circlepath", backgroundColor: UIColor(rgb: 0x8e44ec)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openHistory()
             })
         case let .clearHistory(title, enabled):
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.clearHistory()
             })

@@ -78,14 +78,15 @@ private final class PampGramAdminArguments {
     }
 }
 
+// "grant"/"users" have no header of their own, and "keys"/"ban"/"version" each already label
+// themselves with their own header row — folding all five into the token section's number
+// (rather than each getting its own) keeps every header/footer/button flowing as one
+// continuous block instead of a full section-gap before each one, which is what actually made
+// the screen feel spaced out: five extra gaps for groups that were never meant to read as
+// separate top-level sections, just as sub-groups under "СЕРВЕР".
 private enum PampGramAdminSection: Int32 {
     case about
     case token
-    case grant
-    case users
-    case keys
-    case ban
-    case version
 }
 
 private enum PampGramAdminEntry: ItemListNodeEntry {
@@ -118,18 +119,8 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return PampGramAdminSection.about.rawValue
-        case .tokenHeader, .tokenRow, .tokenFooter:
+        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .versionHeader, .versionRow, .versionFooter:
             return PampGramAdminSection.token.rawValue
-        case .grantAction, .grantFooter:
-            return PampGramAdminSection.grant.rawValue
-        case .usersAction, .usersFooter:
-            return PampGramAdminSection.users.rawValue
-        case .keysHeader, .generateKeyAction, .keysFooter:
-            return PampGramAdminSection.keys.rawValue
-        case .banHeader, .banFullAction, .banSectionAction, .banFooter:
-            return PampGramAdminSection.ban.rawValue
-        case .versionHeader, .versionRow, .versionFooter:
-            return PampGramAdminSection.version.rawValue
         }
     }
 

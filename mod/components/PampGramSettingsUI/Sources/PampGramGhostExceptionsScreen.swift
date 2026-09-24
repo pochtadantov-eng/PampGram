@@ -89,6 +89,7 @@ private enum PampGramGhostExceptionsEntry: ItemListNodeEntry {
         case let .excludedHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .addChat(title):
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.addChat()
             })
@@ -96,6 +97,7 @@ private enum PampGramGhostExceptionsEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x8e44ec)),
                 title: title,
                 label: "",
                 additionalDetailLabel: "Убрать",

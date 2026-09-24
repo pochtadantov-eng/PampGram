@@ -71,10 +71,12 @@ private enum PampGramSubscriptionEntry: ItemListNodeEntry {
         case let .planFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .activateAction(title):
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .neutral, alignment: .center, sectionId: self.section, style: .blocks, action: {
                 arguments.activatePremium()
             })
         case let .upgradeAction(title):
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .center, sectionId: self.section, style: .blocks, action: {
                 arguments.upgradePlan()
             })
