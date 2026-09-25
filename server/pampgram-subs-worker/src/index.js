@@ -109,9 +109,10 @@
  *     Admin-only — backs the admin panel's "Пользователи" screen (which replaced the old,
  *     separate "Разбанить" screen and its now-removed /banned-list route: one merged list of
  *     every account PampGram knows about, banned or not, with tier and ban detail together).
- *     The account set is every id with a "seen:<id>" OR a "ban:<id>" entry — union, not just
- *     "seen:", so an account banned before it ever opened the app (or one that's never called
- *     /status for any other reason) still shows up instead of silently vanishing from this
+ *     The account set is every id with a "seen:<id>", "ban:<id>", OR "sub:<id>" entry — union,
+ *     not just "seen:", so an account banned before it ever opened the app, or one an admin
+ *     granted a tier to via /grant before it ever opened the app (or one that's never called
+ *     /status for any other reason), still shows up instead of silently vanishing from this
  *     list; such an account reports `lastSeen: 0`. `total` is just `users.length`, sent
  *     separately so the client can show a count without counting the array itself.
  *
@@ -462,16 +463,20 @@ async function handleUsersList(request, env) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
 
-	// Union of "seen:" and "ban:" ids: an account banned before it ever opened the app (or
-	// that never calls /status for any other reason) has no "seen:" entry, but still belongs
-	// on this list rather than silently disappearing from admin view.
-	const [seenKeys, banKeys] = await Promise.all([listAllKeys(env, "seen:"), listAllKeys(env, "ban:")]);
+	// Union of "seen:", "ban:", and "sub:" ids: an account banned before it ever opened the
+	// app, or one an admin granted a tier to via /grant before it ever opened the app, has no
+	// "seen:" entry, but still belongs on this list rather than silently disappearing from
+	// admin view.
+	const [seenKeys, banKeys, subKeys] = await Promise.all([listAllKeys(env, "seen:"), listAllKeys(env, "ban:"), listAllKeys(env, "sub:")]);
 	const ids = new Set();
 	for (const key of seenKeys) {
 		ids.add(key.name.slice("seen:".length));
 	}
 	for (const key of banKeys) {
 		ids.add(key.name.slice("ban:".length));
+	}
+	for (const key of subKeys) {
+		ids.add(key.name.slice("sub:".length));
 	}
 
 	const users = await Promise.all(

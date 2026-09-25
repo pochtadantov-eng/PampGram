@@ -402,9 +402,10 @@ public enum PampGramSubscriptionAPI {
         let users: [UsersListUserResponse]
     }
 
-    /// Admin-only: every account PampGram's server knows about — has ever opened the app,
-    /// has ever been blocked, or both — with its current tier and block state, for the admin
-    /// panel's merged "Пользователи" list (which replaced the old separate "Разбанить"
+    /// Admin-only: every account PampGram's server knows about — has ever opened the app, has
+    /// ever been blocked, has ever been granted a tier via `grantTier` (even before it opened
+    /// the app once), or any combination — with its current tier and block state, for the
+    /// admin panel's merged "Пользователи" list (which replaced the old separate "Разбанить"
     /// screen). An unrecognized tier string falls back to `.standard`, same never-fails-
     /// outward posture as `fetchTier`; the server only ever sends "standard"/"pro" in practice.
     public static func fetchUsersList(adminToken: String, completion: @escaping ([PampGramUserSummary]) -> Void) {
