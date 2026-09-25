@@ -13,7 +13,6 @@ private enum PampGramHubSection: Int32 {
     case hero
     case sections
     case team
-    case plan
 }
 
 private enum PampGramHubEntry: ItemListNodeEntry {
@@ -25,7 +24,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
     case advanced
     case admin
     case team
-    case plan(Bool)
 
     var section: ItemListSectionId {
         switch self {
@@ -35,8 +33,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return PampGramHubSection.sections.rawValue
         case .team:
             return PampGramHubSection.team.rawValue
-        case .plan:
-            return PampGramHubSection.plan.rawValue
         }
     }
 
@@ -58,8 +54,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return 7
         case .team:
             return 9
-        case .plan:
-            return 10
         }
     }
 
@@ -192,22 +186,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                     arguments.openSupport()
                 }
             )
-        case let .plan(isPro):
-            return ItemListDisclosureItem(
-                presentationData: presentationData,
-                systemStyle: .glass,
-                icon: generatePampGramSectionIcon(systemName: "crown.fill", backgroundColor: UIColor(rgb: 0xffcc00)),
-                title: "Ваш план",
-                titleFont: .bold,
-                label: "",
-                additionalDetailLabel: isPro ? "Premium" : "Standard",
-                additionalDetailLabelColor: isPro ? .constructive : .generic,
-                sectionId: self.section,
-                style: .blocks,
-                action: {
-                    arguments.openAbout()
-                }
-            )
         }
     }
 }
@@ -247,7 +225,7 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
     return "https://t.me/\(pampGramSupportUsername)?text=\(encoded)"
 }
 
-private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool, isPro: Bool) -> [PampGramHubEntry] {
+private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [PampGramHubEntry] {
     var entries: [PampGramHubEntry] = [
         .hero,
         .gifts,
@@ -260,7 +238,6 @@ private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool, isPro
         entries.append(.admin)
     }
     entries.append(.team)
-    entries.append(.plan(isPro))
     return entries
 }
 
@@ -420,7 +397,7 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramHubEntries(settings: settings, isAdmin: isAdmin, isPro: settings.cachedIsProSubscriber),
+            entries: pampGramHubEntries(settings: settings, isAdmin: isAdmin),
             style: .blocks,
             animateChanges: true
         )
