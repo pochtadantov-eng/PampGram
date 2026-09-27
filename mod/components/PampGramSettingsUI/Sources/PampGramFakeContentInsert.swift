@@ -344,6 +344,54 @@ public func pampGramPresentInsertCall(context: AccountContext, peerId: EnginePee
     presentingController.present(typeSheet, in: .window(.root))
 }
 
+// MARK: - Premium gift
+
+/// "Подарить Premium": same no-media, plain-`TelegramMediaAction` shape as
+/// `pampGramPresentInsertCall` above, using the exact case (`.giftPremium`) real Telegram uses
+/// for an actual gifted subscription — `ChatMessageGiftBubbleContentNode` renders it from
+/// `days` alone (deriving "3 months"/"6 months"/"1 year" itself), so `currency`/`amount` are
+/// never read for display and don't need to look real. Always outgoing (from this account) —
+/// unlike the photo/voice/file/call inserts above, "gifting" only makes sense one direction,
+/// same reasoning `pampGramConfirmSendRealBears` already settled on for the one real gift in
+/// this same menu.
+public func pampGramPresentInsertPremiumGift(context: AccountContext, peerId: EnginePeer.Id) {
+    guard let presentingController = pampGramTopController(context: context) else {
+        return
+    }
+    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+
+    let insertGift: (Int32) -> Void = { days in
+        let action = TelegramMediaAction(action: .giftPremium(currency: "USD", amount: 0, days: days, cryptoCurrency: nil, cryptoAmount: nil, text: nil, entities: nil))
+        let _ = pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: "", media: [action]).start()
+        pampGramPresentTooltip(context: context, text: "Подарок Premium добавлен.")
+    }
+
+    let durationSheet = ActionSheetController(presentationData: presentationData)
+    durationSheet.setItemGroups([
+        ActionSheetItemGroup(items: [
+            ActionSheetTextItem(title: "На сколько подарить Premium?"),
+            ActionSheetButtonItem(title: "3 месяца", color: .accent, action: { [weak durationSheet] in
+                durationSheet?.dismissAnimated()
+                insertGift(90)
+            }),
+            ActionSheetButtonItem(title: "6 месяцев", color: .accent, action: { [weak durationSheet] in
+                durationSheet?.dismissAnimated()
+                insertGift(180)
+            }),
+            ActionSheetButtonItem(title: "1 год", color: .accent, action: { [weak durationSheet] in
+                durationSheet?.dismissAnimated()
+                insertGift(365)
+            })
+        ]),
+        ActionSheetItemGroup(items: [
+            ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak durationSheet] in
+                durationSheet?.dismissAnimated()
+            })
+        ])
+    ])
+    presentingController.present(durationSheet, in: .window(.root))
+}
+
 // MARK: - Text
 
 /// "Текст от собеседника" / "Текст от меня": a brand-new plain-text message, inserted the same

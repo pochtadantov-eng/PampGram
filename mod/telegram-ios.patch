@@ -20388,7 +20388,7 @@ index a1a8f61d..8d28620c 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5bb..2fdf752e 100644
+index 07cef5bb..b56af455 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -20402,7 +20402,7 @@ index 07cef5bb..2fdf752e 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,138 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,142 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -20503,6 +20503,10 @@ index 07cef5bb..2fdf752e 100644
 +    buttons.append(ActionSheetButtonItem(title: "Показать звонок", color: .accent, action: { [weak sheet] in
 +        sheet?.dismissAnimated()
 +        pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
++    }))
++    buttons.append(ActionSheetButtonItem(title: "Подарить Premium", color: .accent, action: { [weak sheet] in
++        sheet?.dismissAnimated()
++        pampGramPresentInsertPremiumGift(context: context, peerId: message.id.peerId)
 +    }))
 +    buttons.append(ActionSheetButtonItem(title: "Поставить реакцию", color: .accent, action: { [weak sheet] in
 +        sheet?.dismissAnimated()

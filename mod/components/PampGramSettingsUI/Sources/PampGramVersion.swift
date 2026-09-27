@@ -6,9 +6,11 @@ import Foundation
 /// UPDATE THIS FILE ON EVERY RELEASE: bump `pampGramVersionString` and rewrite
 /// `pampGramChangelogText` to describe what's actually in that build. This is the one place
 /// both screens read from, so a single edit here keeps them in sync.
-public let pampGramVersionString = "v1.6.3 (Диагностика отправки)"
+public let pampGramVersionString = "v1.6.4 (Подарок Premium)"
 
 public let pampGramChangelogText = """
+PampGram → «Изменить визуально» (зажать сообщение) добавлена «Подарить Premium»: выбираете 3 месяца / 6 месяцев / 1 год — в чат добавляется точно такое же сообщение, как при настоящем подарке Telegram Premium, только локально, у вас на устройстве, без реальной оплаты.
+
 Временно: при отправке фото/файла/голосового в обычном чате может один раз выскочить маленькое сообщение «PampGram DEBUG: sendMessages вызван…» — это не баг, а временная метка для поиска причины, по которой у некоторых не отправляются файлы. Она уберётся в следующей сборке, когда причина будет найдена.
 
 Хаб: убрана строка «Ваш план» внизу списка — она вела на тот же экран подписки, что и верхняя карточка «PampGram», и дублировала её. Открыть подписку теперь можно тапом по верхней карточке или кнопкой тарифа в правом верхнем углу.
