@@ -6,9 +6,11 @@ import Foundation
 /// UPDATE THIS FILE ON EVERY RELEASE: bump `pampGramVersionString` and rewrite
 /// `pampGramChangelogText` to describe what's actually in that build. This is the one place
 /// both screens read from, so a single edit here keeps them in sync.
-public let pampGramVersionString = "v1.6.4 (Подарок Premium)"
+public let pampGramVersionString = "v1.6.5 (Мишка настоящий)"
 
 public let pampGramChangelogText = """
+Подарки: в «Все» на вкладке «Подарок ему» (визуал включён) подарок «Мишка» за 15 ⭐ теперь всегда уходит по-настоящему — списываются настоящие Stars, собеседник получает настоящий подарок. Перед отправкой — отдельное предупреждение с точной суммой, отменить его можно, остальные подарки на этой вкладке как были визуальными, так и остались.
+
 PampGram → «Изменить визуально» (зажать сообщение) добавлена «Подарить Premium»: выбираете 3 месяца / 6 месяцев / 1 год — в чат добавляется точно такое же сообщение, как при настоящем подарке Telegram Premium, только локально, у вас на устройстве, без реальной оплаты.
 
 Временно: при отправке фото/файла/голосового в обычном чате может один раз выскочить маленькое сообщение «PampGram DEBUG: sendMessages вызван…» — это не баг, а временная метка для поиска причины, по которой у некоторых не отправляются файлы. Она уберётся в следующей сборке, когда причина будет найдена.
