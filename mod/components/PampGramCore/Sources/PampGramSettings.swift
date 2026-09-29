@@ -377,17 +377,19 @@ public struct PampGramSettings: Codable, Equatable {
     /// at the cost of it being at most one tab-open stale.
     public var cachedIsProSubscriber: Bool
 
-    public static let defaultFakeStarsBalance: Int64 = 50_000
+    // A brand-new install (and "Сбросить балансы", which resets to this same constant) starts
+    // at 0 — nothing pre-loaded before the person has looked at a single toggle.
+    public static let defaultFakeStarsBalance: Int64 = 0
     public static let defaultFakeTonBalanceNanos: Int64 = 0
 
     public static var defaultSettings: PampGramSettings {
         return PampGramSettings(
-            phantomGiftsEnabled: true,
+            phantomGiftsEnabled: false,
             fakeStarsBalance: defaultFakeStarsBalance,
             fakeTonBalanceNanos: defaultFakeTonBalanceNanos,
-            fakeStarsDisplayEnabled: true,
-            fakeTonDisplayEnabled: true,
-            antiDeleteMessagesEnabled: true,
+            fakeStarsDisplayEnabled: false,
+            fakeTonDisplayEnabled: false,
+            antiDeleteMessagesEnabled: false,
             ghostReaderEnabled: false,
             onlineMaskEnabled: false,
             ghostModeEnabled: false,
@@ -415,13 +417,13 @@ public struct PampGramSettings: Codable, Equatable {
             chatLockPin: "",
             lockedChatPeerIds: [],
             localRublesBalanceKopecks: 0,
-            localRublesPurchaseEnabled: true,
+            localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
             showTemporaryMediaEnabled: false,
             storySavingEnabled: false,
             bypassScreenshotProtectionEnabled: false,
-            masterEnabled: true,
+            masterEnabled: false,
             hidePampGramIconEnabled: false,
             bannedLocally: false,
             channelUnsubscribedLocally: false,
