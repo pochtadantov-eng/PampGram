@@ -35,7 +35,7 @@
  *
  * Routes:
  *   GET  /status?id=<telegram account id>
- *     -> { "tier": "standard" | "pro", "expiresAt": <ms since epoch> | null }
+ *     -> { "tier": "standard" | "pro", "expiresAt": <ms since epoch> | null, "sig": "<hex>" }
  *     Public — every PampGram install calls this for its OWN account id to know whether to
  *     show PRO or STANDARD (and, if the grant is time-limited, when it runs out). No auth: the
  *     response never carries anything more sensitive than "this account is on tier X until
@@ -44,18 +44,23 @@
  *     nothing needs to actively revoke it. Also records "seen:<id>" (fire-and-forget via
  *     ctx.waitUntil, never delays or can fail this response) — this is the one call every
  *     install makes on every open, so it's the natural place to count "how many accounts
- *     actually use this" without adding a dedicated ping route.
+ *     actually use this" without adding a dedicated ping route. `sig` is an HMAC over
+ *     `id|tier|expiresAt` (see `hmacSign`) — the client re-derives the same string from what it
+ *     asked for plus what came back and rejects a mismatch, so a proxy on the user's own device
+ *     can't just rewrite this JSON to claim "pro" for free.
  *
  *   GET  /ban-status?id=<telegram account id>
- *     -> { "full": "<reason>"|null, "sections": { "<section>": "<reason>" } }
+ *     -> { "full": "<reason>"|null, "sections": { "<section>": "<reason>" }, "sig": "<hex>" }
  *     Public, same reasoning as /status — every install checks its own ban state before
  *     opening the hub or a section. Deliberately still plain reason strings, not the
  *     {reason,at} shape "ban:<id>" is actually stored as — every install's ban-enforcement
  *     code depends on this exact shape, so /users-list (the only place "at" is exposed) reads
  *     the richer stored form itself instead of this route changing underneath every install.
+ *     `sig` covers `id|full|sortedSections` — same forged-JSON defense as /status, here against
+ *     spoofing "not banned".
  *
  *   GET  /min-version
- *     -> { "minVersion": <integer> }
+ *     -> { "minVersion": <integer>, "sig": "<hex>" }
  *     Public, same reasoning as /status. Every install compares this against its own
  *     hardcoded build number (`PampGramSubscriptionAPI.currentBuildVersion`) before opening
  *     PampGram; a build below this number shows "update required" instead of the real
@@ -170,6 +175,20 @@ function isValidAccountId(value) {
 	return typeof value === "string" && /^-?\d{1,20}$/.test(value);
 }
 
+// HMAC-SHA256 over a canonical pipe-joined string, hex-encoded — signs the three public,
+// unauthenticated GET routes (/status, /ban-status, /min-version) so a client can tell a real
+// response from one a proxy on the user's own device forged. RESPONSE_SIGNING_KEY is a secret
+// shared with the app (baked into the binary at build time, same posture as ADMIN_TOKEN being
+// shared with the admin screen) — set with `wrangler secret put RESPONSE_SIGNING_KEY`, never
+// committed to the repo. Not a defense against someone who fully reverse-engineers the compiled
+// app (nothing client-side ever is); it closes the much easier "install a proxy, edit the JSON"
+// route, which needs no access to the binary at all.
+async function hmacSign(env, message) {
+	const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.RESPONSE_SIGNING_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+	const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+	return [...new Uint8Array(signature)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 // Reads "sub:<id>", resolving the legacy bare-string form and the JSON
 // { tier, expiresAt } form alike, and treating a past expiresAt as "standard, no expiry" —
 // nothing needs to actively sweep an expired entry for correctness, `/status` already reports
@@ -213,7 +232,10 @@ async function writeSubscription(env, idString, tier, durationHours) {
 		await env.SUBS.put(`sub:${idString}`, tier);
 		return null;
 	}
-	const expiresAt = Date.now() + durationHours * 60 * 60 * 1000;
+	// Rounded to a whole millisecond: durationHours can be fractional, and the client signs
+	// /status's response as a plain integer string — a fractional value here would make the
+	// two sides' canonical strings disagree and every legitimate response fail verification.
+	const expiresAt = Math.round(Date.now() + durationHours * 60 * 60 * 1000);
 	await env.SUBS.put(`sub:${idString}`, JSON.stringify({ tier, expiresAt }));
 	return expiresAt;
 }
@@ -227,7 +249,8 @@ async function handleStatus(request, env, ctx) {
 	const { tier, expiresAt } = await readSubscription(env, id);
 	// Fire-and-forget: never awaited, so a KV write here can't slow down or fail this response.
 	ctx.waitUntil(env.SUBS.put(`seen:${id}`, String(Date.now())));
-	return jsonResponse({ tier, expiresAt });
+	const sig = await hmacSign(env, `${id}|${tier}|${expiresAt ?? "null"}`);
+	return jsonResponse({ tier, expiresAt, sig });
 }
 
 async function handleGrant(request, env) {
@@ -317,10 +340,13 @@ async function handleBanStatus(request, env) {
 	}
 	const record = await readBanRecord(env, id);
 	// Plain reason strings only — see this route's own doc for why it never exposes "at".
-	return jsonResponse({
-		full: record.full ? record.full.reason : null,
-		sections: Object.fromEntries(Object.entries(record.sections).map(([section, entry]) => [section, entry.reason])),
-	});
+	const full = record.full ? record.full.reason : null;
+	const sections = Object.fromEntries(Object.entries(record.sections).map(([section, entry]) => [section, entry.reason]));
+	// Canonical, order-independent form for the signature — a JS object's key order isn't
+	// something to sign over directly.
+	const sectionsCanonical = Object.keys(sections).sort().map((key) => `${key}:${sections[key]}`).join(",");
+	const sig = await hmacSign(env, `${id}|${full ?? "null"}|${sectionsCanonical}`);
+	return jsonResponse({ full, sections, sig });
 }
 
 async function handleBan(request, env) {
@@ -406,7 +432,8 @@ async function handleMinVersion(request, env) {
 	const stored = await env.SUBS.get("min_version");
 	const parsed = stored === null ? 0 : parseInt(stored, 10);
 	const minVersion = Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
-	return jsonResponse({ minVersion });
+	const sig = await hmacSign(env, `${minVersion}`);
+	return jsonResponse({ minVersion, sig });
 }
 
 async function handleSetMinVersion(request, env) {

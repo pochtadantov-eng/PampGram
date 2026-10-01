@@ -1,6 +1,7 @@
 import Foundation
 import Postbox
 import SwiftSignalKit
+import CryptoKit
 
 /// The one part of PampGram with an actual server behind it. Every other file in this module
 /// changes only what this device shows its own owner — but a subscription an admin grants (or
@@ -143,6 +144,36 @@ public enum PampGramSubscriptionAPI {
     /// The deployed `server/pampgram-subs-worker/` instance (see its README).
     private static let baseURL = "https://pampgram.pochtadantov.workers.dev"
 
+    /// Shared with the server's `RESPONSE_SIGNING_KEY` secret (`hmacSign` in
+    /// `server/pampgram-subs-worker/src/index.js`) — verifies `/status`, `/ban-status`, and
+    /// `/min-version` actually came from that server rather than a proxy on this device
+    /// rewriting the JSON to claim "pro"/"not banned"/"no minimum" for free. Not a defense
+    /// against someone who fully reverse-engineers this binary (nothing baked into a client
+    /// ever is) — it closes the much easier route that needs no access to the binary at all.
+    /// Rotate by generating a new `openssl rand -hex 32`, setting it as the server secret, and
+    /// changing this constant to match in the same build.
+    private static let responseSigningKey = "00b78acae40c265d6b68038d5922283d153e7a18f8b150e27b84e02804b605b1"
+
+    /// `true` when `sig` is the HMAC-SHA256 (hex) of `message` under `responseSigningKey` —
+    /// the exact same computation `hmacSign` runs server-side, so `message` must be built
+    /// identically to how each route's handler builds it (see each `fetch*` call site below).
+    private static func verifySignature(_ sig: String, message: String) -> Bool {
+        let key = SymmetricKey(data: Data(responseSigningKey.utf8))
+        let expected = HMAC<SHA256>.authenticationCode(for: Data(message.utf8), using: key)
+        let expectedHex = expected.map { String(format: "%02x", $0) }.joined()
+        // Fixed-time compare: a signature check is exactly the kind of secret-dependent
+        // branch where an early-exit `==` could, in principle, leak timing information.
+        return expectedHex.utf8.count == sig.utf8.count && safeCompare(expectedHex, sig)
+    }
+
+    private static func safeCompare(_ a: String, _ b: String) -> Bool {
+        var result: UInt8 = 0
+        for (x, y) in zip(a.utf8, b.utf8) {
+            result |= x ^ y
+        }
+        return result == 0
+    }
+
     /// This build's own number, bumped by one in source each time a build is shipped that
     /// should be able to retire everything before it. Compared against the server's
     /// `min_version` (see `fetchMinVersion`/`setMinVersion`) — a build below that number shows
@@ -152,7 +183,11 @@ public enum PampGramSubscriptionAPI {
 
     private struct StatusResponse: Decodable {
         let tier: String
-        let expiresAt: Double?
+        // Int64, not Double — has to format back to the exact same digit string the server
+        // signed (`${expiresAt ?? "null"}` over a value it already rounds to a whole
+        // millisecond), and a Double risks a different textual form for the same value.
+        let expiresAt: Int64?
+        let sig: String
     }
 
     private struct GrantRequestBody: Encodable {
@@ -182,9 +217,15 @@ public enum PampGramSubscriptionAPI {
             let task = URLSession.shared.dataTask(with: url) { data, _, _ in
                 var status = PampGramSubscriptionStatus(tier: .standard, expiresAt: nil)
                 if let data, let decoded = try? JSONDecoder().decode(StatusResponse.self, from: data) {
-                    let tier = PampGramSubscriptionTier(rawValue: decoded.tier) ?? .standard
-                    let expiresAt = decoded.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000) }
-                    status = PampGramSubscriptionStatus(tier: tier, expiresAt: expiresAt)
+                    let message = "\(userId)|\(decoded.tier)|\(decoded.expiresAt.map(String.init) ?? "null")"
+                    if verifySignature(decoded.sig, message: message) {
+                        let tier = PampGramSubscriptionTier(rawValue: decoded.tier) ?? .standard
+                        let expiresAt = decoded.expiresAt.map { Date(timeIntervalSince1970: Double($0) / 1000) }
+                        status = PampGramSubscriptionStatus(tier: tier, expiresAt: expiresAt)
+                    }
+                    // An invalid signature falls through to the same safe `.standard`/`nil`
+                    // default a network failure already uses above — a forged response is
+                    // indistinguishable from one that never arrived, which is exactly the point.
                 }
                 subscriber.putNext(status)
                 subscriber.putCompletion()
@@ -246,6 +287,12 @@ public enum PampGramSubscriptionAPI {
     /// `fetchTier`: any network or decode problem resolves to `.none` (not banned) rather than
     /// erroring the screen that asked — a banned section only ever locks because the server
     /// said so, never because a request happened to fail.
+    private struct BanStatusResponse: Decodable {
+        let full: String?
+        let sections: [String: String]
+        let sig: String
+    }
+
     public static func fetchBanStatus(userId: Int64) -> Signal<PampGramBanStatus, NoError> {
         return Signal { subscriber in
             guard let url = URL(string: "\(baseURL)/ban-status?id=\(userId)") else {
@@ -255,8 +302,14 @@ public enum PampGramSubscriptionAPI {
             }
             let task = URLSession.shared.dataTask(with: url) { data, _, _ in
                 var status = PampGramBanStatus.none
-                if let data, let decoded = try? JSONDecoder().decode(PampGramBanStatus.self, from: data) {
-                    status = decoded
+                if let data, let decoded = try? JSONDecoder().decode(BanStatusResponse.self, from: data) {
+                    // Same canonical, order-independent form the server signs over — see
+                    // `hmacSign`'s call site in `handleBanStatus`.
+                    let sectionsCanonical = decoded.sections.keys.sorted().map { "\($0):\(decoded.sections[$0]!)" }.joined(separator: ",")
+                    let message = "\(userId)|\(decoded.full ?? "null")|\(sectionsCanonical)"
+                    if verifySignature(decoded.sig, message: message) {
+                        status = PampGramBanStatus(full: decoded.full, sections: decoded.sections)
+                    }
                 }
                 subscriber.putNext(status)
                 subscriber.putCompletion()
@@ -325,6 +378,7 @@ public enum PampGramSubscriptionAPI {
 
     private struct MinVersionResponse: Decodable {
         let minVersion: Int
+        let sig: String
     }
 
     private struct SetMinVersionRequestBody: Encodable {
@@ -345,7 +399,7 @@ public enum PampGramSubscriptionAPI {
             }
             let task = URLSession.shared.dataTask(with: url) { data, _, _ in
                 var minVersion = 0
-                if let data, let decoded = try? JSONDecoder().decode(MinVersionResponse.self, from: data) {
+                if let data, let decoded = try? JSONDecoder().decode(MinVersionResponse.self, from: data), verifySignature(decoded.sig, message: "\(decoded.minVersion)") {
                     minVersion = decoded.minVersion
                 }
                 subscriber.putNext(minVersion)
