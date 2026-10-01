@@ -47,8 +47,14 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     /// Local marketplace listing. `nil` means the gift is not currently listed.
     public let marketPrice: CurrencyAmount?
     public let marketListedAt: Int32?
+    /// Set only by `PampGramPhantomGiftManager.constructUniqueGift` — distinguishes a gift
+    /// freely assembled in the "Конструктор" screen (any real model/backdrop/pattern
+    /// combination, not necessarily one that exists on a real unique gift) from every other
+    /// kind of Phantom Gift, so that screen's own "В профиле" list can show just its own
+    /// creations instead of every gift this account has ever bought/received.
+    public let isConstructed: Bool
 
-    public init(id: Int64, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, date: Int32, localMessageId: EngineMessage.Id?, fromPeerId: EnginePeer.Id? = nil, isReceived: Bool = false, pinnedToTop: Bool = false, savedToProfile: Bool = true, soldDate: Int32? = nil, worn: Bool = false, marketPrice: CurrencyAmount? = nil, marketListedAt: Int32? = nil) {
+    public init(id: Int64, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, date: Int32, localMessageId: EngineMessage.Id?, fromPeerId: EnginePeer.Id? = nil, isReceived: Bool = false, pinnedToTop: Bool = false, savedToProfile: Bool = true, soldDate: Int32? = nil, worn: Bool = false, marketPrice: CurrencyAmount? = nil, marketListedAt: Int32? = nil, isConstructed: Bool = false) {
         self.id = id
         self.peerId = peerId
         self.gift = gift
@@ -63,6 +69,7 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         self.worn = worn
         self.marketPrice = marketPrice
         self.marketListedAt = marketListedAt
+        self.isConstructed = isConstructed
     }
 
     /// Decoded field by field, like `PampGramSettings`: a gift saved before `isReceived`/
@@ -85,6 +92,7 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         self.worn = try container.decodeIfPresent(Bool.self, forKey: .worn) ?? false
         self.marketPrice = try container.decodeIfPresent(CurrencyAmount.self, forKey: .marketPrice)
         self.marketListedAt = try container.decodeIfPresent(Int32.self, forKey: .marketListedAt)
+        self.isConstructed = try container.decodeIfPresent(Bool.self, forKey: .isConstructed) ?? false
     }
 
     public var title: String {
@@ -106,27 +114,27 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     }
 
     public func withPinnedToTop(_ pinnedToTop: Bool) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt, isConstructed: self.isConstructed)
     }
 
     public func withSavedToProfile(_ savedToProfile: Bool) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt, isConstructed: self.isConstructed)
     }
 
     public func withSold(date: Int32) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: false, soldDate: date, worn: false, marketPrice: nil, marketListedAt: nil)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: false, soldDate: date, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed)
     }
 
     public func withWorn(_ worn: Bool) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt, isConstructed: self.isConstructed)
     }
 
     public func withMarketPrice(_ marketPrice: CurrencyAmount?, listedAt: Int32? = nil) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: marketPrice, marketListedAt: marketPrice == nil ? nil : (listedAt ?? self.marketListedAt ?? Int32(Date().timeIntervalSince1970)))
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: marketPrice, marketListedAt: marketPrice == nil ? nil : (listedAt ?? self.marketListedAt ?? Int32(Date().timeIntervalSince1970)), isConstructed: self.isConstructed)
     }
 
     public func withPeerId(_ peerId: EnginePeer.Id) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: peerId == self.peerId ? self.savedToProfile : true, soldDate: self.soldDate, worn: false, marketPrice: nil, marketListedAt: nil)
+        return PampGramPhantomGift(id: self.id, peerId: peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: peerId == self.peerId ? self.savedToProfile : true, soldDate: self.soldDate, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed)
     }
 
     /// The real profile gifts grid's own item type, built straight from this Phantom Gift —

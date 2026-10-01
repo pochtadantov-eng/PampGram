@@ -563,4 +563,63 @@ public enum PampGramPhantomGiftManager {
         // nothing to scan for. Inert no-op, kept so the navigate hook needs no change.
     }
 
+    /// "Конструктор" (`PampGramGiftConstructorScreen.swift`): builds a brand-new local-only
+    /// unique gift from real Telegram catalog data — a real base gift plus a real
+    /// model/backdrop/pattern attribute (the exact `StarGift.UniqueGift.Attribute` values
+    /// `getStarGiftUpgradePreview` returned for that base gift), in any combination the
+    /// constructor screen lets you pick, not limited to combinations that actually exist on a
+    /// real unique gift. Never calls a real network API; this only ever creates a self-owned
+    /// Phantom Gift, saved straight into this account's own profile grid — same storage, same
+    /// `reference == nil` invariant, as every other Phantom Gift.
+    ///
+    /// `model`/`backdrop`/`pattern` must be `.model`/`.backdrop`/`.pattern` respectively — the
+    /// constructor screen only ever offers attributes of the matching case in each of its three
+    /// pickers, so this never needs to validate that itself. `title` is the caller's choice
+    /// (the constructor screen defaults it to the model's own real name, same as a real unique
+    /// gift's title usually matching its model) — passed in rather than derived here so this
+    /// function doesn't need to pattern-match `model` just to read its `name`.
+    public static func constructUniqueGift(context: AccountContext, baseGift: StarGift.Gift, title: String, model: StarGift.UniqueGift.Attribute, backdrop: StarGift.UniqueGift.Attribute, pattern: StarGift.UniqueGift.Attribute, number: Int32) -> Signal<PampGramPhantomGift, NoError> {
+        return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
+            let uniqueGift = StarGift.UniqueGift(
+                id: Int64.random(in: 1...Int64.max),
+                giftId: baseGift.id,
+                title: title,
+                number: number,
+                slug: "pampgram-\(Int64.random(in: 100_000...999_999))",
+                owner: .peerId(context.account.peerId),
+                attributes: [model, backdrop, pattern],
+                // `total: 10_000` is a plausible stand-in, not a real edition size — nothing
+                // about a Phantom Gift's issuance is real, same as everywhere else in this
+                // file.
+                availability: StarGift.UniqueGift.Availability(issued: number, total: 10_000),
+                giftAddress: nil,
+                resellAmounts: nil,
+                resellForTonOnly: false,
+                releasedBy: nil,
+                valueAmount: nil,
+                valueCurrency: nil,
+                valueUsdAmount: nil,
+                flags: [],
+                themePeerId: nil,
+                peerColor: nil,
+                hostPeerId: nil,
+                minOfferStars: nil,
+                craftChancePermille: nil
+            )
+            let phantomGift = PampGramPhantomGift(
+                id: Int64.random(in: 1...Int64.max),
+                peerId: context.account.peerId,
+                gift: .unique(uniqueGift),
+                // Free — nothing was bought, so no ledger entry either (unlike
+                // `buyUniqueGift`/`sendGenericGift`, which do debit the fake balance).
+                price: CurrencyAmount(amount: StarsAmount(value: 0, nanos: 0), currency: .stars),
+                date: Int32(Date().timeIntervalSince1970),
+                localMessageId: nil,
+                isConstructed: true
+            )
+            PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+            return phantomGift
+        }
+    }
+
 }
