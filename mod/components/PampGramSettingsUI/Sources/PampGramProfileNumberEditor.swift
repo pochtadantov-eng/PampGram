@@ -365,7 +365,7 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
 
     @objc private func dateChanged() {
         self.updatePreview()
-        self.scheduleRateSync()
+        self.scheduleRateSync(fromDateChange: true)
     }
 
     @objc private func toggleDisplay() {
@@ -382,28 +382,46 @@ private final class PampGramProfileNumberEditorController: ViewController, UITex
     }
 
     /// Debounces the actual network request: a burst of keystrokes (or a fast date-picker drag)
-    /// collapses into a single CoinGecko fetch 0.6s after the user stops.
-    private func scheduleRateSync() {
+    /// collapses into a single CoinGecko fetch 0.6s after the user stops. `fromDateChange` is
+    /// threaded through to `performRateSync` -- see its doc comment for why it changes which
+    /// field is allowed to act as the conversion source.
+    private func scheduleRateSync(fromDateChange: Bool = false) {
         self.rateSyncTimer?.invalidate()
         self.rateSyncTimer = Foundation.Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { [weak self] _ in
-            self?.performRateSync()
+            self?.performRateSync(fromDateChange: fromDateChange)
         }
     }
 
     /// Fills in the price field the user *didn't* just type into, from the other one and the
     /// TON/USD rate for the selected purchase date -- today's live rate for today, CoinGecko's
-    /// historical daily rate for any other date. If neither field has a value yet, there's
-    /// nothing to convert and this is a no-op.
-    private func performRateSync() {
+    /// historical daily rate for any other date.
+    ///
+    /// Triggered by editing a price field (`fromDateChange == false`): the source MUST be
+    /// `lastEditedPriceField` itself, and only if it still holds a positive value. If the user
+    /// just cleared the field they were typing in, this returns immediately and touches
+    /// neither field -- falling back to whichever field "has a value" would mean a stale value
+    /// left over in the OTHER currency's field silently refills the one the user just emptied.
+    ///
+    /// Triggered by a date change (`fromDateChange == true`): neither field was "just edited"
+    /// for this event, so the old fallback chain (last-edited, then TON, then USD -- whichever
+    /// still has a real value) picks the source to re-price at the new date's rate.
+    private func performRateSync(fromDateChange: Bool) {
         let sourceField: UITextField
-        if let lastEdited = self.lastEditedPriceField, self.parseDecimal(lastEdited.text) != nil {
-            sourceField = lastEdited
-        } else if self.parseDecimal(self.tonField.text) != nil {
-            sourceField = self.tonField
-        } else if self.parseDecimal(self.usdField.text) != nil {
-            sourceField = self.usdField
+        if fromDateChange {
+            if let lastEdited = self.lastEditedPriceField, self.parseDecimal(lastEdited.text) != nil {
+                sourceField = lastEdited
+            } else if self.parseDecimal(self.tonField.text) != nil {
+                sourceField = self.tonField
+            } else if self.parseDecimal(self.usdField.text) != nil {
+                sourceField = self.usdField
+            } else {
+                return
+            }
         } else {
-            return
+            guard let lastEdited = self.lastEditedPriceField, self.parseDecimal(lastEdited.text) != nil else {
+                return
+            }
+            sourceField = lastEdited
         }
         guard let sourceValue = self.parseDecimal(sourceField.text), sourceValue > 0 else {
             return
