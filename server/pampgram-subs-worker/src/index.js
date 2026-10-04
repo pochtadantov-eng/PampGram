@@ -1,10 +1,14 @@
 /**
  * PampGram subscription backend.
  *
- * The only part of PampGram that isn't purely local: a subscription an admin grants has to
- * be visible on the *other* person's device, and there's no way to make that true without a
- * server both copies of the app can ask. Everything else this stores is one number per
- * Telegram account id — no messages, no chat content, nothing else ever passes through here.
+ * The one part of PampGram that isn't purely local to one device: a subscription an admin
+ * grants, or a gift one PampGram install sends another, has to be visible on the *other*
+ * person's device, and there's no way to make that true without a server both copies of the
+ * app can ask. A gift transfer's payload (the `StarGift` itself) is the one thing here this
+ * server never looks inside — it stores and hands back the client's own base64 blob verbatim
+ * (see "gifttransfer:" below and `handleSendGiftTransfer`/`handleFetchGiftTransfers`).
+ * Otherwise, everything this stores is one small value per Telegram account id — no messages,
+ * no chat content.
  *
  * Storage: a single Workers KV namespace (binding SUBS).
  *   key "sub:<id>"          -> "pro" | "standard" (permanent grant, no expiry)
@@ -30,6 +34,12 @@
  *                             ever opened the app" to fall back to), so /users-list can answer
  *                             "how many accounts exist at all", not just "how many are
  *                             non-default".
+ *   key "gifttransfer:<toId>:<transferId>" -> "<base64 blob>", opaque to this server — one
+ *                             pending gift transfer, written by /send-gift-transfer and
+ *                             deleted the moment /fetch-gift-transfers hands it back (one-time
+ *                             pickup, same posture as "key:<KEY>" above). `transferId` is a
+ *                             random UUID, only there to keep multiple pending transfers to
+ *                             the same account from colliding on one KV key.
  * Same posture throughout: a key that would only ever store the "nothing going on" value is
  * deleted instead of written, so the store only ever holds actual overrides.
  *
@@ -142,6 +152,24 @@
  *     returns 404 — there is nothing left in the store to tell the difference between the two
  *     once a key is gone, and that's intentional: an already-used key should look exactly as
  *     invalid as one that was never real.
+ *
+ *   POST /send-gift-transfer
+ *     body: { "toId": <telegram account id>, "giftBase64": "<base64 string>" }
+ *     -> { "ok": true }
+ *     Public, no admin token — "Подарок ему" sending a real gift queues it here for the
+ *     recipient's own device, as a side effect, whenever the recipient isn't this account
+ *     itself (see `PampGramPhantomGiftManager.pushGiftTransfer`). `giftBase64` is never
+ *     decoded or validated beyond its length — this server is a dumb mailbox for whatever the
+ *     client already JSON-encoded, capped at `MAX_GIFT_TRANSFER_LENGTH` characters.
+ *
+ *   POST /fetch-gift-transfers
+ *     body: { "id": <telegram account id> }
+ *     -> { "transfers": ["<base64 string>", ...] }
+ *     Public. Every PampGram install polls this for its own account id
+ *     (`PampGramPhantomGiftManager.observeIncomingGiftTransfers`, every 20s, plus once whenever
+ *     a chat is opened); whatever comes back is deleted from the store in the same call, so a
+ *     transfer is handed to exactly one fetch, ever — the client is expected to materialize it
+ *     immediately, not re-ask.
  */
 
 const ALLOWED_TIERS = new Set(["standard", "pro"]);
@@ -620,6 +648,64 @@ async function handleRedeemKey(request, env) {
 	return jsonResponse({ ok: true, tier, expiresAt });
 }
 
+// A gift transfer body is opaque to this server — a base64 string the client produced by
+// JSON-encoding its own `StarGift` wire format and never decoded here. 200000 chars is
+// generous headroom (real payloads are plain metadata, no binary) while still bounding how
+// much one request can write.
+const MAX_GIFT_TRANSFER_LENGTH = 200000;
+
+async function handleSendGiftTransfer(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { toId, giftBase64 } = payload ?? {};
+	const toIdString = typeof toId === "number" ? String(toId) : toId;
+	if (!isValidAccountId(toIdString)) {
+		return jsonResponse({ error: "invalid toId" }, 400);
+	}
+	if (typeof giftBase64 !== "string" || giftBase64.length === 0 || giftBase64.length > MAX_GIFT_TRANSFER_LENGTH) {
+		return jsonResponse({ error: "invalid gift" }, 400);
+	}
+
+	const transferId = crypto.randomUUID();
+	await env.SUBS.put(`gifttransfer:${toIdString}:${transferId}`, giftBase64);
+
+	return jsonResponse({ ok: true });
+}
+
+async function handleFetchGiftTransfers(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { id } = payload ?? {};
+	const idString = typeof id === "number" ? String(id) : id;
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+
+	// One-time pickup, same posture as a redeemed key: deleted the moment it's handed back, so
+	// a transfer is never delivered twice and the queue never grows unbounded.
+	const keys = await listAllKeys(env, `gifttransfer:${idString}:`);
+	const transfers = [];
+	for (const key of keys) {
+		const value = await env.SUBS.get(key.name);
+		if (value) {
+			transfers.push(value);
+		}
+		await env.SUBS.delete(key.name);
+	}
+
+	return jsonResponse({ transfers });
+}
+
 export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
@@ -653,6 +739,12 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/redeem-key") {
 			return handleRedeemKey(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/send-gift-transfer") {
+			return handleSendGiftTransfer(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/fetch-gift-transfers") {
+			return handleFetchGiftTransfers(request, env);
 		}
 		return jsonResponse({ error: "not found" }, 404);
 	},

@@ -573,6 +573,72 @@ public enum PampGramSubscriptionAPI {
         }.resume()
     }
 
+    private struct SendGiftTransferRequestBody: Encodable {
+        let toId: Int64
+        let giftBase64: String
+    }
+
+    /// Queues a gift transfer for `toId` on the shared server — the cross-device half of
+    /// "Подарок ему" (see `PampGramPhantomGiftManager.pushGiftTransfer`). This module never
+    /// looks inside `giftData`; it only base64-encodes it for the JSON request body and hands
+    /// the exact bytes back unchanged from `fetchGiftTransfers` — the actual `StarGift`
+    /// encoding/decoding lives in `PhantomGiftKit`, which this module (`PampGramCore`) must
+    /// never depend on. No auth, same reasoning as `/redeem-key`: nothing here is scarce or
+    /// sensitive enough to gate, and the whole feature is "anyone running PampGram can send
+    /// anyone else running PampGram a gift" by design. `completion` reports whether the server
+    /// accepted it — never dispatched off the main queue.
+    public static func sendGiftTransfer(toId: Int64, giftData: Data, completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: "\(baseURL)/send-gift-transfer") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(SendGiftTransferRequestBody(toId: toId, giftBase64: giftData.base64EncodedString()))
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    private struct FetchGiftTransfersRequestBody: Encodable {
+        let id: Int64
+    }
+
+    private struct FetchGiftTransfersResponse: Decodable {
+        let transfers: [String]
+    }
+
+    /// Fetches every gift transfer currently queued for `id` and clears them server-side in
+    /// the same call (`/fetch-gift-transfers` deletes what it returns — see the server's own
+    /// doc) — there is nothing to deduplicate on this device, a transfer handed back once is
+    /// gone for good. Same never-fails-outward contract as every other fetch here: any network
+    /// or decode problem resolves to an empty array rather than erroring the poll that asked.
+    public static func fetchGiftTransfers(id: Int64, completion: @escaping ([Data]) -> Void) {
+        guard let url = URL(string: "\(baseURL)/fetch-gift-transfers") else {
+            completion([])
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(FetchGiftTransfersRequestBody(id: id))
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            var results: [Data] = []
+            if let data, let decoded = try? JSONDecoder().decode(FetchGiftTransfersResponse.self, from: data) {
+                results = decoded.transfers.compactMap { Data(base64Encoded: $0) }
+            }
+            DispatchQueue.main.async {
+                completion(results)
+            }
+        }.resume()
+    }
+
     /// This device's locally-stored admin token, if the admin has entered one. Read inside a
     /// Postbox transaction, same pattern as `PampGramCore.settings(transaction:)`.
     public static func adminToken(transaction: Transaction) -> String? {
