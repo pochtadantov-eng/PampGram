@@ -15,13 +15,15 @@ private final class PampGramMessagesArguments {
     let toggleAntiDelete: (Bool) -> Void
     let openExclusions: () -> Void
     let toggleVisualEdit: (Bool) -> Void
+    let openVisualEditItems: () -> Void
     let openHistory: () -> Void
     let clearHistory: () -> Void
 
-    init(toggleAntiDelete: @escaping (Bool) -> Void, openExclusions: @escaping () -> Void, toggleVisualEdit: @escaping (Bool) -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void) {
+    init(toggleAntiDelete: @escaping (Bool) -> Void, openExclusions: @escaping () -> Void, toggleVisualEdit: @escaping (Bool) -> Void, openVisualEditItems: @escaping () -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void) {
         self.toggleAntiDelete = toggleAntiDelete
         self.openExclusions = openExclusions
         self.toggleVisualEdit = toggleVisualEdit
+        self.openVisualEditItems = openVisualEditItems
         self.openHistory = openHistory
         self.clearHistory = clearHistory
     }
@@ -42,6 +44,7 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
     case antiDeleteFooter(String)
 
     case visualEditToggle(String, Bool)
+    case visualEditItemsRow(String)
     case visualEditFooter(String)
 
     case historyHeader(String)
@@ -55,7 +58,7 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return PampGramMessagesSection.about.rawValue
         case .antiDeleteToggle, .exclusionsRow, .antiDeleteFooter:
             return PampGramMessagesSection.antiDelete.rawValue
-        case .visualEditToggle, .visualEditFooter:
+        case .visualEditToggle, .visualEditItemsRow, .visualEditFooter:
             return PampGramMessagesSection.visualEdit.rawValue
         case .historyHeader, .historyList, .clearHistory, .historyFooter:
             return PampGramMessagesSection.history.rawValue
@@ -74,16 +77,18 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return 3
         case .visualEditToggle:
             return 4
-        case .visualEditFooter:
+        case .visualEditItemsRow:
             return 5
-        case .historyHeader:
+        case .visualEditFooter:
             return 6
-        case .historyList:
+        case .historyHeader:
             return 7
-        case .clearHistory:
+        case .historyList:
             return 8
-        case .historyFooter:
+        case .clearHistory:
             return 9
+        case .historyFooter:
+            return 10
         }
     }
 
@@ -110,6 +115,10 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "pencil.circle.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleVisualEdit(value)
             })
+        case let .visualEditItemsRow(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
+                arguments.openVisualEditItems()
+            })
         case let .historyList(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "clock.arrow.circlepath", backgroundColor: UIColor(rgb: 0x8e44ec)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openHistory()
@@ -133,7 +142,8 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
     entries.append(.antiDeleteFooter("Удалённое сообщение — своё или собеседника — остаётся в чате затемнённым, с иконкой корзины. Снять пометки можно кнопкой «Восстановить чат» в конкретном чате. В исключённых чатах — как обычно."))
 
     entries.append(.visualEditToggle("Изменить визуально", settings.visualEditEnabled))
-    entries.append(.visualEditFooter("Добавляет в меню сообщения собеседника (зажать → PampGram) кнопку «Изменить визуально» — меняет текст только у вас."))
+    entries.append(.visualEditItemsRow("Настроить пункты"))
+    entries.append(.visualEditFooter("Добавляет в меню сообщения (зажать → PampGram) пункты для фейковых фото/голосовых/файлов/звонков и изменения текста — всё видно только вам. «Настроить пункты» решает, какие именно показывать."))
 
     entries.append(.historyHeader("ИСТОРИЯ"))
     entries.append(.historyList("Восстановленные сообщения", "\(historyCount)"))
@@ -167,6 +177,9 @@ public func pampGramMessagesSettingsController(context: AccountContext) -> ViewC
                 settings.visualEditEnabled = value
                 return settings
             }).start()
+        },
+        openVisualEditItems: {
+            pushControllerImpl?(pampGramVisualEditItemsController(context: context))
         },
         openHistory: {
             pushControllerImpl?(pampGramMessagesHistoryController(context: context))

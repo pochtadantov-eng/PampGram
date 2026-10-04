@@ -17891,14 +17891,15 @@ index aa11e52..5d044de 100644
              if count > limitCount, itemIds.firstIndex(of: itemId) == nil {
                  return .limitExceeded(count: sameKind.count, limit: limitCount)
 diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
-index 5da8c15e..c8bd1d42 100644
+index 5da8c15e..9b66a8e1 100644
 --- a/submodules/TelegramUI/BUILD
 +++ b/submodules/TelegramUI/BUILD
-@@ -188,6 +188,7 @@ swift_library(
+@@ -188,6 +188,8 @@ swift_library(
          "//submodules/RaiseToListen:RaiseToListen",
          "//submodules/OpusBinding:OpusBinding",
          "//third-party/opus:opus",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
          "//submodules/ShareItems:ShareItems",
          "//submodules/ShareItems/Impl:ShareItemsImpl",
          "//submodules/SettingsUI:SettingsUI",
@@ -20457,7 +20458,7 @@ index a1a8f61d..8d28620c 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 07cef5bb..b56af455 100644
+index 07cef5bb..50beb232 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -38,7 +38,9 @@ import ChatMessageItemView
@@ -20471,7 +20472,7 @@ index 07cef5bb..b56af455 100644
  private struct MessageContextMenuData {
      let starStatus: Bool?
      let canReply: Bool
-@@ -491,7 +493,142 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
+@@ -491,7 +493,170 @@ func updatedChatEditInterfaceMessageState(context: AccountContext, state: ChatPr
      )
  }
  
@@ -20524,7 +20525,7 @@ index 07cef5bb..b56af455 100644
 +                    pampGramPresentBannedScreen(context: context, reason: reason)
 +                    return
 +                }
-+                pampGramPresentMessageActionsSheet(context: context, message: message, controllerInteraction: controllerInteraction, strings: chatPresentationInterfaceState.strings)
++                pampGramPresentMessageActionsSheet(context: context, message: message, interfaceInteraction: interfaceInteraction, settings: settings, strings: chatPresentationInterfaceState.strings)
 +            })
 +        })), at: 0)
 +        items.content = .list(newList)
@@ -20534,10 +20535,10 @@ index 07cef5bb..b56af455 100644
 +
 +/// The "PampGram" entry's full action list, as an `ActionSheetController` instead of a second
 +/// context-menu level — see the comment at this file's "PampGram" `ContextMenuActionItem` call
-+/// site for why. `message`/`controllerInteraction` are captured from the same closure that used
-+/// to build the old `subItems` list; every action below is unchanged from that list, just
-+/// rehomed onto `ActionSheetButtonItem`.
-+private func pampGramPresentMessageActionsSheet(context: AccountContext, message: EngineRawMessage, controllerInteraction: ChatControllerInteraction?, strings: PresentationStrings) {
++/// site for why. `message` is captured from the same closure that used to build the old
++/// `subItems` list; every action below is unchanged from that list, just rehomed onto
++/// `ActionSheetButtonItem`.
++private func pampGramPresentMessageActionsSheet(context: AccountContext, message: EngineRawMessage, interfaceInteraction: ChatPanelInterfaceInteraction?, settings: PampGramSettings, strings: PresentationStrings) {
 +    guard let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController else {
 +        return
 +    }
@@ -20547,57 +20548,85 @@ index 07cef5bb..b56af455 100644
 +    var buttons: [ActionSheetItem] = [
 +        ActionSheetTextItem(title: "PampGram")
 +    ]
-+    buttons.append(ActionSheetButtonItem(title: "Изменить текст", color: .accent, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        controllerInteraction?.navigationController()?.pushViewController(pampGramVisualEditController(context: context, messageId: message.id, currentText: message.text))
-+    }))
-+    buttons.append(ActionSheetButtonItem(title: "Отправить фото", color: .accent, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        if #available(iOS 14.0, *) {
-+            pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
-+        }
-+    }))
-+    buttons.append(ActionSheetButtonItem(title: "Отправить голосовое", color: .accent, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        if #available(iOS 14.0, *) {
-+            pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
-+        }
-+    }))
-+    buttons.append(ActionSheetButtonItem(title: "Отправить файл", color: .accent, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        if #available(iOS 14.0, *) {
-+            pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
-+        }
-+    }))
-+    buttons.append(ActionSheetButtonItem(title: "Показать звонок", color: .accent, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
-+    }))
-+    buttons.append(ActionSheetButtonItem(title: "Подарить Premium", color: .accent, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        pampGramPresentInsertPremiumGift(context: context, peerId: message.id.peerId)
-+    }))
-+    buttons.append(ActionSheetButtonItem(title: "Поставить реакцию", color: .accent, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        pampGramPresentReactionPicker(context: context, messageId: message.id)
-+    }))
-+    buttons.append(ActionSheetButtonItem(title: "Сохранить одноразовое", color: .accent, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
-+    }))
-+    buttons.append(ActionSheetButtonItem(title: "Визуальное фото в канал", color: .accent, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        if #available(iOS 14.0, *) {
-+            pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
-+        }
-+    }))
-+    // The only entry in this sheet that spends real Stars and touches a real gift — colored
-+    // .destructive (red) to read as distinct from the purely-visual/local actions above it,
-+    // same as this menu already colors any other irreversible real action.
-+    buttons.append(ActionSheetButtonItem(title: "Подарить 2 мишек", color: .destructive, action: { [weak sheet] in
-+        sheet?.dismissAnimated()
-+        pampGramConfirmSendRealBears(context: context, peerId: message.id.peerId)
-+    }))
++    if settings.visualEditTextItemEnabled {
++        buttons.append(ActionSheetButtonItem(title: "Изменить текст", color: .accent, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            // PampGram: pre-fills the real message input field with this message's current
++            // text and arms PampGramVisualEditRuntime, instead of opening a separate screen —
++            // typing normally and tapping Send (see sendCurrentMessage in ChatControllerNode.swift)
++            // commits it as a local-only edit to this message.
++            PampGramVisualEditRuntime.shared.setPending(peerId: message.id.peerId.toInt64(), messageId: message.id)
++            interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
++                return (ChatTextInputState(inputText: NSAttributedString(string: message.text)), inputMode)
++            }
++            topController.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Напечатайте новый текст и нажмите отправить — сообщение изменится только у вас.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
++        }))
++    }
++    if settings.visualEditPhotoItemEnabled {
++        buttons.append(ActionSheetButtonItem(title: "Отправить фото", color: .accent, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            if #available(iOS 14.0, *) {
++                pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
++            }
++        }))
++    }
++    if settings.visualEditVoiceItemEnabled {
++        buttons.append(ActionSheetButtonItem(title: "Отправить голосовое", color: .accent, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            if #available(iOS 14.0, *) {
++                pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
++            }
++        }))
++    }
++    if settings.visualEditFileItemEnabled {
++        buttons.append(ActionSheetButtonItem(title: "Отправить файл", color: .accent, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            if #available(iOS 14.0, *) {
++                pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
++            }
++        }))
++    }
++    if settings.visualEditCallItemEnabled {
++        buttons.append(ActionSheetButtonItem(title: "Показать звонок", color: .accent, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
++        }))
++    }
++    if settings.visualEditPremiumGiftItemEnabled {
++        buttons.append(ActionSheetButtonItem(title: "Подарить Premium", color: .accent, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            pampGramPresentInsertPremiumGift(context: context, peerId: message.id.peerId)
++        }))
++    }
++    if settings.visualEditReactionItemEnabled {
++        buttons.append(ActionSheetButtonItem(title: "Поставить реакцию", color: .accent, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            pampGramPresentReactionPicker(context: context, messageId: message.id)
++        }))
++    }
++    if settings.visualEditSaveOneTimeItemEnabled {
++        buttons.append(ActionSheetButtonItem(title: "Сохранить одноразовое", color: .accent, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
++        }))
++    }
++    if settings.visualEditChannelPhotoItemEnabled {
++        buttons.append(ActionSheetButtonItem(title: "Визуальное фото в канал", color: .accent, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            if #available(iOS 14.0, *) {
++                pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
++            }
++        }))
++    }
++    if settings.visualEditRealBearsItemEnabled {
++        // The only entry in this sheet that spends real Stars and touches a real gift — colored
++        // .destructive (red) to read as distinct from the purely-visual/local actions above it,
++        // same as this menu already colors any other irreversible real action.
++        buttons.append(ActionSheetButtonItem(title: "Подарить 2 мишек", color: .destructive, action: { [weak sheet] in
++            sheet?.dismissAnimated()
++            pampGramConfirmSendRealBears(context: context, peerId: message.id.peerId)
++        }))
++    }
 +
 +    sheet.setItemGroups([
 +        ActionSheetItemGroup(items: buttons),
@@ -21470,18 +21499,19 @@ index 23695c21..68b7f973 100644
          let _ = (self.shouldDivertMessagesToScheduled(messages: messages)
          |> deliverOnMainQueue).startStandalone(next: { [weak self] shouldDivert in
 diff --git a/submodules/TelegramUI/Sources/ChatControllerNode.swift b/submodules/TelegramUI/Sources/ChatControllerNode.swift
-index 83c19884..c027da76 100644
+index 83c19884..b094f8c8 100644
 --- a/submodules/TelegramUI/Sources/ChatControllerNode.swift
 +++ b/submodules/TelegramUI/Sources/ChatControllerNode.swift
-@@ -13,6 +13,7 @@ import TelegramNotices
+@@ -13,6 +13,8 @@ import TelegramNotices
  import TelegramUniversalVideoContent
  import ChatInterfaceState
  import FastBlur
 +import PampGramCore
++import PampGramSettingsUI
  import ConfettiEffect
  import WallpaperBackgroundNode
  import GridMessageSelectionNode
-@@ -1205,7 +1206,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+@@ -1205,7 +1207,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
              }
          }
          
@@ -21493,6 +21523,33 @@ index 83c19884..c027da76 100644
          if self.historyNodeContainer.isSecret != isSecret {
              #if DEBUG
              self.historyNodeContainer.isSecret = false
+@@ -4854,7 +4859,25 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+         if let textInputPanelNode = self.textInputPanelNode {
+             effectivePresentationInterfaceState = effectivePresentationInterfaceState.updatedInterfaceState { $0.withUpdatedEffectiveInputState(textInputPanelNode.inputTextState) }
+         }
+-        
++
++        // PampGram "Изменить текст": a local-only edit is armed for this chat (the "PampGram"
++        // long-press menu's "Изменить текст" pre-filled the composer and called
++        // PampGramVisualEditRuntime.setPending) — commit whatever's currently typed as that
++        // message's new text and stop here, never reaching the real send/edit pipeline below.
++        // An empty composer (user cleared it before sending) is a no-op in
++        // pampGramApplyVisualEditDirect, but the pending edit and input are still cleared so a
++        // later unrelated send in this chat doesn't surprise-edit it.
++        if let peerId = self.chatLocation.peerId, let pendingMessageId = PampGramVisualEditRuntime.shared.pending(peerId: peerId.toInt64()) {
++            let text = effectivePresentationInterfaceState.interfaceState.effectiveInputState.inputText.string
++            pampGramApplyVisualEditDirect(context: self.context, messageId: pendingMessageId, text: text)
++            PampGramVisualEditRuntime.shared.clearPending(peerId: peerId.toInt64())
++            self.interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
++                return (ChatTextInputState(inputText: NSAttributedString(string: "")), inputMode)
++            }
++            completion()
++            return
++        }
++
+         if let _ = effectivePresentationInterfaceState.interfaceState.editMessage, effectivePresentationInterfaceState.interfaceState.postSuggestionState == nil {
+             self.interfaceInteraction?.editMessage()
+         } else {
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
 index e6eff30b..dfbc4bf7 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift

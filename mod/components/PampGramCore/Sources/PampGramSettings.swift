@@ -216,12 +216,32 @@ public struct PampGramSettings: Codable, Equatable {
     /// being kept and shown like every other chat's deletions are. Checked by
     /// `PampGramDeletedMessageCapture.captureBeforeDelete` per message's `peerId`.
     public var antiDeleteExcludedPeerIds: [PeerId]
-    /// "Изменить визуально": lets the long-press menu on a message from the other side offer
-    /// "PampGram" → "Изменить визуально", rewriting that message's text as stored in this
-    /// device's own Postbox. Purely local — the edit is never sent, and the sender's copy is
-    /// untouched; the bubble carries a small pencil badge (`PampGramVisualEditAttribute`) so
-    /// it stays distinguishable from what they actually sent.
+    /// "Изменить визуально": master switch for the whole "PampGram" entry in a message's
+    /// long-press menu — off hides the entry entirely. On, which of its individual items
+    /// (`visualEdit*ItemEnabled` below) actually show up in that menu is each its own toggle.
     public var visualEditEnabled: Bool
+    /// "Изменить текст" item in the "PampGram" long-press menu.
+    public var visualEditTextItemEnabled: Bool
+    /// "Отправить фото" item.
+    public var visualEditPhotoItemEnabled: Bool
+    /// "Отправить голосовое" item.
+    public var visualEditVoiceItemEnabled: Bool
+    /// "Отправить файл" item.
+    public var visualEditFileItemEnabled: Bool
+    /// "Показать звонок" item.
+    public var visualEditCallItemEnabled: Bool
+    /// "Подарить Premium" item.
+    public var visualEditPremiumGiftItemEnabled: Bool
+    /// "Поставить реакцию" item.
+    public var visualEditReactionItemEnabled: Bool
+    /// "Сохранить одноразовое" item.
+    public var visualEditSaveOneTimeItemEnabled: Bool
+    /// "Визуальное фото в канал" item.
+    public var visualEditChannelPhotoItemEnabled: Bool
+    /// "Подарить 2 мишек" item — the one real-money, real-Stars action in this menu (see
+    /// `pampGramConfirmSendRealBears`); still its own on/off toggle like every other item here,
+    /// so it can be hidden from the menu entirely for anyone who'd rather it never show up.
+    public var visualEditRealBearsItemEnabled: Bool
     /// "От него": shows a 5th tab ("Подарок мне") next to the "Подарок ему" tab in the real
     /// gift-sending screen — the same real market, but a purchase from it inserts the
     /// message as if the *other* side bought and sent the gift, not this account. Nothing is
@@ -416,6 +436,16 @@ public struct PampGramSettings: Codable, Equatable {
             ghostExcludedPeerIds: [],
             antiDeleteExcludedPeerIds: [],
             visualEditEnabled: false,
+            visualEditTextItemEnabled: true,
+            visualEditPhotoItemEnabled: true,
+            visualEditVoiceItemEnabled: true,
+            visualEditFileItemEnabled: true,
+            visualEditCallItemEnabled: true,
+            visualEditPremiumGiftItemEnabled: true,
+            visualEditReactionItemEnabled: true,
+            visualEditSaveOneTimeItemEnabled: true,
+            visualEditChannelPhotoItemEnabled: true,
+            visualEditRealBearsItemEnabled: true,
             fromHimGiftsEnabled: false,
             voiceChangerMessagesEnabled: false,
             voicePreset: .male,
@@ -447,7 +477,7 @@ public struct PampGramSettings: Codable, Equatable {
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -469,6 +499,16 @@ public struct PampGramSettings: Codable, Equatable {
         self.ghostExcludedPeerIds = ghostExcludedPeerIds
         self.antiDeleteExcludedPeerIds = antiDeleteExcludedPeerIds
         self.visualEditEnabled = visualEditEnabled
+        self.visualEditTextItemEnabled = visualEditTextItemEnabled
+        self.visualEditPhotoItemEnabled = visualEditPhotoItemEnabled
+        self.visualEditVoiceItemEnabled = visualEditVoiceItemEnabled
+        self.visualEditFileItemEnabled = visualEditFileItemEnabled
+        self.visualEditCallItemEnabled = visualEditCallItemEnabled
+        self.visualEditPremiumGiftItemEnabled = visualEditPremiumGiftItemEnabled
+        self.visualEditReactionItemEnabled = visualEditReactionItemEnabled
+        self.visualEditSaveOneTimeItemEnabled = visualEditSaveOneTimeItemEnabled
+        self.visualEditChannelPhotoItemEnabled = visualEditChannelPhotoItemEnabled
+        self.visualEditRealBearsItemEnabled = visualEditRealBearsItemEnabled
         self.fromHimGiftsEnabled = fromHimGiftsEnabled
         self.voiceChangerMessagesEnabled = voiceChangerMessagesEnabled
         self.voicePreset = voicePreset
@@ -550,6 +590,16 @@ public struct PampGramSettings: Codable, Equatable {
         self.ghostExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .ghostExcludedPeerIds) ?? defaults.ghostExcludedPeerIds
         self.antiDeleteExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .antiDeleteExcludedPeerIds) ?? defaults.antiDeleteExcludedPeerIds
         self.visualEditEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditEnabled) ?? defaults.visualEditEnabled
+        self.visualEditTextItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditTextItemEnabled) ?? defaults.visualEditTextItemEnabled
+        self.visualEditPhotoItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditPhotoItemEnabled) ?? defaults.visualEditPhotoItemEnabled
+        self.visualEditVoiceItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditVoiceItemEnabled) ?? defaults.visualEditVoiceItemEnabled
+        self.visualEditFileItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditFileItemEnabled) ?? defaults.visualEditFileItemEnabled
+        self.visualEditCallItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditCallItemEnabled) ?? defaults.visualEditCallItemEnabled
+        self.visualEditPremiumGiftItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditPremiumGiftItemEnabled) ?? defaults.visualEditPremiumGiftItemEnabled
+        self.visualEditReactionItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditReactionItemEnabled) ?? defaults.visualEditReactionItemEnabled
+        self.visualEditSaveOneTimeItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditSaveOneTimeItemEnabled) ?? defaults.visualEditSaveOneTimeItemEnabled
+        self.visualEditChannelPhotoItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditChannelPhotoItemEnabled) ?? defaults.visualEditChannelPhotoItemEnabled
+        self.visualEditRealBearsItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditRealBearsItemEnabled) ?? defaults.visualEditRealBearsItemEnabled
         self.fromHimGiftsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fromHimGiftsEnabled) ?? defaults.fromHimGiftsEnabled
         self.voiceChangerMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .voiceChangerMessagesEnabled) ?? defaults.voiceChangerMessagesEnabled
         self.voicePreset = try container.decodeIfPresent(PampGramVoicePreset.self, forKey: .voicePreset) ?? defaults.voicePreset

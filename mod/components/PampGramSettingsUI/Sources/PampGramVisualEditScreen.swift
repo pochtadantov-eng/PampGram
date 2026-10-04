@@ -1,138 +1,76 @@
 import Foundation
-import UIKit
-import Display
-import SwiftSignalKit
 import Postbox
+import SwiftSignalKit
 import TelegramCore
-import TelegramPresentationData
-import ItemListUI
-import PresentationDataUtils
 import AccountContext
-import PampGramCore
 
-private enum PampGramVisualEditEntry: ItemListNodeEntry {
-    case aboutText(String)
-    case textInput(String)
+/// Tracks, per chat, which message (if any) "Изменить текст" (the "PampGram" long-press menu)
+/// currently has queued for a local text edit — set the moment that menu item is tapped, read
+/// and cleared by the Send-button interception in `ChatControllerNode.sendCurrentMessage` (see
+/// the patch). One at a time per chat, same as stock Telegram's own real edit mode: picking
+/// "Изменить текст" on a different message, or leaving the chat, simply overwrites/drops
+/// whatever was pending without needing an explicit cancel path.
+public final class PampGramVisualEditRuntime {
+    public static let shared = PampGramVisualEditRuntime()
 
-    var section: ItemListSectionId {
-        return 0
+    private let lock = NSLock()
+    private var pendingByPeer: [Int64: MessageId] = [:]
+
+    private init() {
     }
 
-    var stableId: Int32 {
-        switch self {
-        case .aboutText:
-            return 0
-        case .textInput:
-            return 1
-        }
+    public func setPending(peerId: Int64, messageId: MessageId) {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        self.pendingByPeer[peerId] = messageId
     }
 
-    static func ==(lhs: PampGramVisualEditEntry, rhs: PampGramVisualEditEntry) -> Bool {
-        switch (lhs, rhs) {
-        case let (.aboutText(lhsText), .aboutText(rhsText)):
-            return lhsText == rhsText
-        case let (.textInput(lhsText), .textInput(rhsText)):
-            return lhsText == rhsText
-        default:
-            return false
-        }
+    public func pending(peerId: Int64) -> MessageId? {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.pendingByPeer[peerId]
     }
 
-    static func <(lhs: PampGramVisualEditEntry, rhs: PampGramVisualEditEntry) -> Bool {
-        return lhs.stableId < rhs.stableId
-    }
-
-    func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
-        let arguments = arguments as! (String) -> Void
-        switch self {
-        case let .aboutText(text):
-            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .textInput(text):
-            return ItemListMultilineInputItem(presentationData: presentationData, systemStyle: .glass, text: text, placeholder: "Текст сообщения", maxLength: nil, sectionId: self.section, style: .blocks, capitalization: true, autocorrection: true, textUpdated: { text in
-                arguments(text)
-            })
-        }
+    public func clearPending(peerId: Int64) {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        self.pendingByPeer.removeValue(forKey: peerId)
     }
 }
 
-/// Reached from a message's long-press menu ("PampGram" → "Изменить визуально") when the
-/// "Изменить визуально" toggle is on. Rewrites the message's text as stored in this device's
-/// own Postbox via `Transaction.updateMessage` — nothing is sent, the sender's own copy is
-/// untouched.
-public func pampGramVisualEditController(context: AccountContext, messageId: MessageId, currentText: String) -> ViewController {
-    let textValue = Atomic<String>(value: currentText)
-    let textPromise = ValuePromise<String>(currentText, ignoreRepeated: false)
-    var dismissImpl: (() -> Void)?
-
-    let applyEdit: () -> Void = {
-        let newText = textValue.with { $0 }
-        let _ = context.account.postbox.transaction { transaction -> Void in
-            transaction.updateMessage(messageId, update: { message -> PostboxUpdateMessage in
-                let updatedMessage = StoreMessage(
-                    id: messageId,
-                    customStableId: nil,
-                    globallyUniqueId: message.globallyUniqueId,
-                    groupingKey: message.groupingKey,
-                    threadId: message.threadId,
-                    timestamp: message.timestamp,
-                    flags: StoreMessageFlags(message.flags),
-                    tags: message.tags,
-                    globalTags: message.globalTags,
-                    localTags: message.localTags,
-                    forwardInfo: message.forwardInfo.map(StoreMessageForwardInfo.init),
-                    authorId: message.author?.id,
-                    text: newText,
-                    attributes: message.attributes.filter { !($0 is TextEntitiesMessageAttribute) },
-                    media: message.media
-                )
-                return .update(updatedMessage)
-            })
-        }.start()
-        dismissImpl?()
+/// Reached from a message's long-press menu ("PampGram" → "Изменить текст"), by way of the
+/// chat's own message input field instead of a separate screen: picking the item pre-fills the
+/// composer with the message's current text and arms `PampGramVisualEditRuntime`; typing
+/// normally and tapping Send (see the `sendCurrentMessage` interception in the patch) calls
+/// this with whatever the composer held, rewriting the message's text as stored in this
+/// device's own Postbox via `Transaction.updateMessage`. Nothing is sent, the sender's own copy
+/// is untouched. An empty result (the whole composer was cleared before sending) is a no-op —
+/// there is no "clear a message's text" affordance here, only edits to something.
+public func pampGramApplyVisualEditDirect(context: AccountContext, messageId: MessageId, text: String) {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+        return
     }
-
-    let signal = combineLatest(
-        context.sharedContext.presentationData,
-        textPromise.get()
-    )
-    |> deliverOnMainQueue
-    |> map { presentationData, text -> (ItemListControllerState, (ItemListNodeState, Any)) in
-        let controllerState = ItemListControllerState(
-            presentationData: ItemListPresentationData(presentationData),
-            title: .text("Изменить визуально"),
-            leftNavigationButton: ItemListNavigationButton(content: .text(presentationData.strings.Common_Cancel), style: .regular, enabled: true, action: {
-                dismissImpl?()
-            }),
-            rightNavigationButton: ItemListNavigationButton(content: .text(presentationData.strings.Common_Done), style: .bold, enabled: !text.isEmpty, action: {
-                applyEdit()
-            }),
-            backNavigationButton: nil,
-            animateChanges: false
-        )
-        let entries: [PampGramVisualEditEntry] = [
-            .aboutText("Меняет текст только на этом устройстве — собеседник и сервер ничего не получают."),
-            .textInput(text)
-        ]
-        let listState = ItemListNodeState(
-            presentationData: ItemListPresentationData(presentationData),
-            entries: entries,
-            style: .blocks,
-            animateChanges: false
-        )
-        let updateText: (String) -> Void = { text in
-            let _ = textValue.swap(text)
-            textPromise.set(text)
-        }
-        return (controllerState, (listState, updateText))
-    }
-
-    let controller = ItemListController(context: context, state: signal)
-    dismissImpl = { [weak controller] in
-        if let navigationController = controller?.navigationController as? NavigationController {
-            let _ = navigationController.popViewController(animated: true)
-        } else {
-            controller?.dismiss()
-        }
-    }
-    return controller
+    let _ = context.account.postbox.transaction { transaction -> Void in
+        transaction.updateMessage(messageId, update: { message -> PostboxUpdateMessage in
+            let updatedMessage = StoreMessage(
+                id: messageId,
+                customStableId: nil,
+                globallyUniqueId: message.globallyUniqueId,
+                groupingKey: message.groupingKey,
+                threadId: message.threadId,
+                timestamp: message.timestamp,
+                flags: StoreMessageFlags(message.flags),
+                tags: message.tags,
+                globalTags: message.globalTags,
+                localTags: message.localTags,
+                forwardInfo: message.forwardInfo.map(StoreMessageForwardInfo.init),
+                authorId: message.author?.id,
+                text: trimmed,
+                attributes: message.attributes.filter { !($0 is TextEntitiesMessageAttribute) },
+                media: message.media
+            )
+            return .update(updatedMessage)
+        })
+    }.start()
 }
