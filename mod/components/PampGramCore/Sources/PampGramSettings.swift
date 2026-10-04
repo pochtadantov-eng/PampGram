@@ -260,14 +260,25 @@ public struct PampGramSettings: Codable, Equatable {
     /// Telegram never verifies server-side — a locally-shown Premium badge/status, premium
     /// stickers & reactions in the picker, and the relaxed folder/pin client limits.
     public var legalPremiumEnabled: Bool
-    /// "Показывать временную медиа" (Дополнительно): draws view-once and self-destructing
-    /// photos/videos in the chat bubble like an ordinary photo — visible immediately, no blur
-    /// overlay, no countdown badge. Purely a local display choice for the inline bubble, read
-    /// synchronously by `PampGramTemporaryMediaDisplay` from `ChatMessageInteractiveMediaNode`
-    /// (its layout runs off the main thread, so it can't open a Postbox transaction there).
-    /// Opening the media still goes through Telegram's own secret-media viewer untouched — this
-    /// never changes the message's real timer, consumption, or deletion.
+    /// Legacy "Показывать временную медиа" toggle, kept only so old stored settings still
+    /// decode and can be migrated — see `bypassViewOnceMediaEnabled`/`bypassTimedMediaEnabled`,
+    /// which replaced it as two independent toggles. Nothing reads this directly any more.
     public var showTemporaryMediaEnabled: Bool
+    /// "Обход одноразовых" (Дополнительно): draws a view-once photo/video (`minAutoremoveOrClearTimeout
+    /// == viewOnceTimeout`) in the chat bubble like an ordinary photo — visible immediately, no
+    /// blur overlay, no one-time-open gesture. Purely a local display choice for the inline
+    /// bubble, read synchronously by `PampGramTemporaryMediaDisplay` from
+    /// `ChatMessageInteractiveMediaNode` (its layout runs off the main thread, so it can't open a
+    /// Postbox transaction there). Opening the media still goes through Telegram's own
+    /// secret-media viewer untouched — this never changes the message's real timer, consumption,
+    /// or deletion. Independent of `bypassTimedMediaEnabled`: either can be on without the other.
+    public var bypassViewOnceMediaEnabled: Bool
+    /// "Обход с таймером" (Дополнительно): same display override as `bypassViewOnceMediaEnabled`,
+    /// for a self-destruct photo/video sent with a short timer instead of "посмотреть один раз"
+    /// (`minAutoremoveOrClearTimeout` set but not equal to `viewOnceTimeout` — Telegram only
+    /// allows such a timer up to 60 seconds, see `containsSecretMedia`). Read the same way, by
+    /// the same class.
+    public var bypassTimedMediaEnabled: Bool
     /// "Сохранение историй" (Дополнительно): two related effects for a story that has
     /// forwarding disabled (`StoryItem.isForwardingDisabled`):
     /// 1. A screenshot or screen recording of it comes out normal instead of black. Stock
@@ -421,6 +432,8 @@ public struct PampGramSettings: Codable, Equatable {
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
             showTemporaryMediaEnabled: false,
+            bypassViewOnceMediaEnabled: false,
+            bypassTimedMediaEnabled: false,
             storySavingEnabled: false,
             bypassScreenshotProtectionEnabled: false,
             masterEnabled: false,
@@ -434,7 +447,7 @@ public struct PampGramSettings: Codable, Equatable {
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -472,6 +485,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
         self.showTemporaryMediaEnabled = showTemporaryMediaEnabled
+        self.bypassViewOnceMediaEnabled = bypassViewOnceMediaEnabled
+        self.bypassTimedMediaEnabled = bypassTimedMediaEnabled
         self.storySavingEnabled = storySavingEnabled
         self.bypassScreenshotProtectionEnabled = bypassScreenshotProtectionEnabled
         self.masterEnabled = masterEnabled
@@ -551,6 +566,16 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
         self.showTemporaryMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .showTemporaryMediaEnabled) ?? defaults.showTemporaryMediaEnabled
+        // Migration: the split toggles didn't exist before. `bypassViewOnceMediaEnabled` is the
+        // marker key — present → new settings, honor them verbatim; absent → seed both from the
+        // legacy single toggle, so an account that already had it on keeps both halves on.
+        if let bypassViewOnceMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassViewOnceMediaEnabled) {
+            self.bypassViewOnceMediaEnabled = bypassViewOnceMediaEnabled
+            self.bypassTimedMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassTimedMediaEnabled) ?? defaults.bypassTimedMediaEnabled
+        } else {
+            self.bypassViewOnceMediaEnabled = self.showTemporaryMediaEnabled
+            self.bypassTimedMediaEnabled = self.showTemporaryMediaEnabled
+        }
         self.storySavingEnabled = try container.decodeIfPresent(Bool.self, forKey: .storySavingEnabled) ?? defaults.storySavingEnabled
         self.bypassScreenshotProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassScreenshotProtectionEnabled) ?? defaults.bypassScreenshotProtectionEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
@@ -608,6 +633,8 @@ public struct PampGramSettings: Codable, Equatable {
         settings.infinitePinsEnabled = false
         settings.legalPremiumEnabled = false
         settings.showTemporaryMediaEnabled = false
+        settings.bypassViewOnceMediaEnabled = false
+        settings.bypassTimedMediaEnabled = false
         settings.storySavingEnabled = false
         settings.bypassScreenshotProtectionEnabled = false
         settings.masterEnabled = false

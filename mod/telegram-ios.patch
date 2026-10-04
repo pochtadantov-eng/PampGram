@@ -21492,7 +21492,7 @@ index 85b0e37..e3ad1ca 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
-index f2177bb6..a205e460 100644
+index f2177bb6..22ae2795 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
 @@ -11,6 +11,7 @@ import TelegramUIPreferences
@@ -21503,23 +21503,28 @@ index f2177bb6..a205e460 100644
  import RadialStatusNode
  import StickerResources
  import PhotoResources
-@@ -922,7 +923,14 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+@@ -922,7 +923,19 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
              
              var nativeSize: CGSize
              
 -            let isSecretMedia = message.containsSecretMedia
 +            var isSecretMedia = message.containsSecretMedia
-+            // PampGram "Показывать временную медиа": draw view-once/self-destructing media
-+            // exactly like a normal photo in the bubble (no blur, no badge, no view-once
-+            // gesture). Purely local display — opening the message still goes through
-+            // Telegram's own secret-media viewer untouched.
-+            if isSecretMedia && PampGramTemporaryMediaDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) {
-+                isSecretMedia = false
++            // PampGram "Обход одноразовых"/"Обход с таймером": draw view-once/self-destructing
++            // media exactly like a normal photo in the bubble (no blur, no badge, no view-once
++            // gesture), gated by whichever of the two toggles matches this message's kind.
++            // Purely local display — opening the message still goes through Telegram's own
++            // secret-media viewer untouched.
++            if isSecretMedia {
++                let isViewOnce = message.minAutoremoveOrClearTimeout == viewOnceTimeout
++                let bypassEnabled = isViewOnce ? PampGramTemporaryMediaDisplay.shared.isViewOnceEnabled(accountKey: context.account.peerId.toInt64()) : PampGramTemporaryMediaDisplay.shared.isTimedEnabled(accountKey: context.account.peerId.toInt64())
++                if bypassEnabled {
++                    isSecretMedia = false
++                }
 +            }
              var secretBeginTimeAndTimeout: (Double, Double)?
              if isSecretMedia {
                  if let attribute = message.autoclearAttribute {
-@@ -2015,7 +2023,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+@@ -2015,7 +2028,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
                                              autoFetchFullSizeThumbnail: true,
                                              continuePlayingWithoutSoundOnLostAudioSession: isInlinePlayableVideo,
                                              placeholderColor: emptyColor,
@@ -21528,7 +21533,7 @@ index f2177bb6..a205e460 100644
                                              storeAfterDownload: { [weak context] in
                                                  guard let context, let peerId else {
                                                      return
-@@ -2317,7 +2325,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+@@ -2317,7 +2330,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
                              }
                              
                              if let updateImageSignal = updateImageSignal {
@@ -21537,16 +21542,21 @@ index f2177bb6..a205e460 100644
                                  strongSelf.imageNode.setSignal(updateImageSignal(synchronousLoads, false), attemptSynchronously: synchronousLoads)
  
                                  var imageDimensions: CGSize?
-@@ -2563,7 +2571,12 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+@@ -2563,7 +2576,17 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
          }*/
          
          var secretBeginTimeAndTimeout: (Double?, Double)?
 -        let isSecretMedia = message.containsSecretMedia
 +        var isSecretMedia = message.containsSecretMedia
-+        // PampGram "Показывать временную медиа": see the matching override in asyncLayout()
-+        // above — same reasoning, this is the status/badge/spoiler-overlay update path.
-+        if isSecretMedia, let context = self.context, PampGramTemporaryMediaDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) {
-+            isSecretMedia = false
++        // PampGram "Обход одноразовых"/"Обход с таймером": see the matching override in
++        // asyncLayout() above — same reasoning, this is the status/badge/spoiler-overlay update
++        // path.
++        if isSecretMedia, let context = self.context {
++            let isViewOnce = message.minAutoremoveOrClearTimeout == viewOnceTimeout
++            let bypassEnabled = isViewOnce ? PampGramTemporaryMediaDisplay.shared.isViewOnceEnabled(accountKey: context.account.peerId.toInt64()) : PampGramTemporaryMediaDisplay.shared.isTimedEnabled(accountKey: context.account.peerId.toInt64())
++            if bypassEnabled {
++                isSecretMedia = false
++            }
 +        }
          if isSecretMedia {
              if let attribute = message.autoclearAttribute {

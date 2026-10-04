@@ -21,13 +21,14 @@ private final class PampGramAdditionalArguments {
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
-    let toggleShowTemporaryMedia: (Bool) -> Void
+    let toggleBypassViewOnceMedia: (Bool) -> Void
+    let toggleBypassTimedMedia: (Bool) -> Void
     let toggleStorySaving: (Bool) -> Void
     let toggleScreenshotBypass: (Bool) -> Void
     let toggleHideOwnPhone: (Bool) -> Void
     let openFakePhoneNumber: () -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleShowTemporaryMedia: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -38,7 +39,8 @@ private final class PampGramAdditionalArguments {
         self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
-        self.toggleShowTemporaryMedia = toggleShowTemporaryMedia
+        self.toggleBypassViewOnceMedia = toggleBypassViewOnceMedia
+        self.toggleBypassTimedMedia = toggleBypassTimedMedia
         self.toggleStorySaving = toggleStorySaving
         self.toggleScreenshotBypass = toggleScreenshotBypass
         self.toggleHideOwnPhone = toggleHideOwnPhone
@@ -70,7 +72,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case speedFooter(String)
 
     case mediaHeader(String)
-    case mediaToggle(String, Bool)
+    case viewOnceToggle(String, Bool)
+    case timedToggle(String, Bool)
     case mediaFooter(String)
 
     case screenshotsHeader(String)
@@ -101,7 +104,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
-        case .mediaHeader, .mediaToggle, .mediaFooter:
+        case .mediaHeader, .viewOnceToggle, .timedToggle, .mediaFooter:
             return PampGramAdditionalSection.media.rawValue
         case .screenshotsHeader, .screenshotsToggle, .screenshotsFooter, .chatScreenshotsToggle, .chatScreenshotsFooter:
             return PampGramAdditionalSection.screenshots.rawValue
@@ -134,10 +137,12 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 8
         case .mediaHeader:
             return 9
-        case .mediaToggle:
+        case .viewOnceToggle:
             return 10
         case .mediaFooter:
             return 11
+        case .timedToggle:
+            return 143
         case .screenshotsHeader:
             return 12
         case .screenshotsToggle:
@@ -186,9 +191,13 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .voiceHeader(text), let .speedHeader(text), let .mediaHeader(text), let .screenshotsHeader(text), let .premiumHeader(text), let .extrasHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .mediaToggle(title, value):
+        case let .viewOnceToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
-                arguments.toggleShowTemporaryMedia(value)
+                arguments.toggleBypassViewOnceMedia(value)
+            })
+        case let .timedToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "timer", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBypassTimedMedia(value)
             })
         case let .screenshotsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "camera.viewfinder", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -268,13 +277,14 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.speedFooter("Меняет, насколько параллельно Telegram передаёт части файлов. «Турбо» задействует потолок, уже используемый самим приложением для переноса истории — реальная скорость всё равно зависит от сети и сервера."))
 
     entries.append(.mediaHeader("ВРЕМЕННАЯ МЕДИА"))
-    entries.append(.mediaToggle("Показывать временную медиа", settings.showTemporaryMediaEnabled))
-    entries.append(.mediaFooter("Фото и видео с таймером (в том числе «посмотреть один раз») показываются в чате сразу, как обычные медиа — без размытия и без ограничения «только один просмотр». Открытие всё ещё идёт через обычный просмотрщик Telegram: реальный таймер, статус просмотра и удаление сообщения не меняются, меняется только то, как оно выглядит в ленте на этом устройстве."))
+    entries.append(.viewOnceToggle("Обход одноразовых", settings.bypassViewOnceMediaEnabled))
+    entries.append(.timedToggle("Обход с таймером", settings.bypassTimedMediaEnabled))
+    entries.append(.mediaFooter("«Обход одноразовых» — для фото и видео «посмотреть один раз», «Обход с таймером» — для фото и видео с коротким таймером самоуничтожения. Оба показывают такое медиа в чате сразу, как обычное — без размытия и без ограничения «только один просмотр». Открытие всё ещё идёт через обычный просмотрщик Telegram: реальный таймер, статус просмотра и удаление сообщения не меняются, меняется только то, как оно выглядит в ленте на этом устройстве."))
 
     entries.append(.screenshotsHeader("СКРИНШОТЫ"))
     entries.append(.screenshotsToggle("Сохранение историй", settings.storySavingEnabled))
     entries.append(.screenshotsFooter("Истории, защищённые от пересылки и сохранения: скриншот и запись экрана перестают чернеть (это делает сама iOS, а не подсказка поверх экрана — автору по-прежнему ничего не сообщается, у Story нет уведомления о скриншоте вне секретных чатов), а в «…» на самой истории появляется пункт «Сохранить», которого иначе для такой истории нет. Сохранение работает так же, как для обычной истории — требует Premium, если оно у вас есть."))
-    entries.append(.chatScreenshotsToggle("Обход защиты от скриншотов", settings.bypassScreenshotProtectionEnabled))
+    entries.append(.chatScreenshotsToggle("Обход скриншотов", settings.bypassScreenshotProtectionEnabled))
     entries.append(.chatScreenshotsFooter("Для каналов, групп и чатов с защитой контента (своей или собеседника) — то же самое: скриншот и запись экрана выходят обычными, без чёрного экрана. Секретных чатов это не касается: там, как и в стоке, при скриншоте собеседнику по-прежнему приходит уведомление — этот тумблер его не отключает."))
 
     entries.append(.premiumHeader("ПРЕМИУМ"))
@@ -341,7 +351,7 @@ private func pampGramPresentVoicePresetPicker(context: AccountContext, presentCo
 /// "Дополнительно": the voice-message pitch/tempo changer (5 fixed presets, messages only —
 /// never live calls, see `PampGramVoiceChanger.swift`), the upload/download speed presets
 /// (Стандарт/Быстрый/Турбо — each just toggles existing, already-used parallelism knobs in
-/// Telegram's own upload/download code), "Показывать временную медиа" — display-only, see
+/// Telegram's own upload/download code), "Обход одноразовых"/"Обход с таймером" — display-only, see
 /// `PampGramTemporaryMediaDisplay` and its use in `ChatMessageInteractiveMediaNode.swift` — and
 /// "Сохранение историй" — see `PampGramStorySavingDisplay` and its use in
 /// `StoryItemContentComponent.swift` and `StoryItemSetContainerComponent.swift`.
@@ -416,10 +426,17 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                 return settings
             }).start()
         },
-        toggleShowTemporaryMedia: { value in
+        toggleBypassViewOnceMedia: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
-                settings.showTemporaryMediaEnabled = value
+                settings.bypassViewOnceMediaEnabled = value
+                return settings
+            }).start()
+        },
+        toggleBypassTimedMedia: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.bypassTimedMediaEnabled = value
                 return settings
             }).start()
         },
