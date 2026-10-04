@@ -19459,7 +19459,7 @@ index e1c98a1..454a2b5 100644
                                              return self.profileGifts.updateStarGiftResellPrice(reference: reference, price: price)
                                          },
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
-index ee9ea2d9..6c47c8bc 100644
+index ee9ea2d9..ef8da5ab 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
 @@ -36,6 +36,7 @@ import TextFormat
@@ -19588,6 +19588,44 @@ index ee9ea2d9..6c47c8bc 100644
                          if let animationFile {
                              let resultController = UndoOverlayController(
                                  presentationData: presentationData,
+@@ -1350,14 +1396,23 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+                         let _ = (context.account.stateManager.contactBirthdays
+                         |> take(1)
+                         |> deliverOnMainQueue).start(next: { [weak self] birthdays in
+-                            guard let self, let reference = gift.reference else {
++                            guard let self else {
+                                 return
+                             }
++                            // PampGram: a Phantom Gift (`gift.reference == nil`) has no real
++                            // reference to transfer with — reuse the same real recipient-picker
++                            // UI (`.starGiftTransfer`), but route the actual transfer to the
++                            // local manager instead of the real, network-backed
++                            // transferStarGift that would reject a reference the server never
++                            // issued. Same routing GiftsListView's own transferGift closure
++                            // already uses for the full gift screen's own "Передать" button —
++                            // this just reaches it from the profile grid's "..." menu instead.
++                            let reference = gift.reference ?? .slug(slug: uniqueGift.slug)
+                             var showSelf = false
+                             if self.peerId.namespace == Namespaces.Peer.CloudChannel {
+                                 showSelf = true
+                             }
+-                            let transferStars = gift.transferStars ?? 0
++                            let transferStars = gift.reference == nil ? 0 : (gift.transferStars ?? 0)
+                             let controller = context.sharedContext.makePremiumGiftController(context: context, source: .starGiftTransfer(birthdays, reference, uniqueGift, transferStars, gift.canExportDate, showSelf), completion: { peerIds in
+                                 guard let peerId = peerIds.first else {
+                                     return .complete()
+@@ -1367,6 +1422,11 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+                                         context.starsContext?.load(force: true)
+                                     }
+                                 })
++                                if gift.reference == nil {
++                                    return PampGramPhantomGiftManager.sendGiftToPeer(context: context, matching: gift, peerId: peerId)
++                                    |> ignoreValues
++                                    |> castError(TransferStarGiftError.self)
++                                }
+                                 return profileGifts.transferStarGift(prepaid: transferStars == 0, reference: reference, peerId: peerId)
+                             })
+                             self.parentController?.push(controller)
 diff --git a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD b/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD
 index d3e5547d..47f9b993 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD
