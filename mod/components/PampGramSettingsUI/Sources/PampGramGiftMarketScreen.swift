@@ -6,6 +6,7 @@ import Postbox
 import TelegramCore
 import TelegramPresentationData
 import ItemListUI
+import PresentationDataUtils
 import AccountContext
 import PromptUI
 import PhantomGiftKit
@@ -85,6 +86,23 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
     }
 
     func transfer(gift: PampGramPhantomGift) {
+        let _ = (PampGramPhantomGiftManager.canAffordTransferFee(context: context)
+        |> deliverOnMainQueue).start(next: { canAfford in
+            guard canAfford else {
+                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+                present?(textAlertController(
+                    context: context,
+                    title: "Недостаточно Stars",
+                    text: "Передача подарка стоит \(PampGramPhantomGiftManager.transferFeeStars) ⭐.",
+                    actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]
+                ))
+                return
+            }
+            presentTransferRecipientPicker(gift: gift)
+        })
+    }
+
+    func presentTransferRecipientPicker(gift: PampGramPhantomGift) {
         // Cross-device visual transfer: pick a recipient, send them a real carrier message with
         // the encoded gift, and remove it from this collection. A recipient running PampGram can
         // then receive it ("Получить подарок" on the message) and manage it as their own.

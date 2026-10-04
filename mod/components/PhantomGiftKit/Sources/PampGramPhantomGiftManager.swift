@@ -297,8 +297,26 @@ public enum PampGramPhantomGiftManager {
     /// own doc comment), so comparing the raw `StarGift` values would fail to match a
     /// currently-listed gift against its own stored record.
     private static func findPhantomGift(transaction: Transaction, selfPeerId: EnginePeer.Id, matching gift: ProfileGiftsContext.State.StarGift) -> PampGramPhantomGift? {
+        let candidates = PampGramPhantomGiftStore.allGifts(transaction: transaction).filter { $0.peerId == selfPeerId }
+        // A unique gift carries its own stable identity (id + slug, assigned once at creation
+        // and never touched by any `with...` wither below) — match on that alone rather than
+        // deep-equating the whole StarGift (`date` plus every field) the way the generic-gift
+        // fallback below still does. The old approach was fragile in two ways this one isn't:
+        // two gifts created in the same second (same `date`) used to collide, and the full
+        // struct comparison could miss a match whenever anything besides the resale-listing
+        // wrapper this function already accounts for differed between the live projection and
+        // the stored record. This is what used to make "Закрепить"/"Продать"/etc. silently
+        // no-op — the write never happened because no stored gift was ever found to match.
+        if case let .unique(targetUnique) = gift.gift {
+            return candidates.first(where: { candidate in
+                if case let .unique(candidateUnique) = candidate.gift {
+                    return candidateUnique.id == targetUnique.id && candidateUnique.slug == targetUnique.slug
+                }
+                return false
+            })
+        }
         let target = Self.matchableGift(gift.gift)
-        return PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.peerId == selfPeerId && Self.matchableGift($0.gift) == target && $0.date == gift.date })
+        return candidates.first(where: { Self.matchableGift($0.gift) == target && $0.date == gift.date })
     }
 
     private static func matchableGift(_ gift: StarGift) -> StarGift {
@@ -463,14 +481,47 @@ public enum PampGramPhantomGiftManager {
         |> ignoreValues
     }
 
+    /// Flat fee for "Передать" on a Phantom Gift — 25 fake Stars, deducted from the fake Stars
+    /// balance regardless of what currency the gift itself was priced in (this is a cost of
+    /// using the transfer feature, not a re-sale of the gift). Checked and deducted inside the
+    /// same transaction as the ownership change in both `sendGiftToPeer` overloads below, so a
+    /// transfer and its fee can never happen separately from one another.
+    public static let transferFeeStars: Int64 = 25
+
+    /// UI-layer pre-check so a "Передать" tap can show "Недостаточно Stars" immediately,
+    /// before even opening the recipient picker, instead of after the user has already picked
+    /// someone. `sendGiftToPeer` re-checks the same condition at commit time regardless — this
+    /// is only ever a convenience for giving feedback earlier.
+    public static func canAffordTransferFee(context: AccountContext) -> Signal<Bool, NoError> {
+        return context.account.postbox.transaction { transaction -> Bool in
+            return PampGramCore.settings(transaction: transaction).fakeStarsBalance >= transferFeeStars
+        }
+    }
+
     /// Local-only visual transfer: moves the phantom gift to `peerId` inside this account's own
     /// records and logs the transfer. Nothing is sent to any other device — PampGram gifts are
     /// purely local play money, so a visual transfer only ever changes the sender's own view.
+    /// Charges `transferFeeStars`; if the fake Stars balance can't cover it, the transfer
+    /// doesn't happen at all (no partial charge, no partial transfer) and this returns `false`,
+    /// same as "gift not found".
     public static func sendGiftToPeer(context: AccountContext, giftId: Int64, peerId: EnginePeer.Id) -> Signal<Bool, NoError> {
         return context.account.postbox.transaction { transaction -> Bool in
             guard let gift = PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.id == giftId }) else {
                 return false
             }
+            guard PampGramCore.settings(transaction: transaction).fakeStarsBalance >= transferFeeStars else {
+                return false
+            }
+            PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
+                currency: .stars,
+                kind: .transfer,
+                amount: -transferFeeStars,
+                title: "Комиссия за передачу",
+                details: gift.title,
+                peerId: peerId,
+                giftId: gift.id
+            )
             PampGramPhantomGiftStore.update(transaction: transaction, id: giftId, { $0.withPeerId(peerId) })
             PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
                 currency: gift.price.currency == .stars ? .stars : .ton,
@@ -497,6 +548,19 @@ public enum PampGramPhantomGiftManager {
             guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
                 return false
             }
+            guard PampGramCore.settings(transaction: transaction).fakeStarsBalance >= transferFeeStars else {
+                return false
+            }
+            PampGramLocalLedgerStore.addAndApply(
+                transaction: transaction,
+                currency: .stars,
+                kind: .transfer,
+                amount: -transferFeeStars,
+                title: "Комиссия за передачу",
+                details: match.title,
+                peerId: peerId,
+                giftId: match.id
+            )
             PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withPeerId(peerId) })
             PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(
                 currency: match.price.currency == .stars ? .stars : .ton,

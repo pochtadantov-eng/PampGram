@@ -19349,7 +19349,7 @@ index ef6fe4b4..9409b119 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
-index e1c98a1..454a2b5 100644
+index e1c98a1a..ffa2cd6f 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 @@ -26,6 +26,7 @@ import UndoUI
@@ -19431,23 +19431,28 @@ index e1c98a1..454a2b5 100644
                                      var dismissImpl: (() -> Void)?
                                      let controller = GiftViewScreen(
                                          context: self.context,
-@@ -623,6 +658,14 @@ final class GiftsListView: UIView {
-                                         transferGift: { [weak self] prepaid, reference, peerId in
+@@ -624,6 +659,20 @@ final class GiftsListView: UIView {
                                              guard let self else {
                                                  return .complete()
                                              }
 +                                            // PampGram: a Phantom Gift (`product.reference == nil`) routes to the local
 +                                            // manager instead of the real, network-backed transferStarGift, which would
-+                                            // reject a reference the server never issued.
++                                            // reject a reference the server never issued. `sendGiftToPeer` returns
++                                            // `false` (never found, or the 25-Star fee can't be covered) without
++                                            // transferring anything -- mapped to `.generic` here instead of swallowed
++                                            // by `ignoreValues`, so that failure actually reaches the user instead of
++                                            // this screen quietly dismissing as if the transfer had gone through.
 +                                            if product.reference == nil {
 +                                                return PampGramPhantomGiftManager.sendGiftToPeer(context: self.context, matching: product, peerId: peerId)
-+                                                |> ignoreValues
 +                                                |> castError(TransferStarGiftError.self)
++                                                |> mapToSignal { success -> Signal<Never, TransferStarGiftError> in
++                                                    success ? .complete() : .fail(.generic)
++                                                }
 +                                            }
                                              return self.profileGifts.transferStarGift(prepaid: prepaid, reference: reference, peerId: peerId)
                                          },
-@@ -641,6 +684,12 @@ final class GiftsListView: UIView {
-                                         updateResellStars: { [weak self] reference, price in
+                                         upgradeGift: { [weak self] formId, reference, keepOriginalInfo in
+@@ -642,6 +691,12 @@ final class GiftsListView: UIView {
                                              guard let self else {
                                                  return .never()
                                              }
@@ -19459,8 +19464,9 @@ index e1c98a1..454a2b5 100644
 +                                            }
                                              return self.profileGifts.updateStarGiftResellPrice(reference: reference, price: price)
                                          },
+                                         togglePinnedToTop: { [weak self] reference, pinnedToTop in
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
-index ee9ea2d9..ef8da5ab 100644
+index ee9ea2d9..ad4b2b61 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
 @@ -36,6 +36,7 @@ import TextFormat
@@ -19615,14 +19621,22 @@ index ee9ea2d9..ef8da5ab 100644
                              let controller = context.sharedContext.makePremiumGiftController(context: context, source: .starGiftTransfer(birthdays, reference, uniqueGift, transferStars, gift.canExportDate, showSelf), completion: { peerIds in
                                  guard let peerId = peerIds.first else {
                                      return .complete()
-@@ -1367,6 +1422,11 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+@@ -1367,6 +1422,19 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
                                          context.starsContext?.load(force: true)
                                      }
                                  })
 +                                if gift.reference == nil {
++                                    // `sendGiftToPeer` returns `false` (never found, or the
++                                    // 25-Star fee can't be covered) without transferring
++                                    // anything -- mapped to `.generic` here instead of
++                                    // swallowed by `ignoreValues`, so that failure actually
++                                    // reaches the user instead of this screen quietly
++                                    // dismissing as if the transfer had gone through.
 +                                    return PampGramPhantomGiftManager.sendGiftToPeer(context: context, matching: gift, peerId: peerId)
-+                                    |> ignoreValues
 +                                    |> castError(TransferStarGiftError.self)
++                                    |> mapToSignal { success -> Signal<Never, TransferStarGiftError> in
++                                        success ? .complete() : .fail(.generic)
++                                    }
 +                                }
                                  return profileGifts.transferStarGift(prepaid: transferStars == 0, reference: reference, peerId: peerId)
                              })

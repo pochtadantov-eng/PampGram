@@ -150,6 +150,90 @@ public enum PampGramLocalLedgerStore {
         })
     }
 
+    /// Moves `delta` (old -> new) worth of effect from one balance to another in one go —
+    /// shared by `update` (an edit) and `removeAndReverse` (a delete, i.e. "move to zero").
+    /// A no-op when nothing actually changed.
+    private static func applyDelta(transaction: Transaction, from oldCurrency: PampGramLocalCurrency, oldAmount: Int64, to newCurrency: PampGramLocalCurrency, newAmount: Int64) {
+        guard oldCurrency != newCurrency || oldAmount != newAmount else {
+            return
+        }
+        PampGramCore.updateSettings(transaction: transaction, { settings in
+            var settings = settings
+            func adjust(_ currency: PampGramLocalCurrency, _ delta: Int64) {
+                guard delta != 0 else { return }
+                switch currency {
+                case .stars: settings.fakeStarsBalance += delta
+                case .ton: settings.fakeTonBalanceNanos += delta
+                case .rubles: settings.localRublesBalanceKopecks += delta
+                }
+            }
+            adjust(oldCurrency, -oldAmount)
+            adjust(newCurrency, newAmount)
+            return settings
+        })
+    }
+
+    /// Edits one operation in place (matched by `id`) — long-press on a row in the Stars/TON
+    /// history. Any parameter left `nil` keeps that field as it was; `clearPeerId` removes the
+    /// counterparty entirely (distinct from "leave it as-is", which is what passing neither
+    /// `peerId` nor `clearPeerId: true` does). A changed `amount`/`currency` moves the live
+    /// balance by exactly the difference, via `applyDelta` — the same reasoning
+    /// `addAndApply`'s doc comment gives for why a balance change only ever happens alongside
+    /// the journal entry that explains it: an edited entry's "explanation" is now different, so
+    /// the balance it produced has to follow. Returns `false` if `id` wasn't found.
+    @discardableResult
+    public static func update(transaction: Transaction, id: Int64, amount: Int64? = nil, currency: PampGramLocalCurrency? = nil, date: Int32? = nil, peerId: PeerId? = nil, clearPeerId: Bool = false) -> Bool {
+        var oldAmount: Int64?
+        var oldCurrency: PampGramLocalCurrency = .stars
+        var newAmount: Int64 = 0
+        var newCurrency: PampGramLocalCurrency = .stars
+        transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.localOperations, { entry in
+            var list = entry?.get(PampGramLocalOperationList.self) ?? PampGramLocalOperationList(items: [])
+            guard let index = list.items.firstIndex(where: { $0.id == id }) else {
+                return entry ?? PreferencesEntry(list)
+            }
+            let existing = list.items[index]
+            oldAmount = existing.amount
+            oldCurrency = existing.currency
+            newAmount = amount ?? existing.amount
+            newCurrency = currency ?? existing.currency
+            list.items[index] = PampGramLocalOperation(
+                id: existing.id,
+                currency: newCurrency,
+                kind: existing.kind,
+                amount: newAmount,
+                date: date ?? existing.date,
+                title: existing.title,
+                details: existing.details,
+                peerId: clearPeerId ? nil : (peerId ?? existing.peerId),
+                giftId: existing.giftId,
+                balanceAfter: existing.balanceAfter,
+                visibleInRealHistory: existing.visibleInRealHistory
+            )
+            return PreferencesEntry(list)
+        })
+        guard let oldAmount else {
+            return false
+        }
+        self.applyDelta(transaction: transaction, from: oldCurrency, oldAmount: oldAmount, to: newCurrency, newAmount: newAmount)
+        return true
+    }
+
+    /// Deletes one operation — long-press → "Удалить" on a row — and reverses its effect on
+    /// the live balance, so the removed entry doesn't leave a permanent, unexplained gap
+    /// between what the journal shows and what the balance actually is. Deliberately
+    /// different from the "Очистить историю" bulk action (`remove`, used directly), which
+    /// clears the log without touching the balance on purpose — wiping the whole log is "stop
+    /// keeping a record", not "undo these transactions", while deleting one specific entry
+    /// here is explicitly about correcting/undoing that one transaction.
+    public static func removeAndReverse(transaction: Transaction, id: Int64) {
+        guard let existing = self.all(transaction: transaction).first(where: { $0.id == id }) else {
+            return
+        }
+        self.remove(transaction: transaction, id: id)
+        self.applyDelta(transaction: transaction, from: existing.currency, oldAmount: existing.amount, to: existing.currency, newAmount: 0)
+    }
+
     public static func clear(transaction: Transaction) {
         transaction.setPreferencesEntry(key: PampGramPreferencesKeys.localOperations, value: PreferencesEntry(PampGramLocalOperationList(items: [])))
     }
