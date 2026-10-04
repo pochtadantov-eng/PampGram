@@ -594,14 +594,19 @@ public enum PampGramPhantomGiftManager {
         })
     }
 
-    /// Polls the shared relay server every 20s for any gift another PampGram install has sent
+    /// Polls the shared relay server every 5s for any gift another PampGram install has sent
     /// this account — the reliable path, independent of whether this device happens to be
-    /// looking at any particular chat when a transfer arrives. Started once per account from
+    /// looking at any particular chat when a transfer arrives. Not real push (PampGram has
+    /// none — see the earlier "почему не приходят уведомления" conversation): this only ever
+    /// closes the gap to "a few seconds while both apps are open", never to "instant while
+    /// backgrounded", and costs one request per tick per install against the relay server's
+    /// free-tier budget — short enough to feel immediate in an active chat, not so short it
+    /// burns through that budget on its own. Started once per account from
     /// `AccountContextImpl.init` (see the patch to AccountContext.swift); the returned
     /// `Disposable` stops the timer if the account context itself is torn down.
     public static func observeIncomingGiftTransfers(context: AccountContext) -> Disposable {
         let queue = Queue()
-        let timer = SwiftSignalKit.Timer(timeout: 20.0, repeat: true, completion: { [weak context] in
+        let timer = SwiftSignalKit.Timer(timeout: 5.0, repeat: true, completion: { [weak context] in
             guard let context else {
                 return
             }

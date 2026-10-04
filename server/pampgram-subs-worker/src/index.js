@@ -166,7 +166,7 @@
  *     body: { "id": <telegram account id> }
  *     -> { "transfers": ["<base64 string>", ...] }
  *     Public. Every PampGram install polls this for its own account id
- *     (`PampGramPhantomGiftManager.observeIncomingGiftTransfers`, every 20s, plus once whenever
+ *     (`PampGramPhantomGiftManager.observeIncomingGiftTransfers`, every 5s, plus once whenever
  *     a chat is opened); whatever comes back is deleted from the store in the same call, so a
  *     transfer is handed to exactly one fetch, ever — the client is expected to materialize it
  *     immediately, not re-ask.
