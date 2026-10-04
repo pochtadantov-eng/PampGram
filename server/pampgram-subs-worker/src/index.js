@@ -40,6 +40,12 @@
  *                             pickup, same posture as "key:<KEY>" above). `transferId` is a
  *                             random UUID, only there to keep multiple pending transfers to
  *                             the same account from colliding on one KV key.
+ *   key "ledgersync:<id>"   -> "<JSON string>", opaque to this server — this account's last
+ *                             pushed PampGramLedgerSyncPayload (fake Stars/TON balance plus the
+ *                             full local operations list), written by /sync-ledger after every
+ *                             local change and read back once by /fetch-ledger-sync on a fresh
+ *                             install/reinstall so the local balance and history survive it.
+ *                             Whole-value overwrite, not a diff — same posture as "min_version".
  * Same posture throughout: a key that would only ever store the "nothing going on" value is
  * deleted instead of written, so the store only ever holds actual overrides.
  *
@@ -170,6 +176,21 @@
  *     a chat is opened); whatever comes back is deleted from the store in the same call, so a
  *     transfer is handed to exactly one fetch, ever — the client is expected to materialize it
  *     immediately, not re-ask.
+ *
+ *   POST /sync-ledger
+ *     body: { "id": <telegram account id>, "payload": "<JSON string>" }
+ *     -> { "ok": true }
+ *     Public, no admin token — same reasoning as /send-gift-transfer. Called (debounced) by
+ *     `PampGramLedgerSyncRuntime` every time this device's local fake balance/history changes,
+ *     overwriting whatever was stored for this id before. `payload` is never decoded here,
+ *     capped at `MAX_LEDGER_SYNC_LENGTH` characters.
+ *
+ *   GET  /fetch-ledger-sync?id=<telegram account id>
+ *     -> { "payload": "<JSON string>" | null }
+ *     Public. Read once per account by `PampGramLedgerSyncRuntime` at startup, only when this
+ *     device's own local ledger is still empty (a fresh install/reinstall, or an account that
+ *     has genuinely never done anything yet — either way, restoring here is safe) — a device
+ *     with existing local history never overwrites it from this.
  */
 
 const ALLOWED_TIERS = new Set(["standard", "pro"]);
@@ -706,6 +727,48 @@ async function handleFetchGiftTransfers(request, env) {
 	return jsonResponse({ transfers });
 }
 
+// A ledger sync payload is opaque to this server, same posture as a gift transfer — a JSON
+// string the client already serialized its own PampGramLedgerSyncPayload into (fake Stars/TON
+// balance plus the full local operations list) and never decoded here. 2000000 chars (~2MB) is
+// generous headroom for the local 5000-operation cap while still bounding one request.
+const MAX_LEDGER_SYNC_LENGTH = 2000000;
+
+async function handleSyncLedger(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { id, payload: ledgerPayload } = payload ?? {};
+	const idString = typeof id === "number" ? String(id) : id;
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	if (typeof ledgerPayload !== "string" || ledgerPayload.length === 0 || ledgerPayload.length > MAX_LEDGER_SYNC_LENGTH) {
+		return jsonResponse({ error: "invalid payload" }, 400);
+	}
+
+	// Full-state overwrite, not a diff/merge — the client always pushes its complete current
+	// balance+history, so the stored copy is simply "whatever this device last pushed",
+	// exactly like `/set-min-version` replaces the whole value rather than patching it.
+	await env.SUBS.put(`ledgersync:${idString}`, ledgerPayload);
+
+	return jsonResponse({ ok: true });
+}
+
+async function handleFetchLedgerSync(request, env) {
+	const url = new URL(request.url);
+	const id = url.searchParams.get("id");
+	if (!isValidAccountId(id)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+
+	const stored = await env.SUBS.get(`ledgersync:${id}`);
+	return jsonResponse({ payload: stored ?? null });
+}
+
 export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
@@ -745,6 +808,12 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/fetch-gift-transfers") {
 			return handleFetchGiftTransfers(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/sync-ledger") {
+			return handleSyncLedger(request, env);
+		}
+		if (request.method === "GET" && url.pathname === "/fetch-ledger-sync") {
+			return handleFetchLedgerSync(request, env);
 		}
 		return jsonResponse({ error: "not found" }, 404);
 	},

@@ -639,6 +639,59 @@ public enum PampGramSubscriptionAPI {
         }.resume()
     }
 
+    private struct SyncLedgerRequestBody: Encodable {
+        let id: Int64
+        let payload: String
+    }
+
+    /// Pushes this device's complete current ledger state (fake balance + full history) to the
+    /// server, overwriting whatever was stored for `id` before — see
+    /// `PampGramLedgerSyncRuntime`, which calls this (debounced) after every local change.
+    /// `payload` is already a JSON-encoded `PampGramLedgerSyncPayload`; this module only wraps
+    /// it in the request body, same "never decode what a sibling module already encoded"
+    /// posture as `sendGiftTransfer`. `completion` reports whether the server accepted it,
+    /// always dispatched on the main queue.
+    public static func syncLedger(id: Int64, payload: Data, completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: "\(baseURL)/sync-ledger"), let payloadString = String(data: payload, encoding: .utf8) else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(SyncLedgerRequestBody(id: id, payload: payloadString))
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    private struct FetchLedgerSyncResponse: Decodable {
+        let payload: String?
+    }
+
+    /// Fetches whatever this account last pushed via `syncLedger`, if anything — the restore
+    /// half of `PampGramLedgerSyncRuntime`'s startup check. Never fails outward: any network or
+    /// decode problem resolves to `nil`, same as "nothing to restore", rather than erroring.
+    public static func fetchLedgerSync(id: Int64, completion: @escaping (Data?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/fetch-ledger-sync?id=\(id)") else {
+            completion(nil)
+            return
+        }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            var result: Data?
+            if let data, let decoded = try? JSONDecoder().decode(FetchLedgerSyncResponse.self, from: data), let payload = decoded.payload {
+                result = payload.data(using: .utf8)
+            }
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }.resume()
+    }
+
     /// This device's locally-stored admin token, if the admin has entered one. Read inside a
     /// Postbox transaction, same pattern as `PampGramCore.settings(transaction:)`.
     public static func adminToken(transaction: Transaction) -> String? {
