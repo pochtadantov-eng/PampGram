@@ -19170,7 +19170,7 @@ index 09315ffb..a3aed400 100644
          "//submodules/TelegramUI/Components/TextLoadingEffect",
          "//submodules/TelegramUI/Components/TextProcessingScreen",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
-index fd01930..268178e 100644
+index fd01930f..ea188413 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 @@ -113,6 +113,7 @@ import PeerMessagesMediaPlaylist
@@ -19237,7 +19237,7 @@ index fd01930..268178e 100644
              insets.right += sectionInset
              
 -            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile)
-+            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber)
++            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber, pampGramShowProfileId: self.pampGramSettings.profileIdsEnabled, pampGramShowAccountLink: self.pampGramSettings.accountLinkEnabled)
              
              contentHeight += headerHeight
              if !((self.isSettings || self.isMyProfile) && self.state.isEditing) {
@@ -19282,21 +19282,40 @@ index fdfd1ce..434b7f6 100644
                  subtitleStringText = subtitle
                  subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: .white)
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
-index 80b7f20..8363fac 100644
+index 80b7f204..66d3fdcb 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
-@@ -46,7 +46,9 @@ func infoItems(
+@@ -16,6 +16,7 @@ import WebUI
+ import AvatarNode
+ import PeerNameColorItem
+ import BoostLevelIconComponent
++import UndoUI
+ 
+ private let enabledPublicBioEntities: EnabledEntityTypes = [.allUrl, .mention, .hashtag]
+ private let enabledPrivateBioEntities: EnabledEntityTypes = [.internalUrl, .mention, .hashtag]
+@@ -46,7 +47,11 @@ func infoItems(
      callMessages: [EngineMessage],
      chatLocation: ChatLocation,
      isOpenedFromChat: Bool,
 -    isMyProfile: Bool
 +    isMyProfile: Bool,
 +    pampGramHideOwnPhone: Bool = false,
-+    pampGramFakePhoneNumber: String = ""
++    pampGramFakePhoneNumber: String = "",
++    pampGramShowProfileId: Bool = false,
++    pampGramShowAccountLink: Bool = false
  ) -> [(AnyHashable, [PeerInfoScreenItem])] {
      guard let data = data else {
          return []
-@@ -155,7 +157,15 @@ func infoItems(
+@@ -110,6 +115,8 @@ func infoItems(
+         let ItemBotAddToChatInfo = 9003
+         let ItemVerification = 9004
+         let ItemCommunity = 10000
++        let ItemPampGramProfileId = 11000
++        let ItemPampGramAccountLink = 11001
+         
+         if let cachedUserData = data.cachedData as? CachedUserData, cachedUserData.flags.contains(.unofficialSecurityRisk) {
+             items[.unofficial]!.append(PeerInfoScreenInfoItem(id: 0, title: "", text: .markdown(presentationData.strings.PeerInfo_UnofficialSecurityRisk(EnginePeer(user).compactDisplayTitle).string), style: .compact, linkAction: nil))
+@@ -155,7 +162,15 @@ func infoItems(
              ))
          }
          
@@ -19313,6 +19332,40 @@ index 80b7f20..8363fac 100644
              let formattedPhone = formatPhoneNumber(context: context, number: phone)
              let label: String
              if formattedPhone.hasPrefix("+888 ") {
+@@ -204,7 +219,32 @@ func infoItems(
+                 )
+             )
+         }
+-        
++
++        // PampGram "ID Профилей" / "Ссылка аккаунта" (Дополнительно → ...): purely local
++        // display additions, same resolvable id every chat/mention already carries — reading it
++        // here never costs an extra request. The account-link copies a `tg://user?id=` deep
++        // link (the scheme OpenUrl.swift's own "user" case already resolves via a local Postbox
++        // lookup), which works regardless of whether this person has a public @username, unlike
++        // a t.me/<username> link.
++        if pampGramShowProfileId {
++            let idText = "\(user.id.id._internalGetInt64Value())"
++            items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemPampGramProfileId, label: "ID профиля", text: idText, textColor: .primary, action: { _, _ in
++                UIPasteboard.general.string = idText
++                interaction.getController()?.present(UndoOverlayController(presentationData: presentationData, content: .copy(text: "ID скопирован"), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return false }), in: .current)
++            }, requestLayout: { animated in
++                interaction.requestLayout(animated)
++            }))
++        }
++        if pampGramShowAccountLink {
++            let link = "tg://user?id=\(user.id.id._internalGetInt64Value())"
++            items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemPampGramAccountLink, label: "Ссылка аккаунта", text: link, textColor: .accent, action: { _, _ in
++                UIPasteboard.general.string = link
++                interaction.getController()?.present(UndoOverlayController(presentationData: presentationData, content: .linkCopied(title: nil, text: "Ссылка скопирована"), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return false }), in: .current)
++            }, requestLayout: { animated in
++                interaction.requestLayout(animated)
++            }))
++        }
++
+         if let cachedData = data.cachedData as? CachedUserData {
+             if let birthday = cachedData.birthday {
+                 let isBirthdayToday = hasBirthdayToday(birthday: birthday)
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 index 806e652a..a073b01a 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift

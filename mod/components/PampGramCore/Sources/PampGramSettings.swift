@@ -407,6 +407,15 @@ public struct PampGramSettings: Codable, Equatable {
     /// `TogglePeerChatPinned.swift`, which can't await a network call) has *something* to read,
     /// at the cost of it being at most one tab-open stale.
     public var cachedIsProSubscriber: Bool
+    /// "ID Профилей" (Дополнительно): shows every user's real numeric account id as an extra
+    /// row in their profile info table — purely local display, read straight off the already
+    /// resolved `EnginePeer.Id` every profile screen already has (no extra request).
+    public var profileIdsEnabled: Bool
+    /// "Ссылка аккаунта" (Дополнительно): adds a row to every user's profile that copies a
+    /// `tg://user?id=<id>` deep link to their profile — unlike a `t.me/<username>` link, this
+    /// resolves regardless of whether they have a public username (Telegram's own "user" URL
+    /// handler looks the id up in the local Postbox, see OpenUrl.swift).
+    public var accountLinkEnabled: Bool
 
     // A brand-new install (and "Сбросить балансы", which resets to this same constant) starts
     // at 0 — nothing pre-loaded before the person has looked at a single toggle.
@@ -473,11 +482,13 @@ public struct PampGramSettings: Codable, Equatable {
             isOwnerAccount: false,
             hideOwnPhoneNumber: false,
             fakePhoneNumber: "",
-            cachedIsProSubscriber: false
+            cachedIsProSubscriber: false,
+            profileIdsEnabled: false,
+            accountLinkEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -537,6 +548,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.hideOwnPhoneNumber = hideOwnPhoneNumber
         self.fakePhoneNumber = fakePhoneNumber
         self.cachedIsProSubscriber = cachedIsProSubscriber
+        self.profileIdsEnabled = profileIdsEnabled
+        self.accountLinkEnabled = accountLinkEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -636,6 +649,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.hideOwnPhoneNumber = try container.decodeIfPresent(Bool.self, forKey: .hideOwnPhoneNumber) ?? defaults.hideOwnPhoneNumber
         self.fakePhoneNumber = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumber) ?? defaults.fakePhoneNumber
         self.cachedIsProSubscriber = try container.decodeIfPresent(Bool.self, forKey: .cachedIsProSubscriber) ?? defaults.cachedIsProSubscriber
+        self.profileIdsEnabled = try container.decodeIfPresent(Bool.self, forKey: .profileIdsEnabled) ?? defaults.profileIdsEnabled
+        self.accountLinkEnabled = try container.decodeIfPresent(Bool.self, forKey: .accountLinkEnabled) ?? defaults.accountLinkEnabled
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
