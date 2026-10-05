@@ -36,6 +36,7 @@ swift_library(
         "//submodules/TelegramUI/Components/PampGram/PampGramCore",
         "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
         "//submodules/AppBundle",
+        "//submodules/Utils/DeviceModel",
     ],
     visibility = [
         "//visibility:public",

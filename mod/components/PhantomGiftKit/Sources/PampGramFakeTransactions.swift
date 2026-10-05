@@ -23,15 +23,20 @@ public extension PampGramPhantomGiftStore {
     ///
     /// - A credit for every gift "received" from someone (`isReceived`, the "Подарок мне"/
     ///   "От него" flow) — shows as a top-up, `peer` being whoever supposedly sent it.
-    /// - A debit for every gift actually bought/sent (`!isReceived`).
-    /// - A matching credit, same date, when a *sent* gift's `peerId` is this account's own —
-    ///   sending a gift to yourself shows up both as the payment and as it "arriving".
+    /// - A debit for every gift actually bought/sent (`!isReceived`) — and only that debit,
+    ///   even when `peerId` happens to be this account's own (buying something for your own
+    ///   collection from the market, or constructing one, both end up with `peerId == self`
+    ///   the same as actually gifting yourself would — there used to be a second, matching
+    ///   credit here for exactly that case, on the theory that a self-gift should show both
+    ///   "as the payment and as it arriving". That's not how money actually works, though: a
+    ///   real purchase never refunds itself just because the buyer and the recipient are the
+    ///   same account, and the credit made an ordinary self-purchase misleadingly look like it
+    ///   cost nothing — a debit and a credit for the identical amount, seconds apart).
     /// - A credit when a gift already in the profile was later sold (`soldDate != nil`),
     ///   whether it was originally bought or received.
     static func fakeTransactionsSignal(context: AccountContext, ton: Bool, mode: StarsTransactionsContext.Mode) -> Signal<[StarsContext.State.Transaction], NoError> {
         let currency: CurrencyAmount.Currency = ton ? .ton : .stars
         let ledgerCurrency: PampGramLocalCurrency = ton ? .ton : .stars
-        let selfPeerId = context.account.peerId
 
         return combineLatest(self.allGiftsSignal(context: context), PampGramLocalLedgerStore.signal(postbox: context.account.postbox))
         |> mapToSignal { gifts, operations -> Signal<[StarsContext.State.Transaction], NoError> in
@@ -114,19 +119,6 @@ public extension PampGramPhantomGiftStore {
                             title: nil,
                             starGift: gift.gift
                         ))
-
-                        if gift.peerId == selfPeerId {
-                            transactions.append(self.fakeTransaction(
-                                id: "\(gift.id)2",
-                                flags: [.isGift],
-                                amount: gift.price.amount,
-                                currency: currency,
-                                date: gift.date,
-                                peer: .peer(peer),
-                                title: gift.title,
-                                starGift: nil
-                            ))
-                        }
                     }
 
                     if let soldDate = gift.soldDate {

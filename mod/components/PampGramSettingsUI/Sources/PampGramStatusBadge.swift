@@ -1,6 +1,8 @@
 import Foundation
 import UIKit
 import Display
+import AppBundle
+import DeviceModel
 
 /// What text/color the persistent top-of-screen badge shows, if anything. Purely cosmetic —
 /// see `pampGramInstallStatusBadgeOverlay` for where it actually gets drawn.
@@ -44,10 +46,60 @@ public enum PampGramStatusBadgeStore {
     }
 }
 
+private func pampGramFloorToScreenPixels(_ value: CGFloat) -> CGFloat {
+    let scale = UIScreen.main.scale
+    guard scale > 0 else {
+        return value
+    }
+    return (value * scale).rounded(.down) / scale
+}
+
+/// How far below the very top of the screen the badge should sit, so it clears the notch/
+/// Dynamic Island on *this* device instead of overlapping it. Ported from Swiftgram's own
+/// `DeviceMetrics.sgAppBadgeOffset()` (`Swiftgram/SGAppBadgeOffset/Sources/SGAppBadgeOffset.swift`)
+/// — a hand-measured value per device model, not a formula derived from `safeAreaInsets.top`
+/// (which doesn't vary finely enough between, say, an iPhone 14 Pro's smaller Dynamic Island and
+/// an iPhone 17 Pro's larger one to place a badge cleanly below either). Devices that table
+/// doesn't name — older notch-less phones, and anything newer than this list knows about —
+/// fall back to half the real safe-area inset, which is a reasonable generic clearance either
+/// way (a flat status bar on an old device, or "assume Dynamic-Island class" for a future one).
+private func pampGramBadgeTopOffset(window: UIWindow) -> CGFloat {
+    let defaultOffset: CGFloat
+    switch DeviceModel.current {
+    case .iPhoneX, .iPhoneXS, .iPhone11Pro, .iPhone12Mini, .iPhone13Mini:
+        defaultOffset = 2.0
+    case .iPhone11, .iPhoneXR:
+        defaultOffset = 6.0
+    case .iPhone11ProMax, .iPhoneXSMax:
+        defaultOffset = 4.0
+    case .iPhone12, .iPhone12Pro, .iPhone13, .iPhone13Pro, .iPhone14, .iPhone16e:
+        defaultOffset = 4.0
+    case .iPhone12ProMax, .iPhone13ProMax, .iPhone14Plus:
+        defaultOffset = 6.0
+    case .iPhone14Pro, .iPhone15, .iPhone15Pro, .iPhone16:
+        defaultOffset = 18.0
+    case .iPhone14ProMax, .iPhone15Plus, .iPhone15ProMax, .iPhone16Plus:
+        defaultOffset = 19.0
+    case .iPhone16Pro, .iPhone17, .iPhone17Pro:
+        defaultOffset = 21.0
+    case .iPhone16ProMax, .iPhone17ProMax, .iPhoneAir:
+        defaultOffset = 22.0
+    default:
+        let topInset = window.safeAreaInsets.top
+        return topInset > 0.0 ? pampGramFloorToScreenPixels(topInset * 0.4) : 11.0
+    }
+    // Compensates for Settings → Display & Brightness → "Larger Text"/zoomed display modes,
+    // where UIScreen.main.scale and .nativeScale diverge — same reasoning as Swiftgram's own
+    // `sgScaleFactor`.
+    let scaleFactor = UIScreen.main.scale / UIScreen.main.nativeScale
+    return pampGramFloorToScreenPixels(defaultOffset * scaleFactor)
+}
+
 private final class PampGramStatusBadgeView: UIView {
     private let gradientLayer = CAGradientLayer()
     private let iconView = UIImageView()
     private let label = UILabel()
+    private let realImageView = UIImageView()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -67,6 +119,9 @@ private final class PampGramStatusBadgeView: UIView {
         self.label.font = UIFont.systemFont(ofSize: 13.0, weight: .heavy)
         self.label.textColor = .white
         self.addSubview(self.label)
+
+        self.realImageView.contentMode = .scaleAspectFit
+        self.addSubview(self.realImageView)
     }
 
     required init?(coder: NSCoder) {
@@ -79,24 +134,45 @@ private final class PampGramStatusBadgeView: UIView {
             self.isHidden = true
             return
         case .telegram:
-            // Telegram's own brand gradient (its logo uses the same two blues).
+            // No real "Telegram" badge asset exists anywhere to source (nothing official ships
+            // one) — Telegram's own brand gradient (its logo uses the same two blues) is the
+            // closest honest approximation.
             self.isHidden = false
+            self.realImageView.image = nil
+            self.realImageView.isHidden = true
+            self.gradientLayer.isHidden = false
             self.gradientLayer.colors = [UIColor(rgb: 0x2aabee).cgColor, UIColor(rgb: 0x229ed9).cgColor]
+            self.iconView.isHidden = false
             self.iconView.image = nil
+            self.label.isHidden = false
             self.label.text = "TELEGRAM"
         case .swiftgram:
-            // Colors sampled directly from Swiftgram's own open-source badge asset
-            // (submodules/TelegramUI/Images.xcassets/Components/AppBadge.imageset) so this
-            // matches theirs pixel-for-pixel rather than an approximation.
+            // The actual badge image Swiftgram itself ships and draws, pulled from the asset
+            // catalog already compiled into the app (`submodules/TelegramUI/Images.xcassets/
+            // Components/AppBadge.imageset` — the same file `WindowContent.swift`'s own badge
+            // uses), instead of a hand-approximated gradient + SF Symbol standing in for it.
             self.isHidden = false
-            self.gradientLayer.colors = [UIColor(rgb: 0xef4525).cgColor, UIColor(rgb: 0xf68045).cgColor]
-            self.iconView.image = UIImage(systemName: "bolt.fill")?.withRenderingMode(.alwaysTemplate)
-            self.label.text = "SWIFTGRAM"
+            self.gradientLayer.isHidden = true
+            self.iconView.isHidden = true
+            self.iconView.image = nil
+            self.label.isHidden = true
+            self.realImageView.isHidden = false
+            self.realImageView.image = UIImage(bundleImageName: "Components/AppBadge")
         }
         self.sizeAndLayout()
     }
 
     private func sizeAndLayout() {
+        if !self.realImageView.isHidden, let image = self.realImageView.image {
+            let center = self.center
+            self.bounds = CGRect(origin: .zero, size: image.size)
+            self.center = center
+            self.layer.cornerRadius = 0.0
+            self.gradientLayer.frame = .zero
+            self.realImageView.frame = self.bounds
+            return
+        }
+
         self.label.sizeToFit()
         let hasIcon = self.iconView.image != nil
         let iconSide: CGFloat = 13.0
@@ -111,6 +187,7 @@ private final class PampGramStatusBadgeView: UIView {
         self.center = center
         self.layer.cornerRadius = height / 2.0
         self.gradientLayer.frame = self.bounds
+        self.realImageView.frame = .zero
 
         var x = horizontalPadding
         if hasIcon {
@@ -125,18 +202,21 @@ private final class PampGramStatusBadgeView: UIView {
 
 /// Adds the "Бейджик" overlay once, as a direct subview of the app's real `UIWindow` — so it
 /// keeps drawing on top of every pushed/presented screen without needing to be re-added
-/// anywhere else — and keeps it centered near the top of the screen (roughly where the
-/// notch/Dynamic Island sits) across rotation and future style changes. Call once, right after
-/// `window.makeKeyAndVisible()` in AppDelegate.swift, same spot as
-/// `pampGramPresentOnboardingIfNeeded`.
+/// anywhere else. Horizontally centered on the screen (the notch/Dynamic Island always is too,
+/// on every device); vertically placed just below it, using `pampGramBadgeTopOffset` — a value
+/// calibrated per device model rather than a one-size-fits-all fraction of the safe area, so the
+/// badge sits in the same clean spot below the island on an iPhone 13 as it does on an iPhone 17
+/// Pro, instead of overlapping or ending up oddly far from it on whichever devices the old
+/// one-size formula wasn't tuned for. Call once, right after `window.makeKeyAndVisible()` in
+/// AppDelegate.swift, same spot as `pampGramPresentOnboardingIfNeeded`.
 public func pampGramInstallStatusBadgeOverlay(on window: UIWindow) {
     let badge = PampGramStatusBadgeView(frame: .zero)
     window.addSubview(badge)
 
     func reposition() {
-        let topInset = window.safeAreaInsets.top
-        let centerY = topInset > 0.0 ? min(topInset * 0.5, 24.0) : 11.0
-        badge.center = CGPoint(x: window.bounds.width / 2.0, y: centerY)
+        let topOffset = pampGramBadgeTopOffset(window: window)
+        let x = pampGramFloorToScreenPixels((window.bounds.width - badge.bounds.width) / 2.0)
+        badge.frame = CGRect(x: x, y: topOffset, width: badge.bounds.width, height: badge.bounds.height)
     }
 
     func update() {
