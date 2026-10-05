@@ -618,9 +618,16 @@ public enum PampGramSubscriptionAPI {
     /// doc) — there is nothing to deduplicate on this device, a transfer handed back once is
     /// gone for good. Same never-fails-outward contract as every other fetch here: any network
     /// or decode problem resolves to an empty array rather than erroring the poll that asked.
-    public static func fetchGiftTransfers(id: Int64, completion: @escaping ([Data]) -> Void) {
+    ///
+    /// `debugInfo` (PampGram DEBUG, temporary — see its call site) is nil on an ordinary
+    /// "server answered, nothing queued" result and non-nil on anything that used to be
+    /// indistinguishable from that: a network failure, a non-200 status, or a response that
+    /// failed to decode. Added because the poll reporting "found nothing" every single time
+    /// could mean either "nothing was ever queued" or "every request has silently been
+    /// failing" — this tells them apart.
+    public static func fetchGiftTransfers(id: Int64, completion: @escaping (_ transfers: [Data], _ debugInfo: String?) -> Void) {
         guard let url = URL(string: "\(baseURL)/fetch-gift-transfers") else {
-            completion([])
+            completion([], "не удалось собрать URL из baseURL")
             return
         }
         var request = URLRequest(url: url)
@@ -628,13 +635,22 @@ public enum PampGramSubscriptionAPI {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(FetchGiftTransfersRequestBody(id: id))
 
-        URLSession.shared.dataTask(with: request) { data, _, _ in
+        URLSession.shared.dataTask(with: request) { data, response, error in
             var results: [Data] = []
-            if let data, let decoded = try? JSONDecoder().decode(FetchGiftTransfersResponse.self, from: data) {
+            var debugInfo: String?
+            if let error {
+                debugInfo = "сетевая ошибка: \(error.localizedDescription)"
+            } else if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                let bodyPreview = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<пусто>"
+                debugInfo = "HTTP \(httpResponse.statusCode), тело: \(bodyPreview.prefix(200))"
+            } else if let data, let decoded = try? JSONDecoder().decode(FetchGiftTransfersResponse.self, from: data) {
                 results = decoded.transfers.compactMap { Data(base64Encoded: $0) }
+            } else {
+                let bodyPreview = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<пусто>"
+                debugInfo = "не удалось разобрать ответ сервера: \(bodyPreview.prefix(200))"
             }
             DispatchQueue.main.async {
-                completion(results)
+                completion(results, debugInfo)
             }
         }.resume()
     }

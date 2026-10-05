@@ -671,8 +671,10 @@ public enum PampGramPhantomGiftManager {
     /// nothing here to deduplicate against.
     private static func pollIncomingGiftTransfers(context: AccountContext) {
         let selfId = context.account.peerId.id._internalGetInt64Value()
-        PampGramSubscriptionAPI.fetchGiftTransfers(id: selfId, completion: { blobs in
-            if !blobs.isEmpty {
+        PampGramSubscriptionAPI.fetchGiftTransfers(id: selfId, completion: { blobs, debugInfo in
+            if let debugInfo {
+                PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "опрос для \(selfId) НЕ УДАЛСЯ: \(debugInfo)")
+            } else if !blobs.isEmpty {
                 PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "опрос нашёл \(blobs.count) передач(у/и) для \(selfId)")
             }
             for blob in blobs {
