@@ -18978,7 +18978,7 @@ index 6f6c1f3c..7359df80 100644
 +    })
  }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
-index 1a5228a9..314800e9 100644
+index 1a5228a9..22d37e24 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 @@ -5,6 +5,8 @@ import AsyncDisplayKit
@@ -19128,7 +19128,49 @@ index 1a5228a9..314800e9 100644
                  
                  if !soldOut {
                      if let uniqueGift {
-@@ -5745,6 +5799,10 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -4014,7 +4068,13 @@ private final class GiftViewSheetContent: CombinedComponent {
+                                             }
+                                             
+                                             let canWear: Bool
+-                                            if isChannelGift, case let .channel(channel) = state.peerMap[wearOwnerPeerId] {
++                                            // PampGram: a Phantom Gift was never real, so the real
++                                            // Premium/boost-level gate below (which exists to make
++                                            // wearing a real NFT a paid perk) doesn't apply to it --
++                                            // nothing real is being bypassed, just a local choice.
++                                            if case let .profileGift(_, product) = component.subject, product.reference == nil {
++                                                canWear = true
++                                            } else if isChannelGift, case let .channel(channel) = state.peerMap[wearOwnerPeerId] {
+                                                 let premiumConfiguration = PremiumConfiguration.with(appConfiguration: component.context.currentAppConfiguration.with { $0 })
+                                                 let requiredLevel = Int(BoostSubject.wearGift.requiredLevel(group: false, context: component.context, configuration: premiumConfiguration))
+                                                 if let boostLevel = channel.approximateBoostLevel {
+@@ -4769,8 +4829,16 @@ private final class GiftViewSheetContent: CombinedComponent {
+                 let premiumConfiguration = PremiumConfiguration.with(appConfiguration: component.context.currentAppConfiguration.with { $0 })
+                 let requiredLevel = Int(BoostSubject.wearGift.requiredLevel(group: false, context: component.context, configuration: premiumConfiguration))
+                 
++                // PampGram: same Phantom Gift bypass as the quick-action canWear above -- a
++                // constructed/received fake gift is never channel-owned in practice, but check
++                // explicitly anyway so this stays correct if that ever changes.
++                var isPampGramPhantomGift = false
++                if case let .profileGift(_, product) = component.subject, product.reference == nil {
++                    isPampGramPhantomGift = true
++                }
++
+                 var canWear = true
+-                if isChannelGift, case let .channel(channel) = state.peerMap[wearOwnerPeerId], (channel.approximateBoostLevel ?? 0) < requiredLevel {
++                if !isPampGramPhantomGift, isChannelGift, case let .channel(channel) = state.peerMap[wearOwnerPeerId], (channel.approximateBoostLevel ?? 0) < requiredLevel {
+                     canWear = false
+                     buttonContent = AnyComponentWithIdentity(
+                         id: AnyHashable("wear_channel"),
+@@ -4791,7 +4859,7 @@ private final class GiftViewSheetContent: CombinedComponent {
+                             ], spacing: 3.0)
+                         )
+                     )
+-                } else if !isChannelGift && !component.context.isPremium {
++                } else if !isPampGramPhantomGift, !isChannelGift && !component.context.isPremium {
+                     canWear = false
+                     buttonContent = AnyComponentWithIdentity(
+                         id: AnyHashable("wear_premium"),
+@@ -5745,6 +5813,10 @@ public class GiftViewScreen: ViewControllerComponentContainer {
      fileprivate let transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)?
      fileprivate let upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)?
      fileprivate let buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)?
@@ -19139,7 +19181,7 @@ index 1a5228a9..314800e9 100644
      fileprivate let updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)?
      fileprivate let togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)?
      fileprivate let shareStory: ((StarGift.UniqueGift) -> Void)?
-@@ -5766,6 +5824,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5766,6 +5838,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
          transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)? = nil,
          upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)? = nil,
          buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)? = nil,
@@ -19147,7 +19189,7 @@ index 1a5228a9..314800e9 100644
          updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)? = nil,
          togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)? = nil,
          shareStory: ((StarGift.UniqueGift) -> Void)? = nil,
-@@ -5782,6 +5841,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5782,6 +5855,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
          self.transferGift = transferGift
          self.upgradeGift = upgradeGift
          self.buyGift = buyGift

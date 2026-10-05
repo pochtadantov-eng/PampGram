@@ -134,23 +134,12 @@ private final class PampGramStatusBadgeView: UIView {
             self.isHidden = true
             return
         case .telegram:
-            // No real "Telegram" badge asset exists anywhere to source (nothing official ships
-            // one) — Telegram's own brand gradient (its logo uses the same two blues) is the
-            // closest honest approximation.
-            self.isHidden = false
-            self.realImageView.image = nil
-            self.realImageView.isHidden = true
-            self.gradientLayer.isHidden = false
-            self.gradientLayer.colors = [UIColor(rgb: 0x2aabee).cgColor, UIColor(rgb: 0x229ed9).cgColor]
-            self.iconView.isHidden = false
-            self.iconView.image = nil
-            self.label.isHidden = false
-            self.label.text = "TELEGRAM"
-        case .swiftgram:
-            // The actual badge image Swiftgram itself ships and draws, pulled from the asset
-            // catalog already compiled into the app (`submodules/TelegramUI/Images.xcassets/
-            // Components/AppBadge.imageset` — the same file `WindowContent.swift`'s own badge
-            // uses), instead of a hand-approximated gradient + SF Symbol standing in for it.
+            // The actual "TELEGRAM" badge image Telegram's own stock code ships and draws
+            // (`submodules/TelegramUI/Images.xcassets/Components/AppBadge.imageset` — the same
+            // file `WindowContent.swift`'s own badge uses) — confirmed by actually opening the
+            // PNG, not assumed. A previous version of this code had this swapped with
+            // `.swiftgram` below, despite both cases already being correctly *named* for what
+            // they should show.
             self.isHidden = false
             self.gradientLayer.isHidden = true
             self.iconView.isHidden = true
@@ -158,6 +147,20 @@ private final class PampGramStatusBadgeView: UIView {
             self.label.isHidden = true
             self.realImageView.isHidden = false
             self.realImageView.image = UIImage(bundleImageName: "Components/AppBadge")
+        case .swiftgram:
+            // No real "Swiftgram" badge asset exists anywhere in this codebase to source —
+            // Swiftgram's own real brand color (orange) with a bolt icon is the closest honest
+            // approximation, same spirit as the old (wrongly-assigned) Telegram placeholder this
+            // replaces.
+            self.isHidden = false
+            self.realImageView.image = nil
+            self.realImageView.isHidden = true
+            self.gradientLayer.isHidden = false
+            self.gradientLayer.colors = [UIColor(rgb: 0xff9500).cgColor, UIColor(rgb: 0xff3b30).cgColor]
+            self.iconView.isHidden = false
+            self.iconView.image = UIImage(systemName: "bolt.fill")
+            self.label.isHidden = false
+            self.label.text = "SWIFTGRAM"
         }
         self.sizeAndLayout()
     }
