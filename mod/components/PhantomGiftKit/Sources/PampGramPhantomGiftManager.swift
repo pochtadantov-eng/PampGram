@@ -19,6 +19,11 @@ public enum PampGramPhantomGiftManager {
         let phantomGift: PampGramPhantomGift
     }
 
+    /// PampGram DEBUG (temporary — see `pollIncomingGiftTransfers`): last `fetchGiftTransfers`
+    /// failure reason posted per account, so an ongoing failure doesn't repost every ~2s poll.
+    /// No entry for an account means its last poll succeeded (or none has run yet).
+    private static var lastGiftTransferFailureBySelfId: [Int64: String] = [:]
+
     /// Local-only stand-in for a real resale purchase: deducts the matching fake balance
     /// (Stars or TON, whichever the real listing was priced in), records the gift, and —
     /// unless this is a self-purchase, which never produces a chat message either way —
@@ -672,9 +677,19 @@ public enum PampGramPhantomGiftManager {
     private static func pollIncomingGiftTransfers(context: AccountContext) {
         let selfId = context.account.peerId.id._internalGetInt64Value()
         PampGramSubscriptionAPI.fetchGiftTransfers(id: selfId, completion: { blobs, debugInfo in
+            // PampGram DEBUG: this polls every 2s, so an ongoing failure (same reason, poll
+            // after poll) used to post a fresh message every single time — only post again when
+            // the reason actually changes (or clear the memory on a real success), instead of
+            // flooding the Telegram service chat for as long as the failure persists.
             if let debugInfo {
-                PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "опрос для \(selfId) НЕ УДАЛСЯ: \(debugInfo)")
-            } else if !blobs.isEmpty {
+                if lastGiftTransferFailureBySelfId[selfId] != debugInfo {
+                    lastGiftTransferFailureBySelfId[selfId] = debugInfo
+                    PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "опрос для \(selfId) НЕ УДАЛСЯ: \(debugInfo)")
+                }
+            } else {
+                lastGiftTransferFailureBySelfId.removeValue(forKey: selfId)
+            }
+            if debugInfo == nil, !blobs.isEmpty {
                 PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "опрос нашёл \(blobs.count) передач(у/и) для \(selfId)")
             }
             for blob in blobs {

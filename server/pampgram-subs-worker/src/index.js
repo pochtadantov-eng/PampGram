@@ -713,15 +713,30 @@ async function handleFetchGiftTransfers(request, env) {
 	}
 
 	// One-time pickup, same posture as a redeemed key: deleted the moment it's handed back, so
-	// a transfer is never delivered twice and the queue never grows unbounded.
+	// a transfer is never delivered twice and the queue never grows unbounded in the normal
+	// case.
+	//
+	// Processed in small parallel batches rather than one key at a time (the previous version)
+	// or all at once: a backlog of many pending transfers for one account -- which this exact
+	// bug could itself cause, since every poll that times out leaves its keys undeleted for the
+	// next poll to retry -- made the old sequential version slow enough to hit the Worker's own
+	// execution-time limit, surfacing to the client as an opaque Cloudflare-edge "HTTP 500" with
+	// an HTML body (not this server's own JSON error response) on every single poll, forever.
+	// Unbounded Promise.all across the whole backlog would trade that failure for a different
+	// one (Workers caps subrequests per invocation); BATCH_SIZE keeps each batch's 2 KV calls per
+	// key (get + delete) well under that regardless of how large the backlog has grown.
+	const BATCH_SIZE = 20;
 	const keys = await listAllKeys(env, `gifttransfer:${idString}:`);
 	const transfers = [];
-	for (const key of keys) {
-		const value = await env.SUBS.get(key.name);
-		if (value) {
-			transfers.push(value);
+	for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+		const batch = keys.slice(i, i + BATCH_SIZE);
+		const values = await Promise.all(batch.map((key) => env.SUBS.get(key.name)));
+		await Promise.all(batch.map((key) => env.SUBS.delete(key.name)));
+		for (const value of values) {
+			if (value) {
+				transfers.push(value);
+			}
 		}
-		await env.SUBS.delete(key.name);
 	}
 
 	return jsonResponse({ transfers });
