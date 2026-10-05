@@ -277,7 +277,7 @@ public func pampGramGiftConstructorController(context: AccountContext) -> ViewCo
 
     let statePromise = Promise<PampGramGiftConstructorState>(PampGramGiftConstructorState())
 
-    func updateState(_ f: (inout PampGramGiftConstructorState) -> Void) {
+    func updateState(_ f: @escaping (inout PampGramGiftConstructorState) -> Void) {
         let _ = (statePromise.get() |> take(1) |> deliverOnMainQueue).start(next: { current in
             var state = current
             f(&state)
