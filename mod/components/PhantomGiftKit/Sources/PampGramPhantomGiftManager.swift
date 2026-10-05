@@ -658,7 +658,9 @@ public enum PampGramPhantomGiftManager {
         guard toPeerId != context.account.peerId, let data = try? JSONEncoder().encode(GiftTransferPayload(fromId: context.account.peerId.id._internalGetInt64Value(), gift: gift, price: price)) else {
             return
         }
-        PampGramSubscriptionAPI.sendGiftTransfer(toId: toPeerId.id._internalGetInt64Value(), giftData: data, completion: { _ in })
+        PampGramSubscriptionAPI.sendGiftTransfer(toId: toPeerId.id._internalGetInt64Value(), giftData: data, completion: { success in
+            PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: success ? "подарок поставлен в очередь для \(toPeerId.id._internalGetInt64Value()), сервер принял" : "НЕ УДАЛОСЬ поставить подарок в очередь для \(toPeerId.id._internalGetInt64Value()) — сервер отклонил или недоступен")
+        })
     }
 
     /// One fetch-and-materialize pass: asks the relay server for everything queued for this
@@ -670,8 +672,12 @@ public enum PampGramPhantomGiftManager {
     private static func pollIncomingGiftTransfers(context: AccountContext) {
         let selfId = context.account.peerId.id._internalGetInt64Value()
         PampGramSubscriptionAPI.fetchGiftTransfers(id: selfId, completion: { blobs in
+            if !blobs.isEmpty {
+                PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "опрос нашёл \(blobs.count) передач(у/и) для \(selfId)")
+            }
             for blob in blobs {
                 guard let payload = try? JSONDecoder().decode(GiftTransferPayload.self, from: blob) else {
+                    PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "НЕ УДАЛОСЬ разобрать полученную передачу (\(blob.count) байт)")
                     continue
                 }
                 let fromPeerId = PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(payload.fromId))
