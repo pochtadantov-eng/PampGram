@@ -742,6 +742,31 @@ public enum PampGramPhantomGiftManager {
         }
     }
 
+    /// Wraps `observeIncomingGiftTransfers` with the "Проверка входящих подарков" toggle
+    /// (`PampGramSettings.giftTransferPollingEnabled`, Дополнительно): the underlying timer is
+    /// only ever running while the setting is on, and starts/stops within one poll tick of the
+    /// user flipping it rather than requiring an app relaunch. Off by default, so a fresh install
+    /// does no background polling at all until the user turns it on themselves. This is what
+    /// `AccountContextImpl.init` actually calls now instead of `observeIncomingGiftTransfers`
+    /// directly.
+    public static func observeIncomingGiftTransfersIfEnabled(context: AccountContext) -> Disposable {
+        let innerDisposable = MetaDisposable()
+        let settingsDisposable = (PampGramCore.settingsSignal(postbox: context.account.postbox)
+        |> map { $0.giftTransferPollingEnabled }
+        |> distinctUntilChanged
+        |> deliverOnMainQueue).start(next: { enabled in
+            if enabled {
+                innerDisposable.set(observeIncomingGiftTransfers(context: context))
+            } else {
+                innerDisposable.set(nil)
+            }
+        })
+        return ActionDisposable {
+            settingsDisposable.dispose()
+            innerDisposable.dispose()
+        }
+    }
+
     /// Same poll as `observeIncomingGiftTransfers`, run once on demand — called whenever the
     /// recipient opens a chat (`navigateToChatControllerImpl`), so a transfer that arrived
     /// since the last 20s tick shows up immediately instead of waiting for the next one.

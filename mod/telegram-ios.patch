@@ -21593,7 +21593,7 @@ index 57ecb9d..f0a68ec 100644
      }
      
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd3..b6bb5a74 100644
+index 4d971fd3..e32399c2 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -21628,7 +21628,7 @@ index 4d971fd3..b6bb5a74 100644
 +        // observeIncomingGiftTransfers(context: self) tripped the Swift "used before being
 +        // initialized" check for escaping self in a class with no superclass.
 +        if sharedContext.applicationBindings.isMainApp && !temp {
-+            self.pampGramGiftReceiveDisposable.set(PampGramPhantomGiftManager.observeIncomingGiftTransfers(context: self))
++            self.pampGramGiftReceiveDisposable.set(PampGramPhantomGiftManager.observeIncomingGiftTransfersIfEnabled(context: self))
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
