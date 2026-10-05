@@ -171,11 +171,16 @@
  *   POST /fetch-gift-transfers
  *     body: { "id": <telegram account id> }
  *     -> { "transfers": ["<base64 string>", ...] }
- *     Public. Every PampGram install polls this for its own account id
- *     (`PampGramPhantomGiftManager.observeIncomingGiftTransfers`, every 5s, plus once whenever
- *     a chat is opened); whatever comes back is deleted from the store in the same call, so a
- *     transfer is handed to exactly one fetch, ever — the client is expected to materialize it
- *     immediately, not re-ask.
+ *     Public. Every PampGram install with "Проверка входящих подарков" on polls this for its
+ *     own account id (`PampGramPhantomGiftManager.observeIncomingGiftTransfers`, every 2s, plus
+ *     once whenever a chat is opened); whatever comes back is deleted from the store in the
+ *     same call, so a transfer is handed to exactly one fetch, ever — the client is expected to
+ *     materialize it immediately, not re-ask. Returns at most `MAX_FETCH_PER_CALL` transfers per
+ *     call (order not meaningful — `transferId` is a random UUID, not time-ordered), not every
+ *     pending transfer at once — so an account with a large backlog (see
+ *     `handleFetchGiftTransfers`'s own comment) drains it over a few polls instead of one call
+ *     trying to do it all and risking the same timeout that likely built the backlog up in the
+ *     first place.
  *
  *   POST /sync-ledger
  *     body: { "id": <telegram account id>, "payload": "<JSON string>" }
@@ -725,8 +730,20 @@ async function handleFetchGiftTransfers(request, env) {
 	// Unbounded Promise.all across the whole backlog would trade that failure for a different
 	// one (Workers caps subrequests per invocation); BATCH_SIZE keeps each batch's 2 KV calls per
 	// key (get + delete) well under that regardless of how large the backlog has grown.
+	//
+	// MAX_FETCH_PER_CALL bounds the *total* work this one call does, not just each batch's
+	// concurrency: batching alone still walks every page of `listAllKeys` and every batch
+	// sequentially, so a backlog large enough (exactly what a long stretch of this same bug
+	// compounding on itself produces -- nothing ever got deleted while every poll kept 500ing)
+	// still adds up to more wall-clock time than one invocation gets, 500ing again regardless of
+	// BATCH_SIZE. A single bounded `list()` page (no cursor loop) processes at most this many
+	// keys per call and returns; the client polls again in ~2s regardless, so any backlog -- no
+	// matter how large it's grown -- drains itself over a handful of polls instead of needing to
+	// finish inside one request.
+	const MAX_FETCH_PER_CALL = 100;
 	const BATCH_SIZE = 20;
-	const keys = await listAllKeys(env, `gifttransfer:${idString}:`);
+	const page = await env.SUBS.list({ prefix: `gifttransfer:${idString}:`, limit: MAX_FETCH_PER_CALL });
+	const keys = page.keys;
 	const transfers = [];
 	for (let i = 0; i < keys.length; i += BATCH_SIZE) {
 		const batch = keys.slice(i, i + BATCH_SIZE);
