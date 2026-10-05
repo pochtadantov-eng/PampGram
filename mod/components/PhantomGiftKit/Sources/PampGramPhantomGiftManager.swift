@@ -151,11 +151,15 @@ public enum PampGramPhantomGiftManager {
     /// silently doing nothing to the balance.
     public static func receiveUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<PampGramPhantomGift, NoError> {
         return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
-            // Same resale-listing cleanup as `buyUniqueGift` — see its comment.
-            let ownedGift = PampGramPhantomGiftMessage.fakedOwnership(of: uniqueGift, newOwnerPeerId: peerId)
+            // Same resale-listing cleanup as `buyUniqueGift` — see its comment. The new owner is
+            // this account (the recipient), not `peerId` (the sender this reads as being from) —
+            // that mismatch used to leave both the stored gift's `peerId` (whose profile grid it
+            // belongs to) and the StarGift's own `owner` field pointing at the sender, so a
+            // received gift never actually showed as yours.
+            let ownedGift = PampGramPhantomGiftMessage.fakedOwnership(of: uniqueGift, newOwnerPeerId: context.account.peerId)
             let phantomGift = PampGramPhantomGift(
                 id: Int64.random(in: 1...Int64.max),
-                peerId: peerId,
+                peerId: context.account.peerId,
                 gift: .unique(ownedGift),
                 price: price,
                 date: Int32(Date().timeIntervalSince1970),
@@ -198,9 +202,11 @@ public enum PampGramPhantomGiftManager {
     /// other entry point, mirroring `sendGenericGift`.
     public static func receiveGenericGift(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift.Gift, text: String? = nil, entities: [MessageTextEntity]? = nil) -> Signal<Never, NoError> {
         return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
+            // The new owner is this account (the recipient), not `peerId` (the sender this
+            // reads as being from) — see receiveUniqueGift's matching fix for why.
             let phantomGift = PampGramPhantomGift(
                 id: Int64.random(in: 1...Int64.max),
-                peerId: peerId,
+                peerId: context.account.peerId,
                 gift: .generic(gift),
                 price: CurrencyAmount(amount: StarsAmount(value: gift.price, nanos: 0), currency: .stars),
                 date: Int32(Date().timeIntervalSince1970),
@@ -433,6 +439,27 @@ public enum PampGramPhantomGiftManager {
             PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { $0.withWorn(worn) })
         }
         |> ignoreValues
+    }
+
+    /// Live "is this Phantom Gift currently worn" signal — GiftViewScreen's own Wear/Take Off
+    /// button reads this for a Phantom Gift (`reference == nil`) instead of the real account's
+    /// `peer.emojiStatus`, which a Phantom Gift's doomed `setStarGiftStatus` call never actually
+    /// changes (see the patch to commitWear/commitTakeOff in GiftViewScreen.swift). Matching
+    /// mirrors `findPhantomGift`'s unique id+slug comparison; duplicated rather than shared
+    /// because that one needs a `Transaction` and this needs to stay a live `Signal`.
+    public static func wornSignal(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift) -> Signal<Bool, NoError> {
+        guard case let .unique(targetUnique) = gift.gift else {
+            return .single(false)
+        }
+        return PampGramPhantomGiftStore.allGiftsSignal(context: context)
+        |> map { gifts -> Bool in
+            gifts.contains(where: { candidate in
+                guard candidate.peerId == context.account.peerId, candidate.worn, case let .unique(candidateUnique) = candidate.gift else {
+                    return false
+                }
+                return candidateUnique.id == targetUnique.id && candidateUnique.slug == targetUnique.slug
+            })
+        }
     }
 
     /// Local marketplace listing. A nil price removes the listing; no real Stars/TON or
