@@ -126,9 +126,9 @@ replace_once(
 replace_once(
     screen_path,
     "pass visuals to profile items",
-    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber)
+    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber, pampGramShowProfileId: self.pampGramSettings.profileIdsEnabled, pampGramShowAccountLink: self.pampGramSettings.accountLinkEnabled)
 """,
-    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber, pampGramProfileVisuals: self.pampGramProfileVisuals)
+    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber, pampGramShowProfileId: self.pampGramSettings.profileIdsEnabled, pampGramShowAccountLink: self.pampGramSettings.accountLinkEnabled, pampGramProfileVisuals: self.pampGramProfileVisuals)
 """,
 )
 
@@ -228,10 +228,12 @@ replace_once(
     "import PampGramCore for profile state",
     """import PeerNameColorItem
 import BoostLevelIconComponent
+import UndoUI
 
 """,
     """import PeerNameColorItem
 import BoostLevelIconComponent
+import UndoUI
 import PampGramCore
 import CollectibleItemInfoScreen
 
@@ -245,7 +247,9 @@ replace_once(
     isOpenedFromChat: Bool,
     isMyProfile: Bool,
     pampGramHideOwnPhone: Bool = false,
-    pampGramFakePhoneNumber: String = ""
+    pampGramFakePhoneNumber: String = "",
+    pampGramShowProfileId: Bool = false,
+    pampGramShowAccountLink: Bool = false
 ) -> [(AnyHashable, [PeerInfoScreenItem])] {
 """,
     """    chatLocation: ChatLocation,
@@ -253,6 +257,8 @@ replace_once(
     isMyProfile: Bool,
     pampGramHideOwnPhone: Bool = false,
     pampGramFakePhoneNumber: String = "",
+    pampGramShowProfileId: Bool = false,
+    pampGramShowAccountLink: Bool = false,
     pampGramProfileVisuals: PampGramProfileVisualState = PampGramProfileVisualState.default
 ) -> [(AnyHashable, [PeerInfoScreenItem])] {
 """,
