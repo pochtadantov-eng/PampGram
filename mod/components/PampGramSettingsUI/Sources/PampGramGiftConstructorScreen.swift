@@ -240,11 +240,7 @@ private enum PampGramGiftConstructorEntry: ItemListNodeEntry {
             case let .generic(innerGift):
                 title = innerGift.title ?? "Gift"
             case let .unique(innerGift):
-                if let number = innerGift.number {
-                    title = "\(innerGift.title) #\(number)"
-                } else {
-                    title = innerGift.title
-                }
+                title = "\(innerGift.title) #\(innerGift.number)"
             }
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "sparkle", backgroundColor: UIColor(rgb: 0xaf52de)), title: title, label: "", sectionId: self.section, style: .blocks, action: { a.openSaved(gift) })
         }
