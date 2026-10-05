@@ -685,19 +685,28 @@ public enum PampGramPhantomGiftManager {
         })
     }
 
-    /// Polls the shared relay server every 5s for any gift another PampGram install has sent
+    /// Polls the shared relay server every 2s for any gift another PampGram install has sent
     /// this account — the reliable path, independent of whether this device happens to be
     /// looking at any particular chat when a transfer arrives. Not real push (PampGram has
     /// none — see the earlier "почему не приходят уведомления" conversation): this only ever
-    /// closes the gap to "a few seconds while both apps are open", never to "instant while
-    /// backgrounded", and costs one request per tick per install against the relay server's
-    /// free-tier budget — short enough to feel immediate in an active chat, not so short it
-    /// burns through that budget on its own. Started once per account from
-    /// `AccountContextImpl.init` (see the patch to AccountContext.swift); the returned
-    /// `Disposable` stops the timer if the account context itself is torn down.
+    /// closes the gap to "a couple seconds while both apps are open", never to "instant while
+    /// backgrounded".
+    ///
+    /// Why not faster: this runs continuously on every install with the app open, against a
+    /// single shared Cloudflare Worker on the free tier (100k requests/day, total, across every
+    /// PampGram user combined — not per-account). At 2s this is 1 request every 2s per open
+    /// app; at the originally-requested 0.5s it would be 4x that — two phones left open all day
+    /// would alone exhaust the whole day's free quota and start failing requests for every
+    /// PampGram user, this account included. 2s is a reasonable middle ground (2.5x faster than
+    /// the original 5s) without that risk; going lower needs either accepting that risk or
+    /// upgrading the Worker off the free tier.
+    ///
+    /// Started once per account from `AccountContextImpl.init` (see the patch to
+    /// AccountContext.swift); the returned `Disposable` stops the timer if the account context
+    /// itself is torn down.
     public static func observeIncomingGiftTransfers(context: AccountContext) -> Disposable {
         let queue = Queue()
-        let timer = SwiftSignalKit.Timer(timeout: 5.0, repeat: true, completion: { [weak context] in
+        let timer = SwiftSignalKit.Timer(timeout: 2.0, repeat: true, completion: { [weak context] in
             guard let context else {
                 return
             }
