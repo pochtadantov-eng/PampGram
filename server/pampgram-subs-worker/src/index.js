@@ -721,40 +721,25 @@ async function handleFetchGiftTransfers(request, env) {
 	// a transfer is never delivered twice and the queue never grows unbounded in the normal
 	// case.
 	//
-	// Processed in small parallel batches rather than one key at a time (the previous version)
-	// or all at once: a backlog of many pending transfers for one account -- which this exact
-	// bug could itself cause, since every poll that times out leaves its keys undeleted for the
-	// next poll to retry -- made the old sequential version slow enough to hit the Worker's own
-	// execution-time limit, surfacing to the client as an opaque Cloudflare-edge "HTTP 500" with
-	// an HTML body (not this server's own JSON error response) on every single poll, forever.
-	// Unbounded Promise.all across the whole backlog would trade that failure for a different
-	// one (Workers caps subrequests per invocation); BATCH_SIZE keeps each batch's 2 KV calls per
-	// key (get + delete) well under that regardless of how large the backlog has grown.
-	//
-	// MAX_FETCH_PER_CALL bounds the *total* work this one call does, not just each batch's
-	// concurrency: batching alone still walks every page of `listAllKeys` and every batch
-	// sequentially, so a backlog large enough (exactly what a long stretch of this same bug
-	// compounding on itself produces -- nothing ever got deleted while every poll kept 500ing)
-	// still adds up to more wall-clock time than one invocation gets, 500ing again regardless of
-	// BATCH_SIZE. A single bounded `list()` page (no cursor loop) processes at most this many
-	// keys per call and returns; the client polls again in ~2s regardless, so any backlog -- no
-	// matter how large it's grown -- drains itself over a handful of polls instead of needing to
-	// finish inside one request.
-	const MAX_FETCH_PER_CALL = 100;
-	const BATCH_SIZE = 20;
+	// MAX_FETCH_PER_CALL bounds how many keys this one call touches, and the number that matters
+	// here is Cloudflare's *subrequest* cap (50 per invocation on the free plan), not wall-clock
+	// time. Every key costs 2 subrequests (one SUBS.get, one SUBS.delete), and that count is
+	// cumulative across the WHOLE invocation -- two earlier versions of this function got that
+	// wrong in two different ways: the very first version processed the entire backlog
+	// unbatched, and the batching fix that replaced it still walked every batch sequentially
+	// inside the same call, so a backlog of, say, 100 keys across 5 batches of 20 still added up
+	// to 200 subrequests in one invocation -- 4x the free plan's limit, regardless of how the
+	// work was chunked. Both produced the exact same symptom: an opaque Cloudflare-edge "HTTP
+	// 500" with an HTML body (not this server's own JSON error), on every single poll, because
+	// the subrequest cap was blown before the response could ever be built. MAX_FETCH_PER_CALL *
+	// 2 has to stay safely under 50; the client already polls every ~2s, so a backlog larger than
+	// this drains over a few more polls instead of needing to finish inside one request.
+	const MAX_FETCH_PER_CALL = 20;
 	const page = await env.SUBS.list({ prefix: `gifttransfer:${idString}:`, limit: MAX_FETCH_PER_CALL });
 	const keys = page.keys;
-	const transfers = [];
-	for (let i = 0; i < keys.length; i += BATCH_SIZE) {
-		const batch = keys.slice(i, i + BATCH_SIZE);
-		const values = await Promise.all(batch.map((key) => env.SUBS.get(key.name)));
-		await Promise.all(batch.map((key) => env.SUBS.delete(key.name)));
-		for (const value of values) {
-			if (value) {
-				transfers.push(value);
-			}
-		}
-	}
+	const values = await Promise.all(keys.map((key) => env.SUBS.get(key.name)));
+	await Promise.all(keys.map((key) => env.SUBS.delete(key.name)));
+	const transfers = values.filter((value) => value !== null);
 
 	return jsonResponse({ transfers });
 }
