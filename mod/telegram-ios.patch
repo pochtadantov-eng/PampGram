@@ -21588,7 +21588,7 @@ diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift b
                          return (currentPanel, nil)
                      } else {
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
-index 23695c21..68b7f973 100644
+index 23695c21..f1cc28d3 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
 @@ -53,6 +53,8 @@ import StatisticsUI
@@ -21628,25 +21628,10 @@ index 23695c21..68b7f973 100644
                                  }
                              }
                          })
-@@ -8983,6 +8995,40 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -8983,6 +8995,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
          guard let peerId = self.chatLocation.peerId else {
              return
          }
-+
-+        // PampGram DEBUG (временно, снять после диагностики отправки файлов): показывает,
-+        // реально ли доходит вызов до sendMessages, когда среди отправляемых сообщений есть
-+        // фото/файл/голосовое — если этот тост не появляется при нажатии "Отправить" на экране
-+        // выбранного файла, значит проблема ещё до sendMessages, в самом экране прикрепления.
-+        let pampGramDebugHasMedia = messages.contains { message in
-+            if case let .message(_, _, _, mediaReference, _, _, _, _, _, _) = message {
-+                return mediaReference != nil
-+            }
-+            return false
-+        }
-+        if pampGramDebugHasMedia {
-+            let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
-+            self.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "PampGram DEBUG: sendMessages вызван, сообщений: \(messages.count)", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
-+        }
 +
 +        // PampGram фейк админ: в канале с включённым фейк-админом «пост» вставляется только в
 +        // локальную копию чата — на сервер ничего не уходит. Текст добавляется как пост канала,
