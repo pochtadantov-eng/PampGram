@@ -18738,20 +18738,75 @@ index 3dad3ead..cf5f2029 100644
      ],
      visibility = [
          "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift
+index ac8b7842..18909839 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift
++++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift
+@@ -28,6 +28,7 @@ import UndoUI
+ import LottieComponent
+ import AnimatedTextComponent
+ import TableComponent
++import PampGramCore
+ 
+ private final class GiftAuctionViewSheetContent: CombinedComponent {
+     typealias EnvironmentType = ViewControllerComponentContainer.Environment
+@@ -252,7 +253,8 @@ private final class GiftAuctionViewSheetContent: CombinedComponent {
+             let storeController = self.context.sharedContext.makeGiftStoreController(
+                 context: self.context,
+                 peerId: self.context.account.peerId,
+-                gift: gift
++                gift: gift,
++                pampGramGiftFlow: .real
+             )
+             controller.push(storeController)
+         }
+@@ -406,7 +408,8 @@ private final class GiftAuctionViewSheetContent: CombinedComponent {
+             let storeController = self.context.sharedContext.makeGiftStoreController(
+                 context: self.context,
+                 peerId: self.peerId ?? self.context.account.peerId,
+-                gift: gift
++                gift: gift,
++                pampGramGiftFlow: .real
+             )
+             controller.push(storeController)
+         }
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift
+index 9da9a673..ca6adc9a 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift
++++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift
+@@ -25,6 +25,7 @@ import ContextUI
+ import GiftItemComponent
+ import GlassBarButtonComponent
+ import TableComponent
++import PampGramCore
+ 
+ private final class GiftValueSheetContent: CombinedComponent {
+     typealias EnvironmentType = ViewControllerComponentContainer.Environment
+@@ -140,7 +141,8 @@ private final class GiftValueSheetContent: CombinedComponent {
+             let storeController = self.context.sharedContext.makeGiftStoreController(
+                 context: self.context,
+                 peerId: self.context.account.peerId,
+-                gift: gift
++                gift: gift,
++                pampGramGiftFlow: .real
+             )
+             controller.push(storeController)
+         }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
-index 6f6c1f3c..59c001c2 100644
+index 6f6c1f3c..7785bf2c 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
-@@ -7,6 +7,8 @@ import AccountContext
+@@ -7,6 +7,9 @@ import AccountContext
  import PresentationDataUtils
  import TelegramStringFormatting
  import BalanceNeededScreen
++import UndoUI
 +import PampGramCore
 +import PhantomGiftKit
  
  public func buyStarGiftImpl(
      context: AccountContext,
-@@ -17,48 +19,82 @@ public func buyStarGiftImpl(
+@@ -17,48 +20,82 @@ public func buyStarGiftImpl(
      skipConfirmation: Bool = false,
      starsTopUpOptions: Signal<[StarsTopUpOption]?, NoError>,
      buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)?,
@@ -18867,7 +18922,7 @@ index 6f6c1f3c..59c001c2 100644
                  guard let controller = getController() else {
                      return
                  }
-@@ -139,8 +175,84 @@ public func buyStarGiftImpl(
+@@ -139,8 +176,84 @@ public func buyStarGiftImpl(
                  }
              })
          }
@@ -18954,7 +19009,7 @@ index 6f6c1f3c..59c001c2 100644
              let _ = (starsTopUpOptions
               |> filter { $0 != nil }
               |> take(1)
-@@ -251,4 +363,5 @@ public func buyStarGiftImpl(
+@@ -251,4 +364,5 @@ public func buyStarGiftImpl(
              updateIsBalanceVisible(false)
          })
      }
