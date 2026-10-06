@@ -19,11 +19,6 @@ public enum PampGramPhantomGiftManager {
         let phantomGift: PampGramPhantomGift
     }
 
-    /// PampGram DEBUG (temporary — see `pollIncomingGiftTransfers`): last `fetchGiftTransfers`
-    /// failure reason posted per account, so an ongoing failure doesn't repost every ~2s poll.
-    /// No entry for an account means its last poll succeeded (or none has run yet).
-    private static var lastGiftTransferFailureBySelfId: [Int64: String] = [:]
-
     /// Local-only stand-in for a real resale purchase: deducts the matching fake balance
     /// (Stars or TON, whichever the real listing was priced in), records the gift, and —
     /// unless this is a self-purchase, which never produces a chat message either way —
@@ -78,12 +73,10 @@ public enum PampGramPhantomGiftManager {
                 return .single(BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency)))
             }
 
-            // Gifting someone: the sender always gets their own "Вы подарили …" gift card,
-            // local to this device. If the recipient also runs PampGram, `pushGiftTransfer`
-            // additionally queues it on the shared relay server so it shows up as received on
-            // *their* device too, next time their own poller checks — a harmless no-op if they
-            // don't.
-            pushGiftTransfer(context: context, toPeerId: peerId, gift: .unique(uniqueGift), price: price)
+            // Gifting someone: the sender gets their own "Вы подарили …" gift card, local to
+            // this device — there's no cross-device delivery to the recipient (that used to
+            // go through a server relay; removed as unreliable — see "Подарок мне" for the
+            // scheduled-delivery replacement).
             return PampGramPhantomGiftMessage.insertLocalUniqueGiftMessage(context: context, peerId: peerId, uniqueGift: uniqueGift, price: price)
             |> map { _ -> BuyResult in
                 return BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency))
@@ -129,10 +122,8 @@ public enum PampGramPhantomGiftManager {
         |> mapToSignal { pending -> Signal<Never, NoError> in
             let phantomGift = pending.phantomGift
 
-            // The sender always gets their own gift card, local to this device. Gifting someone
-            // (not yourself — `pushGiftTransfer` no-ops on a self-gift) who also runs PampGram
-            // additionally queues it for their device, same as `buyUniqueGift` above.
-            pushGiftTransfer(context: context, toPeerId: peerId, gift: .generic(gift), price: CurrencyAmount(amount: StarsAmount(value: starPrice, nanos: 0), currency: .stars))
+            // The sender gets their own gift card, local to this device — same as
+            // buyUniqueGift above, no cross-device delivery to the recipient.
             return PampGramPhantomGiftMessage.insertLocalGenericGiftMessage(context: context, peerId: peerId, gift: gift, text: text, entities: entities, nameHidden: nameHidden)
             |> mapToSignal { messageId -> Signal<Never, NoError> in
                 guard let messageId else {
@@ -248,6 +239,49 @@ public enum PampGramPhantomGiftManager {
                 |> ignoreValues
             }
         }
+    }
+
+    /// "Подарок мне" with a delay picked other than "Сразу": stores a pending
+    /// `PampGramScheduledGift` instead of materializing immediately. Nothing visible happens
+    /// until `PampGramScheduledGiftRuntime` finds it due and calls `receiveGenericGift`/
+    /// `receiveUniqueGift` for real — this function only ever writes the pending record.
+    public static func scheduleReceiveGift(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, text: String?, delaySeconds: Int32) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            let scheduled = PampGramScheduledGift(
+                id: Int64.random(in: 1...Int64.max),
+                peerId: peerId,
+                gift: gift,
+                price: price,
+                text: text,
+                fireDate: Int32(Date().timeIntervalSince1970) + delaySeconds
+            )
+            PampGramScheduledGiftStore.add(transaction: transaction, gift: scheduled)
+        }
+        |> ignoreValues
+    }
+
+    /// Checked periodically by `PampGramScheduledGiftRuntime`: materializes (and removes from
+    /// the pending list) every scheduled gift whose time has come, via the exact same local
+    /// path an immediate "Подарок мне" already uses — same chat message, same fake balance
+    /// credit, just triggered by the clock instead of a tap.
+    public static func materializeDueScheduledGifts(context: AccountContext) {
+        let _ = context.account.postbox.transaction { transaction -> [PampGramScheduledGift] in
+            let now = Int32(Date().timeIntervalSince1970)
+            let due = PampGramScheduledGiftStore.all(transaction: transaction).filter { $0.fireDate <= now }
+            for scheduled in due {
+                PampGramScheduledGiftStore.remove(transaction: transaction, id: scheduled.id)
+            }
+            return due
+        }.start(next: { due in
+            for scheduled in due {
+                switch scheduled.gift {
+                case let .generic(gift):
+                    let _ = receiveGenericGift(context: context, peerId: scheduled.peerId, gift: gift, text: scheduled.text).start()
+                case let .unique(uniqueGift):
+                    let _ = receiveUniqueGift(context: context, peerId: scheduled.peerId, uniqueGift: uniqueGift, price: scheduled.price).start()
+                }
+            }
+        })
     }
 
     /// Removes every Phantom Gift on this device, and the local-only chat messages they
@@ -672,141 +706,6 @@ public enum PampGramPhantomGiftManager {
             return PampGramPhantomGiftMessage.insertLocalGiftSoldNotification(context: context, giftTitle: gift.title, price: salePrice)
             |> ignoreValues
         }
-    }
-
-    /// Wire format for `PampGramSubscriptionAPI.sendGiftTransfer`/`fetchGiftTransfers` — the
-    /// relay server stores and returns this as an opaque, base64-encoded JSON blob, never
-    /// looking inside it. `fromId` is the sender's own Telegram account id — the one thing a
-    /// bare `StarGift` doesn't already carry, and the only thing the receiving side needs
-    /// beyond the gift itself, since `receiveGenericGift`/`receiveUniqueGift` already take
-    /// "who it's from" as a plain `peerId` and do the rest (chat message, ownership, balance).
-    private struct GiftTransferPayload: Codable {
-        let fromId: Int64
-        let gift: StarGift
-        let price: CurrencyAmount
-    }
-
-    /// Fire-and-forget: if `toPeerId` also runs PampGram, queues this gift on the shared relay
-    /// server so their own `observeIncomingGiftTransfers` poller picks it up and inserts it as
-    /// received on their own device, next poll. A harmless no-op if they don't — the queued
-    /// blob just sits unclaimed on the server. Never affects the local, same-device "Вы
-    /// подарили …" card the sender already gets from `buyUniqueGift`/`sendGenericGift`
-    /// regardless of whether this succeeds.
-    private static func pushGiftTransfer(context: AccountContext, toPeerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount) {
-        guard toPeerId != context.account.peerId, let data = try? JSONEncoder().encode(GiftTransferPayload(fromId: context.account.peerId.id._internalGetInt64Value(), gift: gift, price: price)) else {
-            return
-        }
-        PampGramSubscriptionAPI.sendGiftTransfer(toId: toPeerId.id._internalGetInt64Value(), giftData: data, completion: { success in
-            PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: success ? "подарок поставлен в очередь для \(toPeerId.id._internalGetInt64Value()), сервер принял" : "НЕ УДАЛОСЬ поставить подарок в очередь для \(toPeerId.id._internalGetInt64Value()) — сервер отклонил или недоступен")
-        })
-    }
-
-    /// One fetch-and-materialize pass: asks the relay server for everything queued for this
-    /// account, and for each one, runs the exact same local-only path "Подарок мне" already
-    /// uses by hand (`receiveGenericGift`/`receiveUniqueGift`) — same chat message, same fake
-    /// balance credit — just triggered by the poll instead of a tap. The server deletes each
-    /// transfer the moment it hands it back (see `handleFetchGiftTransfers`), so there is
-    /// nothing here to deduplicate against.
-    private static func pollIncomingGiftTransfers(context: AccountContext) {
-        let selfId = context.account.peerId.id._internalGetInt64Value()
-        PampGramSubscriptionAPI.fetchGiftTransfers(id: selfId, completion: { blobs, debugInfo in
-            // PampGram DEBUG: this polls every 2s, so an ongoing failure (same reason, poll
-            // after poll) used to post a fresh message every single time — only post again when
-            // the reason actually changes (or clear the memory on a real success), instead of
-            // flooding the Telegram service chat for as long as the failure persists.
-            if let debugInfo {
-                if lastGiftTransferFailureBySelfId[selfId] != debugInfo {
-                    lastGiftTransferFailureBySelfId[selfId] = debugInfo
-                    PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "опрос для \(selfId) НЕ УДАЛСЯ: \(debugInfo)")
-                }
-            } else {
-                lastGiftTransferFailureBySelfId.removeValue(forKey: selfId)
-            }
-            if debugInfo == nil, !blobs.isEmpty {
-                PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "опрос нашёл \(blobs.count) передач(у/и) для \(selfId)")
-            }
-            for blob in blobs {
-                guard let payload = try? JSONDecoder().decode(GiftTransferPayload.self, from: blob) else {
-                    PampGramPhantomGiftMessage.insertLocalDebugNotification(context: context, text: "НЕ УДАЛОСЬ разобрать полученную передачу (\(blob.count) байт)")
-                    continue
-                }
-                let fromPeerId = PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(payload.fromId))
-                switch payload.gift {
-                case let .generic(gift):
-                    let _ = receiveGenericGift(context: context, peerId: fromPeerId, gift: gift).start()
-                case let .unique(uniqueGift):
-                    let _ = receiveUniqueGift(context: context, peerId: fromPeerId, uniqueGift: uniqueGift, price: payload.price).start()
-                }
-            }
-        })
-    }
-
-    /// Polls the shared relay server every 2s for any gift another PampGram install has sent
-    /// this account — the reliable path, independent of whether this device happens to be
-    /// looking at any particular chat when a transfer arrives. Not real push (PampGram has
-    /// none — see the earlier "почему не приходят уведомления" conversation): this only ever
-    /// closes the gap to "a couple seconds while both apps are open", never to "instant while
-    /// backgrounded".
-    ///
-    /// Why not faster: this runs continuously on every install with the app open, against a
-    /// single shared Cloudflare Worker on the free tier (100k requests/day, total, across every
-    /// PampGram user combined — not per-account). At 2s this is 1 request every 2s per open
-    /// app; at the originally-requested 0.5s it would be 4x that — two phones left open all day
-    /// would alone exhaust the whole day's free quota and start failing requests for every
-    /// PampGram user, this account included. 2s is a reasonable middle ground (2.5x faster than
-    /// the original 5s) without that risk; going lower needs either accepting that risk or
-    /// upgrading the Worker off the free tier.
-    ///
-    /// Started once per account from `AccountContextImpl.init` (see the patch to
-    /// AccountContext.swift); the returned `Disposable` stops the timer if the account context
-    /// itself is torn down.
-    public static func observeIncomingGiftTransfers(context: AccountContext) -> Disposable {
-        let queue = Queue()
-        let timer = SwiftSignalKit.Timer(timeout: 2.0, repeat: true, completion: { [weak context] in
-            guard let context else {
-                return
-            }
-            pollIncomingGiftTransfers(context: context)
-        }, queue: queue)
-        pollIncomingGiftTransfers(context: context)
-        timer.start()
-        return ActionDisposable {
-            timer.invalidate()
-        }
-    }
-
-    /// Wraps `observeIncomingGiftTransfers` with the "Проверка входящих подарков" toggle
-    /// (`PampGramSettings.giftTransferPollingEnabled`, Дополнительно): the underlying timer is
-    /// only ever running while the setting is on, and starts/stops within one poll tick of the
-    /// user flipping it rather than requiring an app relaunch. Off by default, so a fresh install
-    /// does no background polling at all until the user turns it on themselves. This is what
-    /// `AccountContextImpl.init` actually calls now instead of `observeIncomingGiftTransfers`
-    /// directly.
-    public static func observeIncomingGiftTransfersIfEnabled(context: AccountContext) -> Disposable {
-        let innerDisposable = MetaDisposable()
-        let settingsDisposable = (PampGramCore.settingsSignal(postbox: context.account.postbox)
-        |> map { $0.giftTransferPollingEnabled }
-        |> distinctUntilChanged
-        |> deliverOnMainQueue).start(next: { enabled in
-            if enabled {
-                innerDisposable.set(observeIncomingGiftTransfers(context: context))
-            } else {
-                innerDisposable.set(nil)
-            }
-        })
-        return ActionDisposable {
-            settingsDisposable.dispose()
-            innerDisposable.dispose()
-        }
-    }
-
-    /// Same poll as `observeIncomingGiftTransfers`, run once on demand — called whenever the
-    /// recipient opens a chat (`navigateToChatControllerImpl`), so a transfer that arrived
-    /// since the last 20s tick shows up immediately instead of waiting for the next one.
-    /// `peerId` isn't filtered on: the poll is cheap and account-wide anyway, and whatever it
-    /// finds (from this chat's peer or any other) is materialized exactly like the timer path.
-    public static func scanPeerForIncomingGiftTransfers(context: AccountContext, peerId: EnginePeer.Id) {
-        pollIncomingGiftTransfers(context: context)
     }
 
     /// "Конструктор" (`PampGramGiftConstructorScreen.swift`): builds a brand-new local-only

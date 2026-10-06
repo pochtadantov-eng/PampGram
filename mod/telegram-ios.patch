@@ -18259,7 +18259,7 @@ index 7e874b3f..28817174 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
-index 0db09aed..16b5bbdd 100644
+index 0db09aed..3d876a55 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 @@ -39,6 +39,8 @@ import GlassBarButtonComponent
@@ -18421,7 +18421,7 @@ index 0db09aed..16b5bbdd 100644
                          if case let .starGift(starGift, _) = component.subject, let perUserLimit = starGift.perUserLimit {
                              Queue.mainQueue().after(0.5) {
                                  let remains = max(0, perUserLimit.remains - 1)
-@@ -663,7 +722,58 @@ private final class GiftSetupScreenComponent: Component {
+@@ -663,7 +722,96 @@ private final class GiftSetupScreenComponent: Component {
                  })
              }
              
@@ -18475,13 +18475,51 @@ index 0db09aed..16b5bbdd 100644
 +                })
 +            } else if component.pampGramGiftFlow == .receiveFake {
 +                // PampGram: "Подарок мне" never checks or spends any balance — nothing was
-+                // bought, real or fake, in this direction.
-+                proceed()
++                // bought, real or fake, in this direction. Offers a delay first: "Сразу" falls
++                // straight into `proceed()` (unchanged original behaviour); any other choice
++                // schedules the same materialization for later instead of ever calling
++                // `proceed()` — the local, no-server replacement for the old P2P relay (see
++                // PampGramScheduledGiftRuntime).
++                guard let controller = environment.controller() else {
++                    return
++                }
++                let sheet = ActionSheetController(presentationData: presentationData)
++                var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: "Когда доставить подарок?")]
++                for delay in PampGramGiftDelay.allCases {
++                    buttons.append(ActionSheetButtonItem(title: delay.title, color: .accent, action: { [weak self, weak sheet] in
++                        sheet?.dismissAnimated()
++                        guard let seconds = delay.seconds else {
++                            proceed()
++                            return
++                        }
++                        guard let self, let pampGramStarGift, let controller = self.environment?.controller(), let navigationController = controller.navigationController as? NavigationController else {
++                            return
++                        }
++                        let price = CurrencyAmount(amount: StarsAmount(value: pampGramStarGift.price, nanos: 0), currency: .stars)
++                        let _ = PampGramPhantomGiftManager.scheduleReceiveGift(context: context, peerId: peerId, gift: .generic(pampGramStarGift), price: price, text: textInputText.string.isEmpty ? nil : textInputText.string, delaySeconds: seconds).start()
++
++                        var controllers = navigationController.viewControllers
++                        controllers = controllers.filter { !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) }
++                        navigationController.setViewControllers(controllers, animated: true)
++
++                        let toastController = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок придёт \(delay.title.lowercased())", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false })
++                        (navigationController.viewControllers.last as? ViewController)?.present(toastController, in: .current)
++                    }))
++                }
++                sheet.setItemGroups([
++                    ActionSheetItemGroup(items: buttons),
++                    ActionSheetItemGroup(items: [
++                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
++                            sheet?.dismissAnimated()
++                        })
++                    ])
++                ])
++                controller.present(sheet, in: .window(.root))
 +            } else if starsState.balance < StarsAmount(value: finalPrice, nanos: 0) {
                  let _ = (self.optionsPromise.get()
                  |> filter { $0 != nil }
                  |> take(1)
-@@ -684,7 +794,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -684,7 +832,7 @@ private final class GiftSetupScreenComponent: Component {
                              }
                              self.inProgress = true
                              self.state?.updated()
@@ -18490,7 +18528,7 @@ index 0db09aed..16b5bbdd 100644
                              starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
                              let _ = (starsContext.onUpdate
                              |> deliverOnMainQueue).start(next: {
-@@ -1481,7 +1591,8 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1481,7 +1629,8 @@ private final class GiftSetupScreenComponent: Component {
                                          let storeController = component.context.sharedContext.makeGiftStoreController(
                                              context: component.context,
                                              peerId: component.peerId,
@@ -18500,7 +18538,7 @@ index 0db09aed..16b5bbdd 100644
                                          )
                                          controller.push(storeController)
                                      }
-@@ -2111,15 +2222,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
+@@ -2111,15 +2260,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
          peerId: EnginePeer.Id,
          subject: Subject,
          auctionAcquiredGifts: Signal<[GiftAuctionAcquiredGift], NoError>? = nil,
@@ -18519,277 +18557,8 @@ index 0db09aed..16b5bbdd 100644
              completion: completion
          ), navigationBarAppearance: .none, theme: .default)
          
-diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
-index 9eedd122..c74361a1 100644
---- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
-+++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
-@@ -50,6 +50,7 @@ swift_library(
-         "//submodules/TelegramUI/Components/GlassBackgroundComponent",
-         "//submodules/TelegramUI/Components/ContextControllerImpl",
-         "//submodules/TelegramUI/Components/CheckComponent",
-+        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
-     ],
-     visibility = [
-         "//visibility:public",
-diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
-index c8ac3527..9c14da7b 100644
---- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
-+++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
-@@ -11,6 +11,7 @@ import MultilineTextWithEntitiesComponent
- import TextFormat
- import TelegramStringFormatting
- import Markdown
-+import PampGramCore
- 
- final class BalanceComponent: Component {
-     private let context: AccountContext
-@@ -43,7 +44,14 @@ final class BalanceComponent: Component {
-         private var starsBalance: Int64 = 0
-         private var tonBalance: Int64 = 0
-         private var balanceDisposable: Disposable?
--                        
-+
-+        // PampGram: substituted in place of the real balances above when the matching
-+        // display toggle is on — same "Локальные звёзды"/"Локальные TON/GRAM" settings this
-+        // pill already respects everywhere else it's shown (gift-sending header, Settings
-+        // rows, the Stars/TON balance screens).
-+        private var pampGramSettings = PampGramSettings.defaultSettings
-+        private var pampGramSettingsDisposable: Disposable?
-+
-         override public init(frame: CGRect) {
-             super.init(frame: frame)
-             
-@@ -56,6 +64,7 @@ final class BalanceComponent: Component {
-         
-         deinit {
-             self.balanceDisposable?.dispose()
-+            self.pampGramSettingsDisposable?.dispose()
-         }
-         
-         @objc private func pressed() {
-@@ -91,13 +100,29 @@ final class BalanceComponent: Component {
-                     })
-                 }
-             }
--            
-+
-+            if self.pampGramSettingsDisposable == nil {
-+                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
-+                |> deliverOnMainQueue).start(next: { [weak self] settings in
-+                    guard let self else {
-+                        return
-+                    }
-+                    self.pampGramSettings = settings
-+                    if !self.isUpdating {
-+                        self.componentState?.updated()
-+                    }
-+                })
-+            }
-+
-             let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
- 
-+            let displayedStarsBalance = self.pampGramSettings.fakeStarsDisplayEnabled ? self.pampGramSettings.fakeStarsBalance : self.starsBalance
-+            let displayedTonBalance = self.pampGramSettings.fakeTonDisplayEnabled ? self.pampGramSettings.fakeTonBalanceNanos : self.tonBalance
-+
-             var rawString: String = ""
--            let starsBalanceString = "**⭐️\(presentationStringsFormattedNumber(Int32(clamping: self.starsBalance), presentationData.dateTimeFormat.groupingSeparator))**"
--            if self.tonBalance > 0 {
--                let tonBalanceString = "**💎\(formatTonAmountText(self.tonBalance, dateTimeFormat: presentationData.dateTimeFormat))**"
-+            let starsBalanceString = "**⭐️\(presentationStringsFormattedNumber(Int32(clamping: displayedStarsBalance), presentationData.dateTimeFormat.groupingSeparator))**"
-+            if displayedTonBalance > 0 {
-+                let tonBalanceString = "**💎\(formatTonAmountText(displayedTonBalance, dateTimeFormat: presentationData.dateTimeFormat))**"
-                 rawString = starsBalanceString + "\n" + tonBalanceString
-             } else {
-                 rawString = presentationData.strings.Stars_Purchase_Balance + "\n" + starsBalanceString
-diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
-index 79e9e748..358ad65f 100644
---- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
-+++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
-@@ -8,6 +8,7 @@ import TelegramPresentationData
- import TelegramUIPreferences
- import PresentationDataUtils
- import AccountContext
-+import PampGramCore
- import ComponentFlow
- import ViewControllerComponent
- import MultilineTextComponent
-@@ -50,7 +51,8 @@ public final class GiftStoreContentComponent: Component {
-     let scrollToTop: () -> Void
-     let controller: () -> ViewController?
-     let completion: ((StarGift.UniqueGift) -> Void)?
--    
-+    let pampGramGiftFlow: PampGramGiftFlow
-+
-     public init(
-         context: AccountContext,
-         resaleGiftsContext: ResaleGiftsContext,
-@@ -68,7 +70,8 @@ public final class GiftStoreContentComponent: Component {
-         starsTopUpOptions: Signal<[StarsTopUpOption]?, NoError>?,
-         scrollToTop: @escaping () -> Void,
-         controller: @escaping () -> ViewController?,
--        completion: ((StarGift.UniqueGift) -> Void)?
-+        completion: ((StarGift.UniqueGift) -> Void)?,
-+        pampGramGiftFlow: PampGramGiftFlow = .real
-     ) {
-         self.context = context
-         self.resaleGiftsContext = resaleGiftsContext
-@@ -87,6 +90,7 @@ public final class GiftStoreContentComponent: Component {
-         self.scrollToTop = scrollToTop
-         self.controller = controller
-         self.completion = completion
-+        self.pampGramGiftFlow = pampGramGiftFlow
-     }
- 
-     public static func ==(lhs: GiftStoreContentComponent, rhs: GiftStoreContentComponent) -> Bool {
-@@ -303,6 +307,11 @@ public final class GiftStoreContentComponent: Component {
-                                                     buyGift: { slug, peerId, price in
-                                                         return self.starGiftsContext?.buyStarGift(slug: slug, peerId: peerId, price: price) ?? .complete()
-                                                     },
-+                                                    // PampGram: only fake when this whole GiftStoreScreen was itself reached
-+                                                    // via "Подарок ему"/"Подарок мне" (component.pampGramGiftFlow) — browsing
-+                                                    // the same resale market from "Все"/"Мои"/"Коллекционные" stays real, and
-+                                                    // .confirmPurchaseImmediately (crafting) above is untouched either way.
-+                                                    pampGramGiftFlow: component.pampGramGiftFlow,
-                                                     updateResellStars: { _, price in
-                                                         return self.starGiftsContext?.updateStarGiftResellPrice(slug: uniqueGift.slug, price: price) ?? .complete()
-                                                     }
-@@ -1145,19 +1154,24 @@ final class GiftStoreScreenComponent: Component {
-     let overNavigationContainer: UIView
-     let peerId: EnginePeer.Id
-     let gift: StarGift.Gift
--    
-+    // PampGram: which fake flow (if any) this screen was reached through (see
-+    // GiftOptionsScreen.swift) — see buyStarGiftImpl's own comment for what this gates.
-+    let pampGramGiftFlow: PampGramGiftFlow
-+
-     init(
-         context: AccountContext,
-         resaleGiftsContext: ResaleGiftsContext,
-         overNavigationContainer: UIView,
-         peerId: EnginePeer.Id,
--        gift: StarGift.Gift
-+        gift: StarGift.Gift,
-+        pampGramGiftFlow: PampGramGiftFlow = .real
-     ) {
-         self.context = context
-         self.resaleGiftsContext = resaleGiftsContext
-         self.overNavigationContainer = overNavigationContainer
-         self.peerId = peerId
-         self.gift = gift
-+        self.pampGramGiftFlow = pampGramGiftFlow
-     }
- 
-     static func ==(lhs: GiftStoreScreenComponent, rhs: GiftStoreScreenComponent) -> Bool {
-@@ -1449,7 +1463,8 @@ final class GiftStoreScreenComponent: Component {
-                         controller: {
-                             return controller()
-                         },
--                        completion: nil
-+                        completion: nil,
-+                        pampGramGiftFlow: component.pampGramGiftFlow
-                     )
-                 ),
-                 environment: {
-@@ -1572,19 +1587,21 @@ public class GiftStoreScreen: ViewControllerComponentContainer {
-     public init(
-         context: AccountContext,
-         peerId: EnginePeer.Id,
--        gift: StarGift.Gift
-+        gift: StarGift.Gift,
-+        pampGramGiftFlow: PampGramGiftFlow = .real
-     ) {
-         self.context = context
-         self.overNavigationContainer = SparseContainerView()
--        
-+
-         let resaleGiftsContext = ResaleGiftsContext(account: self.context.account, giftId: gift.id, forCrafting: false)
--        
-+
-         super.init(context: context, component: GiftStoreScreenComponent(
-             context: context,
-             resaleGiftsContext: resaleGiftsContext,
-             overNavigationContainer: self.overNavigationContainer,
-             peerId: peerId,
--            gift: gift
-+            gift: gift,
-+            pampGramGiftFlow: pampGramGiftFlow
-         ), navigationBarAppearance: .transparent, theme: .default, updatedPresentationData: nil)
-         
-         self.navigationItem.backBarButtonItem = UIBarButtonItem(title: self.context.sharedContext.currentPresentationData.with { $0 }.strings.Common_Back, style: .plain, target: nil, action: nil)
-diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
-index 3dad3ead..cf5f2029 100644
---- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
-+++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
-@@ -71,6 +71,8 @@ swift_library(
-         "//submodules/TelegramUI/Components/AlertComponent/AlertInputFieldComponent",
-         "//submodules/TelegramUI/Components/GlassControls",
-         "//submodules/Components/ResizableSheetComponent",
-+        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
-+        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
-     ],
-     visibility = [
-         "//visibility:public",
-diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift
-index ac8b7842..503e9325 100644
---- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift
-+++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift
-@@ -5,6 +5,7 @@ import AsyncDisplayKit
- import TelegramCore
- import SwiftSignalKit
- import AccountContext
-+import PampGramCore
- import TelegramPresentationData
- import PresentationDataUtils
- import ComponentFlow
-@@ -252,11 +253,12 @@ private final class GiftAuctionViewSheetContent: CombinedComponent {
-             let storeController = self.context.sharedContext.makeGiftStoreController(
-                 context: self.context,
-                 peerId: self.context.account.peerId,
--                gift: gift
-+                gift: gift,
-+                pampGramGiftFlow: .real
-             )
-             controller.push(storeController)
-         }
--        
-+
-         func openGiftFragmentResale(url: String) {
-             guard let controller = self.getController() as? GiftAuctionViewScreen, let navigationController = controller.navigationController as? NavigationController else {
-                 return
-@@ -406,7 +408,8 @@ private final class GiftAuctionViewSheetContent: CombinedComponent {
-             let storeController = self.context.sharedContext.makeGiftStoreController(
-                 context: self.context,
-                 peerId: self.peerId ?? self.context.account.peerId,
--                gift: gift
-+                gift: gift,
-+                pampGramGiftFlow: .real
-             )
-             controller.push(storeController)
-         }
-diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift
-index 9da9a673..9d48a50a 100644
---- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift
-+++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift
-@@ -5,6 +5,7 @@ import AsyncDisplayKit
- import TelegramCore
- import SwiftSignalKit
- import AccountContext
-+import PampGramCore
- import TelegramPresentationData
- import PresentationDataUtils
- import ComponentFlow
-@@ -140,7 +141,8 @@ private final class GiftValueSheetContent: CombinedComponent {
-             let storeController = self.context.sharedContext.makeGiftStoreController(
-                 context: self.context,
-                 peerId: self.context.account.peerId,
--                gift: gift
-+                gift: gift,
-+                pampGramGiftFlow: .real
-             )
-             controller.push(storeController)
-         }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
-index 6f6c1f3c..7359df80 100644
+index 6f6c1f3c..cea36c1a 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 @@ -7,6 +7,8 @@ import AccountContext
@@ -18917,7 +18686,7 @@ index 6f6c1f3c..7359df80 100644
                  guard let controller = getController() else {
                      return
                  }
-@@ -139,8 +175,51 @@ public func buyStarGiftImpl(
+@@ -139,8 +175,84 @@ public func buyStarGiftImpl(
                  }
              })
          }
@@ -18965,13 +18734,46 @@ index 6f6c1f3c..7359df80 100644
 +            }
 +        } else if pampGramFakeReceiveActive {
 +            // PampGram: "Подарок мне" never checks or spends any balance — nothing was
-+            // bought, real or fake, in this direction.
-+            proceed()
++            // bought, real or fake, in this direction. Offers a delay first: "Сразу" falls
++            // straight into `proceed()` (original behaviour); any other choice schedules the
++            // same materialization for later instead of ever calling `proceed()` — the local,
++            // no-server replacement for the old P2P relay (see PampGramScheduledGiftRuntime).
++            guard let controller = getController() else {
++                beforeCompletion()
++                return
++            }
++            let sheet = ActionSheetController(presentationData: presentationData)
++            var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: "Когда доставить подарок?")]
++            for delay in PampGramGiftDelay.allCases {
++                buttons.append(ActionSheetButtonItem(title: delay.title, color: .accent, action: { [weak sheet] in
++                    sheet?.dismissAnimated()
++                    guard let seconds = delay.seconds else {
++                        proceed()
++                        return
++                    }
++                    let _ = PampGramPhantomGiftManager.scheduleReceiveGift(context: context, peerId: recipientPeerId, gift: .unique(uniqueGift), price: resellAmount, text: nil, delaySeconds: seconds).start()
++                    beforeCompletion()
++                    completion()
++                    if let toastController = getController() {
++                        let toast = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок придёт \(delay.title.lowercased())", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false })
++                        toastController.present(toast, in: .current)
++                    }
++                }))
++            }
++            sheet.setItemGroups([
++                ActionSheetItemGroup(items: buttons),
++                ActionSheetItemGroup(items: [
++                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
++                        sheet?.dismissAnimated()
++                    })
++                ])
++            ])
++            controller.present(sheet, in: .window(.root))
 +        } else if resellAmount.currency == .stars, let starsContext = context.starsContext, let starsState = context.starsContext?.currentState, starsState.balance < resellAmount.amount {
              let _ = (starsTopUpOptions
               |> filter { $0 != nil }
               |> take(1)
-@@ -251,4 +330,5 @@ public func buyStarGiftImpl(
+@@ -251,4 +363,5 @@ public func buyStarGiftImpl(
              updateIsBalanceVisible(false)
          })
      }
@@ -21019,25 +20821,19 @@ index 07cef5bb..50beb232 100644
          return .single(ContextController.Items(content: .list([])))
      }
 diff --git a/submodules/TelegramUI/Sources/NavigateToChatController.swift b/submodules/TelegramUI/Sources/NavigateToChatController.swift
-index 4a25558..192f9fc 100644
+index 4a255581..6d7720af 100644
 --- a/submodules/TelegramUI/Sources/NavigateToChatController.swift
 +++ b/submodules/TelegramUI/Sources/NavigateToChatController.swift
-@@ -20,17 +20,41 @@ import SavedMessagesScreen
+@@ -20,17 +20,35 @@ import SavedMessagesScreen
  import WallpaperGalleryScreen
  import ChatMessageNotificationItem
  import FaceScanScreen
 +import PasscodeUI
 +import PampGramCore
-+import PhantomGiftKit
  
  public func navigateToChatControllerImpl(_ params: NavigateToChatControllerParams) {
      if case let .peer(peer) = params.chatLocation {
          let _ = params.context.engine.peers.ensurePeerIsLocallyAvailable(peer: peer).startStandalone()
-+        // PampGram: opening a chat is the reliable moment to pick up any visual gift another
-+        // PampGram user transferred into it — including transfers that arrived while the app was
-+        // closed, which the live notificationMessages observer would miss. Idempotent, so a
-+        // repeat open is harmless.
-+        PampGramPhantomGiftManager.scanPeerForIncomingGiftTransfers(context: params.context, peerId: peer.id)
      }
 -    
 +
@@ -21066,7 +20862,7 @@ index 4a25558..192f9fc 100644
      var viewForumAsMessages: Signal<Bool, NoError> = .single(false)
      if case let .peer(peer) = params.chatLocation, case let .channel(channel) = peer, channel.flags.contains(.isMonoforum) {
          if let linkedMonoforumId = channel.linkedMonoforumId {
-@@ -72,15 +96,32 @@ public func navigateToChatControllerImpl(_ params: NavigateToChatControllerParam
+@@ -72,15 +90,32 @@ public func navigateToChatControllerImpl(_ params: NavigateToChatControllerParam
      let _ = combineLatest(
          queue: Queue.mainQueue(),
          viewForumAsMessages |> take(1),
@@ -21707,7 +21503,7 @@ index 57ecb9d..f0a68ec 100644
      }
      
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd3..e32399c2 100644
+index 4d971fd3..d1b2b516 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -21719,30 +21515,26 @@ index 4d971fd3..e32399c2 100644
  import TemporaryCachedPeerDataManager
  import PhoneNumberFormat
  import TelegramUIPreferences
-@@ -271,7 +273,11 @@ public final class AccountContextImpl: AccountContext {
+@@ -271,7 +273,7 @@ public final class AccountContextImpl: AccountContext {
      public private(set) var isFrozen: Bool
      
      public let imageCache: AnyObject?
 -    
 +
-+    // PampGram: watches incoming messages account-wide and materializes any visual gift another
-+    // PampGram user transferred into this account's own collection automatically (no user action).
-+    private let pampGramGiftReceiveDisposable = MetaDisposable()
-+
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -502,9 +508,37 @@ public final class AccountContextImpl: AccountContext {
+@@ -502,8 +504,35 @@ public final class AccountContextImpl: AccountContext {
              }
              (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = settings.compressedEmojiCache
          })
 +
 +        // PampGram: all stored properties are set by this point, so `self` can safely escape to
-+        // these calls -- moved here (out of the block above) after `self` passed to
-+        // observeIncomingGiftTransfers(context: self) tripped the Swift "used before being
-+        // initialized" check for escaping self in a class with no superclass.
++        // these calls -- moved here (out of the block above) after `self` passed to one of
++        // these tripped the Swift "used before being initialized" check for escaping self in a
++        // class with no superclass.
 +        if sharedContext.applicationBindings.isMainApp && !temp {
-+            self.pampGramGiftReceiveDisposable.set(PampGramPhantomGiftManager.observeIncomingGiftTransfersIfEnabled(context: self))
++            PampGramScheduledGiftRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -21767,10 +21559,8 @@ index 4d971fd3..e32399c2 100644
 -    
 +
      deinit {
-+        self.pampGramGiftReceiveDisposable.dispose()
          self.limitsConfigurationDisposable?.dispose()
          self.managedAppSpecificContactsDisposable?.dispose()
-         self.contentSettingsDisposable?.dispose()
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift

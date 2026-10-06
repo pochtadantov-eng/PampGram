@@ -227,15 +227,6 @@ public enum PampGramPhantomGiftMessage {
         return self.insert(context: context, peerId: self.telegramServicePeerId, authorId: self.telegramServicePeerId, incoming: true, text: text, actionType: nil)
     }
 
-    /// PampGram DEBUG (временно, снять после диагностики P2P-передачи подарков): drops a plain
-    /// text notification into the Telegram service chat, same spot `insertLocalGiftSoldNotification`
-    /// posts into — visible without a Mac/Xcode, which is the whole point. Used by
-    /// `PampGramPhantomGiftManager.pushGiftTransfer`/`pollIncomingGiftTransfers` to show exactly
-    /// where the send→relay→receive pipeline stops working, instead of guessing blind.
-    public static func insertLocalDebugNotification(context: AccountContext, text: String) {
-        let _ = self.insert(context: context, peerId: self.telegramServicePeerId, authorId: self.telegramServicePeerId, incoming: true, text: "PampGram DEBUG: \(text)", actionType: nil).start()
-    }
-
     private static func insert(context: AccountContext, peerId: EnginePeer.Id, authorId: EnginePeer.Id, incoming: Bool, text: String = "", actionType: TelegramMediaActionType?) -> Signal<EngineMessage.Id?, NoError> {
         return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
             let media: [Media] = actionType.map { [TelegramMediaAction(action: $0)] } ?? []
