@@ -358,4 +358,21 @@ replace_once(
 """,
 )
 
+replace_once(
+    header_path,
+    "show the visual +888 number in the settings header subtitle",
+    """                var subtitle: String
+                if !self.pampGramFakePhoneNumber.isEmpty {
+                    subtitle = self.pampGramFakePhoneNumber
+""",
+    """                var subtitle: String
+                // Same priority as the profile rows: the visual "+888" number first, then the
+                // plain fake number, then hiding. Settings is always the account's own profile.
+                if pampGramProfileVisuals.anonymousNumberEnabled, !pampGramProfileVisuals.anonymousNumber.isEmpty {
+                    subtitle = pampGramProfileVisuals.anonymousNumber
+                } else if !self.pampGramFakePhoneNumber.isEmpty {
+                    subtitle = self.pampGramFakePhoneNumber
+""",
+)
+
 print("PampGram: profile visual integration complete.")
