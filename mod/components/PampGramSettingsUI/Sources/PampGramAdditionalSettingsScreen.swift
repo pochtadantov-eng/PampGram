@@ -59,7 +59,6 @@ private enum PampGramAdditionalSection: Int32 {
     case voice
     case speed
     case media
-    case screenshots
     case premium
     case extras
 }
@@ -80,13 +79,9 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case mediaHeader(String)
     case viewOnceToggle(String, Bool)
     case timedToggle(String, Bool)
-    case mediaFooter(String)
-
-    case screenshotsHeader(String)
     case screenshotsToggle(String, Bool)
-    case screenshotsFooter(String)
     case chatScreenshotsToggle(String, Bool)
-    case chatScreenshotsFooter(String)
+    case mediaFooter(String)
 
     case premiumHeader(String)
     case infinitePinsToggle(String, Bool)
@@ -113,10 +108,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
-        case .mediaHeader, .viewOnceToggle, .timedToggle, .mediaFooter:
+        case .mediaHeader, .viewOnceToggle, .timedToggle, .screenshotsToggle, .chatScreenshotsToggle, .mediaFooter:
             return PampGramAdditionalSection.media.rawValue
-        case .screenshotsHeader, .screenshotsToggle, .screenshotsFooter, .chatScreenshotsToggle, .chatScreenshotsFooter:
-            return PampGramAdditionalSection.screenshots.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
         case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .fakePhoneNumberRow, .profileIdsToggle, .accountLinkToggle, .giftTransferPollingToggle, .extrasFooter:
@@ -148,20 +141,14 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 9
         case .viewOnceToggle:
             return 10
-        case .mediaFooter:
-            return 11
         case .timedToggle:
-            return 143
-        case .screenshotsHeader:
-            return 12
+            return 11
         case .screenshotsToggle:
-            return 13
-        case .screenshotsFooter:
-            return 14
+            return 12
         case .chatScreenshotsToggle:
-            return 141
-        case .chatScreenshotsFooter:
-            return 142
+            return 13
+        case .mediaFooter:
+            return 14
         case .premiumHeader:
             return 15
         case .infinitePinsToggle:
@@ -202,9 +189,9 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .mediaFooter(text), let .screenshotsFooter(text), let .premiumFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .mediaFooter(text), let .premiumFooter(text), let .extrasFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .mediaHeader(text), let .screenshotsHeader(text), let .premiumHeader(text), let .extrasHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .mediaHeader(text), let .premiumHeader(text), let .extrasHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .viewOnceToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -222,8 +209,6 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.trianglebadge.exclamationmark", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleScreenshotBypass(value)
             })
-        case let .chatScreenshotsFooter(text):
-            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleInfinitePins(value)
@@ -296,28 +281,24 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.voiceHeader("ИЗМЕНЕНИЕ ГОЛОСА"))
     entries.append(.voiceToggle("Изменять голос в сообщениях", settings.voiceChangerMessagesEnabled))
     entries.append(.voicePresetRow("Голос", settings.voicePreset.displayName))
-    entries.append(.voiceFooter("Применяется только к новым голосовым сообщениям, до отправки. Звонков не касается."))
+    entries.append(.voiceFooter("Только для новых голосовых, до отправки. Звонков не касается."))
 
     entries.append(.speedHeader("СКОРОСТЬ ПЕРЕДАЧИ"))
     entries.append(.uploadSpeedRow("Ускорение загрузки", settings.uploadSpeedMode.displayName))
     entries.append(.downloadSpeedRow("Ускорение скачивания", settings.downloadSpeedMode.displayName))
-    entries.append(.speedFooter("Меняет, насколько параллельно Telegram передаёт части файлов. «Турбо» задействует потолок, уже используемый самим приложением для переноса истории — реальная скорость всё равно зависит от сети и сервера."))
+    entries.append(.speedFooter("«Турбо» — максимум, который поддерживает сеть Telegram. Реальная скорость всё равно зависит от вашего интернета и сервера."))
 
-    entries.append(.mediaHeader("ВРЕМЕННАЯ МЕДИА"))
+    entries.append(.mediaHeader("МЕДИА И СКРИНШОТЫ"))
     entries.append(.viewOnceToggle("Обход одноразовых", settings.bypassViewOnceMediaEnabled))
     entries.append(.timedToggle("Обход с таймером", settings.bypassTimedMediaEnabled))
-    entries.append(.mediaFooter("«Обход одноразовых» — для фото и видео «посмотреть один раз», «Обход с таймером» — для фото и видео с коротким таймером самоуничтожения. Оба показывают такое медиа в чате сразу, как обычное — без размытия и без ограничения «только один просмотр». Открытие всё ещё идёт через обычный просмотрщик Telegram: реальный таймер, статус просмотра и удаление сообщения не меняются, меняется только то, как оно выглядит в ленте на этом устройстве."))
-
-    entries.append(.screenshotsHeader("СКРИНШОТЫ"))
     entries.append(.screenshotsToggle("Сохранение историй", settings.storySavingEnabled))
-    entries.append(.screenshotsFooter("Истории, защищённые от пересылки и сохранения: скриншот и запись экрана перестают чернеть (это делает сама iOS, а не подсказка поверх экрана — автору по-прежнему ничего не сообщается, у Story нет уведомления о скриншоте вне секретных чатов), а в «…» на самой истории появляется пункт «Сохранить», которого иначе для такой истории нет. Сохранение работает так же, как для обычной истории — требует Premium, если оно у вас есть."))
     entries.append(.chatScreenshotsToggle("Обход скриншотов", settings.bypassScreenshotProtectionEnabled))
-    entries.append(.chatScreenshotsFooter("Для каналов, групп и чатов с защитой контента (своей или собеседника) — то же самое: скриншот и запись экрана выходят обычными, без чёрного экрана. Секретных чатов это не касается: там, как и в стоке, при скриншоте собеседнику по-прежнему приходит уведомление — этот тумблер его не отключает."))
+    entries.append(.mediaFooter("Показывает одноразовое и временное медиа как обычное, снимает защиту скриншотов и запись экрана. Секретных чатов не касается — там всё как в стоке."))
 
     entries.append(.premiumHeader("ПРЕМИУМ"))
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
     entries.append(.legalPremiumToggle("Легальный премиум", settings.legalPremiumEnabled))
-    entries.append(.premiumFooter("«Закрепить чаты ∞» снимает лимит на количество закреплённых чатов. «Легальный премиум» включает клиентские премиум-послабления, которые Telegram не проверяет на сервере (лимиты закреплений и папок). Закрепления сверх серверного лимита действуют на этом устройстве и могут не синхронизироваться на другие."))
+    entries.append(.premiumFooter("Снимает лимиты закреплений и папок на этом устройстве. Может не синхронизироваться на другие."))
 
     entries.append(.extrasHeader("ЕЩЁ"))
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
@@ -329,7 +310,7 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.profileIdsToggle("ID Профилей", settings.profileIdsEnabled))
     entries.append(.accountLinkToggle("Ссылка аккаунта", settings.accountLinkEnabled))
     entries.append(.giftTransferPollingToggle("Проверка входящих подарков", settings.giftTransferPollingEnabled))
-    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Скрыть номер телефона» и «Фейковый номер телефона» меняют, что видно в настройках и в «Моём профиле», — на другие ваш настоящий номер по-прежнему виден по настройкам приватности Telegram. Если задан фейковый номер, он показывается вместо скрытия. «ID Профилей» добавляет в профиль каждого человека строку с его настоящим числовым ID — тапнуть, чтобы скопировать. «Ссылка аккаунта» добавляет строку со ссылкой на профиль, которая открывается прямо в Telegram и работает даже если у человека нет юзернейма. «Проверка входящих подарков» включает и выключает фоновый опрос сервера на предмет подарков, которые вам передали из другого PampGram — по умолчанию выключено; пока выключено, подарки не проверяются автоматически, включайте сами, когда ждёте передачу, и выключайте, когда не нужно. «Защита от краш-стикеров» удаляет входящий стикер и блокирует отправителя, если файл стикера по размеру/разрешению сильно превышает лимиты настоящего Telegram — так обычно выглядят стикеры, специально испорченные, чтобы уронить приложение. Это эвристика, а не гарантия: новый, ещё неизвестный способ краша может её не задеть."))
+    entries.append(.extrasFooter("Работает только на этом устройстве. «Фейк админ» — визуальные посты в любом канале. «Скрыть/фейковый номер» меняют то, что видно другим в профиле, не настоящий номер. «ID Профилей» и «Ссылка аккаунта» добавляют эти строки в чужие профили. «Проверка входящих подарков» выключена по умолчанию — включайте, когда ждёте передачу."))
 
     return entries
 }
