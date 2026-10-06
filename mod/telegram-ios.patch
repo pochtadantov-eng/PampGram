@@ -18978,7 +18978,7 @@ index 6f6c1f3c..7359df80 100644
 +    })
  }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
-index 1a5228a9..22d37e24 100644
+index 1a5228a9..2a1a4ac8 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 @@ -5,6 +5,8 @@ import AsyncDisplayKit
@@ -19034,7 +19034,31 @@ index 1a5228a9..22d37e24 100644
              self.levelsDisposable.dispose()
              self.starsTopUpOptionsDisposable?.dispose()
              self.giftVariantsDisposable.dispose()
-@@ -1170,9 +1193,15 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -494,10 +517,21 @@ private final class GiftViewSheetContent: CombinedComponent {
+         }
+         
+         func updateSavedToProfile(_ added: Bool) {
+-            guard let controller = self.getController() as? GiftViewScreen, let arguments = self.subject.arguments, let reference = arguments.reference else {
++            guard let controller = self.getController() as? GiftViewScreen, let arguments = self.subject.arguments else {
+                 return
+             }
+-            
++            // PampGram: a Phantom Gift never has a real `arguments.reference` (nothing about it
++            // was ever server-backed) — falls back to a synthetic placeholder, same spirit as
++            // the pin menu's own `.slug` fallback just below, so this still reaches
++            // `controller.updateSavedToProfile`'s own Phantom Gift routing (GiftsListView.swift)
++            // instead of silently no-oping here before that closure is ever called. The
++            // placeholder's actual content never matters beyond this function: a Phantom Gift is
++            // matched by its own StarGift identity, not by this reference (see
++            // `PampGramPhantomGiftManager.findPhantomGift`), and `.peer` with this account's own
++            // id correctly takes the "personal profile" branch below rather than the
++            // CloudChannel one.
++            let reference = arguments.reference ?? .peer(peerId: context.account.peerId, id: 0)
++
+             var animationFile: TelegramMediaFile?
+             switch arguments.gift {
+             case let .generic(gift):
+@@ -1170,9 +1204,15 @@ private final class GiftViewSheetContent: CombinedComponent {
          }
          
          func transferGift() {
@@ -19051,7 +19075,7 @@ index 1a5228a9..22d37e24 100644
              
              guard gift.hostPeerId == nil else {
                  self.presentActionLockedForHostedGift(gift: gift)
-@@ -1540,7 +1569,12 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -1540,7 +1580,12 @@ private final class GiftViewSheetContent: CombinedComponent {
                  var items: [ContextMenuItem] = []
                  let strings = presentationData.strings
                  
@@ -19065,7 +19089,7 @@ index 1a5228a9..22d37e24 100644
                      items.append(.action(ContextMenuActionItem(text: pinnedToTop ? strings.PeerInfo_Gifts_Context_Unpin : strings.PeerInfo_Gifts_Context_Pin , icon: { theme in generateTintedImage(image: UIImage(bundleImageName: pinnedToTop ? "Chat/Context Menu/Unpin" : "Chat/Context Menu/Pin"), color: theme.contextMenu.primaryColor) }, action: { [weak self] c, f in
                          c?.dismiss(completion: { [weak self, weak controller] in
                              guard let self, let controller else {
-@@ -1689,22 +1723,38 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -1689,22 +1734,38 @@ private final class GiftViewSheetContent: CombinedComponent {
              self.pendingWear = true
              self.pendingTakeOff = false
              self.inWearPreview = false
@@ -19108,7 +19132,7 @@ index 1a5228a9..22d37e24 100644
              if let arguments = self.subject.arguments, let peerId = arguments.peerId, peerId.namespace == Namespaces.Peer.CloudChannel {
                  let _ = self.context.engine.peers.updatePeerEmojiStatus(peerId: peerId, fileId: nil, expirationDate: nil).startStandalone()
              } else {
-@@ -1851,6 +1901,7 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -1851,6 +1912,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                  skipConfirmation: skipConfirmation,
                  starsTopUpOptions: self.starsTopUpOptionsPromise.get(),
                  buyGift: controller.buyGift,
@@ -19116,7 +19140,7 @@ index 1a5228a9..22d37e24 100644
                  getController: self.getController,
                  updateProgress: { [weak self] progress in
                      guard let self else {
-@@ -3708,7 +3759,10 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -3708,7 +3770,10 @@ private final class GiftViewSheetContent: CombinedComponent {
                  
                  var tableItems: [TableComponent.Item] = []
                  
@@ -19128,7 +19152,7 @@ index 1a5228a9..22d37e24 100644
                  
                  if !soldOut {
                      if let uniqueGift {
-@@ -4014,7 +4068,13 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4014,7 +4079,13 @@ private final class GiftViewSheetContent: CombinedComponent {
                                              }
                                              
                                              let canWear: Bool
@@ -19143,7 +19167,7 @@ index 1a5228a9..22d37e24 100644
                                                  let premiumConfiguration = PremiumConfiguration.with(appConfiguration: component.context.currentAppConfiguration.with { $0 })
                                                  let requiredLevel = Int(BoostSubject.wearGift.requiredLevel(group: false, context: component.context, configuration: premiumConfiguration))
                                                  if let boostLevel = channel.approximateBoostLevel {
-@@ -4769,8 +4829,16 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4769,8 +4840,16 @@ private final class GiftViewSheetContent: CombinedComponent {
                  let premiumConfiguration = PremiumConfiguration.with(appConfiguration: component.context.currentAppConfiguration.with { $0 })
                  let requiredLevel = Int(BoostSubject.wearGift.requiredLevel(group: false, context: component.context, configuration: premiumConfiguration))
                  
@@ -19161,7 +19185,7 @@ index 1a5228a9..22d37e24 100644
                      canWear = false
                      buttonContent = AnyComponentWithIdentity(
                          id: AnyHashable("wear_channel"),
-@@ -4791,7 +4859,7 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4791,7 +4870,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                              ], spacing: 3.0)
                          )
                      )
@@ -19170,7 +19194,7 @@ index 1a5228a9..22d37e24 100644
                      canWear = false
                      buttonContent = AnyComponentWithIdentity(
                          id: AnyHashable("wear_premium"),
-@@ -5745,6 +5813,10 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5745,6 +5824,10 @@ public class GiftViewScreen: ViewControllerComponentContainer {
      fileprivate let transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)?
      fileprivate let upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)?
      fileprivate let buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)?
@@ -19181,7 +19205,7 @@ index 1a5228a9..22d37e24 100644
      fileprivate let updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)?
      fileprivate let togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)?
      fileprivate let shareStory: ((StarGift.UniqueGift) -> Void)?
-@@ -5766,6 +5838,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5766,6 +5849,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
          transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)? = nil,
          upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)? = nil,
          buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)? = nil,
@@ -19189,7 +19213,7 @@ index 1a5228a9..22d37e24 100644
          updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)? = nil,
          togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)? = nil,
          shareStory: ((StarGift.UniqueGift) -> Void)? = nil,
-@@ -5782,6 +5855,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5782,6 +5866,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
          self.transferGift = transferGift
          self.upgradeGift = upgradeGift
          self.buyGift = buyGift
@@ -19559,7 +19583,7 @@ index ef6fe4b4..9409b119 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
-index e1c98a1a..d7cb6ee9 100644
+index e1c98a1a..3e286903 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 @@ -26,6 +26,7 @@ import UndoUI
@@ -19641,7 +19665,24 @@ index e1c98a1a..d7cb6ee9 100644
                                      var dismissImpl: (() -> Void)?
                                      let controller = GiftViewScreen(
                                          context: self.context,
-@@ -624,6 +659,20 @@ final class GiftsListView: UIView {
+@@ -606,6 +641,16 @@ final class GiftsListView: UIView {
+                                             guard let self else {
+                                                 return
+                                             }
++                                            // PampGram: a Phantom Gift (`product.reference == nil`) routes to the
++                                            // local flag, same as the grid's own long-press "Показать"/"Скрыть"
++                                            // (PeerInfoGiftsPaneNode.swift) — never the real, network-backed
++                                            // updateStarGiftAddedToProfile below, which silently no-ops for one
++                                            // anyway since GiftViewScreen's own updateSavedToProfile only calls this
++                                            // closure at all once it has a (possibly synthetic) reference.
++                                            if product.reference == nil {
++                                                let _ = PampGramPhantomGiftManager.setSavedToProfile(context: self.context, matching: product, savedToProfile: added).start()
++                                                return
++                                            }
+                                             self.profileGifts.updateStarGiftAddedToProfile(reference: reference, added: added)
+                                         },
+                                         convertToStars: { [weak self] reference in
+@@ -624,6 +669,20 @@ final class GiftsListView: UIView {
                                              guard let self else {
                                                  return .complete()
                                              }
@@ -19662,7 +19703,7 @@ index e1c98a1a..d7cb6ee9 100644
                                              return self.profileGifts.transferStarGift(prepaid: prepaid, reference: reference, peerId: peerId)
                                          },
                                          upgradeGift: { [weak self] formId, reference, keepOriginalInfo in
-@@ -642,12 +691,40 @@ final class GiftsListView: UIView {
+@@ -642,12 +701,40 @@ final class GiftsListView: UIView {
                                              guard let self else {
                                                  return .never()
                                              }
@@ -19703,7 +19744,7 @@ index e1c98a1a..d7cb6ee9 100644
                                              if pinnedToTop && self.pinnedReferences.count >= self.maxPinnedCount {
                                                  self.displayUnpinScreen?(product, {
                                                      dismissImpl?()
-@@ -655,7 +732,7 @@ final class GiftsListView: UIView {
+@@ -655,7 +742,7 @@ final class GiftsListView: UIView {
                                                  return false
                                              }
                                              self.profileGifts.updateStarGiftPinnedToTop(reference: reference, pinnedToTop: pinnedToTop)
