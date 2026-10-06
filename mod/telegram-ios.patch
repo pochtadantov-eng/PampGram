@@ -18043,6 +18043,89 @@ index 1820be66..4590ccc6 100644
      ],
      visibility = [
          "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
+index 79e9e748..d8dd6333 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
++++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
+@@ -29,6 +29,7 @@ import GiftLoadingShimmerView
+ import EdgeEffect
+ import GlassBackgroundComponent
+ import ContextUI
++import PampGramCore
+ 
+ private let minimumCountToDisplayFilters = 18
+ 
+@@ -303,6 +304,7 @@ public final class GiftStoreContentComponent: Component {
+                                                     buyGift: { slug, peerId, price in
+                                                         return self.starGiftsContext?.buyStarGift(slug: slug, peerId: peerId, price: price) ?? .complete()
+                                                     },
++                                                    pampGramGiftFlow: component.pampGramGiftFlow,
+                                                     updateResellStars: { _, price in
+                                                         return self.starGiftsContext?.updateStarGiftResellPrice(slug: uniqueGift.slug, price: price) ?? .complete()
+                                                     }
+@@ -1145,19 +1147,22 @@ final class GiftStoreScreenComponent: Component {
+     let overNavigationContainer: UIView
+     let peerId: EnginePeer.Id
+     let gift: StarGift.Gift
+-    
++    let pampGramGiftFlow: PampGramGiftFlow
++
+     init(
+         context: AccountContext,
+         resaleGiftsContext: ResaleGiftsContext,
+         overNavigationContainer: UIView,
+         peerId: EnginePeer.Id,
+-        gift: StarGift.Gift
++        gift: StarGift.Gift,
++        pampGramGiftFlow: PampGramGiftFlow = .real
+     ) {
+         self.context = context
+         self.resaleGiftsContext = resaleGiftsContext
+         self.overNavigationContainer = overNavigationContainer
+         self.peerId = peerId
+         self.gift = gift
++        self.pampGramGiftFlow = pampGramGiftFlow
+     }
+ 
+     static func ==(lhs: GiftStoreScreenComponent, rhs: GiftStoreScreenComponent) -> Bool {
+@@ -1572,19 +1577,21 @@ public class GiftStoreScreen: ViewControllerComponentContainer {
+     public init(
+         context: AccountContext,
+         peerId: EnginePeer.Id,
+-        gift: StarGift.Gift
++        gift: StarGift.Gift,
++        pampGramGiftFlow: PampGramGiftFlow = .real
+     ) {
+         self.context = context
+         self.overNavigationContainer = SparseContainerView()
+-        
++
+         let resaleGiftsContext = ResaleGiftsContext(account: self.context.account, giftId: gift.id, forCrafting: false)
+-        
++
+         super.init(context: context, component: GiftStoreScreenComponent(
+             context: context,
+             resaleGiftsContext: resaleGiftsContext,
+             overNavigationContainer: self.overNavigationContainer,
+             peerId: peerId,
+-            gift: gift
++            gift: gift,
++            pampGramGiftFlow: pampGramGiftFlow
+         ), navigationBarAppearance: .transparent, theme: .default, updatedPresentationData: nil)
+         
+         self.navigationItem.backBarButtonItem = UIBarButtonItem(title: self.context.sharedContext.currentPresentationData.with { $0 }.strings.Common_Back, style: .plain, target: nil, action: nil)
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
+index 9eedd122..c74361a1 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
++++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
+@@ -50,6 +50,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/GlassBackgroundComponent",
+         "//submodules/TelegramUI/Components/ContextControllerImpl",
+         "//submodules/TelegramUI/Components/CheckComponent",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 index 429cf39c..4599e858 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
