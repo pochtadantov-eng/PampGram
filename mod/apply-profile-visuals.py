@@ -128,7 +128,7 @@ replace_once(
     "pass visuals to profile items",
     """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber, pampGramShowProfileId: self.pampGramSettings.profileIdsEnabled, pampGramShowAccountLink: self.pampGramSettings.accountLinkEnabled)
 """,
-    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber, pampGramShowProfileId: self.pampGramSettings.profileIdsEnabled, pampGramShowAccountLink: self.pampGramSettings.accountLinkEnabled, pampGramProfileVisuals: self.pampGramProfileVisuals)
+    """            let items = self.isSettings ? settingsItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, isExpanded: self.headerNode.isAvatarExpanded, pampGramSettings: self.pampGramSettings, pampGramProfileVisuals: self.pampGramProfileVisuals) : infoItems(data: self.data, context: self.context, presentationData: self.presentationData, interaction: self.interaction, reactionSourceMessageId: self.reactionSourceMessageId, canDeleteReaction: self.canDeleteReaction, callMessages: self.callMessages, chatLocation: self.chatLocation, isOpenedFromChat: self.isOpenedFromChat, isMyProfile: self.isMyProfile, pampGramHideOwnPhone: self.pampGramSettings.hideOwnPhoneNumber, pampGramFakePhoneNumber: self.pampGramSettings.fakePhoneNumber, pampGramShowProfileId: self.pampGramSettings.profileIdsEnabled, pampGramShowAccountLink: self.pampGramSettings.accountLinkEnabled, pampGramProfileVisuals: self.pampGramProfileVisuals)
 """,
 )
 
@@ -166,9 +166,12 @@ replace_once(
 """,
     """        #endif
 
-        // The preference is intentionally used only for the account owner's ordinary
-        // profile. Settings and every remote profile continue showing Telegram data.
-        let isUsingVisualRating = self.isMyProfile && !isSettings && pampGramProfileVisuals.ratingEnabled
+        // The preference is used for the account owner's own profile wherever it's shown —
+        // the ordinary "Мой профиль" screen (isMyProfile) and this same header reused for the
+        // Settings tab's own embedded profile (isSettings; see TelegramRootController.swift's
+        // own `PeerInfoScreenImpl(..., isSettings: true)`, always the account's own peerId,
+        // never anyone else's). Every remote profile continues showing real Telegram data.
+        let isUsingVisualRating = (self.isMyProfile || isSettings) && pampGramProfileVisuals.ratingEnabled
         let visualRating: TelegramStarRating?
         if isUsingVisualRating {
             let level = Int32(max(Int64(1), min(Int64(100), pampGramProfileVisuals.ratingValue)))

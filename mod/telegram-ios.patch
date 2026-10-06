@@ -19454,7 +19454,7 @@ index 806e652a..a073b01a 100644
              guard let controller = self.controller, !controller.presentAccountFrozenInfoIfNeeded() else {
                  return
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
-index c5f58f4..cf88a24 100644
+index c5f58f4b..8a78958d 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 @@ -12,12 +12,17 @@ import ItemListPeerItem
@@ -19480,7 +19480,7 @@ index c5f58f4..cf88a24 100644
  }
  
 -func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentationData: PresentationData, interaction: PeerInfoInteraction, isExpanded: Bool) -> [(AnyHashable, [PeerInfoScreenItem])] {
-+func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentationData: PresentationData, interaction: PeerInfoInteraction, isExpanded: Bool, pampGramSettings: PampGramSettings) -> [(AnyHashable, [PeerInfoScreenItem])] {
++func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentationData: PresentationData, interaction: PeerInfoInteraction, isExpanded: Bool, pampGramSettings: PampGramSettings, pampGramProfileVisuals: PampGramProfileVisualState = PampGramProfileVisualState.default) -> [(AnyHashable, [PeerInfoScreenItem])] {
      guard let data = data else {
          return []
      }
@@ -19570,6 +19570,32 @@ index c5f58f4..cf88a24 100644
      }))
      items[.support]!.append(PeerInfoScreenDisclosureItem(id: 1, text: presentationData.strings.Settings_FAQ, icon: PresentationResourcesSettings.faq, action: {
          interaction.openSettings(.faq)
+@@ -444,9 +480,22 @@ func settingsEditingItems(data: PeerInfoScreenData?, state: PeerInfoState, conte
+     }
+     
+     if case let .user(user) = data.peer {
+-        items[.info]!.append(PeerInfoScreenDisclosureItem(id: ItemPhoneNumber, label: .text(user.phone.flatMap({ formatPhoneNumber(context: context, number: $0) }) ?? ""), text: presentationData.strings.Settings_PhoneNumber, icon: PresentationResourcesSettings.recentCalls, action: {
+-            interaction.openSettings(.phoneNumber)
+-        }))
++        // PampGram: same visual "+888" override `infoItems` (PeerInfoProfileItems.swift) applies
++        // on the full "Мой профиль" screen, extended to this Settings-tab row too — this row is
++        // built by an entirely separate function (`settingsItems`, not `infoItems`; see
++        // PeerInfoScreen.swift's own `self.isSettings ? settingsItems(...) : infoItems(...)`
++        // branch), so without this the visual number showed on one screen but not the other. Real
++        // phone number and real navigation action stay untouched; only the displayed value and
++        // row title change.
++        if pampGramProfileVisuals.anonymousNumberEnabled {
++            items[.info]!.append(PeerInfoScreenDisclosureItem(id: ItemPhoneNumber, label: .text(pampGramProfileVisuals.anonymousNumber), text: presentationData.strings.UserInfo_AnonymousNumberLabel, icon: PresentationResourcesSettings.recentCalls, action: {
++                interaction.openSettings(.phoneNumber)
++            }))
++        } else {
++            items[.info]!.append(PeerInfoScreenDisclosureItem(id: ItemPhoneNumber, label: .text(user.phone.flatMap({ formatPhoneNumber(context: context, number: $0) }) ?? ""), text: presentationData.strings.Settings_PhoneNumber, icon: PresentationResourcesSettings.recentCalls, action: {
++                interaction.openSettings(.phoneNumber)
++            }))
++        }
+     }
+     var username = ""
+     if let addressName = data.peer?.addressName, !addressName.isEmpty {
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
 index ef6fe4b4..9409b119 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
