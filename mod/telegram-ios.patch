@@ -18043,7 +18043,7 @@ index 1820be66..4590ccc6 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-index 429cf39..bf8ce9b 100644
+index 429cf39c..4599e858 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 @@ -28,6 +28,7 @@ import GiftViewScreen
@@ -18229,7 +18229,15 @@ index 429cf39..bf8ce9b 100644
              let smallLabelFont = Font.regular(11.0)
              let labelFont = Font.semibold(14.0)
              let balanceText = tonAmountAttributedString(formattedBalance, integralFont: labelFont, fractionalFont: smallLabelFont, color: theme.actionSheet.primaryTextColor, decimalSeparator: environment.dateTimeFormat.decimalSeparator)
-@@ -1646,7 +1725,14 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1474,6 +1553,7 @@ final class GiftOptionsScreenComponent: Component {
+                                                     context: component.context,
+                                                     peerId: component.peerId,
+                                                     subject: .premium(product),
++                                                    pampGramGiftFlow: self.pampGramGiftFlow,
+                                                     completion: component.completion
+                                                 )
+                                                 mainController.push(giftController)
+@@ -1646,7 +1726,14 @@ final class GiftOptionsScreenComponent: Component {
                          title: strings.Gift_Options_Gift_Filter_Collectibles
                      ))
                  }
@@ -18245,21 +18253,8 @@ index 429cf39..bf8ce9b 100644
                  let tabSelectorSize = self.tabSelector.update(
                      transition: transition,
                      component: AnyComponent(TabSelectorComponent(
-diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD
-index 7e874b3f..28817174 100644
---- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD
-+++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD
-@@ -52,6 +52,8 @@ swift_library(
-         "//submodules/TelegramUI/Components/GlassBackgroundComponent",
-         "//submodules/TelegramUI/Components/MessageInputPanelComponent",
-         "//submodules/TelegramUI/Components/Gifts/GiftRemainingCountComponent",
-+        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
-+        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
-     ],
-     visibility = [
-         "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
-index 0db09aed..3d876a55 100644
+index 0db09aed..051277cc 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 @@ -39,6 +39,8 @@ import GlassBarButtonComponent
@@ -18298,7 +18293,139 @@ index 0db09aed..3d876a55 100644
          self.completion = completion
      }
      
-@@ -497,6 +505,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -367,27 +375,121 @@ private final class GiftSetupScreenComponent: Component {
+         }
+         
+         private func proceedWithPremiumGift() {
+-            guard let component = self.component, case let .premium(product) = component.subject, let storeProduct = product.storeProduct, let inAppPurchaseManager = component.context.inAppPurchaseManager else {
++            guard let component = self.component, case let .premium(product) = component.subject else {
+                 return
+             }
+-            
+-            self.inProgress = true
+-            self.state?.updated()
+-
+-            let (currency, amount) = storeProduct.priceCurrencyAndAmount
+-                     
+-            component.context.engine.accountData.addAppLogEvent(type: "premium_gift.promo_screen_accept")
+ 
+             var textInputText = NSAttributedString()
+             if let inputPanelView = self.inputPanel.view as? MessageInputPanelComponent.View, case let .text(text) = inputPanelView.getSendMessageInput() {
+                 textInputText = text
+             }
+             let entities = generateChatInputTextEntities(textInputText)
++
++            // PampGram: "Подарок ему"/"Подарок мне" never touch the real App Store/Google Play
++            // purchase here (this build may not even have a real `storeProduct` to buy at all)
++            // — same local-only fake used for a Stars-paid Premium gift above, just with the
++            // real-currency price this screen is already showing (`giftOption`'s own
++            // currency/amount — almost always rubles for this account, same fallback
++            // `PremiumGiftProduct.price` itself uses when there's no real IAP product).
++            // "Подарок мне" reuses the exact same delay picker as every other scheduled gift.
++            if component.pampGramGiftFlow != .real {
++                guard let environment = self.environment, let controller = environment.controller(), let navigationController = controller.navigationController as? NavigationController else {
++                    return
++                }
++                let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
++
++                let currency: String
++                let amount: Int64
++                if let storeProduct = product.storeProduct {
++                    (currency, amount) = storeProduct.priceCurrencyAndAmount
++                } else {
++                    currency = product.giftOption.currency
++                    amount = product.giftOption.amount
++                }
++                let months = product.months
++                let text = textInputText.string.isEmpty ? nil : textInputText.string
++                let giftEntities = entities.isEmpty ? nil : entities
++
++                if component.pampGramGiftFlow == .sendFake {
++                    self.inProgress = true
++                    self.state?.updated()
++                    let _ = (PampGramPhantomGiftManager.sendFakePremiumGift(context: component.context, peerId: component.peerId, months: months, currency: currency, amount: amount, text: text, entities: giftEntities)
++                    |> deliverOnMainQueue).start(completed: { [weak self] in
++                        guard let self else {
++                            return
++                        }
++                        if let completion = component.completion {
++                            completion()
++                            self.environment?.controller()?.dismiss()
++                        } else {
++                            var controllers = navigationController.viewControllers
++                            controllers = controllers.filter { !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) }
++                            navigationController.setViewControllers(controllers, animated: true)
++                        }
++                    })
++                    return
++                }
++
++                let sheet = ActionSheetController(presentationData: presentationData)
++                var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: "Когда доставить подарок?")]
++                for delay in PampGramGiftDelay.allCases {
++                    buttons.append(ActionSheetButtonItem(title: delay.title, color: .accent, action: { [weak self, weak sheet] in
++                        sheet?.dismissAnimated()
++                        guard let self else {
++                            return
++                        }
++                        if let seconds = delay.seconds {
++                            let _ = PampGramPhantomGiftManager.scheduleReceiveGift(context: component.context, peerId: component.peerId, payload: .premium(months: months, currency: currency, amount: amount), text: text, delaySeconds: seconds).start()
++                            var controllers = navigationController.viewControllers
++                            controllers = controllers.filter { !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) }
++                            navigationController.setViewControllers(controllers, animated: true)
++                            let toastController = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок придёт \(delay.title.lowercased())", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false })
++                            (navigationController.viewControllers.last as? ViewController)?.present(toastController, in: .current)
++                        } else {
++                            self.inProgress = true
++                            self.state?.updated()
++                            let _ = (PampGramPhantomGiftManager.receiveFakePremiumGift(context: component.context, peerId: component.peerId, months: months, currency: currency, amount: amount, text: text)
++                            |> deliverOnMainQueue).start(completed: {
++                                if let completion = component.completion {
++                                    completion()
++                                    self.environment?.controller()?.dismiss()
++                                } else {
++                                    var controllers = navigationController.viewControllers
++                                    controllers = controllers.filter { !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) }
++                                    navigationController.setViewControllers(controllers, animated: true)
++                                }
++                            })
++                        }
++                    }))
++                }
++                sheet.setItemGroups([
++                    ActionSheetItemGroup(items: buttons),
++                    ActionSheetItemGroup(items: [
++                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
++                            sheet?.dismissAnimated()
++                        })
++                    ])
++                ])
++                controller.present(sheet, in: .window(.root))
++                return
++            }
++
++            guard let storeProduct = product.storeProduct, let inAppPurchaseManager = component.context.inAppPurchaseManager else {
++                return
++            }
++
++            self.inProgress = true
++            self.state?.updated()
++
++            let (currency, amount) = storeProduct.priceCurrencyAndAmount
++
++            component.context.engine.accountData.addAppLogEvent(type: "premium_gift.promo_screen_accept")
++
+             let purpose: AppStoreTransactionPurpose = .giftCode(peerIds: [component.peerId], boostPeer: nil, currency: currency, amount: amount, text: textInputText.string, entities: entities)
+             let quantity: Int32 = 1
+-                        
++
+             let completion = component.completion
+-            
++
+             let _ = (component.context.engine.payments.canPurchasePremium(purpose: purpose)
+             |> deliverOnMainQueue).start(next: { [weak self] available in
+                 guard let self else {
+@@ -497,6 +599,7 @@ private final class GiftSetupScreenComponent: Component {
              var finalPrice: Int64
              var perUserLimit: Int32?
              var giftFile: TelegramMediaFile?
@@ -18306,7 +18433,7 @@ index 0db09aed..3d876a55 100644
              let source: BotPaymentInvoiceSource
              switch component.subject {
              case let .premium(product):
-@@ -513,36 +522,76 @@ private final class GiftSetupScreenComponent: Component {
+@@ -513,36 +616,94 @@ private final class GiftSetupScreenComponent: Component {
                  }
                  perUserLimit = starGift.perUserLimit?.total
                  giftFile = starGift.file
@@ -18366,8 +18493,26 @@ index 0db09aed..3d876a55 100644
 +                            subscriber.putCompletion()
 +                        })
 +                    }
++                } else if component.pampGramGiftFlow == .sendFake && !pampGramForceRealMishka, case let .premium(product) = component.subject {
++                    // Same wrapping as the generic/unique case above, for a Premium gift paid
++                    // with Stars — see `sendFakePremiumGift`.
++                    let fakeSendSignal = PampGramPhantomGiftManager.sendFakePremiumGift(context: context, peerId: peerId, months: product.months, currency: "XTR", amount: finalPrice, text: textInputText.string.isEmpty ? nil : textInputText.string, entities: entities.isEmpty ? nil : entities)
++                    signal = Signal<SendBotPaymentResult, SendBotPaymentFormError> { subscriber in
++                        return fakeSendSignal.start(completed: {
++                            subscriber.putNext(.done(receiptMessageId: nil, subscriptionPeerId: nil, uniqueStarGift: nil))
++                            subscriber.putCompletion()
++                        })
++                    }
 +                } else if component.pampGramGiftFlow == .receiveFake, let pampGramStarGift {
 +                    let fakeReceiveSignal = PampGramPhantomGiftManager.receiveGenericGift(context: context, peerId: peerId, gift: pampGramStarGift, text: textInputText.string.isEmpty ? nil : textInputText.string, entities: entities.isEmpty ? nil : entities)
++                    signal = Signal<SendBotPaymentResult, SendBotPaymentFormError> { subscriber in
++                        return fakeReceiveSignal.start(completed: {
++                            subscriber.putNext(.done(receiptMessageId: nil, subscriptionPeerId: nil, uniqueStarGift: nil))
++                            subscriber.putCompletion()
++                        })
++                    }
++                } else if component.pampGramGiftFlow == .receiveFake, case let .premium(product) = component.subject {
++                    let fakeReceiveSignal = PampGramPhantomGiftManager.receiveFakePremiumGift(context: context, peerId: peerId, months: product.months, currency: "XTR", amount: finalPrice, text: textInputText.string.isEmpty ? nil : textInputText.string, entities: entities.isEmpty ? nil : entities)
 +                    signal = Signal<SendBotPaymentResult, SendBotPaymentFormError> { subscriber in
 +                        return fakeReceiveSignal.start(completed: {
 +                            subscriber.putNext(.done(receiptMessageId: nil, subscriptionPeerId: nil, uniqueStarGift: nil))
@@ -18402,7 +18547,7 @@ index 0db09aed..3d876a55 100644
                      guard let self, let controller = self.environment?.controller(), let navigationController = controller.navigationController as? NavigationController else {
                          return
                      }
-@@ -585,7 +634,17 @@ private final class GiftSetupScreenComponent: Component {
+@@ -585,7 +746,17 @@ private final class GiftSetupScreenComponent: Component {
                              controllers.append(chatController)
                          }
                          navigationController.setViewControllers(controllers, animated: true)
@@ -18421,7 +18566,7 @@ index 0db09aed..3d876a55 100644
                          if case let .starGift(starGift, _) = component.subject, let perUserLimit = starGift.perUserLimit {
                              Queue.mainQueue().after(0.5) {
                                  let remains = max(0, perUserLimit.remains - 1)
-@@ -663,7 +722,96 @@ private final class GiftSetupScreenComponent: Component {
+@@ -663,7 +834,105 @@ private final class GiftSetupScreenComponent: Component {
                  })
              }
              
@@ -18492,11 +18637,20 @@ index 0db09aed..3d876a55 100644
 +                            proceed()
 +                            return
 +                        }
-+                        guard let self, let pampGramStarGift, let controller = self.environment?.controller(), let navigationController = controller.navigationController as? NavigationController else {
++                        guard let self, let controller = self.environment?.controller(), let navigationController = controller.navigationController as? NavigationController else {
 +                            return
 +                        }
-+                        let price = CurrencyAmount(amount: StarsAmount(value: pampGramStarGift.price, nanos: 0), currency: .stars)
-+                        let _ = PampGramPhantomGiftManager.scheduleReceiveGift(context: context, peerId: peerId, gift: .generic(pampGramStarGift), price: price, text: textInputText.string.isEmpty ? nil : textInputText.string, delaySeconds: seconds).start()
++                        let payload: PampGramScheduledGiftPayload
++                        switch component.subject {
++                        case let .premium(product):
++                            payload = .premium(months: product.months, currency: "XTR", amount: finalPrice)
++                        case .starGift:
++                            guard let pampGramStarGift else {
++                                return
++                            }
++                            payload = .starGift(.generic(pampGramStarGift), price: CurrencyAmount(amount: StarsAmount(value: pampGramStarGift.price, nanos: 0), currency: .stars))
++                        }
++                        let _ = PampGramPhantomGiftManager.scheduleReceiveGift(context: context, peerId: peerId, payload: payload, text: textInputText.string.isEmpty ? nil : textInputText.string, delaySeconds: seconds).start()
 +
 +                        var controllers = navigationController.viewControllers
 +                        controllers = controllers.filter { !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) }
@@ -18519,7 +18673,7 @@ index 0db09aed..3d876a55 100644
                  let _ = (self.optionsPromise.get()
                  |> filter { $0 != nil }
                  |> take(1)
-@@ -684,7 +832,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -684,7 +953,7 @@ private final class GiftSetupScreenComponent: Component {
                              }
                              self.inProgress = true
                              self.state?.updated()
@@ -18528,7 +18682,7 @@ index 0db09aed..3d876a55 100644
                              starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
                              let _ = (starsContext.onUpdate
                              |> deliverOnMainQueue).start(next: {
-@@ -1481,7 +1629,8 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1481,7 +1750,8 @@ private final class GiftSetupScreenComponent: Component {
                                          let storeController = component.context.sharedContext.makeGiftStoreController(
                                              context: component.context,
                                              peerId: component.peerId,
@@ -18538,7 +18692,7 @@ index 0db09aed..3d876a55 100644
                                          )
                                          controller.push(storeController)
                                      }
-@@ -2111,15 +2260,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
+@@ -2111,15 +2381,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
          peerId: EnginePeer.Id,
          subject: Subject,
          auctionAcquiredGifts: Signal<[GiftAuctionAcquiredGift], NoError>? = nil,
@@ -18558,7 +18712,7 @@ index 0db09aed..3d876a55 100644
          ), navigationBarAppearance: .none, theme: .default)
          
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
-index 6f6c1f3c..cea36c1a 100644
+index 6f6c1f3c..59c001c2 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 @@ -7,6 +7,8 @@ import AccountContext
@@ -18751,7 +18905,7 @@ index 6f6c1f3c..cea36c1a 100644
 +                        proceed()
 +                        return
 +                    }
-+                    let _ = PampGramPhantomGiftManager.scheduleReceiveGift(context: context, peerId: recipientPeerId, gift: .unique(uniqueGift), price: resellAmount, text: nil, delaySeconds: seconds).start()
++                    let _ = PampGramPhantomGiftManager.scheduleReceiveGift(context: context, peerId: recipientPeerId, payload: .starGift(.unique(uniqueGift), price: resellAmount), text: nil, delaySeconds: seconds).start()
 +                    beforeCompletion()
 +                    completion()
 +                    if let toastController = getController() {

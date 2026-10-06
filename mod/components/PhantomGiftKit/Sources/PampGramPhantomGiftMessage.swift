@@ -187,6 +187,40 @@ public enum PampGramPhantomGiftMessage {
         ))
     }
 
+    /// Same real-looking gift-card message as the star/unique gift inserts above, for Telegram
+    /// Premium gifted through the fake "Все"/"Подарок ему" flow when no real purchase (a Stars
+    /// invoice or App Store/Google Play IAP) actually happened. `currency`/`amount` are
+    /// whatever the real gift option would have charged — `"XTR"` for Stars, the catalog's own
+    /// real-currency code otherwise (almost always `"RUB"` for this account, see
+    /// `PremiumGiftProduct.price`) — `ServiceMessageStrings.swift` already picks the right
+    /// price format for either from those two fields alone, same as a genuine purchase.
+    public static func insertLocalPremiumGiftMessage(context: AccountContext, peerId: EnginePeer.Id, months: Int32, currency: String, amount: Int64, text: String?, entities: [MessageTextEntity]?) -> Signal<EngineMessage.Id?, NoError> {
+        return self.insert(context: context, peerId: peerId, authorId: context.account.peerId, incoming: false, actionType: .giftPremium(
+            currency: currency,
+            amount: amount,
+            days: months * 30,
+            cryptoCurrency: nil,
+            cryptoAmount: nil,
+            text: text,
+            entities: entities
+        ))
+    }
+
+    /// "Подарок мне" for Telegram Premium — same reversal as
+    /// `insertLocalGenericGiftMessageFromPeer`: authored by `peerId` and flagged incoming, so
+    /// it reads as Premium gifted *to* this account instead of by it.
+    public static func insertLocalPremiumGiftMessageFromPeer(context: AccountContext, peerId: EnginePeer.Id, months: Int32, currency: String, amount: Int64, text: String?, entities: [MessageTextEntity]?) -> Signal<EngineMessage.Id?, NoError> {
+        return self.insert(context: context, peerId: peerId, authorId: peerId, incoming: true, actionType: .giftPremium(
+            currency: currency,
+            amount: amount,
+            days: months * 30,
+            cryptoCurrency: nil,
+            cryptoAmount: nil,
+            text: text,
+            entities: entities
+        ))
+    }
+
     /// The Telegram service/notifications chat — the one that delivers login codes — is always
     /// the cloud user with id 777000. A local star top-up plaque is dropped in here so it reads
     /// exactly like a genuine "you bought N Stars" notification.

@@ -244,14 +244,14 @@ public enum PampGramPhantomGiftManager {
     /// "Подарок мне" with a delay picked other than "Сразу": stores a pending
     /// `PampGramScheduledGift` instead of materializing immediately. Nothing visible happens
     /// until `PampGramScheduledGiftRuntime` finds it due and calls `receiveGenericGift`/
-    /// `receiveUniqueGift` for real — this function only ever writes the pending record.
-    public static func scheduleReceiveGift(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, text: String?, delaySeconds: Int32) -> Signal<Never, NoError> {
+    /// `receiveUniqueGift`/`receiveFakePremiumGift` for real — this function only ever writes
+    /// the pending record.
+    public static func scheduleReceiveGift(context: AccountContext, peerId: EnginePeer.Id, payload: PampGramScheduledGiftPayload, text: String?, delaySeconds: Int32) -> Signal<Never, NoError> {
         return context.account.postbox.transaction { transaction -> Void in
             let scheduled = PampGramScheduledGift(
                 id: Int64.random(in: 1...Int64.max),
                 peerId: peerId,
-                gift: gift,
-                price: price,
+                payload: payload,
                 text: text,
                 fireDate: Int32(Date().timeIntervalSince1970) + delaySeconds
             )
@@ -274,14 +274,65 @@ public enum PampGramPhantomGiftManager {
             return due
         }.start(next: { due in
             for scheduled in due {
-                switch scheduled.gift {
-                case let .generic(gift):
-                    let _ = receiveGenericGift(context: context, peerId: scheduled.peerId, gift: gift, text: scheduled.text).start()
-                case let .unique(uniqueGift):
-                    let _ = receiveUniqueGift(context: context, peerId: scheduled.peerId, uniqueGift: uniqueGift, price: scheduled.price).start()
+                switch scheduled.payload {
+                case let .starGift(gift, price):
+                    switch gift {
+                    case let .generic(gift):
+                        let _ = receiveGenericGift(context: context, peerId: scheduled.peerId, gift: gift, text: scheduled.text).start()
+                    case let .unique(uniqueGift):
+                        let _ = receiveUniqueGift(context: context, peerId: scheduled.peerId, uniqueGift: uniqueGift, price: price).start()
+                    }
+                case let .premium(months, currency, amount):
+                    let _ = receiveFakePremiumGift(context: context, peerId: scheduled.peerId, months: months, currency: currency, amount: amount, text: scheduled.text).start()
                 }
             }
         })
+    }
+
+    /// "Подарок ему" for Telegram Premium: the fake-flow counterpart of `sendGenericGift`, for
+    /// the Premium tile at the top of the same "Все"/"Подарок ему" screen (`GiftOptionsScreen`
+    /// shows both in one place, see its `premiumProducts` section). `currency`/`amount` are
+    /// whatever price the tile actually showed — `"XTR"` when paid with Stars, otherwise
+    /// whatever real-currency code the catalog or App Store/Google Play quoted (almost always
+    /// rubles for this account — see `GiftSetupScreen.proceedWithPremiumGift`). Deducts the
+    /// matching local wallet (fake Stars, or the fake rubles wallet `PampGramStarsHook`'s "Купить
+    /// звёзды" sheet already uses) when one exists for that currency; any other currency is
+    /// purely cosmetic — nothing to debit locally, so nothing is debited.
+    public static func sendFakePremiumGift(context: AccountContext, peerId: EnginePeer.Id, months: Int32, currency: String, amount: Int64, text: String? = nil, entities: [MessageTextEntity]? = nil) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            if currency == "XTR" {
+                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: .purchase, amount: -amount, title: "Подарок Premium", details: "Telegram Premium, \(months) мес.", peerId: peerId)
+            } else if currency == "RUB" {
+                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .rubles, kind: .debit, amount: -amount, title: "Подарок Premium", details: "Telegram Premium, \(months) мес.", peerId: peerId)
+            }
+        }
+        |> mapToSignal { _ -> Signal<Never, NoError> in
+            // A self-gift never gets a chat message — same rule `buyUniqueGift` follows for the
+            // same reason (there's no chat to put it in).
+            guard peerId != context.account.peerId else {
+                return .complete()
+            }
+            return PampGramPhantomGiftMessage.insertLocalPremiumGiftMessage(context: context, peerId: peerId, months: months, currency: currency, amount: amount, text: text, entities: entities)
+            |> ignoreValues
+        }
+    }
+
+    /// "Подарок мне" for Telegram Premium: the fake-flow counterpart of `receiveGenericGift`.
+    /// Credits the matching local wallet the same way a received Stars/TON gift already does
+    /// (a "Подарок мне" reads as a пополнение), when `currency` maps to one PampGram tracks
+    /// locally; any other currency only ever inserts the message, same as `sendFakePremiumGift`.
+    public static func receiveFakePremiumGift(context: AccountContext, peerId: EnginePeer.Id, months: Int32, currency: String, amount: Int64, text: String? = nil, entities: [MessageTextEntity]? = nil) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            if currency == "XTR" {
+                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: .topUp, amount: amount, title: "Подарок мне", details: "Telegram Premium, \(months) мес.", peerId: peerId)
+            } else if currency == "RUB" {
+                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .rubles, kind: .topUp, amount: amount, title: "Подарок мне", details: "Telegram Premium, \(months) мес.", peerId: peerId)
+            }
+        }
+        |> mapToSignal { _ -> Signal<Never, NoError> in
+            return PampGramPhantomGiftMessage.insertLocalPremiumGiftMessageFromPeer(context: context, peerId: peerId, months: months, currency: currency, amount: amount, text: text, entities: entities)
+            |> ignoreValues
+        }
     }
 
     /// Removes every Phantom Gift on this device, and the local-only chat messages they

@@ -3,28 +3,39 @@ import Postbox
 import TelegramCore
 import PampGramCore
 
+/// What a scheduled "Подарок мне" actually materializes into once its time comes — either a
+/// catalog/resale `StarGift` (the original case) or a Telegram Premium subscription gifted
+/// through the same fake flow (see `PampGramPhantomGiftManager.sendFakePremiumGift`/
+/// `receiveFakePremiumGift`). `CurrencyAmount` can't represent Premium's price: it's always
+/// Stars or TON (`CurrencyAmount.Currency`), while a Premium gift's real-currency leg is
+/// priced in whatever Telegram's own catalog or the App Store/Google Play quotes (almost
+/// always rubles for this account) — so `.premium` carries its own raw currency code + amount
+/// instead of reusing `CurrencyAmount`.
+public enum PampGramScheduledGiftPayload: Codable, Equatable {
+    case starGift(StarGift, price: CurrencyAmount)
+    case premium(months: Int32, currency: String, amount: Int64)
+}
+
 /// "Подарок мне" with a delay: the local, no-server replacement for the old P2P relay (which
 /// depended on a shared Cloudflare Worker to deliver gifts between two devices — unreliable in
 /// practice, and removed). Instead, a delayed "Подарок мне" just schedules the exact same
-/// local materialization (`PampGramPhantomGiftManager.receiveGenericGift`/`receiveUniqueGift`)
-/// for later, on this same device, picked up by `PampGramScheduledGiftRuntime`. Nothing here
-/// ever touches a network.
+/// local materialization (`PampGramPhantomGiftManager.receiveGenericGift`/`receiveUniqueGift`/
+/// `receiveFakePremiumGift`) for later, on this same device, picked up by
+/// `PampGramScheduledGiftRuntime`. Nothing here ever touches a network.
 public struct PampGramScheduledGift: Codable, Equatable, Identifiable {
     public let id: Int64
     public let peerId: EnginePeer.Id
-    public let gift: StarGift
-    public let price: CurrencyAmount
+    public let payload: PampGramScheduledGiftPayload
     /// Caption typed in the send composer, if any — entities aren't carried over (a scheduled
     /// gift's materialized message is always plain text), an accepted simplification since a
     /// "Подарок мне" caption is rarely formatted.
     public let text: String?
     public let fireDate: Int32
 
-    public init(id: Int64, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, text: String?, fireDate: Int32) {
+    public init(id: Int64, peerId: EnginePeer.Id, payload: PampGramScheduledGiftPayload, text: String?, fireDate: Int32) {
         self.id = id
         self.peerId = peerId
-        self.gift = gift
-        self.price = price
+        self.payload = payload
         self.text = text
         self.fireDate = fireDate
     }
