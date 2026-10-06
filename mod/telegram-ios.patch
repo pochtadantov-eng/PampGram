@@ -19754,7 +19754,7 @@ index e1c98a1a..3e286903 100644
                                              if case let .unique(uniqueGift) = product.gift {
                                                  title = "\(uniqueGift.title) #\(formatCollectibleNumber(uniqueGift.number, dateTimeFormat: params.presentationData.dateTimeFormat))"
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
-index ee9ea2d9..ad4b2b61 100644
+index ee9ea2d9..b8193d24 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
 @@ -36,6 +36,7 @@ import TextFormat
@@ -19765,7 +19765,54 @@ index ee9ea2d9..ad4b2b61 100644
  
  public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScrollViewDelegate {
      public enum GiftCollection: Equatable {
-@@ -1102,17 +1103,42 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+@@ -988,6 +989,46 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+         }
+         
+         var items: [ContextMenuItem] = []
++
++        // PampGram: lets you copy any gift shown on someone else's profile — real or already
++        // their own Phantom Gift, doesn't matter which — into your own, looking exactly like
++        // you own it. Orthogonal to `canManage` (that's about managing *their* profile/channel,
++        // this is about your own), so it's its own top-level condition, not folded into either
++        // `canManage` block below.
++        if self.peerId != self.context.account.peerId {
++            items.append(.action(ContextMenuActionItem(text: "Добавить в профиль", icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Peer Info/Gifts/AddToCollection"), color: theme.contextMenu.primaryColor) }, action: { [weak self] c, f in
++                c?.dismiss(completion: { [weak self] in
++                    guard let self else {
++                        return
++                    }
++                    let _ = PampGramPhantomGiftManager.cloneToOwnProfile(context: self.context, matching: gift).start()
++
++                    var animationFile: TelegramMediaFile?
++                    switch gift.gift {
++                    case let .generic(genericGift):
++                        animationFile = genericGift.file
++                    case let .unique(uniqueGift):
++                        for attribute in uniqueGift.attributes {
++                            if case let .model(_, file, _, _) = attribute {
++                                animationFile = file
++                                break
++                            }
++                        }
++                    }
++                    if let animationFile {
++                        let resultController = UndoOverlayController(
++                            presentationData: presentationData,
++                            content: .sticker(context: self.context, file: animationFile, loop: false, title: nil, text: "Добавлено в ваш профиль", undoText: nil, customAction: nil),
++                            elevatedLayout: true,
++                            action: { _ in return true }
++                        )
++                        self.parentController?.present(resultController, in: .window(.root))
++                    }
++                })
++            })))
++            items.append(.separator)
++        }
++
+         if canManage {
+             items.append(.action(ContextMenuActionItem(text: strings.PeerInfo_Gifts_Context_AddToCollection, textLayout: .twoLinesMax, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Peer Info/Gifts/AddToCollection"), color: theme.contextMenu.primaryColor) }, action: { [weak self] c, f in
+                 var subItems: [ContextMenuItem] = []
+@@ -1102,17 +1143,42 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
                              return
                          }
                          let pinnedToTop = !gift.pinnedToTop
@@ -19811,7 +19858,7 @@ index ee9ea2d9..ad4b2b61 100644
                          let toastTitle: String?
                          let toastText: String
                          if !pinnedToTop {
-@@ -1282,30 +1308,50 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+@@ -1282,30 +1348,50 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
                      guard let self else {
                          return
                      }
@@ -19883,7 +19930,7 @@ index ee9ea2d9..ad4b2b61 100644
                          if let animationFile {
                              let resultController = UndoOverlayController(
                                  presentationData: presentationData,
-@@ -1350,14 +1396,23 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+@@ -1350,14 +1436,23 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
                          let _ = (context.account.stateManager.contactBirthdays
                          |> take(1)
                          |> deliverOnMainQueue).start(next: { [weak self] birthdays in
@@ -19909,7 +19956,7 @@ index ee9ea2d9..ad4b2b61 100644
                              let controller = context.sharedContext.makePremiumGiftController(context: context, source: .starGiftTransfer(birthdays, reference, uniqueGift, transferStars, gift.canExportDate, showSelf), completion: { peerIds in
                                  guard let peerId = peerIds.first else {
                                      return .complete()
-@@ -1367,6 +1422,19 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
+@@ -1367,6 +1462,19 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
                                          context.starsContext?.load(force: true)
                                      }
                                  })

@@ -385,6 +385,39 @@ public enum PampGramPhantomGiftManager {
         |> ignoreValues
     }
 
+    /// "Добавить в профиль" on a gift shown in someone else's profile grid
+    /// (`PeerInfoGiftsPaneNode.swift`'s own context menu): clones whatever is visually there —
+    /// a real gift or already somebody else's Phantom Gift, doesn't matter which — into a
+    /// brand-new, fully independent Phantom Gift owned by this account, so it shows up in your
+    /// own profile looking exactly like you own it. For a unique gift, `owner` is rewritten to
+    /// this account the same way `buyUniqueGift`/`receiveUniqueGift` already do (via
+    /// `PampGramPhantomGiftMessage.fakedOwnership`); a generic gift has no owner field to touch.
+    /// `fromPeerId: nil`/`isReceived: false` — the same shape a self-purchase already has (see
+    /// `buyUniqueGift`'s own self-targeting case) — since nothing was actually given to you,
+    /// you just added a copy to your own collection. Free: no fake-balance debit and no ledger
+    /// entry, since nothing was bought — this only ever copies how the gift looks, never what it
+    /// cost. The source gift, on the other person's profile, is never touched.
+    public static func cloneToOwnProfile(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift) -> Signal<Never, NoError> {
+        return context.account.postbox.transaction { transaction -> Void in
+            var clonedGift = gift.gift
+            if case let .unique(uniqueGift) = clonedGift {
+                clonedGift = .unique(PampGramPhantomGiftMessage.fakedOwnership(of: uniqueGift, newOwnerPeerId: context.account.peerId))
+            }
+            let phantomGift = PampGramPhantomGift(
+                id: Int64.random(in: 1...Int64.max),
+                peerId: context.account.peerId,
+                gift: clonedGift,
+                price: CurrencyAmount(amount: StarsAmount(value: 0, nanos: 0), currency: .stars),
+                date: Int32(Date().timeIntervalSince1970),
+                localMessageId: nil,
+                fromPeerId: nil,
+                isReceived: false
+            )
+            PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+        }
+        |> ignoreValues
+    }
+
     /// "Продать" — local stand-in for `convertStarGift`. Credits the fake balance with what
     /// the gift was originally worth (its `price`, in whichever currency it was paid in) and
     /// marks it sold: it disappears from the grid via `savedToProfile = false`, same as
