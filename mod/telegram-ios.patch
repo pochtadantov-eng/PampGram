@@ -18044,7 +18044,7 @@ index 1820be66..4590ccc6 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
-index 79e9e748..66a7348e 100644
+index 79e9e748..3354f198 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
 @@ -29,6 +29,7 @@ import GiftLoadingShimmerView
@@ -18117,7 +18117,26 @@ index 79e9e748..66a7348e 100644
      }
  
      static func ==(lhs: GiftStoreScreenComponent, rhs: GiftStoreScreenComponent) -> Bool {
-@@ -1443,6 +1451,7 @@ final class GiftStoreScreenComponent: Component {
+@@ -1276,12 +1284,14 @@ final class GiftStoreScreenComponent: Component {
+             let items: Signal<[ContextMenuItem], NoError> = combineLatest(
+                 queue: Queue.mainQueue(),
+                 starsContext.state,
+-                tonContext.state
++                tonContext.state,
++                PampGramCore.settingsSignal(postbox: component.context.account.postbox)
+             )
+             |> take(1)
+-            |> map { starsState, tonState -> [ContextMenuItem] in
+-                let starsBalance = starsState?.balance ?? .zero
+-                let tonBalance = tonState?.balance.value ?? 0
++            |> map { starsState, tonState, pampGramSettings -> [ContextMenuItem] in
++                // PampGram: show the local balances while "Показывать фейковый баланс" is on.
++                let starsBalance = pampGramSettings.fakeStarsDisplayEnabled ? StarsAmount(value: pampGramSettings.fakeStarsBalance, nanos: 0) : (starsState?.balance ?? .zero)
++                let tonBalance = pampGramSettings.fakeTonDisplayEnabled ? pampGramSettings.fakeTonBalanceNanos : (tonState?.balance.value ?? 0)
+                 
+                 var items: [ContextMenuItem] = []
+                 
+@@ -1443,6 +1453,7 @@ final class GiftStoreScreenComponent: Component {
                          isPlain: false,
                          confirmPurchaseImmediately: false,
                          starsTopUpOptions: nil,
@@ -18125,7 +18144,7 @@ index 79e9e748..66a7348e 100644
                          scrollToTop: { [weak self] in
                              self?.scrollToTop()
                          },
-@@ -1572,19 +1581,21 @@ public class GiftStoreScreen: ViewControllerComponentContainer {
+@@ -1572,19 +1583,21 @@ public class GiftStoreScreen: ViewControllerComponentContainer {
      public init(
          context: AccountContext,
          peerId: EnginePeer.Id,
@@ -18151,6 +18170,68 @@ index 79e9e748..66a7348e 100644
          ), navigationBarAppearance: .transparent, theme: .default, updatedPresentationData: nil)
          
          self.navigationItem.backBarButtonItem = UIBarButtonItem(title: self.context.sharedContext.currentPresentationData.with { $0 }.strings.Common_Back, style: .plain, target: nil, action: nil)
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
+index c8ac3527..50e4d0f4 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
++++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
+@@ -6,6 +6,7 @@ import SwiftSignalKit
+ import TelegramCore
+ import TelegramPresentationData
+ import AccountContext
++import PampGramCore
+ import MultilineTextComponent
+ import MultilineTextWithEntitiesComponent
+ import TextFormat
+@@ -43,6 +44,10 @@ final class BalanceComponent: Component {
+         private var starsBalance: Int64 = 0
+         private var tonBalance: Int64 = 0
+         private var balanceDisposable: Disposable?
++        // PampGram: with "Показывать фейковый баланс" on, this pill shows the local balances
++        // (same swap StarsBalanceOverlayComponent and GiftOptionsScreen already make).
++        private var pampGramSettings = PampGramSettings.defaultSettings
++        private var pampGramSettingsDisposable: Disposable?
+                         
+         override public init(frame: CGRect) {
+             super.init(frame: frame)
+@@ -56,6 +61,7 @@ final class BalanceComponent: Component {
+         
+         deinit {
+             self.balanceDisposable?.dispose()
++            self.pampGramSettingsDisposable?.dispose()
+         }
+         
+         @objc private func pressed() {
+@@ -92,12 +98,27 @@ final class BalanceComponent: Component {
+                 }
+             }
+             
++            if self.pampGramSettingsDisposable == nil {
++                self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
++                |> deliverOnMainQueue).start(next: { [weak self] settings in
++                    guard let self else {
++                        return
++                    }
++                    self.pampGramSettings = settings
++                    if !self.isUpdating {
++                        self.componentState?.updated()
++                    }
++                })
++            }
++            
+             let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
++            let displayedStarsBalance = self.pampGramSettings.fakeStarsDisplayEnabled ? self.pampGramSettings.fakeStarsBalance : self.starsBalance
++            let displayedTonBalance = self.pampGramSettings.fakeTonDisplayEnabled ? self.pampGramSettings.fakeTonBalanceNanos : self.tonBalance
+ 
+             var rawString: String = ""
+-            let starsBalanceString = "**⭐️\(presentationStringsFormattedNumber(Int32(clamping: self.starsBalance), presentationData.dateTimeFormat.groupingSeparator))**"
+-            if self.tonBalance > 0 {
+-                let tonBalanceString = "**💎\(formatTonAmountText(self.tonBalance, dateTimeFormat: presentationData.dateTimeFormat))**"
++            let starsBalanceString = "**⭐️\(presentationStringsFormattedNumber(Int32(clamping: displayedStarsBalance), presentationData.dateTimeFormat.groupingSeparator))**"
++            if displayedTonBalance > 0 {
++                let tonBalanceString = "**💎\(formatTonAmountText(displayedTonBalance, dateTimeFormat: presentationData.dateTimeFormat))**"
+                 rawString = starsBalanceString + "\n" + tonBalanceString
+             } else {
+                 rawString = presentationData.strings.Stars_Purchase_Balance + "\n" + starsBalanceString
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
 index 9eedd122..c74361a1 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
