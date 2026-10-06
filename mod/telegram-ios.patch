@@ -17891,15 +17891,16 @@ index aa11e52..5d044de 100644
              if count > limitCount, itemIds.firstIndex(of: itemId) == nil {
                  return .limitExceeded(count: sameKind.count, limit: limitCount)
 diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
-index 5da8c15e..9b66a8e1 100644
+index 5da8c15e..b508e982 100644
 --- a/submodules/TelegramUI/BUILD
 +++ b/submodules/TelegramUI/BUILD
-@@ -188,6 +188,8 @@ swift_library(
+@@ -188,6 +188,9 @@ swift_library(
          "//submodules/RaiseToListen:RaiseToListen",
          "//submodules/OpusBinding:OpusBinding",
          "//third-party/opus:opus",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
          "//submodules/ShareItems:ShareItems",
          "//submodules/ShareItems/Impl:ShareItemsImpl",
          "//submodules/SettingsUI:SettingsUI",
@@ -18253,6 +18254,19 @@ index 429cf39c..4599e858 100644
                  let tabSelectorSize = self.tabSelector.update(
                      transition: transition,
                      component: AnyComponent(TabSelectorComponent(
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD
+index 7e874b3f..28817174 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD
++++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD
+@@ -52,6 +52,8 @@ swift_library(
+         "//submodules/TelegramUI/Components/GlassBackgroundComponent",
+         "//submodules/TelegramUI/Components/MessageInputPanelComponent",
+         "//submodules/TelegramUI/Components/Gifts/GiftRemainingCountComponent",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
+     ],
+     visibility = [
+         "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 index 0db09aed..051277cc 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
@@ -18711,6 +18725,19 @@ index 0db09aed..051277cc 100644
              completion: completion
          ), navigationBarAppearance: .none, theme: .default)
          
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
+index 3dad3ead..cf5f2029 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
++++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
+@@ -71,6 +71,8 @@ swift_library(
+         "//submodules/TelegramUI/Components/AlertComponent/AlertInputFieldComponent",
+         "//submodules/TelegramUI/Components/GlassControls",
+         "//submodules/Components/ResizableSheetComponent",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
+     ],
+     visibility = [
+         "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 index 6f6c1f3c..59c001c2 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
