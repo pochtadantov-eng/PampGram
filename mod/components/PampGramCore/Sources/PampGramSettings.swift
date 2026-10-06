@@ -750,6 +750,7 @@ public enum PampGramPreferencesKeys {
     public static let behavior = key(900_700)
     public static let fakeAdmin = key(900_800)
     public static let scheduledGifts = key(900_900)
+    public static let wornGiftStatus = key(901_000)
 }
 
 public enum PampGramCore {

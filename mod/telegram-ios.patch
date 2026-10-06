@@ -21876,8 +21876,61 @@ index 57ecb9d..f0a68ec 100644
      deinit {
      }
      
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/Sources/PeerInfoGiftsCoverComponent.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/Sources/PeerInfoGiftsCoverComponent.swift
+index 02aa6d2b..43d0b5ff 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/Sources/PeerInfoGiftsCoverComponent.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/Sources/PeerInfoGiftsCoverComponent.swift
+@@ -13,6 +13,7 @@ import EmojiTextAttachmentView
+ import LokiRng
+ import TextFormat
+ import HierarchyTrackingLayer
++import PhantomGiftKit
+ 
+ public final class PeerInfoGiftsCoverComponent: Component {
+     public let context: AccountContext
+@@ -264,6 +265,10 @@ public final class PeerInfoGiftsCoverComponent: Component {
+             self.appliedGiftIds = giftIds
+             
+             if self.giftsDisposable == nil {
++                // PampGram: this device's own visual gifts that are pinned on this profile hang
++                // around the avatar exactly like real pinned ones do. They only ever come from
++                // the local store, never from `giftsContext`; a visual gift that is currently
++                // worn is already excluded below via the status id, same as a real worn one.
+                 self.giftsDisposable = combineLatest(
+                     queue: Queue.mainQueue(),
+                     component.giftsContext.state,
+@@ -274,13 +279,14 @@ public final class PeerInfoGiftsCoverComponent: Component {
+                         }
+                         return nil
+                     }
+-                    |> distinctUntilChanged
+-                ).start(next: { [weak self] state, giftStatusId in
++                    |> distinctUntilChanged,
++                    PampGramPhantomGiftStore.resolvedProfileGiftsSignal(context: component.context, peerId: component.peerId)
++                ).start(next: { [weak self] state, giftStatusId, pampGramGifts in
+                     guard let self else {
+                         return
+                     }
+                     
+-                    let pinnedGifts = state.gifts.filter { gift in
++                    let pinnedGifts = (state.gifts + pampGramGifts.filter { $0.savedToProfile }).filter { gift in
+                         if gift.pinnedToTop {
+                             if case let .unique(uniqueGift) = gift.gift {
+                                 return uniqueGift.id != giftStatusId
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/BUILD
+index c4f5d3e0..783c3cc6 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/BUILD
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/BUILD
+@@ -25,6 +25,7 @@ swift_library(
+         "//submodules/TextFormat",
+         "//submodules/AvatarNode",
+         "//submodules/Components/BundleIconComponent",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
+     ],
+     visibility = [
+         "//visibility:public",
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd3..d1b2b516 100644
+index 4d971fd3..d74ae5f7 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -21898,7 +21951,7 @@ index 4d971fd3..d1b2b516 100644
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -502,8 +504,35 @@ public final class AccountContextImpl: AccountContext {
+@@ -502,8 +504,36 @@ public final class AccountContextImpl: AccountContext {
              }
              (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = settings.compressedEmojiCache
          })
@@ -21909,6 +21962,7 @@ index 4d971fd3..d1b2b516 100644
 +        // class with no superclass.
 +        if sharedContext.applicationBindings.isMainApp && !temp {
 +            PampGramScheduledGiftRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
++            PampGramWornGiftRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)

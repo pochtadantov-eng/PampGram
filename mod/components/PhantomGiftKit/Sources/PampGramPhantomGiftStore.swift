@@ -93,10 +93,15 @@ public enum PampGramPhantomGiftStore {
     /// records live only in the local Postbox and are never sent to Telegram.
     public static func profileGiftsSignal(context: AccountContext, peerId: EnginePeer.Id? = nil) -> Signal<[PampGramPhantomGift], NoError> {
         let profilePeerId = peerId ?? context.account.peerId
+        let isOwnProfile = profilePeerId == context.account.peerId
         return self.allGiftsSignal(context: context)
         |> map { gifts -> [PampGramPhantomGift] in
+            // A hidden gift ("Скрыть из профиля") stays in the owner's own grid, drawn with the
+            // crossed-out eye, exactly like a real hidden gift does — only everyone else's view
+            // of the profile drops it. A sold gift is the other reason `savedToProfile` goes
+            // false (see `withSold`), and that one really is gone, hence the `soldDate` check.
             return gifts
-                .filter { $0.peerId == profilePeerId && $0.savedToProfile }
+                .filter { $0.peerId == profilePeerId && $0.soldDate == nil && ($0.savedToProfile || isOwnProfile) }
                 .sorted { lhs, rhs in
                     if lhs.pinnedToTop != rhs.pinnedToTop {
                         return lhs.pinnedToTop
