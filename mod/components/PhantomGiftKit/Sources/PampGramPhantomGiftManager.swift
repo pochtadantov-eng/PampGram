@@ -364,6 +364,144 @@ public enum PampGramPhantomGiftManager {
         |> ignoreValues
     }
 
+    public enum UpgradeError: Error {
+        case notFound
+        case noAttributes
+        case insufficientFunds(required: Int64)
+    }
+
+    /// Puts a plain catalog gift (anything from a lollipop to Plush Pepe) straight into the
+    /// account owner's own profile. Free and local — no ledger entry, no chat message, nothing
+    /// sent to Telegram. If the catalog entry has an upgrade price, the profile card then
+    /// carries the real "Улучшить" button (see `PampGramPhantomGift.asProfileGift`).
+    public static func addGenericGiftToProfile(context: AccountContext, gift: StarGift.Gift) -> Signal<PampGramPhantomGift, NoError> {
+        return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
+            let phantomGift = PampGramPhantomGift(
+                id: Int64.random(in: 1...Int64.max),
+                peerId: context.account.peerId,
+                gift: .generic(gift),
+                price: CurrencyAmount(amount: StarsAmount(value: gift.price, nanos: 0), currency: .stars),
+                date: Int32(Date().timeIntervalSince1970),
+                localMessageId: nil,
+                fromPeerId: context.account.peerId,
+                isReceived: true
+            )
+            PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
+            return phantomGift
+        }
+    }
+
+    private static func pickWeighted(_ attributes: [StarGift.UniqueGift.Attribute], rarity: (StarGift.UniqueGift.Attribute) -> StarGift.UniqueGift.Attribute.Rarity?) -> StarGift.UniqueGift.Attribute? {
+        guard !attributes.isEmpty else {
+            return nil
+        }
+        // `permille` is "chance out of 1000", so it is the weight as-is; the named tiers carry
+        // no number and are all rarer than anything with a real permille, hence the small weight.
+        let weights: [Int32] = attributes.map { attribute in
+            guard let value = rarity(attribute) else {
+                return 10
+            }
+            return value.permilleValue > 0 ? value.permilleValue : 3
+        }
+        var roll = Int32.random(in: 0 ..< max(1, weights.reduce(0, +)))
+        for (index, weight) in weights.enumerated() {
+            if roll < weight {
+                return attributes[index]
+            }
+            roll -= weight
+        }
+        return attributes.last
+    }
+
+    /// The local stand-in for `upgradeStarGift`: charges `price` from the fake Stars balance
+    /// (ledger row "Улучшение подарка"), rolls a random model/backdrop/pattern out of
+    /// `sampleAttributes` (the same real list the upgrade preview animates through, weighted by
+    /// each attribute's rarity), and turns the stored plain gift into a unique one in place.
+    /// The returned value is what the real flow's `upgradeStarGift` would have returned — the
+    /// profile grid item of the new unique gift — so GiftViewScreen can feed it straight into its
+    /// own reveal animation.
+    public static func upgradeGift(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift, sampleAttributes: [StarGift.UniqueGift.Attribute], price: Int64) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeError> {
+        return context.account.postbox.transaction { transaction -> Result<PampGramPhantomGift, UpgradeError> in
+            guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift), case let .generic(genericGift) = match.gift else {
+                return .failure(.notFound)
+            }
+            let models = sampleAttributes.filter { if case .model = $0 { return true } else { return false } }
+            let backdrops = sampleAttributes.filter { if case .backdrop = $0 { return true } else { return false } }
+            let patterns = sampleAttributes.filter { if case .pattern = $0 { return true } else { return false } }
+            let rarityOf: (StarGift.UniqueGift.Attribute) -> StarGift.UniqueGift.Attribute.Rarity? = { attribute in
+                switch attribute {
+                case let .model(_, _, rarity, _):
+                    return rarity
+                case let .pattern(_, _, rarity):
+                    return rarity
+                case let .backdrop(_, _, _, _, _, _, rarity):
+                    return rarity
+                case .originalInfo:
+                    return nil
+                }
+            }
+            guard let model = self.pickWeighted(models, rarity: rarityOf), let backdrop = self.pickWeighted(backdrops, rarity: rarityOf), let pattern = self.pickWeighted(patterns, rarity: rarityOf) else {
+                return .failure(.noAttributes)
+            }
+
+            if price > 0 {
+                if PampGramPhantomGiftStore.fakeStarsBalance(transaction: transaction) < price {
+                    return .failure(.insufficientFunds(required: price))
+                }
+                let _ = PampGramLocalLedgerStore.addAndApply(
+                    transaction: transaction,
+                    currency: .stars,
+                    kind: .purchase,
+                    amount: -price,
+                    title: "Улучшение подарка",
+                    details: match.title,
+                    peerId: context.account.peerId,
+                    giftId: match.id
+                )
+            }
+
+            let editionSize = max(genericGift.availability?.total ?? 0, 5_000)
+            let number = Int32.random(in: 1 ... editionSize)
+            let title = genericGift.title ?? "Gift"
+            let slugTitle = String(title.filter { $0.isLetter || $0.isNumber })
+            let uniqueGift = StarGift.UniqueGift(
+                id: Int64.random(in: 1...Int64.max),
+                giftId: genericGift.id,
+                title: title,
+                number: number,
+                slug: "\(slugTitle.isEmpty ? "Gift" : slugTitle)-\(number)-pg\(Int64.random(in: 1_000...9_999))",
+                owner: .peerId(context.account.peerId),
+                attributes: [model, backdrop, pattern],
+                availability: StarGift.UniqueGift.Availability(issued: number, total: editionSize),
+                giftAddress: nil,
+                resellAmounts: nil,
+                resellForTonOnly: false,
+                releasedBy: genericGift.releasedBy,
+                valueAmount: nil,
+                valueCurrency: nil,
+                valueUsdAmount: nil,
+                flags: [],
+                themePeerId: nil,
+                peerColor: nil,
+                hostPeerId: nil,
+                minOfferStars: nil,
+                craftChancePermille: nil
+            )
+            let upgraded = match.withGift(.unique(uniqueGift))
+            PampGramPhantomGiftStore.update(transaction: transaction, id: match.id, { _ in upgraded })
+            return .success(upgraded)
+        }
+        |> castError(UpgradeError.self)
+        |> mapToSignal { result -> Signal<ProfileGiftsContext.State.StarGift, UpgradeError> in
+            switch result {
+            case let .success(upgraded):
+                return .single(upgraded.asProfileGift(fromPeer: nil))
+            case let .failure(error):
+                return .fail(error)
+            }
+        }
+    }
+
     /// Removes a visual gift from the account owner's own profile grid. Matching is
     /// deliberately scoped to `context.account.peerId`, so a recipient profile cannot be
     /// modified through this local control.

@@ -30,6 +30,7 @@ private final class PampGramSettingsArguments {
     let openVisualRatingEditor: () -> Void
     let openCollectionMarket: () -> Void
     let openGiftConstructor: () -> Void
+    let openGiftAdder: () -> Void
     let openStarsLedger: () -> Void
     let openTonLedger: () -> Void
     let sellRegularGifts: () -> Void
@@ -52,6 +53,7 @@ private final class PampGramSettingsArguments {
         openVisualRatingEditor: @escaping () -> Void,
         openCollectionMarket: @escaping () -> Void,
         openGiftConstructor: @escaping () -> Void,
+        openGiftAdder: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
         openTonLedger: @escaping () -> Void,
         sellRegularGifts: @escaping () -> Void,
@@ -73,6 +75,7 @@ private final class PampGramSettingsArguments {
         self.openVisualRatingEditor = openVisualRatingEditor
         self.openCollectionMarket = openCollectionMarket
         self.openGiftConstructor = openGiftConstructor
+        self.openGiftAdder = openGiftAdder
         self.openStarsLedger = openStarsLedger
         self.openTonLedger = openTonLedger
         self.sellRegularGifts = sellRegularGifts
@@ -133,6 +136,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case collectionHeader(String)
     case collectionMarket(String, String)
     case giftConstructor(String)
+    case giftAdder(String)
     case collectionFooter(String)
 
     case realGiftsHeader(String)
@@ -174,7 +178,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.localRubles.rawValue
         case .profileVisualsHeader, .visualNumberEditor, .visualRating:
             return PampGramSettingsSection.profileVisuals.rawValue
-        case .collectionHeader, .collectionMarket, .giftConstructor, .collectionFooter:
+        case .collectionHeader, .collectionMarket, .giftConstructor, .giftAdder, .collectionFooter:
             return PampGramSettingsSection.collectionMarket.rawValue
         case .realGiftsHeader, .sellRegularGiftsAction, .fakeSaleAction, .realGiftsFooter:
             return PampGramSettingsSection.realGifts.rawValue
@@ -217,6 +221,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .collectionHeader: return 22
         case .collectionMarket: return 23
         case .giftConstructor: return 39
+        case .giftAdder: return 40
         case .collectionFooter: return 24
         case .realGiftsHeader: return 25
         case .sellRegularGiftsAction: return 26
@@ -294,6 +299,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "trophy.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualRatingEditor)
         case let .collectionMarket(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "square.grid.2x2.fill", backgroundColor: UIColor(rgb: 0x30b0c7)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openCollectionMarket)
+        case let .giftAdder(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "gift.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: arguments.openGiftAdder)
         case let .giftConstructor(title):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "paintpalette.fill", backgroundColor: UIColor(rgb: 0xaf52de)), title: title, label: "", sectionId: self.section, style: .blocks, action: arguments.openGiftConstructor)
         case let .sellRegularGiftsAction(title):
@@ -480,6 +487,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.collectionHeader("КОЛЛЕКЦИЯ И МАРКЕТ"))
     entries.append(.collectionMarket("Коллекция и маркет", "\(phantomGiftCount) подарков"))
     entries.append(.giftConstructor("Конструктор подарка"))
+    entries.append(.giftAdder("Добавить подарок в профиль"))
     entries.append(.collectionFooter("Ношение, закрепление, скрытие, передача и локальный маркет подарков."))
 
     entries.append(.realGiftsHeader("НАСТОЯЩИЕ ПОДАРКИ"))
@@ -679,6 +687,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         openVisualRatingEditor: { presentRatingEditorImpl?() },
         openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
         openGiftConstructor: { pushControllerImpl?(pampGramGiftConstructorController(context: context)) },
+        openGiftAdder: { pushControllerImpl?(pampGramGiftAdderController(context: context)) },
         openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },
         openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) },
         sellRegularGifts: {

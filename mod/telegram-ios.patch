@@ -19136,7 +19136,7 @@ index 6f6c1f3c..7785bf2c 100644
 +    })
  }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
-index 1a5228a9..2a1a4ac8 100644
+index 1a5228a9..296a1c72 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 @@ -5,6 +5,8 @@ import AsyncDisplayKit
@@ -19298,7 +19298,104 @@ index 1a5228a9..2a1a4ac8 100644
                  getController: self.getController,
                  updateProgress: { [weak self] progress in
                      guard let self else {
-@@ -3708,7 +3770,10 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -2006,6 +2068,96 @@ private final class GiftViewSheetContent: CombinedComponent {
+                 return
+             }
+             
++            // PampGram: a visual gift (`reference == nil`) is upgraded locally — the fake Stars
++            // balance is charged and the unique gift is rolled on this device — then the very same
++            // reveal animation as a real upgrade plays below.
++            if case let .profileGift(phantomPeerId, phantomProfileGift) = self.subject, phantomProfileGift.reference == nil, case let .generic(phantomGenericGift) = phantomProfileGift.gift {
++                guard let controller = self.getController() as? GiftViewScreen, let sampleAttributes = self.upgradePreview?.attributes else {
++                    return
++                }
++                let upgradePrice = self.effectiveUpgradePrice?.stars ?? phantomGenericGift.upgradeStars ?? 0
++                
++                self.inProgress = true
++                self.updated()
++                
++                controller.showBalance = false
++                
++                self.upgradeDisposable = (PampGramPhantomGiftManager.upgradeGift(context: self.context, matching: phantomProfileGift, sampleAttributes: sampleAttributes, price: upgradePrice)
++                |> deliverOnMainQueue).start(next: { [weak self] result in
++                    guard let self else {
++                        return
++                    }
++                    self.canSkip = true
++                    self.updated(transition: .immediate)
++                    
++                    self.inProgress = false
++                    self.inUpgradePreview = false
++                    
++                    self.justUpgraded = true
++                    self.revealedNumberDigits = -1
++                    
++                    if case let .unique(uniqueGift) = result.gift {
++                        for i in 0 ..< "\(uniqueGift.number)".count {
++                            Queue.mainQueue().after(0.2 + Double(i) * 0.3) {
++                                self.revealedNumberDigits += 1
++                                self.updated(transition: .immediate)
++                            }
++                        }
++                    }
++                    
++                    Queue.mainQueue().after(firstDuration) {
++                        self.revealedAttributes.insert(.backdrop)
++                        self.updated(transition: .immediate)
++                        
++                        Queue.mainQueue().after(secondDuration) {
++                            self.revealedAttributes.insert(.pattern)
++                            self.updated(transition: .immediate)
++                            
++                            Queue.mainQueue().after(thirdDuration) {
++                                self.revealedAttributes.insert(.model)
++                                self.updated(transition: .immediate)
++
++                                Queue.mainQueue().after(0.55) {
++                                    self.canSkip = false
++                                    self.updated(transition: .easeInOut(duration: 0.2))
++                                }
++                                
++                                Queue.mainQueue().after(0.6) {
++                                    if let controller = self.getController() as? GiftViewScreen {
++                                        controller.animateSuccess()
++                                    }
++                                }
++                            }
++                        }
++                    }
++                    
++                    self.subject = .profileGift(phantomPeerId, result)
++                    self.updated(transition: .spring(duration: 0.4))
++                }, error: { [weak self] error in
++                    guard let self else {
++                        return
++                    }
++                    self.inProgress = false
++                    self.updated()
++                    
++                    var text = "Не удалось улучшить подарок."
++                    if case let .insufficientFunds(required) = error {
++                        text = "Недостаточно звёзд на локальном балансе: нужно \(required) ⭐. Баланс можно изменить в настройках PampGram."
++                    }
++                    let alertController = textAlertController(
++                        context: self.context,
++                        title: nil,
++                        text: text,
++                        actions: [
++                            TextAlertAction(type: .defaultAction, title: self.context.sharedContext.currentPresentationData.with { $0 }.strings.Common_OK, action: {})
++                        ],
++                        parseMarkdown: true
++                    )
++                    self.getController()?.present(alertController, in: .window(.root))
++                })
++                return
++            }
++            
+             guard let arguments = self.subject.arguments, let peerId = arguments.peerId, let starsContext = self.context.starsContext, let starsState = starsContext.currentState else {
+                 return
+             }
+@@ -3708,7 +3860,10 @@ private final class GiftViewSheetContent: CombinedComponent {
                  
                  var tableItems: [TableComponent.Item] = []
                  
@@ -19310,7 +19407,7 @@ index 1a5228a9..2a1a4ac8 100644
                  
                  if !soldOut {
                      if let uniqueGift {
-@@ -4014,7 +4079,13 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4014,7 +4169,13 @@ private final class GiftViewSheetContent: CombinedComponent {
                                              }
                                              
                                              let canWear: Bool
@@ -19325,7 +19422,7 @@ index 1a5228a9..2a1a4ac8 100644
                                                  let premiumConfiguration = PremiumConfiguration.with(appConfiguration: component.context.currentAppConfiguration.with { $0 })
                                                  let requiredLevel = Int(BoostSubject.wearGift.requiredLevel(group: false, context: component.context, configuration: premiumConfiguration))
                                                  if let boostLevel = channel.approximateBoostLevel {
-@@ -4769,8 +4840,16 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4769,8 +4930,16 @@ private final class GiftViewSheetContent: CombinedComponent {
                  let premiumConfiguration = PremiumConfiguration.with(appConfiguration: component.context.currentAppConfiguration.with { $0 })
                  let requiredLevel = Int(BoostSubject.wearGift.requiredLevel(group: false, context: component.context, configuration: premiumConfiguration))
                  
@@ -19343,7 +19440,7 @@ index 1a5228a9..2a1a4ac8 100644
                      canWear = false
                      buttonContent = AnyComponentWithIdentity(
                          id: AnyHashable("wear_channel"),
-@@ -4791,7 +4870,7 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4791,7 +4960,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                              ], spacing: 3.0)
                          )
                      )
@@ -19352,7 +19449,18 @@ index 1a5228a9..2a1a4ac8 100644
                      canWear = false
                      buttonContent = AnyComponentWithIdentity(
                          id: AnyHashable("wear_premium"),
-@@ -5745,6 +5824,10 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -4906,6 +5075,10 @@ private final class GiftViewSheetContent: CombinedComponent {
+                 } else if let upgradeStars = state.effectiveUpgradePrice?.stars {
+                     let priceString = presentationStringsFormattedNumber(Int32(clamping: upgradeStars), environment.dateTimeFormat.groupingSeparator)
+                     upgradeString = strings.Gift_Upgrade_GiftUpgrade(" # \(priceString)").string
++                } else if subject.arguments?.reference == nil, let upgradeStars = state.starGiftsMap[giftId]?.upgradeStars {
++                    // PampGram: a visual gift has no upgrade form to read the price from.
++                    let priceString = presentationStringsFormattedNumber(Int32(clamping: upgradeStars), environment.dateTimeFormat.groupingSeparator)
++                    upgradeString = strings.Gift_Upgrade_UpgradeFor(" # \(priceString)").string
+                 } else if let upgradeForm = state.upgradeForm, let upgradeStars = upgradeForm.invoice.prices.first?.amount {
+                     let priceString = presentationStringsFormattedNumber(Int32(clamping: upgradeStars), environment.dateTimeFormat.groupingSeparator)
+                     upgradeString = strings.Gift_Upgrade_UpgradeFor(" # \(priceString)").string
+@@ -5745,6 +5918,10 @@ public class GiftViewScreen: ViewControllerComponentContainer {
      fileprivate let transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)?
      fileprivate let upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)?
      fileprivate let buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)?
@@ -19363,7 +19471,7 @@ index 1a5228a9..2a1a4ac8 100644
      fileprivate let updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)?
      fileprivate let togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)?
      fileprivate let shareStory: ((StarGift.UniqueGift) -> Void)?
-@@ -5766,6 +5849,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5766,6 +5943,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
          transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)? = nil,
          upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)? = nil,
          buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)? = nil,
@@ -19371,7 +19479,7 @@ index 1a5228a9..2a1a4ac8 100644
          updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)? = nil,
          togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)? = nil,
          shareStory: ((StarGift.UniqueGift) -> Void)? = nil,
-@@ -5782,6 +5866,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5782,6 +5960,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
          self.transferGift = transferGift
          self.upgradeGift = upgradeGift
          self.buyGift = buyGift

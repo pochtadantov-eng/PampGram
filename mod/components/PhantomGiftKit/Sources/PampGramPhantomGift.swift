@@ -133,6 +133,13 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: marketPrice, marketListedAt: marketPrice == nil ? nil : (listedAt ?? self.marketListedAt ?? Int32(Date().timeIntervalSince1970)), isConstructed: self.isConstructed)
     }
 
+    /// Same record with a different `StarGift` payload — used by the local "Улучшить" flow
+    /// (`PampGramPhantomGiftManager.upgradeGift`), which swaps a `.generic` gift for the
+    /// `.unique` one it turns into while keeping its id, date, pin/hide flags and so on.
+    public func withGift(_ gift: StarGift) -> PampGramPhantomGift {
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed)
+    }
+
     public func withPeerId(_ peerId: EnginePeer.Id) -> PampGramPhantomGift {
         return PampGramPhantomGift(id: self.id, peerId: peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: peerId == self.peerId ? self.savedToProfile : true, soldDate: self.soldDate, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed)
     }
@@ -150,6 +157,12 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         // listing/unlisting flips the real "Продать"/"Снять с продажи" button and green
         // ribbon exactly like a genuine resale listing would.
         var gift = self.gift
+        // A plain gift whose catalog entry has an upgrade price gets the real "Улучшить" button;
+        // the flow behind it is local (`PampGramPhantomGiftManager.upgradeGift`).
+        var canUpgrade = false
+        if case let .generic(genericGift) = gift, genericGift.upgradeStars != nil {
+            canUpgrade = true
+        }
         if let marketPrice = self.marketPrice, case let .unique(uniqueGift) = gift {
             gift = .unique(Self.withResellListing(uniqueGift, price: marketPrice))
         }
@@ -164,7 +177,7 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             savedToProfile: self.savedToProfile,
             pinnedToTop: self.pinnedToTop,
             convertStars: self.price.currency == .stars ? self.price.amount.value : nil,
-            canUpgrade: false,
+            canUpgrade: canUpgrade,
             canExportDate: nil,
             upgradeStars: nil,
             // 0, not nil: GiftViewScreen only shows the "Передать" button when this is
