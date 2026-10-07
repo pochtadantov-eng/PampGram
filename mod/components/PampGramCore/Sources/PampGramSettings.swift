@@ -432,6 +432,9 @@ public struct PampGramSettings: Codable, Equatable {
     public var moderationStrangersOnly: Bool
     /// Chats auto-moderation skips entirely ("Исключения").
     public var moderationExcludedPeerIds: [PeerId]
+    /// Records both sides of one-to-one calls (own microphone + the other party) into a local audio file
+    /// that never leaves the device unless the user shares it. Off by default.
+    public var callRecordingEnabled: Bool
 
     // A brand-new install (and "Сбросить балансы", which resets to this same constant) starts
     // at 0 — nothing pre-loaded before the person has looked at a single toggle.
@@ -506,11 +509,12 @@ public struct PampGramSettings: Codable, Equatable {
             moderationApiKey: "",
             moderationBlockSender: true,
             moderationStrangersOnly: false,
-            moderationExcludedPeerIds: []
+            moderationExcludedPeerIds: [],
+            callRecordingEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool, moderationExcludedPeerIds: [PeerId]) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool, moderationExcludedPeerIds: [PeerId], callRecordingEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -578,6 +582,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.moderationBlockSender = moderationBlockSender
         self.moderationStrangersOnly = moderationStrangersOnly
         self.moderationExcludedPeerIds = moderationExcludedPeerIds
+        self.callRecordingEnabled = callRecordingEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -685,6 +690,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.moderationBlockSender = try container.decodeIfPresent(Bool.self, forKey: .moderationBlockSender) ?? defaults.moderationBlockSender
         self.moderationStrangersOnly = try container.decodeIfPresent(Bool.self, forKey: .moderationStrangersOnly) ?? defaults.moderationStrangersOnly
         self.moderationExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .moderationExcludedPeerIds) ?? defaults.moderationExcludedPeerIds
+        self.callRecordingEnabled = try container.decodeIfPresent(Bool.self, forKey: .callRecordingEnabled) ?? defaults.callRecordingEnabled
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -734,6 +740,7 @@ public struct PampGramSettings: Codable, Equatable {
         settings.legalPremiumEnabled = false
         settings.unupgradedGiftEntryEnabled = false
         settings.moderationEnabled = false
+        settings.callRecordingEnabled = false
         settings.showTemporaryMediaEnabled = false
         settings.bypassViewOnceMediaEnabled = false
         settings.bypassTimedMediaEnabled = false

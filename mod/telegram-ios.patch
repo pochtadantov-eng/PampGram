@@ -23139,3 +23139,503 @@ index 27f583ce..f02baa48 100644
                  formatMenuAvailability: .none,
                  emptyLineHandling: .notAllowed,
                  isInitiallyFocused: true,
+diff --git a/submodules/TelegramCallsUI/BUILD b/submodules/TelegramCallsUI/BUILD
+index d6c2e40c..b2d95b41 100644
+--- a/submodules/TelegramCallsUI/BUILD
++++ b/submodules/TelegramCallsUI/BUILD
+@@ -86,6 +86,7 @@ swift_library(
+         "//submodules/DirectionalPanGesture:DirectionalPanGesture",
+         "//submodules/AnimatedCountLabelNode:AnimatedCountLabelNode",
+         "//submodules/DeviceProximity:DeviceProximity",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+         "//submodules/ManagedAnimationNode:ManagedAnimationNode",
+         "//submodules/TemporaryCachedPeerDataManager:TemporaryCachedPeerDataManager",
+         "//submodules/PeerInfoAvatarListNode:PeerInfoAvatarListNode",
+diff --git a/submodules/TelegramCallsUI/Sources/PresentationCall.swift b/submodules/TelegramCallsUI/Sources/PresentationCall.swift
+index 5613e76c..a9933c39 100644
+--- a/submodules/TelegramCallsUI/Sources/PresentationCall.swift
++++ b/submodules/TelegramCallsUI/Sources/PresentationCall.swift
+@@ -13,6 +13,9 @@ import UniversalMediaPlayer
+ import AccountContext
+ import DeviceProximity
+ import PhoneNumberFormat
++import Postbox
++import PampGramCore
++import LocalizedPeerData
+ 
+ public final class PresentationCallImpl: PresentationCall {
+     public let context: AccountContext
+@@ -443,6 +446,7 @@ public final class PresentationCallImpl: PresentationCall {
+     }
+     
+     deinit {
++        self.pampGramStopCallRecording()
+         self.audioSessionShouldBeActiveDisposable?.dispose()
+         self.audioSessionActiveDisposable?.dispose()
+         self.sessionStateDisposable?.dispose()
+@@ -472,11 +476,56 @@ public final class PresentationCallImpl: PresentationCall {
+         }
+     }
+     
++    private var pampGramRecordingFile: (id: String, path: String)?
++    private var pampGramRecordingRequested = false
++    private var pampGramRecordingStartDate: Int32 = 0
++    
++    /// PampGram: when the user turned call recording on, both sides of this one-to-one call are saved
++    /// into a local audio file once the call connects. Nothing is sent anywhere.
++    private func pampGramStartCallRecordingIfNeeded() {
++        if self.pampGramRecordingRequested || self.isMovedToConference || self.conferenceCallContext != nil {
++            return
++        }
++        self.pampGramRecordingRequested = true
++        let _ = (self.context.account.postbox.transaction { transaction -> Bool in
++            return PampGramCore.settings(transaction: transaction).callRecordingEnabled
++        }
++        |> deliverOnMainQueue).startStandalone(next: { [weak self] enabled in
++            guard let self, enabled, self.pampGramRecordingRequested, self.pampGramRecordingFile == nil else {
++                return
++            }
++            let file = PampGramCallRecordingStore.makeNewFile(peerId: self.peerId.toInt64())
++            if PampGramCallRecording.start(path: file.path) {
++                self.pampGramRecordingFile = file
++                self.pampGramRecordingStartDate = Int32(Date().timeIntervalSince1970)
++            }
++        })
++    }
++    
++    private func pampGramStopCallRecording() {
++        self.pampGramRecordingRequested = false
++        guard let file = self.pampGramRecordingFile else {
++            return
++        }
++        self.pampGramRecordingFile = nil
++        let entry = PampGramCallRecordingEntry(id: file.id, peerId: self.peerId.toInt64(), title: self.peer?.compactDisplayTitle ?? "", date: self.pampGramRecordingStartDate, duration: 0.0, isOutgoing: self.isOutgoing)
++        PampGramCallRecording.stop(completion: { duration in
++            if duration < 1.5 {
++                PampGramCallRecordingStore.discardFile(id: entry.id)
++            } else {
++                var entry = entry
++                entry.duration = duration
++                PampGramCallRecordingStore.add(entry)
++            }
++        })
++    }
++    
+     public func resetAsMovedToConference() {
+         if self.isMovedToConference {
+             return
+         }
+         self.isMovedToConference = true
++        self.pampGramStopCallRecording()
+         
+         self.sharedAudioContext = nil
+         self.sessionState = nil
+@@ -817,6 +866,7 @@ public final class PresentationCallImpl: PresentationCall {
+                         } else {
+                             timestamp = CFAbsoluteTimeGetCurrent()
+                             self.activeTimestamp = timestamp
++                            self.pampGramStartCallRecordingIfNeeded()
+                         }
+                         presentationState = PresentationCallState(state: .active(timestamp, reception, keyVisualHash), videoState: mappedVideoState, remoteVideoState: mappedRemoteVideoState, remoteAudioState: mappedRemoteAudioState, remoteBatteryLevel: mappedRemoteBatteryLevel, supportsConferenceCalls: self.supportsConferenceCalls)
+                     case .reconnecting:
+@@ -1314,6 +1364,7 @@ public final class PresentationCallImpl: PresentationCall {
+         }
+         
+         if terminating, !wasTerminated {
++            self.pampGramStopCallRecording()
+             if !self.didSetCanBeRemoved {
+                 self.didSetCanBeRemoved = true
+                 self.canBeRemovedPromise.set(.single(true) |> delay(2.0, queue: Queue.mainQueue()))
+diff --git a/submodules/TelegramVoip/Sources/PampGramCallRecording.swift b/submodules/TelegramVoip/Sources/PampGramCallRecording.swift
+new file mode 100644
+index 00000000..9c2548af
+--- /dev/null
++++ b/submodules/TelegramVoip/Sources/PampGramCallRecording.swift
+@@ -0,0 +1,16 @@
++import Foundation
++import TgVoipWebrtc
++
++/// Thin Swift face of the call recorder that lives next to the audio device (see
++/// `PampGramCallRecorder.mm`). It taps the microphone and playout buffers of a one-to-one call and
++/// writes both into a single mono AAC file.
++public enum PampGramCallRecording {
++    public static func start(path: String) -> Bool {
++        return PampGramCallRecorder.start(path: path)
++    }
++
++    /// `duration` is the recorded length in seconds, delivered on the main queue.
++    public static func stop(completion: @escaping (Double) -> Void) {
++        PampGramCallRecorder.stop(completion: completion)
++    }
++}
+diff --git a/submodules/TgVoipWebrtc/PublicHeaders/TgVoipWebrtc/OngoingCallThreadLocalContext.h b/submodules/TgVoipWebrtc/PublicHeaders/TgVoipWebrtc/OngoingCallThreadLocalContext.h
+index 5b51961b..a3e1f00c 100644
+--- a/submodules/TgVoipWebrtc/PublicHeaders/TgVoipWebrtc/OngoingCallThreadLocalContext.h
++++ b/submodules/TgVoipWebrtc/PublicHeaders/TgVoipWebrtc/OngoingCallThreadLocalContext.h
+@@ -63,6 +63,14 @@
+ 
+ @end
+ 
++// PampGram: records both sides of a one-to-one call (own microphone + what is played to the user) into one .m4a file.
++@interface PampGramCallRecorder : NSObject
++
+++ (bool)startWithPath:(NSString * _Nonnull)path NS_SWIFT_NAME(start(path:));
+++ (void)stopWithCompletion:(void (^ _Nullable)(double))completion NS_SWIFT_NAME(stop(completion:));
++
++@end
++
+ @interface OngoingCallConnectionDescriptionWebrtc : NSObject
+ 
+ @property (nonatomic, readonly) uint8_t reflectorId;
+diff --git a/submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm b/submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm
+index f70dfc6b..4c7d6729 100644
+--- a/submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm
++++ b/submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm
+@@ -2,6 +2,7 @@
+ #include <cstdint>
+ 
+ #import "MediaUtils.h"
++#import "PampGramCallRecorder.h"
+ 
+ #import "Instance.h"
+ #import "InstanceImpl.h"
+@@ -137,6 +138,21 @@ public:
+ 
+ }
+ 
++// PampGram call recording taps. Both only read the buffers and bail out immediately unless a recording is running.
++static inline void PampGramFeedMicrophone(const void *audioSamples, size_t nSamples, size_t nBytesPerSample, size_t nChannels, uint32_t samplesPerSec) {
++    if (!PampGramCallRecorderIsRecording() || nChannels == 0 || nBytesPerSample != nChannels * sizeof(int16_t)) {
++        return;
++    }
++    PampGramCallRecorderFeed(true, audioSamples, nSamples, nChannels, samplesPerSec);
++}
++
++static inline void PampGramFeedPlayout(const void *audioSamples, size_t nSamples, size_t nBytesPerSample, size_t nChannels, uint32_t samplesPerSec) {
++    if (!PampGramCallRecorderIsRecording() || nChannels == 0 || nBytesPerSample != nChannels * sizeof(int16_t)) {
++        return;
++    }
++    PampGramCallRecorderFeed(false, audioSamples, nSamples, nChannels, samplesPerSec);
++}
++
+ class WrappedAudioDeviceModuleIOS : public tgcalls::DefaultWrappedAudioDeviceModule, public webrtc::AudioTransport {
+ public:
+     WrappedAudioDeviceModuleIOS(webrtc::scoped_refptr<webrtc::AudioDeviceModule> impl) :
+@@ -505,6 +521,7 @@ public:
+             }
+         }
+         _mutex.Unlock();
++        PampGramFeedMicrophone(audioSamples, nSamples, nBytesPerSample, nChannels, samplesPerSec);
+         return 0;
+     }
+     
+@@ -540,6 +557,7 @@ public:
+             }
+         }
+         _mutex.Unlock();
++        PampGramFeedMicrophone(audioSamples, nSamples, nBytesPerSample, nChannels, samplesPerSec);
+         return 0;
+     }
+ 
+@@ -620,6 +638,10 @@ public:
+         
+         _mutex.Unlock();
+         
++        if (result == 0 && nSamplesOut != 0) {
++            PampGramFeedPlayout(audioSamples, nSamplesOut, nBytesPerSample, nChannels, samplesPerSec);
++        }
++        
+         return result;
+     }
+ 
+diff --git a/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.h b/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.h
+new file mode 100644
+index 00000000..a5b6c0de
+--- /dev/null
++++ b/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.h
+@@ -0,0 +1,21 @@
++#ifndef PampGramCallRecorder_h
++#define PampGramCallRecorder_h
++
++#import <Foundation/Foundation.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++// Cheap check made by the audio device on every callback before it copies anything.
++bool PampGramCallRecorderIsRecording(void);
++
++// Interleaved signed 16-bit samples. `isMicrophone` marks the local voice, otherwise this is
++// what is played to the user (the other party).
++void PampGramCallRecorderFeed(bool isMicrophone, const void * _Nonnull samples, size_t frames, size_t channels, uint32_t sampleRate);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif
+diff --git a/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.mm b/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.mm
+new file mode 100644
+index 00000000..de3255a8
+--- /dev/null
++++ b/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.mm
+@@ -0,0 +1,258 @@
++#import <TgVoipWebrtc/OngoingCallThreadLocalContext.h>
++#import "PampGramCallRecorder.h"
++
++#import <AudioToolbox/AudioToolbox.h>
++#import <dispatch/dispatch.h>
++#import <os/lock.h>
++
++#include <algorithm>
++#include <atomic>
++#include <cmath>
++#include <cstdint>
++#include <vector>
++
++namespace {
++
++constexpr double kOutputSampleRate = 48000.0;
++// A stream that gets no audio must not make the other one wait forever.
++constexpr size_t kMaxSkewFrames = 24000;
++constexpr size_t kKeepSkewFrames = 12000;
++constexpr size_t kMaxPendingFrames = 48000 * 8;
++
++struct PampGramRecordedStream {
++    std::vector<int16_t> pending;
++    size_t readIndex = 0;
++    std::vector<float> scratch;
++    float previous = 0.0f;
++    double position = 0.0;
++
++    size_t available() const {
++        return pending.size() - readIndex;
++    }
++
++    void append(const int16_t *samples, size_t frames, size_t channels, uint32_t rate) {
++        if (frames == 0 || channels == 0 || rate == 0) {
++            return;
++        }
++        scratch.resize(frames);
++        for (size_t i = 0; i < frames; i++) {
++            float sum = 0.0f;
++            for (size_t c = 0; c < channels; c++) {
++                sum += (float)samples[i * channels + c];
++            }
++            scratch[i] = sum / (float)channels;
++        }
++
++        const double step = (double)rate / kOutputSampleRate;
++        const double count = (double)frames;
++        while (position < count - 1.0) {
++            long index = (long)std::floor(position);
++            float fraction = (float)(position - (double)index);
++            float a = index < 0 ? previous : scratch[(size_t)index];
++            float b = scratch[(size_t)(index + 1)];
++            float value = a + (b - a) * fraction;
++            value = std::max(-32768.0f, std::min(32767.0f, value));
++            pending.push_back((int16_t)lrintf(value));
++            position += step;
++        }
++        position -= count;
++        previous = scratch[frames - 1];
++
++        if (available() > kMaxPendingFrames) {
++            readIndex = pending.size() - kMaxPendingFrames;
++        }
++    }
++
++    void take(size_t count, std::vector<int16_t> &into) {
++        into.assign(count, 0);
++        size_t n = std::min(count, available());
++        for (size_t i = 0; i < n; i++) {
++            into[i] = pending[readIndex + i];
++        }
++        readIndex += n;
++        if (readIndex > 96000) {
++            pending.erase(pending.begin(), pending.begin() + (long)readIndex);
++            readIndex = 0;
++        }
++    }
++};
++
++struct PampGramRecordingSession {
++    PampGramRecordedStream microphone;
++    PampGramRecordedStream remote;
++    ExtAudioFileRef file = nullptr;
++    dispatch_source_t timer = nil;
++    uint64_t writtenFrames = 0;
++};
++
++os_unfair_lock gLock = OS_UNFAIR_LOCK_INIT;
++PampGramRecordingSession *gSession = nullptr;
++std::atomic<bool> gIsRecording(false);
++
++dispatch_queue_t PampGramRecorderQueue() {
++    static dispatch_queue_t queue;
++    static dispatch_once_t onceToken;
++    dispatch_once(&onceToken, ^{
++        queue = dispatch_queue_create("org.pampgram.callrecorder", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
++    });
++    return queue;
++}
++
++// Pulls whatever is ready from both streams, mixes it into one mono track and appends it to the file.
++void PampGramDrain(PampGramRecordingSession *session, bool isFinal) {
++    std::vector<int16_t> micChunk;
++    std::vector<int16_t> remoteChunk;
++    size_t count = 0;
++
++    os_unfair_lock_lock(&gLock);
++    size_t micAvailable = session->microphone.available();
++    size_t remoteAvailable = session->remote.available();
++    size_t shorter = std::min(micAvailable, remoteAvailable);
++    size_t longer = std::max(micAvailable, remoteAvailable);
++    if (isFinal) {
++        count = longer;
++    } else if (longer - shorter > kMaxSkewFrames) {
++        count = longer - kKeepSkewFrames;
++    } else {
++        count = shorter;
++    }
++    if (count != 0) {
++        session->microphone.take(count, micChunk);
++        session->remote.take(count, remoteChunk);
++    }
++    os_unfair_lock_unlock(&gLock);
++
++    if (count == 0 || session->file == nullptr) {
++        return;
++    }
++
++    for (size_t i = 0; i < count; i++) {
++        int32_t mixed = (int32_t)micChunk[i] + (int32_t)remoteChunk[i];
++        micChunk[i] = (int16_t)std::max<int32_t>(INT16_MIN, std::min<int32_t>(INT16_MAX, mixed));
++    }
++
++    AudioBufferList bufferList;
++    bufferList.mNumberBuffers = 1;
++    bufferList.mBuffers[0].mNumberChannels = 1;
++    bufferList.mBuffers[0].mDataByteSize = (UInt32)(count * sizeof(int16_t));
++    bufferList.mBuffers[0].mData = micChunk.data();
++    if (ExtAudioFileWrite(session->file, (UInt32)count, &bufferList) == noErr) {
++        session->writtenFrames += count;
++    }
++}
++
++}
++
++bool PampGramCallRecorderIsRecording(void) {
++    return gIsRecording.load(std::memory_order_relaxed);
++}
++
++void PampGramCallRecorderFeed(bool isMicrophone, const void *samples, size_t frames, size_t channels, uint32_t sampleRate) {
++    if (!gIsRecording.load(std::memory_order_relaxed) || samples == nullptr) {
++        return;
++    }
++    os_unfair_lock_lock(&gLock);
++    PampGramRecordingSession *session = gSession;
++    if (session != nullptr) {
++        PampGramRecordedStream &stream = isMicrophone ? session->microphone : session->remote;
++        stream.append((const int16_t *)samples, frames, channels, sampleRate);
++    }
++    os_unfair_lock_unlock(&gLock);
++}
++
++@implementation PampGramCallRecorder
++
+++ (bool)startWithPath:(NSString * _Nonnull)path {
++    os_unfair_lock_lock(&gLock);
++    bool busy = gSession != nullptr;
++    os_unfair_lock_unlock(&gLock);
++    if (busy) {
++        return false;
++    }
++
++    NSString *directory = [path stringByDeletingLastPathComponent];
++    [[NSFileManager defaultManager] createDirectoryAtPath:directory withIntermediateDirectories:true attributes:nil error:nil];
++
++    AudioStreamBasicDescription fileFormat;
++    memset(&fileFormat, 0, sizeof(fileFormat));
++    fileFormat.mSampleRate = kOutputSampleRate;
++    fileFormat.mFormatID = kAudioFormatMPEG4AAC;
++    fileFormat.mChannelsPerFrame = 1;
++
++    ExtAudioFileRef file = nullptr;
++    NSURL *url = [NSURL fileURLWithPath:path];
++    OSStatus status = ExtAudioFileCreateWithURL((__bridge CFURLRef)url, kAudioFileM4AType, &fileFormat, nullptr, kAudioFileFlags_EraseFile, &file);
++    if (status != noErr || file == nullptr) {
++        return false;
++    }
++
++    AudioStreamBasicDescription clientFormat;
++    memset(&clientFormat, 0, sizeof(clientFormat));
++    clientFormat.mSampleRate = kOutputSampleRate;
++    clientFormat.mFormatID = kAudioFormatLinearPCM;
++    clientFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
++    clientFormat.mBitsPerChannel = 16;
++    clientFormat.mChannelsPerFrame = 1;
++    clientFormat.mFramesPerPacket = 1;
++    clientFormat.mBytesPerFrame = 2;
++    clientFormat.mBytesPerPacket = 2;
++    status = ExtAudioFileSetProperty(file, kExtAudioFileProperty_ClientDataFormat, sizeof(clientFormat), &clientFormat);
++    if (status != noErr) {
++        ExtAudioFileDispose(file);
++        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
++        return false;
++    }
++
++    PampGramRecordingSession *session = new PampGramRecordingSession();
++    session->file = file;
++    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, PampGramRecorderQueue());
++    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), 250 * NSEC_PER_MSEC, 50 * NSEC_PER_MSEC);
++    dispatch_source_set_event_handler(timer, ^{
++        PampGramDrain(session, false);
++    });
++    session->timer = timer;
++
++    os_unfair_lock_lock(&gLock);
++    gSession = session;
++    gIsRecording.store(true, std::memory_order_relaxed);
++    os_unfair_lock_unlock(&gLock);
++
++    dispatch_resume(timer);
++    return true;
++}
++
+++ (void)stopWithCompletion:(void (^ _Nullable)(double))completion {
++    os_unfair_lock_lock(&gLock);
++    PampGramRecordingSession *session = gSession;
++    gSession = nullptr;
++    gIsRecording.store(false, std::memory_order_relaxed);
++    os_unfair_lock_unlock(&gLock);
++
++    if (session == nullptr) {
++        if (completion) {
++            dispatch_async(dispatch_get_main_queue(), ^{
++                completion(0.0);
++            });
++        }
++        return;
++    }
++
++    dispatch_async(PampGramRecorderQueue(), ^{
++        dispatch_source_cancel(session->timer);
++        session->timer = nil;
++        PampGramDrain(session, true);
++        if (session->file != nullptr) {
++            ExtAudioFileDispose(session->file);
++            session->file = nullptr;
++        }
++        double duration = (double)session->writtenFrames / kOutputSampleRate;
++        delete session;
++        if (completion) {
++            dispatch_async(dispatch_get_main_queue(), ^{
++                completion(duration);
++            });
++        }
++    });
++}
++
++@end
