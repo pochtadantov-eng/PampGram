@@ -53,8 +53,13 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     /// kind of Phantom Gift, so that screen's own "В профиле" list can show just its own
     /// creations instead of every gift this account has ever bought/received.
     public let isConstructed: Bool
+    /// The comment written when this gift was given (the composer's text box, or the prompt shown
+    /// before a visual NFT purchase). Shown on the gift's card in the recipient's profile: as the
+    /// gift's own message for a plain gift, as the "original details" row for a unique one.
+    public let text: String?
+    public let entities: [MessageTextEntity]?
 
-    public init(id: Int64, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, date: Int32, localMessageId: EngineMessage.Id?, fromPeerId: EnginePeer.Id? = nil, isReceived: Bool = false, pinnedToTop: Bool = false, savedToProfile: Bool = true, soldDate: Int32? = nil, worn: Bool = false, marketPrice: CurrencyAmount? = nil, marketListedAt: Int32? = nil, isConstructed: Bool = false) {
+    public init(id: Int64, peerId: EnginePeer.Id, gift: StarGift, price: CurrencyAmount, date: Int32, localMessageId: EngineMessage.Id?, fromPeerId: EnginePeer.Id? = nil, isReceived: Bool = false, pinnedToTop: Bool = false, savedToProfile: Bool = true, soldDate: Int32? = nil, worn: Bool = false, marketPrice: CurrencyAmount? = nil, marketListedAt: Int32? = nil, isConstructed: Bool = false, text: String? = nil, entities: [MessageTextEntity]? = nil) {
         self.id = id
         self.peerId = peerId
         self.gift = gift
@@ -70,6 +75,8 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         self.marketPrice = marketPrice
         self.marketListedAt = marketListedAt
         self.isConstructed = isConstructed
+        self.text = text
+        self.entities = entities
     }
 
     /// Decoded field by field, like `PampGramSettings`: a gift saved before `isReceived`/
@@ -93,6 +100,8 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         self.marketPrice = try container.decodeIfPresent(CurrencyAmount.self, forKey: .marketPrice)
         self.marketListedAt = try container.decodeIfPresent(Int32.self, forKey: .marketListedAt)
         self.isConstructed = try container.decodeIfPresent(Bool.self, forKey: .isConstructed) ?? false
+        self.text = try container.decodeIfPresent(String.self, forKey: .text)
+        self.entities = try container.decodeIfPresent([MessageTextEntity].self, forKey: .entities)
     }
 
     public var title: String {
@@ -114,34 +123,34 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     }
 
     public func withPinnedToTop(_ pinnedToTop: Bool) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt, isConstructed: self.isConstructed)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt, isConstructed: self.isConstructed, text: self.text, entities: self.entities)
     }
 
     public func withSavedToProfile(_ savedToProfile: Bool) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt, isConstructed: self.isConstructed)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt, isConstructed: self.isConstructed, text: self.text, entities: self.entities)
     }
 
     public func withSold(date: Int32) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: false, soldDate: date, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: false, soldDate: date, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed, text: self.text, entities: self.entities)
     }
 
     public func withWorn(_ worn: Bool) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt, isConstructed: self.isConstructed)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: worn, marketPrice: self.marketPrice, marketListedAt: self.marketListedAt, isConstructed: self.isConstructed, text: self.text, entities: self.entities)
     }
 
     public func withMarketPrice(_ marketPrice: CurrencyAmount?, listedAt: Int32? = nil) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: marketPrice, marketListedAt: marketPrice == nil ? nil : (listedAt ?? self.marketListedAt ?? Int32(Date().timeIntervalSince1970)), isConstructed: self.isConstructed)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: self.worn, marketPrice: marketPrice, marketListedAt: marketPrice == nil ? nil : (listedAt ?? self.marketListedAt ?? Int32(Date().timeIntervalSince1970)), isConstructed: self.isConstructed, text: self.text, entities: self.entities)
     }
 
     /// Same record with a different `StarGift` payload — used by the local "Улучшить" flow
     /// (`PampGramPhantomGiftManager.upgradeGift`), which swaps a `.generic` gift for the
     /// `.unique` one it turns into while keeping its id, date, pin/hide flags and so on.
     public func withGift(_ gift: StarGift) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed)
+        return PampGramPhantomGift(id: self.id, peerId: self.peerId, gift: gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: self.pinnedToTop, savedToProfile: self.savedToProfile, soldDate: self.soldDate, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed, text: self.text, entities: self.entities)
     }
 
     public func withPeerId(_ peerId: EnginePeer.Id) -> PampGramPhantomGift {
-        return PampGramPhantomGift(id: self.id, peerId: peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: peerId == self.peerId ? self.savedToProfile : true, soldDate: self.soldDate, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed)
+        return PampGramPhantomGift(id: self.id, peerId: peerId, gift: self.gift, price: self.price, date: self.date, localMessageId: self.localMessageId, fromPeerId: self.fromPeerId, isReceived: self.isReceived, pinnedToTop: false, savedToProfile: peerId == self.peerId ? self.savedToProfile : true, soldDate: self.soldDate, worn: false, marketPrice: nil, marketListedAt: nil, isConstructed: self.isConstructed, text: self.text, entities: self.entities)
     }
 
     /// The real profile gifts grid's own item type, built straight from this Phantom Gift —
@@ -159,6 +168,26 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         var gift = self.gift
         // A plain gift whose catalog entry has an upgrade price gets the real "Улучшить" button;
         // the flow behind it is local (`PampGramPhantomGiftManager.upgradeGift`).
+        // The comment: a plain gift carries it as its own message; a unique gift has no such field,
+        // so it travels as the "original details" attribute — the row the stock gift screen already
+        // draws ("Подарок от X: текст") for an upgraded gift that kept its details.
+        var projectedText: String?
+        var projectedEntities: [MessageTextEntity]?
+        if let text = self.text, !text.isEmpty {
+            if case let .unique(uniqueGift) = gift {
+                var attributes = uniqueGift.attributes.filter { attribute in
+                    if case .originalInfo = attribute {
+                        return false
+                    }
+                    return true
+                }
+                attributes.append(.originalInfo(senderPeerId: self.fromPeerId, recipientPeerId: self.peerId, date: self.date, text: text, entities: self.entities))
+                gift = .unique(Self.withAttributes(uniqueGift, attributes: attributes))
+            } else {
+                projectedText = text
+                projectedEntities = self.entities
+            }
+        }
         var canUpgrade = false
         var upgradeStars: Int64?
         if case let .generic(genericGift) = gift, genericGift.upgradeStars != nil {
@@ -176,8 +205,8 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             reference: nil,
             fromPeer: fromPeer,
             date: self.date,
-            text: nil,
-            entities: nil,
+            text: projectedText,
+            entities: projectedEntities,
             nameHidden: false,
             savedToProfile: self.savedToProfile,
             pinnedToTop: self.pinnedToTop,
@@ -198,6 +227,32 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             number: self.number,
             isRefunded: false,
             canCraftAt: nil
+        )
+    }
+
+    private static func withAttributes(_ uniqueGift: StarGift.UniqueGift, attributes: [StarGift.UniqueGift.Attribute]) -> StarGift.UniqueGift {
+        return StarGift.UniqueGift(
+            id: uniqueGift.id,
+            giftId: uniqueGift.giftId,
+            title: uniqueGift.title,
+            number: uniqueGift.number,
+            slug: uniqueGift.slug,
+            owner: uniqueGift.owner,
+            attributes: attributes,
+            availability: uniqueGift.availability,
+            giftAddress: uniqueGift.giftAddress,
+            resellAmounts: uniqueGift.resellAmounts,
+            resellForTonOnly: uniqueGift.resellForTonOnly,
+            releasedBy: uniqueGift.releasedBy,
+            valueAmount: uniqueGift.valueAmount,
+            valueCurrency: uniqueGift.valueCurrency,
+            valueUsdAmount: uniqueGift.valueUsdAmount,
+            flags: uniqueGift.flags,
+            themePeerId: uniqueGift.themePeerId,
+            peerColor: uniqueGift.peerColor,
+            hostPeerId: uniqueGift.hostPeerId,
+            minOfferStars: uniqueGift.minOfferStars,
+            craftChancePermille: uniqueGift.craftChancePermille
         )
     }
 

@@ -18927,15 +18927,16 @@ index 0db09aed..051277cc 100644
          ), navigationBarAppearance: .none, theme: .default)
          
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
-index 3dad3ead..cf5f2029 100644
+index 3dad3ead..65fb5795 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
-@@ -71,6 +71,8 @@ swift_library(
+@@ -71,6 +71,9 @@ swift_library(
          "//submodules/TelegramUI/Components/AlertComponent/AlertInputFieldComponent",
          "//submodules/TelegramUI/Components/GlassControls",
          "//submodules/Components/ResizableSheetComponent",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
 +        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
++        "//submodules/PromptUI",
      ],
      visibility = [
          "//visibility:public",
@@ -18994,20 +18995,21 @@ index 9da9a673..ca6adc9a 100644
              controller.push(storeController)
          }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
-index 6f6c1f3c..7785bf2c 100644
+index 6f6c1f3c..22241ac0 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
-@@ -7,6 +7,9 @@ import AccountContext
+@@ -7,6 +7,10 @@ import AccountContext
  import PresentationDataUtils
  import TelegramStringFormatting
  import BalanceNeededScreen
 +import UndoUI
++import PromptUI
 +import PampGramCore
 +import PhantomGiftKit
  
  public func buyStarGiftImpl(
      context: AccountContext,
-@@ -17,48 +20,82 @@ public func buyStarGiftImpl(
+@@ -17,48 +21,87 @@ public func buyStarGiftImpl(
      skipConfirmation: Bool = false,
      starsTopUpOptions: Signal<[StarsTopUpOption]?, NoError>,
      buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)?,
@@ -19086,13 +19088,18 @@ index 6f6c1f3c..7785bf2c 100644
 -                buyGiftImpl = { slug, peerId, price in
 -                    return context.engine.payments.buyStarGift(slug: slug, peerId: peerId, price: price)
 +
++            // PampGram: the optional comment typed before a visual purchase (see the prompt in the
++            // `pampGramFakePurchaseActive` branch below). It travels with the gift to the recipient's
++            // profile, where it shows as the gift's "original details" row.
++            var pampGramComment: String?
++
 +            let proceed: () -> Void = {
 +                updateProgress(true)
 +
 +                let buyGiftImpl: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)
 +                if pampGramFakePurchaseActive {
 +                    buyGiftImpl = { _, peerId, price in
-+                        return PampGramPhantomGiftManager.buyUniqueGift(context: context, peerId: peerId, uniqueGift: uniqueGift, price: price ?? resellAmount)
++                        return PampGramPhantomGiftManager.buyUniqueGift(context: context, peerId: peerId, uniqueGift: uniqueGift, price: price ?? resellAmount, text: pampGramComment)
 +                        |> ignoreValues
 +                        |> castError(BuyStarGiftError.self)
 +                    }
@@ -19123,7 +19130,7 @@ index 6f6c1f3c..7785bf2c 100644
                  guard let controller = getController() else {
                      return
                  }
-@@ -139,8 +176,84 @@ public func buyStarGiftImpl(
+@@ -139,8 +182,109 @@ public func buyStarGiftImpl(
                  }
              })
          }
@@ -19143,7 +19150,32 @@ index 6f6c1f3c..7785bf2c 100644
 +                hasEnough = pampGramSettings.fakeTonBalanceNanos >= resellAmount.amount.value
 +            }
 +            if hasEnough {
-+                proceed()
++                // Asks for an optional comment first. "Готово" with the box left empty gives a gift
++                // without one; "Отмена" backs out of the purchase entirely.
++                guard let controller = getController() else {
++                    beforeCompletion()
++                    return
++                }
++                controller.present(promptController(
++                    context: context,
++                    text: "Комментарий к подарку",
++                    subtitle: "Необязательно. Получатель увидит его на карточке подарка в профиле.",
++                    value: "",
++                    placeholder: "Текст",
++                    characterLimit: 255,
++                    apply: { value in
++                        guard let value else {
++                            beforeCompletion()
++                            return
++                        }
++                        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
++                        pampGramComment = trimmed.isEmpty ? nil : trimmed
++                        proceed()
++                    },
++                    dismissed: {
++                        beforeCompletion()
++                    }
++                ), in: .window(.root))
 +            } else {
 +                guard let controller = getController() else {
 +                    beforeCompletion()
@@ -19210,7 +19242,7 @@ index 6f6c1f3c..7785bf2c 100644
              let _ = (starsTopUpOptions
               |> filter { $0 != nil }
               |> take(1)
-@@ -251,4 +364,5 @@ public func buyStarGiftImpl(
+@@ -251,4 +395,5 @@ public func buyStarGiftImpl(
              updateIsBalanceVisible(false)
          })
      }
@@ -19571,19 +19603,72 @@ index 1a5228a9..a49cc24b 100644
          self.togglePinnedToTop = togglePinnedToTop
          self.shareStory = shareStory
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
-index 09315ffb..a3aed400 100644
+index 09315ffb..eddf33e4 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
-@@ -140,6 +140,9 @@ swift_library(
+@@ -140,6 +140,10 @@ swift_library(
          "//submodules/TelegramUI/Components/Settings/BoostLevelIconComponent",
          "//submodules/Components/MultilineTextComponent",
          "//submodules/TelegramUI/Components/Settings/PeerNameColorItem",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
 +        "//submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen",
          "//submodules/TelegramUI/Components/PlainButtonComponent",
          "//submodules/TelegramUI/Components/TextLoadingEffect",
          "//submodules/TelegramUI/Components/TextProcessingScreen",
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift
+index 44aff19e..b964c488 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift
+@@ -10,6 +10,7 @@ import TelegramPresentationData
+ import PeerAvatarGalleryUI
+ import TelegramUIPreferences
+ import TelegramNotices
++import PhantomGiftKit
+ import AccountUtils
+ import DeviceAccess
+ import PeerInfoVisualMediaPaneNode
+@@ -1518,6 +1519,11 @@ func peerInfoScreenData(
+             
+             let forcedLinkedCommunityId = Atomic<PeerId?>(value: nil)
+             
++            // PampGram: visual gifts given to (or owned by) this profile. Telegram only offers the
++            // "Подарки" tab when the real gift count is above zero, so without this a person with
++            // no real gifts never got the tab and a visual gift given to them stayed invisible.
++            let pampGramGiftCount: Signal<Int, NoError> = PampGramPhantomGiftStore.profileGiftCountSignal(context: context, peerId: peerId)
++            
+             return combineLatest(
+                 context.account.viewTracker.peerView(peerId, updateData: true),
+                 peerInfoAvailableMediaPanes(context: context, peerId: peerId, chatLocation: chatLocation, isMyProfile: isMyProfile, chatLocationContextHolder: chatLocationContextHolder, sharedMediaFromForumTopic: sharedMediaFromForumTopic),
+@@ -1540,14 +1546,15 @@ func peerInfoScreenData(
+                 premiumGiftOptions,
+                 webAppPermissions,
+                 savedMusicContext.state,
+-                businessConnectedBot
++                businessConnectedBot,
++                pampGramGiftCount
+             )
+-            |> mapToSignal { peerView, availablePanes, globalNotificationSettings, encryptionKeyFingerprint, status, hasStories, hasStoryArchive, recommendedBots, accountIsPremium, savedMessagesPeer, hasSavedMessagesChats, hasSavedMessages, hasSavedMessageTags, hasBotPreviewItems, personalChannel, privacySettings, starsRevenueContextAndState, revenueContextAndState, premiumGiftOptions, webAppPermissions, savedMusicState, businessConnectedBot -> Signal<PeerInfoScreenData, NoError> in
++            |> mapToSignal { peerView, availablePanes, globalNotificationSettings, encryptionKeyFingerprint, status, hasStories, hasStoryArchive, recommendedBots, accountIsPremium, savedMessagesPeer, hasSavedMessagesChats, hasSavedMessages, hasSavedMessageTags, hasBotPreviewItems, personalChannel, privacySettings, starsRevenueContextAndState, revenueContextAndState, premiumGiftOptions, webAppPermissions, savedMusicState, businessConnectedBot, pampGramGiftCount -> Signal<PeerInfoScreenData, NoError> in
+                 var availablePanes = availablePanes
+                 if isMyProfile {
+                     availablePanes?.insert(.stories, at: 0)
+                     if availablePanes != nil, profileGiftsContext != nil, let cachedData = peerView.cachedData as? CachedUserData {
+-                        if let starGiftsCount = cachedData.starGiftsCount, starGiftsCount > 0 {
++                        if (cachedData.starGiftsCount ?? 0) > 0 || pampGramGiftCount > 0 {
+                             availablePanes?.insert(.gifts, at: 1)
+                         }
+                     }
+@@ -1560,7 +1567,7 @@ func peerInfoScreenData(
+                     }
+                     
+                     if availablePanes != nil, profileGiftsContext != nil, let cachedData = peerView.cachedData as? CachedUserData, peerView.peerId != context.account.peerId {
+-                        if let starGiftsCount = cachedData.starGiftsCount, starGiftsCount > 0 {
++                        if (cachedData.starGiftsCount ?? 0) > 0 || pampGramGiftCount > 0 {
+                             availablePanes?.insert(.gifts, at: hasStories ? 1 : 0)
+                         }
+                     }
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 index fd01930f..9724ffe7 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift

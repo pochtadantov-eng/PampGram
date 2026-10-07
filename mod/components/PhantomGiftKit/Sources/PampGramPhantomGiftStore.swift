@@ -120,6 +120,16 @@ public enum PampGramPhantomGiftStore {
         |> distinctUntilChanged
     }
 
+    /// How many visual gifts a profile shows. Telegram only offers a profile its "Подарки" tab when
+    /// the account's real gift count is above zero, so a person with no real gifts at all never got
+    /// the tab and a visual gift given to them had nowhere to appear — this count is what that check
+    /// also consults.
+    public static func profileGiftCountSignal(context: AccountContext, peerId: EnginePeer.Id) -> Signal<Int, NoError> {
+        return self.profileGiftsSignal(context: context, peerId: peerId)
+        |> map { $0.count }
+        |> distinctUntilChanged
+    }
+
     /// Same as `profileGiftsSignal`, mapped to the real profile grid's own item type with
     /// `fromPeer` actually resolved — `PampGramPhantomGift` only stores a `fromPeerId`, since
     /// `ProfileGiftsContext.State.StarGift` needs a full `EnginePeer` for the "Подарок от X"

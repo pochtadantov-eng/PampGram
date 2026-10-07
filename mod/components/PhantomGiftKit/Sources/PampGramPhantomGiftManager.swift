@@ -30,7 +30,7 @@ public enum PampGramPhantomGiftManager {
     /// Callers are expected to have already confirmed the fake balance covers `price` —
     /// this always deducts unconditionally, matching how `buyStarGiftImpl` in
     /// `GiftViewBuyGift.swift` checks and alerts *before* ever calling this.
-    public static func buyUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> Signal<BuyResult, NoError> {
+    public static func buyUniqueGift(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift, price: CurrencyAmount, text: String? = nil, entities: [MessageTextEntity]? = nil) -> Signal<BuyResult, NoError> {
         return context.account.postbox.transaction { transaction -> PendingBuy in
             // `uniqueGift` is read straight off a real resale-market listing (that's how it was
             // found to "buy"), so its own `resellAmounts` is still non-empty — left as-is, the
@@ -46,7 +46,9 @@ public enum PampGramPhantomGiftManager {
                 price: price,
                 date: Int32(Date().timeIntervalSince1970),
                 localMessageId: nil,
-                fromPeerId: peerId == context.account.peerId ? nil : context.account.peerId
+                fromPeerId: peerId == context.account.peerId ? nil : context.account.peerId,
+                text: text,
+                entities: entities
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
             let ledgerCurrency: PampGramLocalCurrency = price.currency == .stars ? .stars : .ton
@@ -104,7 +106,9 @@ public enum PampGramPhantomGiftManager {
                 price: CurrencyAmount(amount: StarsAmount(value: starPrice, nanos: 0), currency: .stars),
                 date: Int32(Date().timeIntervalSince1970),
                 localMessageId: nil,
-                fromPeerId: peerId == context.account.peerId ? nil : context.account.peerId
+                fromPeerId: peerId == context.account.peerId ? nil : context.account.peerId,
+                text: text,
+                entities: entities
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
             let newBalance = PampGramLocalLedgerStore.addAndApply(
@@ -129,7 +133,7 @@ public enum PampGramPhantomGiftManager {
                 guard let messageId else {
                     return .complete()
                 }
-                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, fromPeerId: phantomGift.fromPeerId)
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, fromPeerId: phantomGift.fromPeerId, text: phantomGift.text, entities: phantomGift.entities)
                 return context.account.postbox.transaction { transaction in
                     PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
                     PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
@@ -208,7 +212,9 @@ public enum PampGramPhantomGiftManager {
                 date: Int32(Date().timeIntervalSince1970),
                 localMessageId: nil,
                 fromPeerId: peerId,
-                isReceived: true
+                isReceived: true,
+                text: text,
+                entities: entities
             )
             PampGramPhantomGiftStore.add(transaction: transaction, gift: phantomGift)
 
@@ -231,7 +237,7 @@ public enum PampGramPhantomGiftManager {
                 guard let messageId else {
                     return .complete()
                 }
-                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, fromPeerId: phantomGift.fromPeerId, isReceived: true)
+                let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, fromPeerId: phantomGift.fromPeerId, isReceived: true, text: phantomGift.text, entities: phantomGift.entities)
                 return context.account.postbox.transaction { transaction in
                     PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
                     PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
