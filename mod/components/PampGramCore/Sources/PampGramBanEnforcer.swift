@@ -14,8 +14,8 @@ import SwiftSignalKit
 ///
 /// Deliberately a poller, not a push: the ban-status endpoint has no way to notify a specific
 /// device, so this is the same "ask periodically" approach `PampGramSubscriptionAPI.fetchStatus`
-/// callers already use for tier, just kept running instead of one-shot. A 60s interval means a
-/// ban takes effect within a minute of being issued — sections' own `pampGramGateSection` check,
+/// callers already use for tier, just kept running instead of one-shot. A 180s interval means a
+/// ban takes effect within about three minutes of being issued — sections' own `pampGramGateSection` check,
 /// which already runs on every hub/section open, still gives the immediate UI-level lock in the
 /// meantime.
 public final class PampGramBanEnforcer {
@@ -43,7 +43,7 @@ public final class PampGramBanEnforcer {
 
         let queue = Queue()
         PampGramBanEnforcer.pollOnce(userId: userId, postbox: postbox)
-        let timer = SwiftSignalKit.Timer(timeout: 60.0, repeat: true, completion: {
+        let timer = SwiftSignalKit.Timer(timeout: 180.0, repeat: true, completion: {
             PampGramBanEnforcer.pollOnce(userId: userId, postbox: postbox)
         }, queue: queue)
         timer.start()

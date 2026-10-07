@@ -81,11 +81,17 @@ public enum PampGramPhantomGiftStore {
 
     /// Live list of every Phantom Gift on this device, newest first.
     public static func allGiftsSignal(context: AccountContext) -> Signal<[PampGramPhantomGift], NoError> {
-        return context.account.postbox.preferencesView(keys: [PampGramPreferencesKeys.phantomGifts])
-        |> map { view -> [PampGramPhantomGift] in
-            let gifts = view.values[PampGramPreferencesKeys.phantomGifts]?.get(PampGramPhantomGiftList.self)?.gifts ?? []
-            return gifts.sorted(by: { $0.date > $1.date })
-        }
+        // One shared decode of the whole list per change: the profile grid, the pinned gifts
+        // around the avatar, the worn-gift runtime and the settings screens all watch it.
+        let postbox = context.account.postbox
+        return PampGramSharedSignals.shared(postbox: postbox, name: "phantomGifts", make: {
+            return postbox.preferencesView(keys: [PampGramPreferencesKeys.phantomGifts])
+            |> map { view -> [PampGramPhantomGift] in
+                let gifts = view.values[PampGramPreferencesKeys.phantomGifts]?.get(PampGramPhantomGiftList.self)?.gifts ?? []
+                return gifts.sorted(by: { $0.date > $1.date })
+            }
+            |> distinctUntilChanged
+        })
     }
 
     /// Live list of local visual gifts assigned to a profile. The recipient profile is
@@ -109,6 +115,9 @@ public enum PampGramPhantomGiftStore {
                     return lhs.date > rhs.date
                 }
         }
+        // A change to another profile's gifts (or to a gift that isn't on this profile) must not
+        // rebuild this one's grid and pinned-gift animations.
+        |> distinctUntilChanged
     }
 
     /// Same as `profileGiftsSignal`, mapped to the real profile grid's own item type with
@@ -155,6 +164,7 @@ public enum PampGramPhantomGiftStore {
         |> map { gifts in
             gifts.first(where: { $0.peerId == selfPeerId && $0.worn && $0.soldDate == nil })
         }
+        |> distinctUntilChanged
     }
 
 }

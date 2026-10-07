@@ -135,8 +135,9 @@ public enum PampGramLocalLedgerStore {
         transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.localOperations, { entry in
             var list = entry?.get(PampGramLocalOperationList.self) ?? PampGramLocalOperationList(items: [])
             list.items.append(operation)
-            if list.items.count > 5000 {
-                list.items.removeFirst(list.items.count - 5000)
+            // Every write re-encodes the whole list, so keep it bounded.
+            if list.items.count > 2000 {
+                list.items.removeFirst(list.items.count - 2000)
             }
             return PreferencesEntry(list)
         })
@@ -239,11 +240,15 @@ public enum PampGramLocalLedgerStore {
     }
 
     public static func signal(postbox: Postbox) -> Signal<[PampGramLocalOperation], NoError> {
-        return postbox.preferencesView(keys: [PampGramPreferencesKeys.localOperations])
-        |> map { view in
-            let items = view.values[PampGramPreferencesKeys.localOperations]?.get(PampGramLocalOperationList.self)?.items ?? []
-            return items.sorted(by: { $0.date > $1.date })
-        }
+        // Decoded and sorted once per change and shared (see `PampGramSharedSignals`) — the
+        // ledger screens, the fake-transaction merge and the server sync all watch it.
+        return PampGramSharedSignals.shared(postbox: postbox, name: "ledger", make: {
+            return postbox.preferencesView(keys: [PampGramPreferencesKeys.localOperations])
+            |> map { view -> [PampGramLocalOperation] in
+                let items = view.values[PampGramPreferencesKeys.localOperations]?.get(PampGramLocalOperationList.self)?.items ?? []
+                return items.sorted(by: { $0.date > $1.date })
+            }
+        })
     }
 
     /// Adds an operation and applies its amount to the matching local balance in one Postbox

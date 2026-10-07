@@ -35,8 +35,8 @@ public final class PampGramChannelSubscriptionEnforcer {
     private init() {
     }
 
-    /// Starts (once per account) the periodic poll-and-enforce loop — same 60s cadence as
-    /// `PampGramBanEnforcer`, so both kill switches take effect within a minute either way.
+    /// Starts (once per account) the periodic poll-and-enforce loop — same 180s cadence as
+    /// `PampGramBanEnforcer`, so both kill switches take effect within a few minutes either way.
     public func start(accountKey: Int64, account: Account) {
         self.lock.lock()
         if self.startedAccounts.contains(accountKey) {
@@ -48,7 +48,7 @@ public final class PampGramChannelSubscriptionEnforcer {
 
         let queue = Queue()
         PampGramChannelSubscriptionEnforcer.pollOnce(account: account)
-        let timer = SwiftSignalKit.Timer(timeout: 60.0, repeat: true, completion: {
+        let timer = SwiftSignalKit.Timer(timeout: 180.0, repeat: true, completion: {
             PampGramChannelSubscriptionEnforcer.pollOnce(account: account)
         }, queue: queue)
         timer.start()

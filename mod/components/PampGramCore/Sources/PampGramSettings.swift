@@ -786,25 +786,31 @@ public enum PampGramCore {
 
     /// Live raw settings, for the settings screens.
     public static func rawSettingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
-        return postbox.preferencesView(keys: [PampGramPreferencesKeys.settings])
-        |> map { view -> PampGramSettings in
-            return view.values[PampGramPreferencesKeys.settings]?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
-        }
-        |> distinctUntilChanged
+        // One shared, already-decoded copy per account (see `PampGramSharedSignals`): this is read
+        // from chat bubbles, every media fetch/upload and most screens.
+        return PampGramSharedSignals.shared(postbox: postbox, name: "rawSettings", make: {
+            return postbox.preferencesView(keys: [PampGramPreferencesKeys.settings])
+            |> map { view -> PampGramSettings in
+                return view.values[PampGramPreferencesKeys.settings]?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
+            }
+            |> distinctUntilChanged
+        })
     }
 
     /// Live gifts-gated settings, for feature effect/display code. See `settings(transaction:)`
     /// for the `isOwnerAccount`/`bannedLocally`/`channelUnsubscribedLocally` check this applies
     /// first.
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
-        return self.rawSettingsSignal(postbox: postbox)
-        |> map { raw -> PampGramSettings in
-            if (raw.bannedLocally || raw.channelUnsubscribedLocally) && !raw.isOwnerAccount {
-                return raw.allFeaturesOff()
+        return PampGramSharedSignals.shared(postbox: postbox, name: "gatedSettings", make: {
+            return self.rawSettingsSignal(postbox: postbox)
+            |> map { raw -> PampGramSettings in
+                if (raw.bannedLocally || raw.channelUnsubscribedLocally) && !raw.isOwnerAccount {
+                    return raw.allFeaturesOff()
+                }
+                return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
             }
-            return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
-        }
-        |> distinctUntilChanged
+            |> distinctUntilChanged
+        })
     }
 
     public static func updateSettingsInteractively(postbox: Postbox, _ f: @escaping (PampGramSettings) -> PampGramSettings) -> Signal<Never, NoError> {
