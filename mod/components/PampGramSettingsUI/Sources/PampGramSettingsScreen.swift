@@ -22,6 +22,7 @@ private final class PampGramSettingsArguments {
     let editStarsBalance: () -> Void
     let editTonBalance: () -> Void
     let toggleFromHimGifts: (Bool) -> Void
+    let toggleUnupgradedGift: (Bool) -> Void
     let toggleLocalRublesPurchase: (Bool) -> Void
     let topUpLocalRubles: () -> Void
     let resetBalances: () -> Void
@@ -45,6 +46,7 @@ private final class PampGramSettingsArguments {
         editStarsBalance: @escaping () -> Void,
         editTonBalance: @escaping () -> Void,
         toggleFromHimGifts: @escaping (Bool) -> Void,
+        toggleUnupgradedGift: @escaping (Bool) -> Void,
         toggleLocalRublesPurchase: @escaping (Bool) -> Void,
         topUpLocalRubles: @escaping () -> Void,
         resetBalances: @escaping () -> Void,
@@ -67,6 +69,7 @@ private final class PampGramSettingsArguments {
         self.editStarsBalance = editStarsBalance
         self.editTonBalance = editTonBalance
         self.toggleFromHimGifts = toggleFromHimGifts
+        self.toggleUnupgradedGift = toggleUnupgradedGift
         self.toggleLocalRublesPurchase = toggleLocalRublesPurchase
         self.topUpLocalRubles = topUpLocalRubles
         self.resetBalances = resetBalances
@@ -97,6 +100,7 @@ private enum PampGramSettingsSection: Int32 {
     case ledger
     case resetBalances
     case storage
+    case unupgradedGift
 }
 
 private enum PampGramSettingsEntry: ItemListNodeEntry {
@@ -157,6 +161,9 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case deleteAllPhantomGifts(String, Bool)
     case storageFooter(String)
 
+    case unupgradedGiftToggle(String, Bool)
+    case unupgradedGiftFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .visualToggle, .visualFooter:
@@ -188,6 +195,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.resetBalances.rawValue
         case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
             return PampGramSettingsSection.storage.rawValue
+        case .unupgradedGiftToggle, .unupgradedGiftFooter:
+            return PampGramSettingsSection.unupgradedGift.rawValue
         }
     }
 
@@ -237,6 +246,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .phantomGiftsCount: return 36
         case .deleteAllPhantomGifts: return 37
         case .storageFooter: return 38
+        case .unupgradedGiftToggle: return 41
+        case .unupgradedGiftFooter: return 42
         }
     }
 
@@ -259,7 +270,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             })
         case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .profileVisualsHeader(text), let .collectionHeader(text), let .realGiftsHeader(text), let .ledgerHeader(text), let .storageHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .collectionFooter(text), let .realGiftsFooter(text), let .ledgerFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
+        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .collectionFooter(text), let .realGiftsFooter(text), let .ledgerFooter(text), let .resetBalancesFooter(text), let .storageFooter(text), let .unupgradedGiftFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .localRublesPurchaseToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "rublesign.circle.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -288,6 +299,10 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case let .tonBalance(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "diamond.fill", backgroundColor: UIColor(rgb: 0x0098ea)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editTonBalance()
+            })
+        case let .unupgradedGiftToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "gift.circle.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleUnupgradedGift(value)
             })
         case let .fromHimGiftsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrow.down.forward.circle.fill", backgroundColor: UIColor(rgb: 0xff2d55)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -508,6 +523,9 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.deleteAllPhantomGifts("Удалить все фантом-подарки", phantomGiftCount > 0))
     entries.append(.storageFooter("Уберёт записи и их сообщения из истории."))
 
+    entries.append(.unupgradedGiftToggle("Не улучшенный гифт", settings.unupgradedGiftEntryEnabled))
+    entries.append(.unupgradedGiftFooter("Включите, затем в Настройках Telegram зажмите «Вопросы о Telegram»: откроется выбор обычных подарков с картинками. Выберите подарок и нажмите «Добавить в профиль»: он появится в вашем профиле, а в нём будет кнопка «Улучшить бесплатно»."))
+
     return entries
 }
 
@@ -608,6 +626,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                     }
                 ))
             })
+        },
+        toggleUnupgradedGift: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.unupgradedGiftEntryEnabled = value
+                return settings
+            }).start()
         },
         toggleFromHimGifts: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in

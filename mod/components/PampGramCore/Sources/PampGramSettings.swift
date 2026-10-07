@@ -416,6 +416,10 @@ public struct PampGramSettings: Codable, Equatable {
     /// resolves regardless of whether they have a public username (Telegram's own "user" URL
     /// handler looks the id up in the local Postbox, see OpenUrl.swift).
     public var accountLinkEnabled: Bool
+    /// "Не улучшенный гифт" (Подарки): while on, a long-press on "Вопросы о Telegram" in the
+    /// Settings tab opens the picker of plain (not yet upgraded) gifts to add to the own profile
+    /// (`PampGramGiftPickerScreen.swift`). Off by default; the long-press does nothing then.
+    public var unupgradedGiftEntryEnabled: Bool
 
     // A brand-new install (and "Сбросить балансы", which resets to this same constant) starts
     // at 0 — nothing pre-loaded before the person has looked at a single toggle.
@@ -484,11 +488,12 @@ public struct PampGramSettings: Codable, Equatable {
             fakePhoneNumber: "",
             cachedIsProSubscriber: false,
             profileIdsEnabled: false,
-            accountLinkEnabled: false
+            accountLinkEnabled: false,
+            unupgradedGiftEntryEnabled: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -550,6 +555,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.cachedIsProSubscriber = cachedIsProSubscriber
         self.profileIdsEnabled = profileIdsEnabled
         self.accountLinkEnabled = accountLinkEnabled
+        self.unupgradedGiftEntryEnabled = unupgradedGiftEntryEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -651,6 +657,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.cachedIsProSubscriber = try container.decodeIfPresent(Bool.self, forKey: .cachedIsProSubscriber) ?? defaults.cachedIsProSubscriber
         self.profileIdsEnabled = try container.decodeIfPresent(Bool.self, forKey: .profileIdsEnabled) ?? defaults.profileIdsEnabled
         self.accountLinkEnabled = try container.decodeIfPresent(Bool.self, forKey: .accountLinkEnabled) ?? defaults.accountLinkEnabled
+        self.unupgradedGiftEntryEnabled = try container.decodeIfPresent(Bool.self, forKey: .unupgradedGiftEntryEnabled) ?? defaults.unupgradedGiftEntryEnabled
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -664,6 +671,7 @@ public struct PampGramSettings: Codable, Equatable {
         settings.fakeStarsDisplayEnabled = false
         settings.fakeTonDisplayEnabled = false
         settings.localRublesPurchaseEnabled = false
+        settings.unupgradedGiftEntryEnabled = false
         return settings
     }
 
@@ -697,6 +705,7 @@ public struct PampGramSettings: Codable, Equatable {
         settings.chatLockEnabled = false
         settings.infinitePinsEnabled = false
         settings.legalPremiumEnabled = false
+        settings.unupgradedGiftEntryEnabled = false
         settings.showTemporaryMediaEnabled = false
         settings.bypassViewOnceMediaEnabled = false
         settings.bypassTimedMediaEnabled = false

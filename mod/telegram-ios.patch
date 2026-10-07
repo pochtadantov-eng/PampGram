@@ -19585,7 +19585,7 @@ index 09315ffb..a3aed400 100644
          "//submodules/TelegramUI/Components/TextLoadingEffect",
          "//submodules/TelegramUI/Components/TextProcessingScreen",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
-index fd01930f..2f81445f 100644
+index fd01930f..9724ffe7 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 @@ -113,6 +113,7 @@ import PeerMessagesMediaPlaylist
@@ -19596,15 +19596,16 @@ index fd01930f..2f81445f 100644
  
  public enum PeerInfoAvatarEditingMode {
      case generic
-@@ -188,6 +189,7 @@ enum PeerInfoSettingsSection {
+@@ -188,6 +189,8 @@ enum PeerInfoSettingsSection {
      case premiumManagement
      case stars
      case ton
 +    case pampGram
++    case pampGramGiftPicker
  }
  
  enum PeerInfoReportType {
-@@ -284,7 +286,15 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -284,7 +287,15 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
      let sourceMessageId: MessageId?
      var canDeleteReaction = false
      var dataDisposable: Disposable?
@@ -19621,7 +19622,7 @@ index fd01930f..2f81445f 100644
      let activeActionDisposable = MetaDisposable()
      let resolveUrlDisposable = MetaDisposable()
      let toggleShouldChannelMessagesSignaturesDisposable = MetaDisposable()
-@@ -2654,9 +2664,24 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -2654,9 +2665,24 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
                  }
              })
          }
@@ -19647,7 +19648,7 @@ index fd01930f..2f81445f 100644
          self.dataDisposable?.dispose()
          self.hiddenMediaDisposable?.dispose()
          self.activeActionDisposable.dispose()
-@@ -5479,7 +5504,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -5479,7 +5505,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
              insets.left += sectionInset
              insets.right += sectionInset
              
@@ -19656,7 +19657,7 @@ index fd01930f..2f81445f 100644
              
              contentHeight += headerHeight
              if !((self.isSettings || self.isMyProfile) && self.state.isEditing) {
-@@ -5554,7 +5579,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -5554,7 +5580,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
              }
              
              var validEditingSections: [AnyHashable] = []
@@ -19791,7 +19792,7 @@ index 80b7f204..66d3fdcb 100644
              if let birthday = cachedData.birthday {
                  let isBirthdayToday = hasBirthdayToday(birthday: birthday)
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
-index 806e652a..a073b01a 100644
+index 806e652a..b9acfaed 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 @@ -15,6 +15,7 @@ import TelegramPresentationData
@@ -19802,17 +19803,21 @@ index 806e652a..a073b01a 100644
  
  extension PeerInfoScreenNode {
      func openSettings(section: PeerInfoSettingsSection) {
-@@ -271,6 +272,8 @@ extension PeerInfoScreenNode {
+@@ -271,6 +272,12 @@ extension PeerInfoScreenNode {
              self.interaction.editingOpenNameColorSetup()
          case .powerSaving:
              push(energySavingSettingsScreen(context: self.context))
 +        case .pampGram:
 +            pampGramPresentHub(context: self.context, push: push)
++        case .pampGramGiftPicker:
++            if self.pampGramSettings.unupgradedGiftEntryEnabled {
++                push(pampGramGiftPickerController(context: self.context))
++            }
          case .businessSetup:
              guard let controller = self.controller, !controller.presentAccountFrozenInfoIfNeeded() else {
                  return
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
-index c5f58f4b..214800b2 100644
+index c5f58f4b..a9d29237 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 @@ -12,12 +12,17 @@ import ItemListPeerItem
@@ -19914,7 +19919,7 @@ index c5f58f4b..214800b2 100644
              items[.payment]!.append(PeerInfoScreenDisclosureItem(id: 103, label: .attributedText(balanceText), text: presentationData.strings.Settings_MyTon, icon: PresentationResourcesSettings.ton, action: {
                  interaction.openSettings(.ton)
              }))
-@@ -316,8 +347,13 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
+@@ -316,11 +347,21 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
          }
      }
      
@@ -19926,9 +19931,17 @@ index c5f58f4b..214800b2 100644
 +    }, longTapAction: {
 +        interaction.openSettings(.pampGram)
      }))
++    // PampGram: a long-press on "Вопросы о Telegram" opens the plain-gift picker. Always wired,
++    // like the "Помощь" one above — the handler itself checks that "Не улучшенный гифт" is on,
++    // so it can never act on a stale copy of the setting.
      items[.support]!.append(PeerInfoScreenDisclosureItem(id: 1, text: presentationData.strings.Settings_FAQ, icon: PresentationResourcesSettings.faq, action: {
          interaction.openSettings(.faq)
-@@ -335,7 +371,7 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
++    }, longTapAction: {
++        interaction.openSettings(.pampGramGiftPicker)
+     }))
+     items[.support]!.append(PeerInfoScreenDisclosureItem(id: 2, text: presentationData.strings.Settings_Tips, icon: PresentationResourcesSettings.tips, action: {
+         interaction.openSettings(.tips)
+@@ -335,7 +376,7 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
      return result
  }
  
@@ -19937,7 +19950,7 @@ index c5f58f4b..214800b2 100644
      guard let data = data else {
          return []
      }
-@@ -444,9 +480,22 @@ func settingsEditingItems(data: PeerInfoScreenData?, state: PeerInfoState, conte
+@@ -444,9 +485,22 @@ func settingsEditingItems(data: PeerInfoScreenData?, state: PeerInfoState, conte
      }
      
      if case let .user(user) = data.peer {
