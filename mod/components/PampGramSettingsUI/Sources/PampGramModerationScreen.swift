@@ -20,14 +20,16 @@ private final class PampGramModerationArguments {
     let toggleBlock: (Bool) -> Void
     let toggleStrangersOnly: (Bool) -> Void
     let clearLog: () -> Void
+    let openExclusions: () -> Void
 
-    init(toggleEnabled: @escaping (Bool) -> Void, editKey: @escaping () -> Void, testKey: @escaping () -> Void, toggleBlock: @escaping (Bool) -> Void, toggleStrangersOnly: @escaping (Bool) -> Void, clearLog: @escaping () -> Void) {
+    init(toggleEnabled: @escaping (Bool) -> Void, editKey: @escaping () -> Void, testKey: @escaping () -> Void, toggleBlock: @escaping (Bool) -> Void, toggleStrangersOnly: @escaping (Bool) -> Void, clearLog: @escaping () -> Void, openExclusions: @escaping () -> Void) {
         self.toggleEnabled = toggleEnabled
         self.editKey = editKey
         self.testKey = testKey
         self.toggleBlock = toggleBlock
         self.toggleStrangersOnly = toggleStrangersOnly
         self.clearLog = clearLog
+        self.openExclusions = openExclusions
     }
 }
 
@@ -45,6 +47,7 @@ private enum PampGramModerationEntry: ItemListNodeEntry {
     case testKey
     case blockSender(Bool)
     case strangersOnly(Bool)
+    case exclusions(String)
     case optionsFooter(String)
     case logHeader(String)
     case logEmpty(String)
@@ -57,7 +60,7 @@ private enum PampGramModerationEntry: ItemListNodeEntry {
             return PampGramModerationSection.about.rawValue
         case .enabled, .key, .testKey:
             return PampGramModerationSection.main.rawValue
-        case .blockSender, .strangersOnly, .optionsFooter:
+        case .blockSender, .strangersOnly, .exclusions, .optionsFooter:
             return PampGramModerationSection.options.rawValue
         case .logHeader, .logEmpty, .logItem, .clearLog:
             return PampGramModerationSection.log.rawValue
@@ -72,9 +75,10 @@ private enum PampGramModerationEntry: ItemListNodeEntry {
         case .testKey: return 3
         case .blockSender: return 4
         case .strangersOnly: return 5
-        case .optionsFooter: return 6
-        case .logHeader: return 7
-        case .logEmpty: return 8
+        case .exclusions: return 6
+        case .optionsFooter: return 7
+        case .logHeader: return 8
+        case .logEmpty: return 9
         case let .logItem(index, _): return 10 + index
         case .clearLog: return 1000
         }
@@ -109,6 +113,10 @@ private enum PampGramModerationEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "person.crop.circle.badge.questionmark", backgroundColor: UIColor(rgb: 0x5856d6)), title: "Не проверять контакты", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleStrangersOnly(value)
             })
+        case let .exclusions(label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "minus.circle.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: "Исключения", label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openExclusions()
+            })
         case let .logHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case .clearLog:
@@ -141,7 +149,8 @@ private func pampGramModerationEntries(settings: PampGramSettings, log: [PampGra
     }
     entries.append(.blockSender(settings.moderationBlockSender))
     entries.append(.strangersOnly(settings.moderationStrangersOnly))
-    entries.append(.optionsFooter("Если блокировка выключена, сообщение только удаляется. Заблокированного можно вернуть в Настройки → Конфиденциальность → Заблокированные."))
+    entries.append(.exclusions("\(settings.moderationExcludedPeerIds.count)"))
+    entries.append(.optionsFooter("«Исключения» — чаты и люди, которые вообще не проверяются. Если блокировка выключена, сообщение только удаляется. Заблокированного можно вернуть в Настройки → Конфиденциальность → Заблокированные."))
     entries.append(.logHeader("ЖУРНАЛ СРАБАТЫВАНИЙ"))
     if log.isEmpty {
         entries.append(.logEmpty("Пока ничего не удалялось."))
@@ -159,6 +168,7 @@ private func pampGramModerationEntries(settings: PampGramSettings, log: [PampGra
 }
 
 public func pampGramModerationController(context: AccountContext) -> ViewController {
+    var pushControllerImpl: ((ViewController) -> Void)?
     var presentControllerImpl: ((ViewController) -> Void)?
     var presentTooltipImpl: ((String) -> Void)?
 
@@ -243,6 +253,9 @@ public func pampGramModerationController(context: AccountContext) -> ViewControl
             let _ = context.account.postbox.transaction { transaction -> Void in
                 PampGramModerationLogStore.clear(transaction: transaction)
             }.start()
+        },
+        openExclusions: {
+            pushControllerImpl?(pampGramModerationExclusionsController(context: context))
         }
     )
 
@@ -271,6 +284,9 @@ public func pampGramModerationController(context: AccountContext) -> ViewControl
     }
 
     let controller = ItemListController(context: context, state: signal)
+    pushControllerImpl = { [weak controller] c in
+        controller?.push(c)
+    }
     presentControllerImpl = { [weak controller] c in
         controller?.present(c, in: .window(.root))
     }

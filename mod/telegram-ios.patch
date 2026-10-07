@@ -17315,10 +17315,10 @@ index 00000000..106ebf87
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift b/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift
 new file mode 100644
-index 00000000..1256a22f
+index 00000000..dfde7d36
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,78 @@
 +import Foundation
 +import Postbox
 +import PampGramCore
@@ -17366,6 +17366,9 @@ index 00000000..1256a22f
 +        var candidates: [MessageId] = []
 +        for id in messageIds {
 +            // Secret chats and Telegram's own service account are never checked.
++            if settings.moderationExcludedPeerIds.contains(id.peerId) {
++                continue
++            }
 +            if id.peerId.namespace == Namespaces.Peer.SecretChat || id.peerId.id._internalGetInt64Value() == 777000 {
 +                continue
 +            }
