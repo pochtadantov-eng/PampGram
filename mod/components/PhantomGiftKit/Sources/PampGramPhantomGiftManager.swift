@@ -249,6 +249,16 @@ public enum PampGramPhantomGiftManager {
     /// `receiveUniqueGift`/`receiveFakePremiumGift` for real — this function only ever writes
     /// the pending record.
     public static func scheduleReceiveGift(context: AccountContext, peerId: EnginePeer.Id, payload: PampGramScheduledGiftPayload, text: String?, delaySeconds: Int32) -> Signal<Never, NoError> {
+        // The periodic check only runs every 30s; for delays picked to the second a one-shot check
+        // at the exact moment makes the gift arrive on time while the app is open.
+        if delaySeconds <= 6 * 60 * 60 {
+            Queue.mainQueue().after(Double(delaySeconds) + 0.5, { [weak context] in
+                guard let context else {
+                    return
+                }
+                PampGramPhantomGiftManager.materializeDueScheduledGifts(context: context)
+            })
+        }
         return context.account.postbox.transaction { transaction -> Void in
             let scheduled = PampGramScheduledGift(
                 id: Int64.random(in: 1...Int64.max),

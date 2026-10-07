@@ -14,6 +14,9 @@ swift_library(
         "//submodules/SSignalKit/SwiftSignalKit",
         "//submodules/TelegramCore",
         "//submodules/AccountContext",
+        "//submodules/Display",
+        "//submodules/AsyncDisplayKit",
+        "//submodules/TelegramPresentationData",
         "//submodules/TelegramUI/Components/PampGram/PampGramCore",
     ],
     visibility = [

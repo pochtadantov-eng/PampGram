@@ -18626,7 +18626,7 @@ index 7e874b3f..28817174 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
-index 0db09aed..1fbdfac5 100644
+index 0db09aed..d95dffa8 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 @@ -39,6 +39,8 @@ import GlassBarButtonComponent
@@ -18665,7 +18665,7 @@ index 0db09aed..1fbdfac5 100644
          self.completion = completion
      }
      
-@@ -367,27 +375,133 @@ private final class GiftSetupScreenComponent: Component {
+@@ -367,27 +375,119 @@ private final class GiftSetupScreenComponent: Component {
          }
          
          private func proceedWithPremiumGift() {
@@ -18739,20 +18739,16 @@ index 0db09aed..1fbdfac5 100644
 +                    return
 +                }
 +
-+                let sheet = ActionSheetController(presentationData: presentationData)
-+                var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: "Когда доставить подарок?")]
-+                for delay in PampGramGiftDelay.allCases {
-+                    buttons.append(ActionSheetButtonItem(title: delay.title, color: .accent, action: { [weak self, weak sheet] in
-+                        sheet?.dismissAnimated()
++                pampGramPresentGiftDelaySheet(presentationData: presentationData, present: { controller.present($0, in: .window(.root)) }, completion: { [weak self] seconds in
 +                        guard let self else {
 +                            return
 +                        }
-+                        if let seconds = delay.seconds {
++                        if let seconds {
 +                            let _ = PampGramPhantomGiftManager.scheduleReceiveGift(context: component.context, peerId: component.peerId, payload: .premium(months: months, currency: currency, amount: amount), text: text, delaySeconds: seconds).start()
 +                            var controllers = navigationController.viewControllers
 +                            controllers = controllers.filter { !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) }
 +                            navigationController.setViewControllers(controllers, animated: true)
-+                            let toastController = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок придёт \(delay.title.lowercased())", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false })
++                            let toastController = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок придёт \(pampGramGiftDelayDescription(seconds: seconds))", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false })
 +                            (navigationController.viewControllers.last as? ViewController)?.present(toastController, in: .current)
 +                        } else {
 +                            self.inProgress = true
@@ -18774,17 +18770,7 @@ index 0db09aed..1fbdfac5 100644
 +                                }
 +                            })
 +                        }
-+                    }))
-+                }
-+                sheet.setItemGroups([
-+                    ActionSheetItemGroup(items: buttons),
-+                    ActionSheetItemGroup(items: [
-+                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-+                            sheet?.dismissAnimated()
-+                        })
-+                    ])
-+                ])
-+                controller.present(sheet, in: .window(.root))
++                })
 +                return
 +            }
 +
@@ -18809,7 +18795,7 @@ index 0db09aed..1fbdfac5 100644
              let _ = (component.context.engine.payments.canPurchasePremium(purpose: purpose)
              |> deliverOnMainQueue).start(next: { [weak self] available in
                  guard let self else {
-@@ -497,6 +611,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -497,6 +597,7 @@ private final class GiftSetupScreenComponent: Component {
              var finalPrice: Int64
              var perUserLimit: Int32?
              var giftFile: TelegramMediaFile?
@@ -18817,7 +18803,7 @@ index 0db09aed..1fbdfac5 100644
              let source: BotPaymentInvoiceSource
              switch component.subject {
              case let .premium(product):
-@@ -513,36 +628,94 @@ private final class GiftSetupScreenComponent: Component {
+@@ -513,36 +614,94 @@ private final class GiftSetupScreenComponent: Component {
                  }
                  perUserLimit = starGift.perUserLimit?.total
                  giftFile = starGift.file
@@ -18931,7 +18917,7 @@ index 0db09aed..1fbdfac5 100644
                      guard let self, let controller = self.environment?.controller(), let navigationController = controller.navigationController as? NavigationController else {
                          return
                      }
-@@ -585,7 +758,17 @@ private final class GiftSetupScreenComponent: Component {
+@@ -585,7 +744,17 @@ private final class GiftSetupScreenComponent: Component {
                              controllers.append(chatController)
                          }
                          navigationController.setViewControllers(controllers, animated: true)
@@ -18950,7 +18936,7 @@ index 0db09aed..1fbdfac5 100644
                          if case let .starGift(starGift, _) = component.subject, let perUserLimit = starGift.perUserLimit {
                              Queue.mainQueue().after(0.5) {
                                  let remains = max(0, perUserLimit.remains - 1)
-@@ -663,7 +846,105 @@ private final class GiftSetupScreenComponent: Component {
+@@ -663,7 +832,91 @@ private final class GiftSetupScreenComponent: Component {
                  })
              }
              
@@ -19012,12 +18998,8 @@ index 0db09aed..1fbdfac5 100644
 +                guard let controller = environment.controller() else {
 +                    return
 +                }
-+                let sheet = ActionSheetController(presentationData: presentationData)
-+                var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: "Когда доставить подарок?")]
-+                for delay in PampGramGiftDelay.allCases {
-+                    buttons.append(ActionSheetButtonItem(title: delay.title, color: .accent, action: { [weak self, weak sheet] in
-+                        sheet?.dismissAnimated()
-+                        guard let seconds = delay.seconds else {
++                pampGramPresentGiftDelaySheet(presentationData: presentationData, present: { controller.present($0, in: .window(.root)) }, completion: { [weak self] seconds in
++                        guard let seconds else {
 +                            proceed()
 +                            return
 +                        }
@@ -19040,24 +19022,14 @@ index 0db09aed..1fbdfac5 100644
 +                        controllers = controllers.filter { !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) }
 +                        navigationController.setViewControllers(controllers, animated: true)
 +
-+                        let toastController = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок придёт \(delay.title.lowercased())", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false })
++                        let toastController = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок придёт \(pampGramGiftDelayDescription(seconds: seconds))", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false })
 +                        (navigationController.viewControllers.last as? ViewController)?.present(toastController, in: .current)
-+                    }))
-+                }
-+                sheet.setItemGroups([
-+                    ActionSheetItemGroup(items: buttons),
-+                    ActionSheetItemGroup(items: [
-+                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-+                            sheet?.dismissAnimated()
-+                        })
-+                    ])
-+                ])
-+                controller.present(sheet, in: .window(.root))
++                })
 +            } else if starsState.balance < StarsAmount(value: finalPrice, nanos: 0) {
                  let _ = (self.optionsPromise.get()
                  |> filter { $0 != nil }
                  |> take(1)
-@@ -684,7 +965,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -684,7 +937,7 @@ private final class GiftSetupScreenComponent: Component {
                              }
                              self.inProgress = true
                              self.state?.updated()
@@ -19066,7 +19038,7 @@ index 0db09aed..1fbdfac5 100644
                              starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
                              let _ = (starsContext.onUpdate
                              |> deliverOnMainQueue).start(next: {
-@@ -1481,7 +1762,8 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1481,7 +1734,8 @@ private final class GiftSetupScreenComponent: Component {
                                          let storeController = component.context.sharedContext.makeGiftStoreController(
                                              context: component.context,
                                              peerId: component.peerId,
@@ -19076,7 +19048,7 @@ index 0db09aed..1fbdfac5 100644
                                          )
                                          controller.push(storeController)
                                      }
-@@ -2111,15 +2393,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
+@@ -2111,15 +2365,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
          peerId: EnginePeer.Id,
          subject: Subject,
          auctionAcquiredGifts: Signal<[GiftAuctionAcquiredGift], NoError>? = nil,
@@ -19095,7 +19067,7 @@ index 0db09aed..1fbdfac5 100644
              completion: completion
          ), navigationBarAppearance: .none, theme: .default)
          
-@@ -2256,3 +2540,30 @@ func hasFirstResponder(_ view: UIView) -> Bool {
+@@ -2256,3 +2512,30 @@ func hasFirstResponder(_ view: UIView) -> Bool {
      }
      return false
  }
@@ -19195,7 +19167,7 @@ index 9da9a673..ca6adc9a 100644
              controller.push(storeController)
          }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
-index 6f6c1f3c..22241ac0 100644
+index 6f6c1f3c..033b80a3 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 @@ -7,6 +7,10 @@ import AccountContext
@@ -19330,7 +19302,7 @@ index 6f6c1f3c..22241ac0 100644
                  guard let controller = getController() else {
                      return
                  }
-@@ -139,8 +182,109 @@ public func buyStarGiftImpl(
+@@ -139,8 +182,95 @@ public func buyStarGiftImpl(
                  }
              })
          }
@@ -19411,12 +19383,8 @@ index 6f6c1f3c..22241ac0 100644
 +                beforeCompletion()
 +                return
 +            }
-+            let sheet = ActionSheetController(presentationData: presentationData)
-+            var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: "Когда доставить подарок?")]
-+            for delay in PampGramGiftDelay.allCases {
-+                buttons.append(ActionSheetButtonItem(title: delay.title, color: .accent, action: { [weak sheet] in
-+                    sheet?.dismissAnimated()
-+                    guard let seconds = delay.seconds else {
++            pampGramPresentGiftDelaySheet(presentationData: presentationData, present: { controller.present($0, in: .window(.root)) }, completion: { seconds in
++                    guard let seconds else {
 +                        proceed()
 +                        return
 +                    }
@@ -19424,25 +19392,15 @@ index 6f6c1f3c..22241ac0 100644
 +                    beforeCompletion()
 +                    completion()
 +                    if let toastController = getController() {
-+                        let toast = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок придёт \(delay.title.lowercased())", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false })
++                        let toast = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок придёт \(pampGramGiftDelayDescription(seconds: seconds))", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false })
 +                        toastController.present(toast, in: .current)
 +                    }
-+                }))
-+            }
-+            sheet.setItemGroups([
-+                ActionSheetItemGroup(items: buttons),
-+                ActionSheetItemGroup(items: [
-+                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-+                        sheet?.dismissAnimated()
-+                    })
-+                ])
-+            ])
-+            controller.present(sheet, in: .window(.root))
++            })
 +        } else if resellAmount.currency == .stars, let starsContext = context.starsContext, let starsState = context.starsContext?.currentState, starsState.balance < resellAmount.amount {
              let _ = (starsTopUpOptions
               |> filter { $0 != nil }
               |> take(1)
-@@ -251,4 +395,5 @@ public func buyStarGiftImpl(
+@@ -251,4 +381,5 @@ public func buyStarGiftImpl(
              updateIsBalanceVisible(false)
          })
      }
