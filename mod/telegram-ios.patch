@@ -17313,6 +17313,87 @@ index 00000000..106ebf87
 +        }
 +    }
 +}
+diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift b/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift
+new file mode 100644
+index 00000000..ce1cf37c
+--- /dev/null
++++ b/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift
+@@ -0,0 +1,75 @@
++import Foundation
++import Postbox
++import PampGramCore
++
++/// The single place TelegramCore tells the mod "these new incoming messages just arrived" for
++/// auto-moderation (`PampGramModerationRuntime` in PhantomGiftKit does the actual checking).
++///
++/// Lives here rather than in the mod module for the same reason `PampGramSecretMediaPrefetch` does:
++/// it sits inside `TelegramCore`'s state replay, which `PampGramCore` / `PhantomGiftKit` cannot be
++/// imported into without a dependency cycle. It only filters down to messages worth looking at
++/// (incoming, carrying a picture or sticker, not from a skipped sender) and hands the ids to
++/// whatever handler the mod registered — the checking itself, the network and the delete/block
++/// actions all happen on the mod's side.
++public final class PampGramModerationHook {
++    public static let shared = PampGramModerationHook()
++
++    private let lock = NSLock()
++    private var handlers: [Int64: ([MessageId]) -> Void] = [:]
++
++    private init() {
++    }
++
++    public func setHandler(accountPeerId: PeerId, _ handler: (([MessageId]) -> Void)?) {
++        self.lock.lock()
++        self.handlers[accountPeerId.toInt64()] = handler
++        self.lock.unlock()
++    }
++
++    /// Called from `replayFinalState` with the freshly stored incoming message ids.
++    func notify(transaction: Transaction, accountPeerId: PeerId, messageIds: [MessageId]) {
++        guard !messageIds.isEmpty else {
++            return
++        }
++        let settings = PampGramCore.settings(transaction: transaction)
++        guard settings.moderationEnabled, !settings.moderationApiKey.isEmpty else {
++            return
++        }
++        self.lock.lock()
++        let handler = self.handlers[accountPeerId.toInt64()]
++        self.lock.unlock()
++        guard let handler else {
++            return
++        }
++
++        var candidates: [MessageId] = []
++        for id in messageIds {
++            // Secret chats and Telegram's own service account are never checked.
++            if id.peerId.namespace == Namespaces.Peer.SecretChat || id.peerId.id._internalGetInt64Value() == 777000 {
++                continue
++            }
++            guard let message = transaction.getMessage(id), message.flags.contains(.Incoming), message.authorId != accountPeerId else {
++                continue
++            }
++            if settings.moderationStrangersOnly, id.peerId.namespace == Namespaces.Peer.CloudUser, transaction.isPeerContact(peerId: id.peerId) {
++                continue
++            }
++            var hasPicture = false
++            for media in message.media {
++                if media is TelegramMediaImage {
++                    hasPicture = true
++                } else if let file = media as? TelegramMediaFile {
++                    if file.isSticker || file.isVideo || file.isAnimated || file.mimeType.hasPrefix("image/") {
++                        hasPicture = true
++                    }
++                }
++            }
++            if hasPicture {
++                candidates.append(id)
++            }
++        }
++        if !candidates.isEmpty {
++            handler(candidates)
++        }
++    }
++}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift b/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift
 new file mode 100644
 index 0000000..185deb1
@@ -17400,10 +17481,10 @@ index 6cf628f0..e27ba816 100644
       * If it is a support account, mark messages as read here as they are
       * not marked as read when chat is opened.
 diff --git a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
-index 58db6c7..902b45b 100644
+index 58db6c71..4ed8adce 100644
 --- a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
 +++ b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
-@@ -4126,6 +4126,14 @@ func replayFinalState(
+@@ -4126,6 +4126,17 @@ func replayFinalState(
          }
      }
      
@@ -17414,11 +17495,14 @@ index 58db6c7..902b45b 100644
 +    // resolved and confirmed stored" — the same list stock Telegram uses for notifications —
 +    // so this is the earliest safe point to kick off a silent background fetch.
 +    PampGramSecretMediaPrefetch.prefetchIfNeeded(transaction: transaction, mediaBox: mediaBox, messageIds: addedIncomingMessageIds)
++    // PampGram: "Автомодерация" — hands the new incoming pictures/stickers to the mod's checker (a no-op
++    // unless the user switched it on and gave an API key; see PampGramModerationHook).
++    PampGramModerationHook.shared.notify(transaction: transaction, accountPeerId: accountPeerId, messageIds: addedIncomingMessageIds)
 +    
      var invalidateGroupStats = Set<PeerGroupId>()
      
      struct PeerIdAndMessageNamespace: Hashable {
-@@ -4440,6 +4448,11 @@ func replayFinalState(
+@@ -4440,6 +4451,11 @@ func replayFinalState(
                      }
                  }
              case let .DeleteMessagesWithGlobalIds(ids):
@@ -17430,7 +17514,7 @@ index 58db6c7..902b45b 100644
                  var resourceIds: [MediaResourceId] = []
                  transaction.deleteMessagesWithGlobalIds(ids, forEachMedia: { media in
                      addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
-@@ -4449,6 +4462,9 @@ func replayFinalState(
+@@ -4449,6 +4465,9 @@ func replayFinalState(
                  }
                  deletedMessageIds.append(contentsOf: ids.map { .global($0) })
              case let .DeleteMessages(ids):
@@ -17440,7 +17524,7 @@ index 58db6c7..902b45b 100644
                  _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: ids, manualAddMessageThreadStatsDifference: { id, add, remove in
                      addMessageThreadStatsDifference(threadKey: id, remove: remove, addedMessagePeer: nil, addedMessageId: nil, isOutgoing: false)
                  })
-@@ -4457,6 +4473,20 @@ func replayFinalState(
+@@ -4457,6 +4476,20 @@ func replayFinalState(
                  if let message = transaction.getMessage(id) {
                      updatePeerChatInclusionWithMinTimestamp(transaction: transaction, id: id.peerId, minTimestamp: message.timestamp, forceRootGroupIfNotExists: false)
                  }
@@ -22290,7 +22374,7 @@ index c4f5d3e0..783c3cc6 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd3..b33c3359 100644
+index 4d971fd3..58a570dd 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -22311,7 +22395,7 @@ index 4d971fd3..b33c3359 100644
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -502,8 +504,37 @@ public final class AccountContextImpl: AccountContext {
+@@ -502,8 +504,38 @@ public final class AccountContextImpl: AccountContext {
              }
              (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = settings.compressedEmojiCache
          })
@@ -22324,6 +22408,7 @@ index 4d971fd3..b33c3359 100644
 +            PampGramScheduledGiftRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
 +            PampGramWornGiftRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
 +            PampGramLocalPremiumRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
++            PampGramModerationRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)

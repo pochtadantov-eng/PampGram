@@ -420,6 +420,16 @@ public struct PampGramSettings: Codable, Equatable {
     /// Settings tab opens the picker of plain (not yet upgraded) gifts to add to the own profile
     /// (`PampGramGiftPickerScreen.swift`). Off by default; the long-press does nothing then.
     public var unupgradedGiftEntryEnabled: Bool
+    /// "Автомодерация" (Дополнительно): while on, every new incoming picture/sticker is checked by a
+    /// vision model (Anthropic API, the user's own key in `moderationApiKey`); explicit (18+) or
+    /// graphic-violence content is deleted from this device and, with `moderationBlockSender`, its
+    /// sender is blocked. Nothing is ever sent unless this is on AND a key is set.
+    public var moderationEnabled: Bool
+    public var moderationApiKey: String
+    /// Block the sender (in addition to deleting the message). On by default.
+    public var moderationBlockSender: Bool
+    /// Skip people in the user's contacts: only strangers and group/channel posts are checked.
+    public var moderationStrangersOnly: Bool
 
     // A brand-new install (and "Сбросить балансы", which resets to this same constant) starts
     // at 0 — nothing pre-loaded before the person has looked at a single toggle.
@@ -489,11 +499,15 @@ public struct PampGramSettings: Codable, Equatable {
             cachedIsProSubscriber: false,
             profileIdsEnabled: false,
             accountLinkEnabled: false,
-            unupgradedGiftEntryEnabled: false
+            unupgradedGiftEntryEnabled: false,
+            moderationEnabled: false,
+            moderationApiKey: "",
+            moderationBlockSender: true,
+            moderationStrangersOnly: false
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -556,6 +570,10 @@ public struct PampGramSettings: Codable, Equatable {
         self.profileIdsEnabled = profileIdsEnabled
         self.accountLinkEnabled = accountLinkEnabled
         self.unupgradedGiftEntryEnabled = unupgradedGiftEntryEnabled
+        self.moderationEnabled = moderationEnabled
+        self.moderationApiKey = moderationApiKey
+        self.moderationBlockSender = moderationBlockSender
+        self.moderationStrangersOnly = moderationStrangersOnly
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -658,6 +676,10 @@ public struct PampGramSettings: Codable, Equatable {
         self.profileIdsEnabled = try container.decodeIfPresent(Bool.self, forKey: .profileIdsEnabled) ?? defaults.profileIdsEnabled
         self.accountLinkEnabled = try container.decodeIfPresent(Bool.self, forKey: .accountLinkEnabled) ?? defaults.accountLinkEnabled
         self.unupgradedGiftEntryEnabled = try container.decodeIfPresent(Bool.self, forKey: .unupgradedGiftEntryEnabled) ?? defaults.unupgradedGiftEntryEnabled
+        self.moderationEnabled = try container.decodeIfPresent(Bool.self, forKey: .moderationEnabled) ?? defaults.moderationEnabled
+        self.moderationApiKey = try container.decodeIfPresent(String.self, forKey: .moderationApiKey) ?? defaults.moderationApiKey
+        self.moderationBlockSender = try container.decodeIfPresent(Bool.self, forKey: .moderationBlockSender) ?? defaults.moderationBlockSender
+        self.moderationStrangersOnly = try container.decodeIfPresent(Bool.self, forKey: .moderationStrangersOnly) ?? defaults.moderationStrangersOnly
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -706,6 +728,7 @@ public struct PampGramSettings: Codable, Equatable {
         settings.infinitePinsEnabled = false
         settings.legalPremiumEnabled = false
         settings.unupgradedGiftEntryEnabled = false
+        settings.moderationEnabled = false
         settings.showTemporaryMediaEnabled = false
         settings.bypassViewOnceMediaEnabled = false
         settings.bypassTimedMediaEnabled = false
@@ -761,6 +784,7 @@ public enum PampGramPreferencesKeys {
     public static let scheduledGifts = key(900_900)
     public static let wornGiftStatus = key(901_000)
     public static let localPremiumPeers = key(901_100)
+    public static let moderationLog = key(901_200)
 }
 
 public enum PampGramCore {

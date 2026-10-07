@@ -23,13 +23,14 @@ private enum PampGramHubEntry: ItemListNodeEntry {
     case appearance
     case advanced
     case admin
+    case moderation
     case team
 
     var section: ItemListSectionId {
         switch self {
         case .hero:
             return PampGramHubSection.hero.rawValue
-        case .gifts, .messages, .privacy, .appearance, .advanced, .admin:
+        case .gifts, .messages, .privacy, .appearance, .advanced, .admin, .moderation:
             return PampGramHubSection.sections.rawValue
         case .team:
             return PampGramHubSection.team.rawValue
@@ -52,6 +53,8 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return 6
         case .admin:
             return 7
+        case .moderation:
+            return 8
         case .team:
             return 9
         }
@@ -171,6 +174,21 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                     arguments.openAdmin()
                 }
             )
+        case .moderation:
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "shield.lefthalf.filled", backgroundColor: UIColor(rgb: 0x34c759)),
+                title: "Автомодерация",
+                titleFont: .bold,
+                label: "",
+                additionalDetailLabel: "ИИ удаляет 18+ и жестокость",
+                sectionId: self.section,
+                style: .blocks,
+                action: {
+                    arguments.openModeration()
+                }
+            )
         case .team:
             return ItemListDisclosureItem(
                 presentationData: presentationData,
@@ -197,17 +215,19 @@ private final class PampGramHubArguments {
     let openAppearance: () -> Void
     let openAdditional: () -> Void
     let openAdmin: () -> Void
+    let openModeration: () -> Void
     let openAbout: () -> Void
     let openSupport: () -> Void
     let openPremium: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void, openPremium: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openModeration: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void, openPremium: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
         self.openAppearance = openAppearance
         self.openAdditional = openAdditional
         self.openAdmin = openAdmin
+        self.openModeration = openModeration
         self.openAbout = openAbout
         self.openSupport = openSupport
         self.openPremium = openPremium
@@ -237,6 +257,7 @@ private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [P
     if isAdmin {
         entries.append(.admin)
     }
+    entries.append(.moderation)
     entries.append(.team)
     return entries
 }
@@ -279,6 +300,9 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         },
         openAdmin: {
             pushControllerImpl?(pampGramAdminController(context: context))
+        },
+        openModeration: {
+            pushControllerImpl?(pampGramModerationController(context: context))
         },
         openAbout: {
             pushControllerImpl?(pampGramSubscriptionController(context: context))
