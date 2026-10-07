@@ -19288,7 +19288,7 @@ index 6f6c1f3c..22241ac0 100644
 +    })
  }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
-index 1a5228a9..a49cc24b 100644
+index 1a5228a9..53795618 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 @@ -5,6 +5,8 @@ import AsyncDisplayKit
@@ -19450,7 +19450,39 @@ index 1a5228a9..a49cc24b 100644
                  getController: self.getController,
                  updateProgress: { [weak self] progress in
                      guard let self else {
-@@ -2006,6 +2068,98 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -1881,7 +1943,30 @@ private final class GiftViewSheetContent: CombinedComponent {
+                     }
+                     
+                     if let navigationController = controller.navigationController as? NavigationController {
+-                        if recipientPeerId == context.account.peerId {
++                        if recipientPeerId == context.account.peerId && controller.pampGramGiftFlow == .sendFake {
++                            // PampGram: a visual gift to yourself reads like a self gift: you land in
++                            // "Избранное", where the gift card ("Вы купили подарок") plays its animation
++                            // and the confetti follows.
++                            var controllers = Array(navigationController.viewControllers.prefix(1))
++                            let chatController = context.sharedContext.makeChatController(context: context, chatLocation: .peer(id: recipientPeerId), subject: nil, botStart: nil, mode: .standard(.default), params: nil)
++                            chatController.hintPlayNextOutgoingGift()
++                            controllers.append(chatController)
++                            navigationController.setViewControllers(controllers, animated: true)
++                            
++                            Queue.mainQueue().after(0.5, {
++                                if let lastController = navigationController.viewControllers.last as? ViewController, let animationFile {
++                                    let resultController = UndoOverlayController(
++                                        presentationData: presentationData,
++                                        content: .sticker(context: context, file: animationFile, loop: false, title: presentationData.strings.Gift_View_Resale_SuccessYou_Title, text: presentationData.strings.Gift_View_Resale_SuccessYou_Text(giftTitle).string, undoText: nil, customAction: nil),
++                                        elevatedLayout: !(lastController is ChatController),
++                                        action: {  _ in
++                                            return true
++                                        }
++                                    )
++                                    lastController.present(resultController, in: .current)
++                                }
++                            })
++                        } else if recipientPeerId == context.account.peerId {
+                             controller.dismissAnimated()
+                             
+                             navigationController.view.addSubview(ConfettiView(frame: navigationController.view.bounds))
+@@ -2006,6 +2091,98 @@ private final class GiftViewSheetContent: CombinedComponent {
                  return
              }
              
@@ -19549,7 +19581,7 @@ index 1a5228a9..a49cc24b 100644
              guard let arguments = self.subject.arguments, let peerId = arguments.peerId, let starsContext = self.context.starsContext, let starsState = starsContext.currentState else {
                  return
              }
-@@ -3708,7 +3862,10 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -3708,7 +3885,10 @@ private final class GiftViewSheetContent: CombinedComponent {
                  
                  var tableItems: [TableComponent.Item] = []
                  
@@ -19561,7 +19593,7 @@ index 1a5228a9..a49cc24b 100644
                  
                  if !soldOut {
                      if let uniqueGift {
-@@ -4014,7 +4171,13 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4014,7 +4194,13 @@ private final class GiftViewSheetContent: CombinedComponent {
                                              }
                                              
                                              let canWear: Bool
@@ -19576,7 +19608,7 @@ index 1a5228a9..a49cc24b 100644
                                                  let premiumConfiguration = PremiumConfiguration.with(appConfiguration: component.context.currentAppConfiguration.with { $0 })
                                                  let requiredLevel = Int(BoostSubject.wearGift.requiredLevel(group: false, context: component.context, configuration: premiumConfiguration))
                                                  if let boostLevel = channel.approximateBoostLevel {
-@@ -4769,8 +4932,16 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4769,8 +4955,16 @@ private final class GiftViewSheetContent: CombinedComponent {
                  let premiumConfiguration = PremiumConfiguration.with(appConfiguration: component.context.currentAppConfiguration.with { $0 })
                  let requiredLevel = Int(BoostSubject.wearGift.requiredLevel(group: false, context: component.context, configuration: premiumConfiguration))
                  
@@ -19594,7 +19626,7 @@ index 1a5228a9..a49cc24b 100644
                      canWear = false
                      buttonContent = AnyComponentWithIdentity(
                          id: AnyHashable("wear_channel"),
-@@ -4791,7 +4962,7 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4791,7 +4985,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                              ], spacing: 3.0)
                          )
                      )
@@ -19603,7 +19635,7 @@ index 1a5228a9..a49cc24b 100644
                      canWear = false
                      buttonContent = AnyComponentWithIdentity(
                          id: AnyHashable("wear_premium"),
-@@ -4906,6 +5077,10 @@ private final class GiftViewSheetContent: CombinedComponent {
+@@ -4906,6 +5100,10 @@ private final class GiftViewSheetContent: CombinedComponent {
                  } else if let upgradeStars = state.effectiveUpgradePrice?.stars {
                      let priceString = presentationStringsFormattedNumber(Int32(clamping: upgradeStars), environment.dateTimeFormat.groupingSeparator)
                      upgradeString = strings.Gift_Upgrade_GiftUpgrade(" # \(priceString)").string
@@ -19614,7 +19646,7 @@ index 1a5228a9..a49cc24b 100644
                  } else if let upgradeForm = state.upgradeForm, let upgradeStars = upgradeForm.invoice.prices.first?.amount {
                      let priceString = presentationStringsFormattedNumber(Int32(clamping: upgradeStars), environment.dateTimeFormat.groupingSeparator)
                      upgradeString = strings.Gift_Upgrade_UpgradeFor(" # \(priceString)").string
-@@ -5745,6 +5920,10 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5745,6 +5943,10 @@ public class GiftViewScreen: ViewControllerComponentContainer {
      fileprivate let transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)?
      fileprivate let upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)?
      fileprivate let buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)?
@@ -19625,7 +19657,7 @@ index 1a5228a9..a49cc24b 100644
      fileprivate let updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)?
      fileprivate let togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)?
      fileprivate let shareStory: ((StarGift.UniqueGift) -> Void)?
-@@ -5766,6 +5945,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5766,6 +5968,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
          transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)? = nil,
          upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)? = nil,
          buyGift: ((String, EnginePeer.Id, CurrencyAmount?) -> Signal<Never, BuyStarGiftError>)? = nil,
@@ -19633,7 +19665,7 @@ index 1a5228a9..a49cc24b 100644
          updateResellStars: ((StarGiftReference, CurrencyAmount?) -> Signal<Never, UpdateStarGiftPriceError>)? = nil,
          togglePinnedToTop: ((StarGiftReference, Bool) -> Bool)? = nil,
          shareStory: ((StarGift.UniqueGift) -> Void)? = nil,
-@@ -5782,6 +5962,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
+@@ -5782,6 +5985,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
          self.transferGift = transferGift
          self.upgradeGift = upgradeGift
          self.buyGift = buyGift

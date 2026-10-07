@@ -68,12 +68,8 @@ public enum PampGramPhantomGiftManager {
             let newBalance = pending.newBalance
             let phantomGift = pending.phantomGift
 
-            // A self-purchase (buying for your own collection, not gifting someone) never
-            // gets a chat message — there's no chat to put it in, real purchases don't
-            // create one either.
-            guard peerId != context.account.peerId else {
-                return .single(BuyResult(phantomGift: phantomGift, remainingBalance: CurrencyAmount(amount: StarsAmount(value: newBalance, nanos: 0), currency: price.currency)))
-            }
+            // A visual purchase for yourself gets its gift card too — in "Избранное", the chat with
+            // yourself — and GiftViewScreen opens that chat afterwards, like a real gift to yourself.
 
             // Gifting someone: the sender gets their own "Вы подарили …" gift card, local to
             // this device — there's no cross-device delivery to the recipient (that used to
