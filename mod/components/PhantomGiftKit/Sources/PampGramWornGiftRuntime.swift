@@ -5,15 +5,6 @@ import SwiftSignalKit
 import AccountContext
 import PampGramCore
 
-/// What `PampGramWornGiftRuntime` has done to this account's own emoji status, persisted so a
-/// restart can still undo it: `appliedStatus` is the status it last wrote (so a later read can
-/// tell "still our override" from "the server replaced it with the real one"), `realStatus` is
-/// whatever was showing right before the first override landed, restored on "Снять".
-private struct PampGramWornStatusRecord: Codable, Equatable {
-    var realStatus: PeerEmojiStatus?
-    var appliedStatus: PeerEmojiStatus?
-}
-
 /// Makes "Носить" on a visual gift actually do something: while a Phantom Gift is flagged
 /// `worn`, this account's own peer record carries that gift as its emoji status, so the profile
 /// name icon, the collectible profile backdrop/pattern and every other place Telegram draws

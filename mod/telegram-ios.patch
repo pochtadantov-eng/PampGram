@@ -17394,6 +17394,76 @@ index 00000000..1256a22f
 +        }
 +    }
 +}
+diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramWornStatusKeeper.swift b/submodules/TelegramCore/Sources/PampGram/PampGramWornStatusKeeper.swift
+new file mode 100644
+index 00000000..34ca877a
+--- /dev/null
++++ b/submodules/TelegramCore/Sources/PampGram/PampGramWornStatusKeeper.swift
+@@ -0,0 +1,42 @@
++import Foundation
++import Postbox
++import PampGramCore
++
++/// What `PampGramWornGiftRuntime` (PhantomGiftKit) has done to this account's own emoji status,
++/// persisted so a restart can still undo it: `appliedStatus` is the status it last wrote (the worn
++/// visual gift), `realStatus` is whatever was showing right before the first override landed,
++/// restored on "Снять".
++public struct PampGramWornStatusRecord: Codable, Equatable {
++    public var realStatus: PeerEmojiStatus?
++    public var appliedStatus: PeerEmojiStatus?
++
++    public init(realStatus: PeerEmojiStatus?, appliedStatus: PeerEmojiStatus?) {
++        self.realStatus = realStatus
++        self.appliedStatus = appliedStatus
++    }
++}
++
++/// Keeps a worn visual gift on the account's own record when the server's copy of the user arrives.
++///
++/// Opening a profile makes Telegram refetch the user and overwrite the stored record, which dropped
++/// the worn gift for a moment (the profile flashed its real colour — green — before the mod's own
++/// watcher put the gift back). Doing the swap here, inside the very write that stores the server's
++/// copy, means the overwritten state is never visible at all. The server's status is not lost: it is
++/// remembered as the one "Снять" brings back.
++enum PampGramWornStatusKeeper {
++    static func keep(transaction: Transaction, accountPeerId: PeerId, merged: TelegramUser) -> TelegramUser {
++        guard merged.id == accountPeerId else {
++            return merged
++        }
++        guard let record = transaction.getPreferencesEntry(key: PampGramPreferencesKeys.wornGiftStatus)?.get(PampGramWornStatusRecord.self), let applied = record.appliedStatus else {
++            return merged
++        }
++        if merged.emojiStatus == applied {
++            return merged
++        }
++        if record.realStatus != merged.emojiStatus {
++            transaction.setPreferencesEntry(key: PampGramPreferencesKeys.wornGiftStatus, value: PreferencesEntry(PampGramWornStatusRecord(realStatus: merged.emojiStatus, appliedStatus: applied)))
++        }
++        return merged.withUpdatedEmojiStatus(applied)
++    }
++}
+diff --git a/submodules/TelegramCore/Sources/UpdatePeers.swift b/submodules/TelegramCore/Sources/UpdatePeers.swift
+index ff2efda1..ba8f5afe 100644
+--- a/submodules/TelegramCore/Sources/UpdatePeers.swift
++++ b/submodules/TelegramCore/Sources/UpdatePeers.swift
+@@ -1,6 +1,7 @@
+ import Foundation
+ import Postbox
+ import TelegramApi
++import PampGramCore
+ 
+ func isPeerHiddenByCollapsedCommunity(transaction: Transaction, peerId: PeerId, peer: Peer? = nil) -> Bool {
+     if let channel = (peer ?? transaction.getPeer(peerId)) as? TelegramChannel, let linkedCommunityId = channel.linkedCommunityId {
+@@ -134,7 +135,8 @@ func updatePeers(transaction: Transaction, accountPeerId: PeerId, peers: Accumul
+     var parsedPeers: [Peer] = []
+     for (_, user) in peers.users {
+         if let telegramUser = TelegramUser.merge(transaction.getPeer(user.peerId) as? TelegramUser, rhs: user) {
+-            parsedPeers.append(telegramUser)
++            // PampGram: a worn visual gift survives the server refetch (see PampGramWornStatusKeeper).
++            parsedPeers.append(PampGramWornStatusKeeper.keep(transaction: transaction, accountPeerId: accountPeerId, merged: telegramUser))
+             switch user {
+             case let .user(userData):
+                 let (flags, flags2, storiesMaxId) = (userData.flags, userData.flags2, userData.storiesMaxId)
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift b/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift
 new file mode 100644
 index 0000000..185deb1
