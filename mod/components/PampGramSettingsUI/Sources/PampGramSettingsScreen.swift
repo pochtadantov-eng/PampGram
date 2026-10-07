@@ -627,17 +627,17 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                 ))
             })
         },
-        toggleUnupgradedGift: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.unupgradedGiftEntryEnabled = value
-                return settings
-            }).start()
-        },
         toggleFromHimGifts: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.fromHimGiftsEnabled = value
+                return settings
+            }).start()
+        },
+        toggleUnupgradedGift: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.unupgradedGiftEntryEnabled = value
                 return settings
             }).start()
         },
