@@ -160,8 +160,13 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         // A plain gift whose catalog entry has an upgrade price gets the real "Улучшить" button;
         // the flow behind it is local (`PampGramPhantomGiftManager.upgradeGift`).
         var canUpgrade = false
+        var upgradeStars: Int64?
         if case let .generic(genericGift) = gift, genericGift.upgradeStars != nil {
             canUpgrade = true
+            // Reported as an already-prepaid upgrade, exactly like a gift the sender paid the
+            // upgrade for: the card says "Улучшить бесплатно", the preview ends in "Подтвердить"
+            // and the "С моим именем" switch starts on — the stock flow, free of charge.
+            upgradeStars = genericGift.upgradeStars
         }
         if let marketPrice = self.marketPrice, case let .unique(uniqueGift) = gift {
             gift = .unique(Self.withResellListing(uniqueGift, price: marketPrice))
@@ -179,7 +184,7 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             convertStars: self.price.currency == .stars ? self.price.amount.value : nil,
             canUpgrade: canUpgrade,
             canExportDate: nil,
-            upgradeStars: nil,
+            upgradeStars: upgradeStars,
             // 0, not nil: GiftViewScreen only shows the "Передать" button when this is
             // non-nil (see its `canTransfer` check) — a phantom gift was never real, so
             // there's no real transfer fee to reflect, but the button still needs to render.
