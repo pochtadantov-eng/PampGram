@@ -17315,7 +17315,7 @@ index 00000000..106ebf87
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift b/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift
 new file mode 100644
-index 00000000..ce1cf37c
+index 00000000..1256a22f
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift
 @@ -0,0 +1,75 @@
@@ -17369,7 +17369,7 @@ index 00000000..ce1cf37c
 +            if id.peerId.namespace == Namespaces.Peer.SecretChat || id.peerId.id._internalGetInt64Value() == 777000 {
 +                continue
 +            }
-+            guard let message = transaction.getMessage(id), message.flags.contains(.Incoming), message.authorId != accountPeerId else {
++            guard let message = transaction.getMessage(id), message.flags.contains(.Incoming), message.author?.id != accountPeerId else {
 +                continue
 +            }
 +            if settings.moderationStrangersOnly, id.peerId.namespace == Namespaces.Peer.CloudUser, transaction.isPeerContact(peerId: id.peerId) {
