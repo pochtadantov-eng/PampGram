@@ -22258,7 +22258,7 @@ index c4f5d3e0..783c3cc6 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd3..d74ae5f7 100644
+index 4d971fd3..b33c3359 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -22279,7 +22279,7 @@ index 4d971fd3..d74ae5f7 100644
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -502,8 +504,36 @@ public final class AccountContextImpl: AccountContext {
+@@ -502,8 +504,37 @@ public final class AccountContextImpl: AccountContext {
              }
              (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = settings.compressedEmojiCache
          })
@@ -22291,6 +22291,7 @@ index 4d971fd3..d74ae5f7 100644
 +        if sharedContext.applicationBindings.isMainApp && !temp {
 +            PampGramScheduledGiftRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
 +            PampGramWornGiftRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
++            PampGramLocalPremiumRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)

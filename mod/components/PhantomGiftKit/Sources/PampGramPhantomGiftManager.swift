@@ -311,6 +311,10 @@ public enum PampGramPhantomGiftManager {
             } else if currency == "RUB" {
                 let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .rubles, kind: .debit, amount: -amount, title: "Подарок Premium", details: "Telegram Premium, \(months) мес.", peerId: peerId)
             }
+            // The recipient gets Telegram's Premium star next to their name, as after a real gift.
+            if peerId != context.account.peerId {
+                PampGramLocalPremiumRuntime.grant(transaction: transaction, peerId: peerId, months: months)
+            }
         }
         |> mapToSignal { _ -> Signal<Never, NoError> in
             // A self-gift never gets a chat message — same rule `buyUniqueGift` follows for the
