@@ -18402,7 +18402,7 @@ index 9eedd122..c74361a1 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-index 429cf39c..4599e858 100644
+index 429cf39c..b37857dc 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 @@ -28,6 +28,7 @@ import GiftViewScreen
@@ -18533,6 +18533,15 @@ index 429cf39c..4599e858 100644
                                  completion: component.completion
                              )
                              mainController.push(giftController)
+@@ -827,7 +867,7 @@ final class GiftOptionsScreenComponent: Component {
+             }
+             
+             let currentTime = Int32(CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970)
+-            if let canTransferDate = gift.canTransferDate, currentTime < canTransferDate {
++            if let canTransferDate = PampGramGiftBehavior.shared.effectiveTransferDate(gift.canTransferDate), currentTime < canTransferDate {
+                 let dateString = stringForFullDate(timestamp: canTransferDate, strings: environment.strings, dateTimeFormat: environment.dateTimeFormat)
+                 let alertController = textAlertController(
+                     context: component.context,
 @@ -1011,6 +1051,31 @@ final class GiftOptionsScreenComponent: Component {
              self.appliedStarsFilter = self.starsFilter
              
@@ -19407,7 +19416,7 @@ index 6f6c1f3c..033b80a3 100644
 +    })
  }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
-index 1a5228a9..53795618 100644
+index 1a5228a9..5dc7ba49 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 @@ -5,6 +5,8 @@ import AsyncDisplayKit
@@ -19504,6 +19513,15 @@ index 1a5228a9..53795618 100644
              
              guard gift.hostPeerId == nil else {
                  self.presentActionLockedForHostedGift(gift: gift)
+@@ -1184,7 +1224,7 @@ private final class GiftViewSheetContent: CombinedComponent {
+             let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+             
+             let currentTime = Int32(CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970)
+-            if let canTransferDate = arguments.canTransferDate, currentTime < canTransferDate {
++            if let canTransferDate = PampGramGiftBehavior.shared.effectiveTransferDate(arguments.canTransferDate), currentTime < canTransferDate {
+                 let dateString = stringForFullDate(timestamp: canTransferDate, strings: presentationData.strings, dateTimeFormat: presentationData.dateTimeFormat)
+                 let alertController = textAlertController(
+                     context: self.context,
 @@ -1540,7 +1580,12 @@ private final class GiftViewSheetContent: CombinedComponent {
                  var items: [ContextMenuItem] = []
                  let strings = presentationData.strings
@@ -22409,7 +22427,7 @@ index c4f5d3e0..783c3cc6 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 4d971fd3..58a570dd 100644
+index 4d971fd3..0f40cdc9 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -8,6 +8,8 @@ import DeviceAccess
@@ -22430,7 +22448,7 @@ index 4d971fd3..58a570dd 100644
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -502,8 +504,38 @@ public final class AccountContextImpl: AccountContext {
+@@ -502,8 +504,39 @@ public final class AccountContextImpl: AccountContext {
              }
              (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = settings.compressedEmojiCache
          })
@@ -22445,6 +22463,7 @@ index 4d971fd3..58a570dd 100644
 +            PampGramLocalPremiumRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
 +            PampGramModerationRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
 +            PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
++            PampGramGiftBehavior.shared.start(postbox: account.postbox)
 +            PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramScreenshotBypassDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -22496,7 +22515,7 @@ diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift b
                          return (currentPanel, nil)
                      } else {
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
-index 23695c21..f1cc28d3 100644
+index 23695c21..32585ded 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
 @@ -53,6 +53,8 @@ import StatisticsUI
@@ -22519,7 +22538,26 @@ index 23695c21..f1cc28d3 100644
              let pinchController = makePinchController(sourceNode: sourceNode, disableScreenshots: isSecret, getContentAreaInScreenSpace: {
                  guard let strongSelf = self else {
                      return CGRect()
-@@ -7812,7 +7816,15 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -2706,6 +2710,18 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                             amount: amount,
+                             commit: { [weak self] in
+                                 if let self {
++                                    if PampGramGiftBehavior.shared.offerAcceptFails {
++                                        // PampGram: pretend the server refused; nothing is sent.
++                                        Queue.mainQueue().after(1.2, { [weak self] in
++                                            guard let self else {
++                                                return
++                                            }
++                                            self.present(textAlertController(context: self.context, updatedPresentationData: self.updatedPresentationData, title: "Ошибка", text: "Не удалось принять предложение. Попробуйте позже.", actions: [
++                                                TextAlertAction(type: .defaultAction, title: self.presentationData.strings.Common_OK, action: {})
++                                            ]), in: .window(.root))
++                                        })
++                                        return
++                                    }
+                                     let _ = self.context.engine.payments.resolveStarGiftOffer(messageId: message.id, accept: true).startStandalone()
+                                 }
+                             }
+@@ -7812,7 +7828,15 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                          |> deliverOnMainQueue).startStandalone(next: { [weak self] playlistStateAndType in
                              if let self, let (_, playbackState, _) = playlistStateAndType, case let .state(state) = playbackState {
                                  if let source = state.item.playbackData?.source, case let .telegramFile(_, _, isViewOnce) = source, isViewOnce {
@@ -22536,7 +22574,7 @@ index 23695c21..f1cc28d3 100644
                                  }
                              }
                          })
-@@ -8983,6 +8995,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -8983,6 +9007,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
          guard let peerId = self.chatLocation.peerId else {
              return
          }
