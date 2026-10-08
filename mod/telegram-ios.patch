@@ -22515,7 +22515,7 @@ diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift b
                          return (currentPanel, nil)
                      } else {
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
-index 23695c21..32585ded 100644
+index 23695c21..4aa6c523 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
 @@ -53,6 +53,8 @@ import StatisticsUI
@@ -22538,26 +22538,19 @@ index 23695c21..32585ded 100644
              let pinchController = makePinchController(sourceNode: sourceNode, disableScreenshots: isSecret, getContentAreaInScreenSpace: {
                  guard let strongSelf = self else {
                      return CGRect()
-@@ -2706,6 +2710,18 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
-                             amount: amount,
-                             commit: { [weak self] in
-                                 if let self {
-+                                    if PampGramGiftBehavior.shared.offerAcceptFails {
-+                                        // PampGram: pretend the server refused; nothing is sent.
-+                                        Queue.mainQueue().after(1.2, { [weak self] in
-+                                            guard let self else {
-+                                                return
-+                                            }
-+                                            self.present(textAlertController(context: self.context, updatedPresentationData: self.updatedPresentationData, title: "Ошибка", text: "Не удалось принять предложение. Попробуйте позже.", actions: [
-+                                                TextAlertAction(type: .defaultAction, title: self.presentationData.strings.Common_OK, action: {})
-+                                            ]), in: .window(.root))
-+                                        })
-+                                        return
-+                                    }
-                                     let _ = self.context.engine.payments.resolveStarGiftOffer(messageId: message.id, accept: true).startStandalone()
-                                 }
-                             }
-@@ -7812,7 +7828,15 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -2693,6 +2697,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                         ], parseMarkdown: true), in: .window(.root))
+                     })
+                 case 1:
++                    if PampGramGiftBehavior.shared.offerAcceptFails {
++                        // PampGram: the button reacts to the tap like always, but the offer is not
++                        // accepted — no confirmation, no error, nothing is sent.
++                        return
++                    }
+                     let _ = (strongSelf.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: message.id.peerId))
+                     |> deliverOnMainQueue).start(next: { [weak self] peer in
+                         guard let self, let peer, case let .unique(gift) = gift else {
+@@ -7812,7 +7821,15 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                          |> deliverOnMainQueue).startStandalone(next: { [weak self] playlistStateAndType in
                              if let self, let (_, playbackState, _) = playlistStateAndType, case let .state(state) = playbackState {
                                  if let source = state.item.playbackData?.source, case let .telegramFile(_, _, isViewOnce) = source, isViewOnce {
@@ -22574,7 +22567,7 @@ index 23695c21..32585ded 100644
                                  }
                              }
                          })
-@@ -8983,6 +9007,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -8983,6 +9000,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
          guard let peerId = self.chatLocation.peerId else {
              return
          }
