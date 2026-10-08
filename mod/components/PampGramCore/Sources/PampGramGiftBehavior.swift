@@ -10,7 +10,8 @@ public final class PampGramGiftBehavior {
     public static let shared = PampGramGiftBehavior()
 
     private struct State {
-        var cooldownDays: Int32 = 0
+        /// Unix time the fake transfer cooldown ends; 0 while it is off.
+        var cooldownUntil: Int32 = 0
         var offerAcceptFails: Bool = false
     }
 
@@ -36,24 +37,27 @@ public final class PampGramGiftBehavior {
             guard let self else {
                 return
             }
-            let days = settings.fakeTransferCooldownEnabled ? max(1, settings.fakeTransferCooldownDays) : 0
+            let until = settings.fakeTransferCooldownEnabled ? settings.fakeTransferCooldownUntil : 0
             let fails = settings.fakeOfferAcceptFailEnabled
             let _ = self.state.modify { _ in
-                return State(cooldownDays: days, offerAcceptFails: fails)
+                return State(cooldownUntil: until, offerAcceptFails: fails)
             }
         }))
     }
 
-    /// The date a gift can be transferred from: the real one, or — with the fake cooldown on —
-    /// always the chosen number of days from now, so the standard "available on <date>" alert shows.
+    /// The date a gift can be transferred from: the real one, or — while the fake cooldown is running —
+    /// the moment it ends, so the standard "available on <date>" alert shows. Once that moment has
+    /// passed the real date applies again, like a timer that ran out.
     public func effectiveTransferDate(_ real: Int32?) -> Int32? {
-        let days = self.state.with { $0.cooldownDays }
-        if days <= 0 {
+        let until = self.state.with { $0.cooldownUntil }
+        if until <= 0 {
             return real
         }
         let now = Int32(Date().timeIntervalSince1970)
-        let fake = now + days * 24 * 60 * 60
-        return max(real ?? 0, fake)
+        if until <= now {
+            return real
+        }
+        return max(real ?? 0, until)
     }
 
     public var offerAcceptFails: Bool {

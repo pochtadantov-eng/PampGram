@@ -13,21 +13,11 @@ import UndoUI
 import PampGramCore
 import PhantomGiftKit
 
-private func pampGramCooldownDaysLabel(_ days: Int32) -> String {
-    let lastTwo = days % 100
-    let last = days % 10
-    if lastTwo >= 11 && lastTwo <= 14 {
-        return "\(days) дней"
-    }
-    switch last {
-    case 1:
-        return "\(days) день"
-    case 2, 3, 4:
-        return "\(days) дня"
-    default:
-        return "\(days) дней"
-    }
-}
+private let pampGramCooldownDateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "dd.MM.yyyy HH:mm"
+    return formatter
+}()
 
 private final class PampGramSettingsArguments {
     let toggleVisual: (Bool) -> Void
@@ -53,7 +43,7 @@ private final class PampGramSettingsArguments {
     let sellRegularGifts: () -> Void
     let openFakeSale: () -> Void
     let toggleFakeCooldown: (Bool) -> Void
-    let pickFakeCooldownDays: () -> Void
+    let pickFakeCooldown: () -> Void
     let toggleFakeOfferFail: (Bool) -> Void
 
     init(
@@ -80,7 +70,7 @@ private final class PampGramSettingsArguments {
         sellRegularGifts: @escaping () -> Void,
         openFakeSale: @escaping () -> Void,
         toggleFakeCooldown: @escaping (Bool) -> Void,
-        pickFakeCooldownDays: @escaping () -> Void,
+        pickFakeCooldown: @escaping () -> Void,
         toggleFakeOfferFail: @escaping (Bool) -> Void
     ) {
         self.toggleVisual = toggleVisual
@@ -106,7 +96,7 @@ private final class PampGramSettingsArguments {
         self.sellRegularGifts = sellRegularGifts
         self.openFakeSale = openFakeSale
         self.toggleFakeCooldown = toggleFakeCooldown
-        self.pickFakeCooldownDays = pickFakeCooldownDays
+        self.pickFakeCooldown = pickFakeCooldown
         self.toggleFakeOfferFail = toggleFakeOfferFail
     }
 }
@@ -191,7 +181,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case unupgradedGiftFooter(String)
 
     case fakeCooldownToggle(String, Bool)
-    case fakeCooldownDays(String, String)
+    case fakeCooldownRow(String, String, String)
     case fakeCooldownFooter(String)
     case fakeOfferFailToggle(String, Bool)
     case fakeOfferFailFooter(String)
@@ -229,7 +219,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.storage.rawValue
         case .unupgradedGiftToggle, .unupgradedGiftFooter:
             return PampGramSettingsSection.unupgradedGift.rawValue
-        case .fakeCooldownToggle, .fakeCooldownDays, .fakeCooldownFooter, .fakeOfferFailToggle, .fakeOfferFailFooter:
+        case .fakeCooldownToggle, .fakeCooldownRow, .fakeCooldownFooter, .fakeOfferFailToggle, .fakeOfferFailFooter:
             return PampGramSettingsSection.giftBehavior.rawValue
         }
     }
@@ -283,7 +273,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .unupgradedGiftToggle: return 41
         case .unupgradedGiftFooter: return 42
         case .fakeCooldownToggle: return 43
-        case .fakeCooldownDays: return 44
+        case .fakeCooldownRow: return 44
         case .fakeCooldownFooter: return 45
         case .fakeOfferFailToggle: return 46
         case .fakeOfferFailFooter: return 47
@@ -347,9 +337,9 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "hourglass", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFakeCooldown(value)
             })
-        case let .fakeCooldownDays(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "calendar", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
-                arguments.pickFakeCooldownDays()
+        case let .fakeCooldownRow(title, label, detail):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "timer", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, label: label, additionalDetailLabel: detail, sectionId: self.section, style: .blocks, action: {
+                arguments.pickFakeCooldown()
             })
         case let .fakeOfferFailToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "xmark.seal.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -579,9 +569,16 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
 
     entries.append(.fakeCooldownToggle("Фейк КД на передачу", settings.fakeTransferCooldownEnabled))
     if settings.fakeTransferCooldownEnabled {
-        entries.append(.fakeCooldownDays("Срок КД", pampGramCooldownDaysLabel(settings.fakeTransferCooldownDays)))
+        let now = Int32(Date().timeIntervalSince1970)
+        let detail: String
+        if settings.fakeTransferCooldownUntil > now {
+            detail = "до " + pampGramCooldownDateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(settings.fakeTransferCooldownUntil)))
+        } else {
+            detail = "закончился, нажмите, чтобы запустить заново"
+        }
+        entries.append(.fakeCooldownRow("Срок КД", pampGramDurationDescription(seconds: settings.fakeTransferCooldownSeconds), detail))
     }
-    entries.append(.fakeCooldownFooter("Когда включено, при нажатии «Передать» на любом подарке появляется обычное окно Telegram «Передача будет доступна ...» с датой через выбранное число дней. Подарок при этом никто не блокирует: это лишь то, что видите вы на этом телефоне."))
+    entries.append(.fakeCooldownFooter("Когда включено, при нажатии «Передать» на любом подарке появляется обычное окно Telegram «Передача будет доступна ...» с датой окончания КД. Срок задаётся колёсиками, как таймер в Часах: дни, часы, минуты и секунды. КД идёт как настоящий таймер: когда время вышло, «Передать» снова работает как обычно. Подарок при этом никто не блокирует: это лишь то, что видите вы на этом телефоне."))
     entries.append(.fakeOfferFailToggle("Фейк: оффер не принимается", settings.fakeOfferAcceptFailEnabled))
     entries.append(.fakeOfferFailFooter("Когда вам присылают предложение купить подарок, кнопка «Принять» нажимается, но предложение не принимается: ни окна подтверждения, ни ошибки, ничего не происходит. Предложение остаётся без ответа, собеседнику ничего не отправляется. «Отклонить» работает как обычно."))
 
@@ -801,32 +798,28 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.fakeTransferCooldownEnabled = value
+                if value {
+                    // Turning it on starts the timer from now.
+                    settings.fakeTransferCooldownUntil = Int32(Date().timeIntervalSince1970) + max(1, settings.fakeTransferCooldownSeconds)
+                }
                 return settings
             }).start()
         },
-        pickFakeCooldownDays: {
-            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-            let sheet = ActionSheetController(presentationData: presentationData)
-            var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: "Через сколько дней можно передать подарок?")]
-            for days in [Int32(1), 3, 7, 13, 30] {
-                buttons.append(ActionSheetButtonItem(title: pampGramCooldownDaysLabel(days), color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
+        pickFakeCooldown: {
+            let _ = (context.account.postbox.transaction { transaction -> Int32 in
+                return PampGramCore.rawSettings(transaction: transaction).fakeTransferCooldownSeconds
+            }
+            |> deliverOnMainQueue).start(next: { currentSeconds in
+                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+                pampGramPresentCooldownSheet(presentationData: presentationData, initialSeconds: currentSeconds, present: { presentControllerImpl?($0) }, completion: { seconds in
                     let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                         var settings = settings
-                        settings.fakeTransferCooldownDays = days
+                        settings.fakeTransferCooldownSeconds = seconds
+                        settings.fakeTransferCooldownUntil = Int32(Date().timeIntervalSince1970) + seconds
                         return settings
                     }).start()
-                }))
-            }
-            sheet.setItemGroups([
-                ActionSheetItemGroup(items: buttons),
-                ActionSheetItemGroup(items: [
-                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-                        sheet?.dismissAnimated()
-                    })
-                ])
-            ])
-            presentControllerImpl?(sheet)
+                })
+            })
         },
         toggleFakeOfferFail: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
