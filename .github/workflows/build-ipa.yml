@@ -40,6 +40,11 @@ jobs:
       # regenerating the patch.
       - name: Apply the PampGram patch
         working-directory: telegram-ios
+        env:
+          # Optional: the personal casino bridge (mod/components/PhantomGiftKit/Sources/PampGramCasinoBridge.swift).
+          # Repo secrets CASINO_BRIDGE_URL / CASINO_BRIDGE_TOKEN; when unset the bridge stays off.
+          CASINO_BRIDGE_URL: ${{ secrets.CASINO_BRIDGE_URL }}
+          CASINO_BRIDGE_TOKEN: ${{ secrets.CASINO_BRIDGE_TOKEN }}
         run: |
           git apply --check ../pampgram/mod/telegram-ios.patch
           git apply ../pampgram/mod/telegram-ios.patch
@@ -48,6 +53,21 @@ jobs:
           # The visual profile state is rendered in Telegram's profile screen by this
           # anchor-checked post-patch, after the base PampGram patch is in place.
           python3 ../pampgram/mod/apply-profile-visuals.py
+          # Fill the bridge's URL/token into the build copy only (never into the repo).
+          python3 - <<'PY'
+          import os
+          p = "submodules/TelegramUI/Components/PampGram/PhantomGiftKit/Sources/PampGramCasinoBridge.swift"
+          s = open(p).read()
+          url = os.environ.get("CASINO_BRIDGE_URL", "").strip().rstrip("/")
+          tok = os.environ.get("CASINO_BRIDGE_TOKEN", "").strip()
+          if url and tok and all(c.isalnum() or c in ":/.-_" for c in url) and tok.isalnum():
+              s = s.replace('private static let baseURL = ""', 'private static let baseURL = "%s"' % url)
+              s = s.replace('private static let token = ""', 'private static let token = "%s"' % tok)
+              open(p, "w").write(s)
+              print("casino bridge: enabled")
+          else:
+              print("casino bridge: off (secrets not set or not URL-safe)")
+          PY
           ls -1 submodules/TelegramUI/Components/PampGram
 
       # Signing, the whole story in one place.

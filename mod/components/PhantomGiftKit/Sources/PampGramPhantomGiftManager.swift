@@ -202,7 +202,12 @@ public enum PampGramPhantomGiftManager {
     /// Same as `receiveUniqueGift`, for the plain (non-unique) gift catalog — "Подарок мне"'s
     /// other entry point, mirroring `sendGenericGift`.
     public static func receiveGenericGift(context: AccountContext, peerId: EnginePeer.Id, gift: StarGift.Gift, text: String? = nil, entities: [MessageTextEntity]? = nil) -> Signal<Never, NoError> {
-        return context.account.postbox.transaction { transaction -> PampGramPhantomGift in
+        return self.receiveGenericGift(postbox: context.account.postbox, peerId: peerId, gift: gift, text: text, entities: entities)
+    }
+
+    /// Same, for callers that only hold the `Account` (see `PampGramCasinoBridge`).
+    public static func receiveGenericGift(postbox: Postbox, peerId: EnginePeer.Id, gift: StarGift.Gift, text: String? = nil, entities: [MessageTextEntity]? = nil) -> Signal<Never, NoError> {
+        return postbox.transaction { transaction -> PampGramPhantomGift in
             let phantomGift = PampGramPhantomGift(
                 id: Int64.random(in: 1...Int64.max),
                 peerId: peerId,
@@ -230,13 +235,13 @@ public enum PampGramPhantomGiftManager {
             return phantomGift
         }
         |> mapToSignal { phantomGift -> Signal<Never, NoError> in
-            return PampGramPhantomGiftMessage.insertLocalGenericGiftMessageFromPeer(context: context, peerId: peerId, gift: gift, text: text, entities: entities)
+            return PampGramPhantomGiftMessage.insertLocalGenericGiftMessageFromPeer(postbox: postbox, peerId: peerId, gift: gift, text: text, entities: entities)
             |> mapToSignal { messageId -> Signal<Never, NoError> in
                 guard let messageId else {
                     return .complete()
                 }
                 let finalGift = PampGramPhantomGift(id: phantomGift.id, peerId: phantomGift.peerId, gift: phantomGift.gift, price: phantomGift.price, date: phantomGift.date, localMessageId: messageId, isReceived: true)
-                return context.account.postbox.transaction { transaction in
+                return postbox.transaction { transaction in
                     PampGramPhantomGiftStore.remove(transaction: transaction, id: phantomGift.id)
                     PampGramPhantomGiftStore.add(transaction: transaction, gift: finalGift)
                 }
@@ -462,9 +467,10 @@ public enum PampGramPhantomGiftManager {
     /// account. So it is a best-effort fast path — the reliable path is scanPeerForIncomingGiftTransfers,
     /// which runs every time the recipient opens the chat.
     public static func observeIncomingGiftTransfers(account: Account) -> Disposable {
-        // PampGram gifts are local-only — nothing is ever sent to another device, so there is
-        // nothing to receive. Inert no-op, kept so the account-context hook needs no change.
-        return EmptyDisposable
+        // PampGram gifts are local-only — nothing is ever sent to another device. The one
+        // exception is the owner's own casino bot (see `PampGramCasinoBridge`), which just hands
+        // this device a gift id to draw locally.
+        return PampGramCasinoBridge.start(account: account)
     }
 
     /// Scans the most recent messages of a chat the recipient just opened and materializes any
