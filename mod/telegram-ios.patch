@@ -17955,7 +17955,7 @@ index 00000000..a07edb0a
 +    return true
 +}
 diff --git a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
-index 66242579..6c77a8c0 100644
+index 66242579..1fccd67b 100644
 --- a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
 +++ b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
 @@ -2,6 +2,7 @@ import Foundation
@@ -17966,7 +17966,22 @@ index 66242579..6c77a8c0 100644
  
  
  private enum PeerReadStateMarker: Equatable {
-@@ -227,6 +228,30 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
+@@ -186,6 +187,14 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
+                             if case let .idBased(updatedMaxIncomingReadId, _, _, updatedCount, updatedMarkedUnread) = readState {
+                                 if updatedCount != 0 || updatedMarkedUnread {
+                                     if localMaxIncomingReadId > updatedMaxIncomingReadId {
++                                        // PampGram Ghost: the server is behind on purpose — the read
++                                        // push for this chat is withheld (see `pushPeerReadState`), so
++                                        // it will never catch up and retrying would only spin on the
++                                        // network forever. Keep the local read state and stop here.
++                                        if pampGramGhostShouldSuppress(transaction: transaction, peerId: peerId, feature: .readReceipts) {
++                                            transaction.confirmSynchronizedIncomingReadState(peerId)
++                                            return nil
++                                        }
+                                         return .retry
+                                     }
+                                 }
+@@ -227,6 +236,30 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
  }
  
  private func pushPeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, readState: PeerReadState) -> Signal<PeerReadState, PeerReadStateValidationError> {
