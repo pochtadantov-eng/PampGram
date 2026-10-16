@@ -84,8 +84,16 @@ public func pampGramTryHandleSeendsCommand(context: AccountContext, peerId: Engi
 
 private func pampGramParseSeends(_ text: String) -> PampGramSeendsPayload? {
     let lower = text.lowercased()
-    guard lower.hasPrefix("@seends") else { return nil }
-    let rest = text.dropFirst("@seends".count).trimmingCharacters(in: .whitespacesAndNewlines)
+    // "@seend" (a missing "s") is accepted too: without it the text would be sent for real.
+    let prefixLength: Int
+    if lower.hasPrefix("@seends") {
+        prefixLength = "@seends".count
+    } else if lower.hasPrefix("@seend") {
+        prefixLength = "@seend".count
+    } else {
+        return nil
+    }
+    let rest = text.dropFirst(prefixLength).trimmingCharacters(in: .whitespacesAndNewlines)
     if rest.isEmpty { return nil }
 
     let parts = rest.split(whereSeparator: { $0.isWhitespace }).map(String.init)

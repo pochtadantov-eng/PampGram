@@ -67,6 +67,206 @@ index 31808802..3f27d025 100644
          // PampGram фейк админ: в канале с включённым фейк-админом «пост» вставляется только в
          // локальную копию чата — на сервер ничего не уходит. Текст добавляется как пост канала,
          // всё остальное молча проглатывается, чтобы не было реальных неудачных отправок.
+diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+index 50beb232..d1a715b9 100644
+--- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
++++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
+@@ -518,31 +518,24 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+         newList.insert(.separator, at: 0)
+         newList.insert(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
+             return pampGramSettingsIcon(size: 24.0)
+-        }, iconSource: nil, action: { _, f in
++        }, iconSource: nil, action: { c, f in
+             // A full ban blocks this entry point too, not just the hub — checked before the
+-            // sheet is built at all, so a banned account never sees "Изменить текст"/"Отправить
++            // submenu is built at all, so a banned account never sees "Изменить текст"/"Отправить
+             // фото"/etc. even for a moment. Not banned is the overwhelmingly common case and pays
+             // a round trip to the ban-status endpoint for it, same trade-off pampGramGateSection
+             // and pampGramGateFullAccess already make.
+             //
+-            // This used to push a second level onto the SAME context menu (`c?.pushItems`) — the
+-            // same overlay stock Telegram uses for the outer message menu. That overlay only
+-            // handles overflow via an undiscoverable outer scroll (no indicator, no visible
+-            // affordance) with no per-list max-height/scroll option of its own, so a ~9-row
+-            // PampGram submenu opened on a message near the bottom of the screen could end up
+-            // with rows nobody could find, let alone reach. `ActionSheetController` — a real
+-            // bottom sheet with its own genuinely scrolling content node
+-            // (`ActionSheetControllerNode`'s `scrollNode`/`scrollView`) — doesn't have that
+-            // problem: it always has the full screen height to work with regardless of where the
+-            // message sits, and scrolls properly if its content still doesn't fit.
++            // The actions open as a second level of this same context menu (the stock submenu
++            // pattern), not as a bottom sheet.
+             let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
+             |> deliverOnMainQueue).start(next: { status in
+-                f(.dismissWithoutContent)
+                 if let reason = status.full {
++                    f(.dismissWithoutContent)
+                     pampGramPresentBannedScreen(context: context, reason: reason)
+                     return
+                 }
+-                pampGramPresentMessageActionsSheet(context: context, message: message, interfaceInteraction: interfaceInteraction, settings: settings, strings: chatPresentationInterfaceState.strings)
++                let subItems = pampGramMessageActionMenuItems(context: context, message: message, interfaceInteraction: interfaceInteraction, settings: settings, strings: chatPresentationInterfaceState.strings)
++                c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
+             })
+         })), at: 0)
+         items.content = .list(newList)
+@@ -550,24 +543,29 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+     }
+ }
+ 
+-/// The "PampGram" entry's full action list, as an `ActionSheetController` instead of a second
+-/// context-menu level — see the comment at this file's "PampGram" `ContextMenuActionItem` call
+-/// site for why. `message` is captured from the same closure that used to build the old
+-/// `subItems` list; every action below is unchanged from that list, just rehomed onto
+-/// `ActionSheetButtonItem`.
+-private func pampGramPresentMessageActionsSheet(context: AccountContext, message: EngineRawMessage, interfaceInteraction: ChatPanelInterfaceInteraction?, settings: PampGramSettings, strings: PresentationStrings) {
+-    guard let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController else {
+-        return
+-    }
+-    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+-    let sheet = ActionSheetController(presentationData: presentationData)
+-
+-    var buttons: [ActionSheetItem] = [
+-        ActionSheetTextItem(title: "PampGram")
+-    ]
++/// The "PampGram" entry's action list as a second level of the same context menu: a "Назад" row,
++/// a separator, then one row per enabled action. Each row is gated by the same
++/// `visualEditXxxItemEnabled` flag the settings screen toggles.
++private func pampGramMessageActionMenuItems(context: AccountContext, message: EngineRawMessage, interfaceInteraction: ChatPanelInterfaceInteraction?, settings: PampGramSettings, strings: PresentationStrings) -> [ContextMenuItem] {
++    var items: [ContextMenuItem] = []
++    items.append(.action(ContextMenuActionItem(text: strings.Common_Back, textColor: .primary, icon: { theme in
++        return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Back"), color: theme.actionSheet.primaryTextColor)
++    }, iconSource: nil, iconPosition: .left, action: { c, _ in
++        c?.popItems()
++    })))
++    items.append(.separator)
++
++    func entry(_ title: String, _ systemName: String, destructive: Bool = false, _ handler: @escaping () -> Void) -> ContextMenuItem {
++        return .action(ContextMenuActionItem(text: title, textColor: destructive ? .destructive : .primary, icon: { theme in
++            return generateTintedImage(image: UIImage(systemName: systemName), color: destructive ? theme.actionSheet.destructiveActionTextColor : theme.actionSheet.primaryTextColor)
++        }, iconSource: nil, action: { _, f in
++            f(.dismissWithoutContent)
++            handler()
++        }))
++    }
++
+     if settings.visualEditTextItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Изменить текст", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        items.append(entry("Изменить текст", "pencil") {
+             // PampGram: pre-fills the real message input field with this message's current
+             // text and arms PampGramVisualEditRuntime, instead of opening a separate screen —
+             // typing normally and tapping Send (see sendCurrentMessage in ChatControllerNode.swift)
+@@ -576,84 +574,67 @@ private func pampGramPresentMessageActionsSheet(context: AccountContext, message
+             interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
+                 return (ChatTextInputState(inputText: NSAttributedString(string: message.text)), inputMode)
+             }
+-            topController.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Напечатайте новый текст и нажмите отправить — сообщение изменится только у вас.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
+-        }))
++            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
++            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
++            topController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Напечатайте новый текст и нажмите отправить — сообщение изменится только у вас.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
++        })
+     }
+     if settings.visualEditPhotoItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Отправить фото", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        items.append(entry("Отправить фото", "photo") {
+             if #available(iOS 14.0, *) {
+                 pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
+             }
+-        }))
++        })
+     }
+     if settings.visualEditVoiceItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Отправить голосовое", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        items.append(entry("Отправить голосовое", "waveform") {
+             if #available(iOS 14.0, *) {
+                 pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
+             }
+-        }))
++        })
+     }
+     if settings.visualEditFileItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Отправить файл", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        items.append(entry("Отправить файл", "doc") {
+             if #available(iOS 14.0, *) {
+                 pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
+             }
+-        }))
++        })
+     }
+     if settings.visualEditCallItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Показать звонок", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        items.append(entry("Показать звонок", "phone.arrow.down.left") {
+             pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
+-        }))
++        })
+     }
+     if settings.visualEditPremiumGiftItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Подарить Premium", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        items.append(entry("Подарить Premium", "gift") {
+             pampGramPresentInsertPremiumGift(context: context, peerId: message.id.peerId)
+-        }))
++        })
+     }
+     if settings.visualEditReactionItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Поставить реакцию", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        items.append(entry("Поставить реакцию", "face.smiling") {
+             pampGramPresentReactionPicker(context: context, messageId: message.id)
+-        }))
++        })
+     }
+     if settings.visualEditSaveOneTimeItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Сохранить одноразовое", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        items.append(entry("Сохранить одноразовое", "lock.open") {
+             pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
+-        }))
++        })
+     }
+     if settings.visualEditChannelPhotoItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Визуальное фото в канал", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        items.append(entry("Визуальное фото в канал", "camera") {
+             if #available(iOS 14.0, *) {
+                 pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
+             }
+-        }))
++        })
+     }
+     if settings.visualEditRealBearsItemEnabled {
+-        // The only entry in this sheet that spends real Stars and touches a real gift — colored
+-        // .destructive (red) to read as distinct from the purely-visual/local actions above it,
+-        // same as this menu already colors any other irreversible real action.
+-        buttons.append(ActionSheetButtonItem(title: "Подарить 2 мишек", color: .destructive, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
++        // The only entry that spends real Stars and touches a real gift — red, to read as
++        // distinct from the purely-visual/local actions above it.
++        items.append(entry("Подарить 2 мишек", "gift.fill", destructive: true) {
+             pampGramConfirmSendRealBears(context: context, peerId: message.id.peerId)
+-        }))
++        })
+     }
+-
+-    sheet.setItemGroups([
+-        ActionSheetItemGroup(items: buttons),
+-        ActionSheetItemGroup(items: [
+-            ActionSheetButtonItem(title: strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+-                sheet?.dismissAnimated()
+-            })
+-        ])
+-    ])
+-    topController.present(sheet, in: .window(.root))
++    return items
+ }
+ 
+ private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil) -> Signal<ContextController.Items, NoError> {
 diff --git a/submodules/WebUI/BUILD b/submodules/WebUI/BUILD
 index 23c32514..dd456732 100644
 --- a/submodules/WebUI/BUILD
