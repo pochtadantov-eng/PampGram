@@ -91,7 +91,155 @@ mod/
   сообщения несут настоящий `TelegramMediaAction`, спецобработки не требуется);
 - `PeerInfoScreen.swift`, `PeerInfoScreenSettingsActions.swift`, `PeerInfoSettingsItems.swift`
   — строка «PampGram» в настройках и переход на её экран;
-- четыре `BUILD`-файла (Bazel).
+- `AccountContext.swift` — запускает `PampGramTemporaryMediaDisplay.shared.start(...)` при
+  создании аккаунта (тем же способом, что уже используется для `PampGramFakeAdminRuntime`);
+- «Режим призрака» — диагностика и принудительный «офлайн». `PampGramGhostDiagnostics`
+  (PampGramCore) — счётчики в памяти «скрыто / ушло наружу + причина», которые пишет единственная
+  точка решения `pampGramGhostShouldSuppress` (`TelegramCore/Sources/State/PampGramGhostHelpers.swift`;
+  повторный вопрос про тот же сигнал в `validatePeerReadState` идёт с `record: false`, чтобы не
+  считаться дважды) и `ManagedAccountPresence.swift` (счётчик «онлайн»/«офлайн»). Экран
+  «Режим призрака» показывает их блоком «Диагностика» и обновляет раз в секунду. Отдельно:
+  Telegram сам ставит аккаунт «в сети» после действий вроде отправки сообщения, а «Не отправлять
+  онлайн» лишь не посылает `updateStatus(offline: false)`. Поэтому `SharedWakeupManager` выставляет
+  `Account.pampGramShouldPulseOffline` (включено «Не отправлять онлайн», приложение на экране,
+  аккаунт основной), и `AccountPresenceManagerImpl` каждые 20 с повторяет `updateStatus(offline: true)`;
+- «Обход одноразовых»/«Обход с таймером» (одна настройка — для «посмотреть один раз»,
+  другая — для короткого таймера самоуничтожения, различаются по
+  `minAutoremoveOrClearTimeout == viewOnceTimeout`). Стоковый Telegram считает сообщение
+  секретным по двум атрибутам, `AutoremoveTimeoutMessageAttribute` и
+  `AutoclearTimeoutMessageAttribute` (`Message.containsSecretMedia`), и от них зависит всё:
+  размытие, `SecretMediaPreviewController` с отсчётом (он же и отправляет
+  `readMessageContents`), защита от захвата, скрытые «Сохранить»/«Переслать». Поэтому снятия
+  одного размытия мало. `TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift`
+  (новый файл) убирает эти два атрибута (только с таймером ≤ 60 с или `viewOnceTimeout`) у
+  локальной копии входящего фото/видео/GIF в облачном чате — после этого сообщение обычное
+  для всех экранов, отсчёт и `readMessageContents` не запускаются, фото не пропадает. Круглые
+  видео, голосовые и музыка не трогаются; секретные чаты не трогаются совсем. Убирается в
+  трёх местах: при получении (`AccountStateManagementUtils.swift` → `replayFinalState`, сразу
+  после `PampGramSecretMediaPrefetch`, чтобы тот ещё видел сообщение секретным), при показе
+  пузыря (`ChatMessageInteractiveMediaNode.swift` — там же `isSecretMedia` сбрасывается в
+  `false` в `asyncLayout()` и `updateStatus()`, а фоновая запись в Postbox дедуплицируется
+  на время выполнения) и перед открытием (`GalleryData.swift`: обычная галерея вместо
+  секретной, а сама галерея строится после записи, чтобы увидеть уже обычное сообщение).
+  Вместе с атрибутами возвращаются теги `photoOrVideo`/`photo`/`video` (у секретных их нет),
+  и фото появляется в «Общих медиа». На сервер ничего не отправляется;
+- `AccountStateManagementUtils.swift` и `TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift`
+  (новый файл) — расширяет «Восстановление удалённых сообщений» на одноразовые/с таймером фото,
+  видео и голосовые. `PampGramDeletedMessageCapture` (уже перехватывает удаление в этом же файле,
+  в `replayFinalState`) сам по себе умеет пересобрать удалённое сообщение с любым медиа — он
+  ничего не исключает по `containsSecretMedia`, а атрибуты обрезаются до текстовых при пересборке,
+  так что копия сама теряет пометку «одноразовое». Не хватало одного: файл должен быть скачан
+  ДО того, как сервер его инвалидирует после просмотра/удаления. `PampGramSecretMediaPrefetch`
+  вызывается сразу после того, как в `replayFinalState` посчитан `addedIncomingMessageIds` — тот
+  же список свежесохранённых входящих сообщений, что стоковый код использует для уведомлений —
+  и для каждого одноразового/таймерного сообщения молча запускает `fetchedMediaResource` (фото →
+  `ImageMediaReference`, видео/голосовое → `FileMediaReference`), до открытия пользователем.
+  Один тумблер на всё — тот же `antiDeleteMessagesEnabled`, отдельной настройки нет;
+- Тот же `AccountStateManagementUtils.swift` — ещё один случай в `replayFinalState`,
+  `.UpdateMinAvailableMessage(id)`: единственный путь, которым канал/супергруппа теряет сразу
+  весь диапазон истории (плавающая нижняя граница доступных сообщений — `updateChannelAvailableMessages`
+  в API), в отличие от `.DeleteMessages`/`.DeleteMessagesWithGlobalIds`, которые несут явный
+  список id. Перед `transaction.deleteMessagesInRange(...)` весь диапазон перебирается через
+  `transaction.withAllMessages(...)`, и получившийся список id идёт в те же самые
+  `PampGramSecretMediaPrefetch.prefetchIfNeeded`/`PampGramDeletedMessageCapture.captureBeforeDelete`,
+  что и для обычного удаления, — код капчура и превентивной подкачки медиа не дублируется;
+- `TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift` —
+  расширяет капчур на удаления, которые делает сам владелец устройства, а не только на то, что
+  приходит через `replayFinalState` (то есть удаления собеседника). `deleteMessagesInteractively`
+  — единственная функция, через которую проходит любое «Удалить» в приложении — теперь тоже
+  вызывает `PampGramDeletedMessageCapture.captureBeforeDelete`, но с `includeOwnMessages: true`,
+  так что и свои собственные отправленные сообщения тоже остаются в чате при удалении. Та же
+  капча добавлена в `_internal_clearHistoryInteractively`/`_internal_clearHistoryInRangeInteractively`
+  (полная и по датам очистка истории) — весь диапазон сначала перебирается через
+  `transaction.withAllMessages`, как и для канального `.UpdateMinAvailableMessage` выше. Новый
+  параметр `accountPeerId` — не `nil` только когда вызов идёт от реального действия пользователя
+  (`TelegramEngineMessages.swift`/`SparseMessageList.swift` его передают); внутренний служебный
+  вызов `deleteMessagesInteractively` в `AccountStateManagementUtils.swift` (чистка
+  дублирующихся исходящих сообщений) оставляет его `nil`, так что ничего лишнего не захватывается;
+- `PampGramDeletedMessageCapture.restoreChatToNormal` (новая функция в том же файле, что и
+  `captureBeforeDelete`) и `TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift`,
+  `openBotForumMoreMenu` (меню «⋯» в шапке приватного чата) — пункт «Восстановить чат» теперь не
+  просто тост, а настоящее восстановление: снимает `PampGramDeletedByRemoteAttribute` с каждого
+  уже сохранённого для этого собеседника локального сообщения, из-за чего
+  `ChatMessageBubbleItemNode` перестаёт рисовать затемнение и бейдж-корзину — переписка
+  выглядит как обычная, без каких-либо пометок об удалении. `PampGramDeletedMessageStore` при
+  этом не трогается: счётчик в «История» и на самой кнопке остаётся точным, меняется только то,
+  как сообщение нарисовано в чате. Новое удаление в этом чате снова получит свежий бейдж как
+  обычно — восстановление разовое, а не постоянный режим отображения;
+- `StoryItemContentComponent.swift` и `StoryItemSetContainerComponent.swift` — «Сохранение
+  историй», два независимых изменения за одной настройкой:
+  1. В обоих местах, где строится `isCaptureProtected` для `StoryItemImageView`
+     (`isCaptureProtected: item.isForwardingDisabled`), добавлено
+     `&& !PampGramStorySavingDisplay.shared.isEnabled(...)`. `isCaptureProtected` решает,
+     оборачивать ли изображение истории в `UITextField.isSecureTextEntry` — это единственное,
+     из-за чего скриншот/запись экрана такой истории выходит чёрными на iOS
+     (`StoryItemImageView.swift`), самой Telegram-протокольной отметки «историю
+     заскриншотили» не существует (это есть только у секретных чатов). Настройка просто не
+     даёт этой обёртке появиться для этого аккаунта;
+  2. В `performOtherMoreAction` (меню «…» на чужой истории) условие показа пункта
+     «Сохранить» — `!component.slice.item.storyItem.isForwardingDisabled` — получает
+     `|| PampGramStorySavingDisplay.shared.isEnabled(...)`. Само сохранение
+     (`requestSave()`/`saveToCameraRoll`) не тронуто: работает и требует Premium точно так
+     же, как для обычной истории — меняется только видимость пункта меню;
+- «Обход скриншотов» (Дополнительно, `PampGramScreenshotBypassDisplay` — тот же
+  паттерн синхронного зеркала настройки, что и у `PampGramStorySavingDisplay`) — тот же
+  `isSecureTextEntry`-трюк, что и для историй, теперь ещё в четырёх местах, где стоковый
+  Telegram комбинирует признак копи-протекшена канала/группы/чата с признаком секретного чата
+  через `||`, — в патче меняется **только** копи-протекшен-член выражения, признак секретного
+  чата рядом остаётся нетронутым в каждом из них:
+  - `ChatMessageInteractiveMediaNode.swift` — `captureProtected` для фото/видео в медиасообщении
+    (`associatedData.isCopyProtectionEnabled || message.isCopyProtected()`, оба независимы от
+    типа чата — `Message.isCopyProtected()` проверяет только `TelegramGroup`/`TelegramChannel`);
+  - `ChatControllerNode.swift` — `isSecret` для всего экрана чата (`copyProtectionEnabled`,
+    рядом остаются `SecretChat`/`isVerificationCodes`);
+  - `ChatController.swift` — `isSecret` для pinch-zoom галереи;
+  - `ChatControllerOpenMessageContextMenu.swift` — `isSecret` для превью в контекстном меню
+    (`copyProtectionEnabled`/`myCopyProtectionEnabled`).
+  Секретные чаты сознательно не входят в этот тумблер ни с одной из сторон: чёрный экран для
+  них рисуется точно так же, как и без мода, и уведомление собеседнику о скриншоте (реальный
+  сигнал «кто-то знает, что тебя сфотографировали») никак не трогается — это единственное
+  место в Telegram, где защита от скриншота существует именно как сигнал согласия между двумя
+  людьми, а не просто техническое ограничение;
+- Тот же тумблер, ещё пять мест — оказалось, что кружочки, голосовые с таймером и видео шли
+  в обход первой волны патча, у каждого свой собственный путь до `captureProtected`, не
+  связанный с общим `isSecret` экрана чата:
+  - `ChatMessageInteractiveInstantVideoNode.swift` — `captureProtected` видеосообщения-кружка
+    прямо в чате (`associatedData.isCopyProtectionEnabled || message.isCopyProtected()`);
+  - `SharedMediaPlayer.swift` — то же самое для плавающего окошка, в которое кружок уходит,
+    если прокрутить чат во время воспроизведения (`message.isCopyProtected()`, без отдельного
+    peer-члена — `isCopyProtected()` сам проверяет и канал/группу);
+  - `GalleryUI/Sources/GalleryController.swift` — все семь мест, где полноэкранный просмотрщик
+    (открыть фото/видео на весь экран) считает `captureProtected` для `NativeVideoContent`,
+    включая видео из веб-превью (Instagram-эмбеды и т.п.). Как и в первой волне, из выражения
+    выведен только копи-протекшен-член (`message.isCopyProtected() || peerIsCopyProtected`) —
+    `containsSecretMedia`, `minAutoremoveOrClearTimeout == viewOnceTimeout` (просмотр «один раз»)
+    и `paidContent != nil` (платный контент) остаются нетронутыми при любом состоянии тумблера;
+  - `ChatController.swift`, третья ветка `ScreenCaptureDetectionManager` (для обычных, не
+    секретных личных чатов) — стоковый Telegram сам ставит на паузу голосовое/видео с таймером
+    «посмотреть один раз», как только фиксирует начало записи экрана (`UIScreen.main.isCaptured`),
+    чтобы его нельзя было записать. `setPlaylist(nil, ..., .pause)` теперь вызывается, только
+    если тумблер выключен для аккаунта — секретные чаты (первая ветка того же метода) эту логику
+    не трогают вообще, там `screenshot`-хук как в оригинале ставит отметку о скриншоте.
+- `PeerInfoSettingsItems.swift` — «Скрыть иконку в настройках»: строка «PampGram» в стоковом
+  экране настроек оборачивается в `if !pampGramSettings.hidePampGramIconEnabled`. Долгое
+  нажатие на строку «Помощь» там же всегда открывает PampGram напрямую — способ вернуться,
+  когда строка скрыта;
+- `ListItems/PeerInfoScreenDisclosureItem.swift` — добавляет `longTapAction: (() -> Void)? =
+  nil` к `PeerInfoScreenDisclosureItem` (используется «Помощь» выше) и подключает
+  `UILongPressGestureRecognizer` в его узле с `cancelsTouchesInView = false`, чтобы не мешать
+  обычному короткому тапу. Параметр опциональный со значением по умолчанию — остальные ~100
+  мест, где этот тип уже используется в стоке, не меняются;
+- четыре `BUILD`-файла (Bazel) в оригинальной фиче плюс один на файл, тронутый
+  «Обход одноразовых»/«Обход с таймером» и «Сохранение историй».
+
+`server/pampgram-subs-worker/` получил два новых маршрута — `/generate-key` (админ создаёт
+одноразовый ключ под тариф) и `/redeem-key` (любой аккаунт активирует ключ на себя, ключ
+после этого удаляется). Оба, как и `/grant`, принимают опциональный `durationHours` — выдачу
+или ключ можно ограничить по времени (часы и дни, дробные значения суммируются в часы), а не
+только выдавать навсегда. Для ключа таймер стартует в момент активации, а не генерации: срок
+не тратится, пока ключ просто лежит непроданным. Истёкшая подписка сама читается сервером как
+`standard`, никакой фоновой очистки не требуется. Подробности — в комментарии наверху
+`src/index.js`.
 
 ## Как собрать
 
@@ -124,6 +272,108 @@ cp -R /путь/до/PampGram/mod/components/. submodules/TelegramUI/Components/
 кладутся в секреты репозитория `TELEGRAM_API_ID` и `TELEGRAM_API_HASH` — workflow подхватит
 их автоматически.
 
+- `PampGramSettingsUI/PampGramOnboardingScreen.swift` (новый) и
+  `TelegramUI/Sources/AppDelegate.swift` — карусель первого запуска. `viewDidLoad`/paging —
+  чистый UIKit, без Postbox: на этот момент ещё нет ни аккаунта, ни его Postbox, так что
+  "показано один раз" хранится в обычном `UserDefaults` (`PampGram_OnboardingShown_v1`), а не в
+  `PampGramSettings`. Вызывается из `didFinishLaunchingWithOptions` сразу после
+  `self.window?.makeKeyAndVisible()` — поверх уже отрисованного окна, не подменяя решение
+  Telegram о том, что показать дальше (вход или список чатов): под каруселью всё точно так же,
+  как без неё, и баг в этом экране не может сломать сам вход;
+- `PampGramSettingsUI/PampGramPremiumScreen.swift` (новый) — платный экран: те же реальные
+  PRO-функции, что скрыты в `pampGramGateTier`, с иконкой/описанием на карточке, статус текущего
+  тарифа (тот же `PampGramSubscriptionAPI.fetchStatus`, что и «Статус») и кнопка активации,
+  которая ведёт на уже существующий ключ-флоу — никакой настоящей Apple-покупки тут нет и быть
+  не может (сборка сайдлоуд, не из App Store, реальный StoreKit не заработает);
+- `PampGramSettingsUI/PampGramSubscriptionUI.swift` (новый) — вынесенный из
+  `PampGramStatusScreen.swift` общий флоу «Активировать ключ» (промпт + вызов
+  `PampGramSubscriptionAPI.redeemKey` + тултип), теперь используется и «Статус»-экраном, и
+  Premium-экраном, без дублирования;
+- `PampGramHubScreen.swift` — кнопка «Premium» в правом верхнем углу (открывает Premium-экран),
+  разделы «Ghost» и «Дополнительно» обёрнуты в `pampGramGateTier`, который открывает Premium
+  вместо раздела, если тариф не PRO. «Подарки», «Чаты» и «Внешний вид» остаются бесплатными.
+- **Полный бан — настоящий рубильник, а не только блокировка экрана.** До этого полный бан
+  («Забанить полностью» в админ-панели) только показывал заглушку с замком при открытии хаба —
+  уже включённые функции продолжали работать, балансы не трогались. Теперь:
+  - `PampGramSettings.bannedLocally` (новое поле) — локальное зеркало полного бана.
+  - `PampGramBanEnforcer.swift` (новый файл, `PampGramCore`) — опрашивает
+    `PampGramSubscriptionAPI.fetchBanStatus` раз в 60 секунд (плюс сразу при старте аккаунта,
+    та же точка, что и у остальных `PampGramXDisplay.start`). Как только видит полный бан —
+    одной транзакцией обнуляет `fakeStarsBalance`/`fakeTonBalanceNanos`/`localRublesBalanceKopecks`
+    и ставит `bannedLocally = true`. Когда бан снят — возвращает `bannedLocally = false`;
+    обнулённые балансы обратно не восстанавливает, обнуление было и есть частью наказания.
+  - `PampGramSettings.allFeaturesOff()` (новый метод, по образцу уже существующего
+    `withGiftsVisualsOff()`) — версия настроек с выключенными вообще всеми тумблерами.
+    `PampGramCore.settings(transaction:)`/`settingsSignal(postbox:)` — тот самый общий путь
+    чтения, через который уже идёт весь код эффектов/отображения функций мода — при
+    `bannedLocally == true` отдают именно её вместо реальных сохранённых значений. Экраны
+    настроек (`rawSettings`/`rawSettingsSignal`) это не затрагивает — они как показывали
+    реальное состояние, так и показывают.
+  Итог: один флаг в одном централизованном месте чтения выключает всё разом — не нужно
+  добавлять проверку бана в каждый отдельный класс-рантайм. Частичный (посекционный) бан
+  своё поведение не меняет — как и раньше, блокирует только конкретный раздел в интерфейсе.
+- **Аккаунт @kopimastera — всегда PRO и все функции включены, что бы ни говорил сервер.**
+  `PampGramSubscriptionAPI.fetchStatus` для `adminAccountId` (это и есть его численный id)
+  возвращает `.pro` без сети — то же самое, что подразумевал уже существовавший `adminAccountId`
+  для показа «Админ-панели», только теперь и для тарифа. `PampGramSettings.isOwnerAccount` —
+  выставляется один раз в `AccountContextImpl.init`, если id аккаунта совпадает с
+  `adminAccountId`. `PampGramCore.settings(transaction:)`/`settingsSignal(postbox:)` проверяют
+  этот флаг раньше даже проверки бана и, если он есть, отдают `allFeaturesOn()` (новый метод,
+  зеркало `allFeaturesOff()` — включает вообще все тумблеры, балансы не трогает). Из-за этого
+  ни ошибочный бан этого id на сервере, ни истёкшая/невыданная подписка на него не влияют —
+  собственное устройство владельца при этом полностью игнорирует состояние сервера.
+
+## Безопасность
+
+- `WebPBinding/Sources/UIImage+WebP.m`, `+[WebP convertFromWebP:]` — этот декодер (не наш, он
+  уже был в Telegram-iOS) вызывается для любого WebP-изображения, которое не смог открыть
+  штатный `CGImageSource` — то есть для превью и полноразмерных стикеров, реакций и части
+  кэшированных изображений (`PhotoResources.swift`, `ReactionImageComponent.swift`,
+  `VideoStickerFrameSource.swift`, `FetchCachedRepresentations.swift`,
+  `LottieAnimationCache.swift`). Он брал ширину/высоту прямо из заголовка файла без всякой
+  проверки и передавал их произведение в `malloc` через `(int)`-каст — на 64-битном iOS это
+  переполняет 32 бита при значениях от ~2 ГБ и молча обрезает размер выделяемого буфера, а
+  `WebPDecodeBGRAInto` после этого всё равно пишет в него полный, необрезанный размер —
+  classic heap buffer overflow, управляемый исключительно заявленными в файле размерами.
+  Открытие чата с таким файлом («краш-стикер») валит процесс мгновенно, а поскольку Telegram
+  на следующем запуске пытается отрисовать последний открытый чат, попасть в аккаунт после
+  этого без стороннего вмешательства (веб-клиент, удаление через API) нельзя.
+  Исправлено: отклоняем `width`/`height` ≤ 0 или больше 16384 (собственный лимит формата WebP
+  на измерение — значит, ни один валидный кодировщик под это не попадёт) ещё до всякого
+  выделения памяти; убран `(int)`-каст, размер буфера считается в `size_t` от начала до конца;
+  добавлена проверка `malloc`/`CGBitmapContextCreate` на `NULL` и освобождение буфера на всех
+  путях выхода (раньше на ошибке декодирования буфер просто терялся). Затронутых мест
+  вызова несколько, но баг был один — в самом декодере, так что правки одного файла достаточно
+  для всех них.
+
+- `rlottie/src/vector/vpath.cpp`, `addPolystar`/`addPolygon` (тоже не наш код, тоже был в
+  Telegram-iOS изначально) — второй, независимый «краш-стикер», но уже для `.tgs`-анимаций
+  (rlottie — движок, который `AnimatedStickerFrameSource.swift` использует для отрисовки любого
+  анимированного стикера в обычной ленте чата). Ключ `pt` в Lottie-JSON (число вершин
+  звезды/многоугольника, `LOTPolystarData::mPointCount`) читался без всякой проверки и напрямую
+  становился и размером для `reserve()`, и границей цикла генерации точек. Файл с `pt: 1e38`
+  (реальный пример — сет `burmaldacrash`) превращает это в `reserve()` на миллиарды элементов
+  `std::vector` — необработанное исключение (`std::length_error`/`bad_alloc`) валит процесс тем
+  же способом, что и WebP-баг: открытие чата с таким стикером обрушивает приложение мгновенно.
+  Исправлено: `points` зажимается в диапазон [3, 1000] в начале обеих функций, до первого
+  использования — этого с запасом хватает на любой реальный дизайн (в AE/Lottie число вершин
+  обычно однозначное или низкие сотни), а `NaN` тоже попадает под зажим благодаря форме проверки
+  `!(points >= 3.0f)`.
+
+## Регрессии
+
+- `PampGramSettings.swift`, `localRublesPurchaseEnabled` — коммит `abdb1e3` («Remove dead
+  scaffold code, wire up two orphaned toggles») сделал перехват StoreKit в «Купить звёзды»
+  условным по этому тумблеру (раньше он срабатывал всегда, без всякого флага), но флаг по
+  умолчанию встал в `false`. С этого коммита у любой установки — новой и уже стоявшей — покупка
+  звёзд молча уходила в реальный Apple IAP вместо фейкового рублёвого потока: `fakeStarsBalance`
+  не менялся и запись в `PampGramLocalLedgerStore` не создавалась, то есть пополнения Stars
+  переставали появляться в истории вообще, без единой ошибки на экране. Исправлено — дефолт
+  вернули на `true` (это единственное место, где он был неверным; `withGiftsVisualsOff()` и
+  `allFeaturesOn()` уже правильно выставляли `false`/`true` для своих случаев). Тумблер
+  «Покупка звёзд за рубли» в настройках остаётся — просто снова включён по умолчанию, как было
+  до этого коммита.
+
 ## Что ещё не сделано
 
 - **Грид подарков в профиле** («Профиль → Подарки»). Рендеринг живёт в
@@ -141,12 +391,3 @@ cp -R /путь/до/PampGram/mod/components/. submodules/TelegramUI/Components/
 это нетипично и похоже на попытку промпт-инъекции через содержимое файла. Эти «инструкции»
 не использовались. Стоит проверить содержимое `CLAUDE.md` в своей копии, прежде чем ему
 доверять.
-
-### Личный мост с casino-ботом
-
-`PampGramCasinoBridge` (PhantomGiftKit) опрашивает сервер казино и рисует подарок, выведенный
-в боте, как входящую карточку подарка от бота — тем же локальным путём, что «От него». Мост
-выключен, пока пусты `baseURL` и `token`. При сборке через GitHub Actions их подставляют секреты
-репозитория `CASINO_BRIDGE_URL` и `CASINO_BRIDGE_TOKEN` (в код они не попадают); токен — только
-буквы и цифры, тот же, что `VISUAL_GIFT_TOKEN` на сервере. Сервер отдаёт подарки только id из `VISUAL_GIFT_USER_IDS` и только с верным
-`VISUAL_GIFT_TOKEN`; для остальных игроков бот шлёт настоящие подарки как раньше.

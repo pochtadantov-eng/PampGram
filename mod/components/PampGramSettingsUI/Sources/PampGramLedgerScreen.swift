@@ -3,8 +3,10 @@ import UIKit
 import Display
 import SwiftSignalKit
 import Postbox
+import TelegramCore
 import TelegramPresentationData
 import ItemListUI
+import PresentationDataUtils
 import AccountContext
 import PromptUI
 import PampGramCore
@@ -54,14 +56,23 @@ private func pampGramLedgerParseAmount(currency: PampGramLocalCurrency, text: St
     }
 }
 
+private func pampGramLedgerEditDateFormatter() -> DateFormatter {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "dd.MM.yyyy HH:mm"
+    return formatter
+}
+
 private final class PampGramLedgerArguments {
     let chooseFilter: () -> Void
     let addOperation: () -> Void
+    let editOperation: (PampGramLocalOperation) -> Void
     let clear: () -> Void
 
-    init(chooseFilter: @escaping () -> Void, addOperation: @escaping () -> Void, clear: @escaping () -> Void) {
+    init(chooseFilter: @escaping () -> Void, addOperation: @escaping () -> Void, editOperation: @escaping (PampGramLocalOperation) -> Void, clear: @escaping () -> Void) {
         self.chooseFilter = chooseFilter
         self.addOperation = addOperation
+        self.editOperation = editOperation
         self.clear = clear
     }
 }
@@ -71,7 +82,7 @@ private enum PampGramLedgerEntry: ItemListNodeEntry {
     case stats(String)
     case filter(String)
     case add
-    case operation(Int64, String, String, String)
+    case operation(PampGramLocalOperation, String, String, String)
     case empty
     case clear
     case footer(String)
@@ -91,7 +102,7 @@ private enum PampGramLedgerEntry: ItemListNodeEntry {
         case .stats: return 1
         case .filter: return 2
         case .add: return 3
-        case let .operation(id, _, _, _): return 10_000 + id
+        case let .operation(operation, _, _, _): return 10_000 + operation.id
         case .empty: return 9_000
         case .clear: return 9_001
         case .footer: return 9_002
@@ -116,18 +127,22 @@ private enum PampGramLedgerEntry: ItemListNodeEntry {
         let arguments = arguments as! PampGramLedgerArguments
         switch self {
         case let .balance(text):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Текущий баланс", titleFont: .bold, label: text, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "wallet.pass.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: "Текущий баланс", titleFont: .bold, label: text, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
         case let .stats(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .filter(text):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Фильтр", label: text, sectionId: self.section, style: .blocks, action: arguments.chooseFilter)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "line.3.horizontal.decrease.circle.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: "Фильтр", label: text, sectionId: self.section, style: .blocks, action: arguments.chooseFilter)
         case .add:
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Добавить операцию", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: arguments.addOperation)
-        case let .operation(_, title, amount, detail):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: amount, additionalDetailLabel: detail, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+        case let .operation(operation, title, amount, detail):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrow.left.arrow.right.circle.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, label: amount, additionalDetailLabel: detail, sectionId: self.section, style: .blocks, action: {
+                arguments.editOperation(operation)
+            })
         case .empty:
             return ItemListTextItem(presentationData: presentationData, text: .plain("По выбранному фильтру операций пока нет."), sectionId: self.section)
         case .clear:
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Очистить историю", kind: .destructive, alignment: .natural, sectionId: self.section, style: .blocks, action: arguments.clear)
         case let .footer(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
@@ -157,6 +172,143 @@ public func pampGramLedgerController(context: AccountContext, currency: PampGram
                 }.start()
             }
         ))
+    }
+
+    func editAmount(operation: PampGramLocalOperation) {
+        let wasOutgoing = operation.amount < 0
+        presentControllerImpl?(promptController(
+            context: context,
+            text: "Изменить сумму",
+            subtitle: "Текущая сумма: \(pampGramLedgerAmountText(currency: operation.currency, amount: operation.amount)). Баланс пересчитается на разницу.",
+            value: "",
+            placeholder: operation.currency == .stars ? "100" : "10.0",
+            characterLimit: 24,
+            apply: { value in
+                guard let value, let parsed = pampGramLedgerParseAmount(currency: operation.currency, text: value) else { return }
+                let signed = wasOutgoing ? -parsed : parsed
+                let _ = context.account.postbox.transaction { transaction -> Void in
+                    PampGramLocalLedgerStore.update(transaction: transaction, id: operation.id, amount: signed)
+                }.start()
+            }
+        ))
+    }
+
+    func editDate(operation: PampGramLocalOperation) {
+        let formatter = pampGramLedgerEditDateFormatter()
+        presentControllerImpl?(promptController(
+            context: context,
+            text: "Изменить дату",
+            subtitle: "Формат: ДД.ММ.ГГГГ ЧЧ:ММ",
+            value: formatter.string(from: Date(timeIntervalSince1970: Double(operation.date))),
+            placeholder: formatter.string(from: Date()),
+            characterLimit: 32,
+            apply: { value in
+                guard let value, let date = formatter.date(from: value.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
+                let _ = context.account.postbox.transaction { transaction -> Void in
+                    PampGramLocalLedgerStore.update(transaction: transaction, id: operation.id, date: Int32(date.timeIntervalSince1970))
+                }.start()
+            }
+        ))
+    }
+
+    func editCounterparty(operation: PampGramLocalOperation) {
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        let sheet = ActionSheetController(presentationData: presentationData)
+        var buttons: [ActionSheetItem] = [
+            ActionSheetTextItem(title: "Пользователь"),
+            ActionSheetButtonItem(title: "Выбрать пользователя", color: .accent, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                let selectionController = context.sharedContext.makeContactMultiselectionController(ContactMultiselectionControllerParams(
+                    context: context,
+                    mode: .chatSelection(ContactMultiselectionControllerMode.ChatSelection(
+                        title: "Пользователь",
+                        searchPlaceholder: "Поиск",
+                        selectedChats: Set(),
+                        additionalCategories: nil,
+                        chatListFilters: nil
+                    )),
+                    filters: [.excludeSelf]
+                ))
+                selectionController.navigationPresentation = .modal
+                let _ = (selectionController.result
+                |> take(1)
+                |> deliverOnMainQueue).start(next: { [weak selectionController] result in
+                    selectionController?.dismiss()
+                    var peerId: PeerId?
+                    if case let .result(peerIdsValue, _) = result {
+                        for item in peerIdsValue {
+                            if case let .peer(id) = item {
+                                peerId = id
+                                break
+                            }
+                        }
+                    }
+                    guard let peerId else { return }
+                    let _ = context.account.postbox.transaction { transaction -> Void in
+                        PampGramLocalLedgerStore.update(transaction: transaction, id: operation.id, peerId: peerId)
+                    }.start()
+                })
+                presentControllerImpl?(selectionController)
+            })
+        ]
+        if operation.peerId != nil {
+            buttons.append(ActionSheetButtonItem(title: "Убрать пользователя", color: .destructive, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                let _ = context.account.postbox.transaction { transaction -> Void in
+                    PampGramLocalLedgerStore.update(transaction: transaction, id: operation.id, clearPeerId: true)
+                }.start()
+            }))
+        }
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: buttons),
+            ActionSheetItemGroup(items: [ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in sheet?.dismissAnimated() })])
+        ])
+        presentControllerImpl?(sheet)
+    }
+
+    func deleteOperation(operation: PampGramLocalOperation) {
+        presentControllerImpl?(textAlertController(
+            context: context,
+            title: "Удалить операцию?",
+            text: "«\(operation.title)» будет удалена, а баланс изменится так, будто её никогда не было. Отменить нельзя.",
+            actions: [
+                TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
+                TextAlertAction(type: .destructiveAction, title: "Удалить", action: {
+                    let _ = context.account.postbox.transaction { transaction -> Void in
+                        PampGramLocalLedgerStore.removeAndReverse(transaction: transaction, id: operation.id)
+                    }.start()
+                }),
+            ],
+            actionLayout: .vertical
+        ))
+    }
+
+    func editOperation(_ operation: PampGramLocalOperation) {
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        let sheet = ActionSheetController(presentationData: presentationData)
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: [
+                ActionSheetTextItem(title: operation.title),
+                ActionSheetButtonItem(title: "Изменить сумму", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    editAmount(operation: operation)
+                }),
+                ActionSheetButtonItem(title: "Изменить дату", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    editDate(operation: operation)
+                }),
+                ActionSheetButtonItem(title: "Пользователь", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    editCounterparty(operation: operation)
+                }),
+                ActionSheetButtonItem(title: "Удалить операцию", color: .destructive, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    deleteOperation(operation: operation)
+                })
+            ]),
+            ActionSheetItemGroup(items: [ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in sheet?.dismissAnimated() })])
+        ])
+        presentControllerImpl?(sheet)
     }
 
     let arguments = PampGramLedgerArguments(
@@ -191,6 +343,9 @@ public func pampGramLedgerController(context: AccountContext, currency: PampGram
                 ActionSheetItemGroup(items: [ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in sheet?.dismissAnimated() })])
             ])
             presentControllerImpl?(sheet)
+        },
+        editOperation: { operation in
+            editOperation(operation)
         },
         clear: {
             let _ = context.account.postbox.transaction { transaction -> Void in
@@ -240,11 +395,11 @@ public func pampGramLedgerController(context: AccountContext, currency: PampGram
             for operation in operations {
                 let date = formatter.string(from: Date(timeIntervalSince1970: Double(operation.date)))
                 let detail = operation.details.isEmpty ? date : "\(operation.details) · \(date)"
-                entries.append(.operation(operation.id, operation.title, pampGramLedgerAmountText(currency: currency, amount: operation.amount), detail))
+                entries.append(.operation(operation, operation.title, pampGramLedgerAmountText(currency: currency, amount: operation.amount), detail))
             }
         }
         entries.append(.clear)
-        entries.append(.footer("История и статистика полностью локальные и всегда строятся из одного журнала операций, поэтому пополнения, покупки Stars и покупки/продажи подарков автоматически попадают сюда."))
+        entries.append(.footer("История и статистика полностью локальные и всегда строятся из одного журнала операций, поэтому пополнения, покупки Stars и покупки/продажи подарков автоматически попадают сюда. Нажмите на операцию, чтобы изменить сумму, дату, пользователя или удалить её — баланс пересчитается сразу."))
         return (
             ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text("\(currency.displayName) · история"), leftNavigationButton: nil, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back), animateChanges: false),
             (ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: entries, style: .blocks, animateChanges: true), arguments)

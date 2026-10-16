@@ -48,7 +48,7 @@ private func pampGramPresentTooltip(context: AccountContext, text: String) {
     controller.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
 }
 
-private func pampGramInsertIncomingMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media]) -> Signal<EngineMessage.Id?, NoError> {
+private func pampGramInsertIncomingMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media], extraAttributes: [MessageAttribute] = []) -> Signal<EngineMessage.Id?, NoError> {
     return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
         let globallyUniqueId = Int64.random(in: Int64.min ... Int64.max)
         let storeMessage = StoreMessage(
@@ -65,7 +65,7 @@ private func pampGramInsertIncomingMessage(context: AccountContext, peerId: Engi
             forwardInfo: nil,
             authorId: peerId,
             text: text,
-            attributes: [],
+            attributes: extraAttributes,
             media: media
         )
         let insertedIds = transaction.addMessages([storeMessage], location: .Random)
@@ -73,8 +73,13 @@ private func pampGramInsertIncomingMessage(context: AccountContext, peerId: Engi
     }
 }
 
-private func pampGramInsertOutgoingMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media]) -> Signal<EngineMessage.Id?, NoError> {
+private func pampGramInsertOutgoingMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media], extraAttributes: [MessageAttribute] = [], inlineMedia: [Media] = []) -> Signal<EngineMessage.Id?, NoError> {
     return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
+        // The stickers a message's custom emoji point at have to be in the media table for the
+        // chat to draw them — the real send path stores them the same way before it inserts.
+        for file in inlineMedia {
+            transaction.storeMediaIfNotPresent(media: file)
+        }
         let globallyUniqueId = Int64.random(in: Int64.min ... Int64.max)
         let storeMessage = StoreMessage(
             id: .Partial(peerId, Namespaces.Message.Local),
@@ -90,7 +95,7 @@ private func pampGramInsertOutgoingMessage(context: AccountContext, peerId: Engi
             forwardInfo: nil,
             authorId: context.account.peerId,
             text: text,
-            attributes: [],
+            attributes: extraAttributes,
             media: media
         )
         let insertedIds = transaction.addMessages([storeMessage], location: .Random)
@@ -344,6 +349,54 @@ public func pampGramPresentInsertCall(context: AccountContext, peerId: EnginePee
     presentingController.present(typeSheet, in: .window(.root))
 }
 
+// MARK: - Premium gift
+
+/// "Подарить Premium": same no-media, plain-`TelegramMediaAction` shape as
+/// `pampGramPresentInsertCall` above, using the exact case (`.giftPremium`) real Telegram uses
+/// for an actual gifted subscription — `ChatMessageGiftBubbleContentNode` renders it from
+/// `days` alone (deriving "3 months"/"6 months"/"1 year" itself), so `currency`/`amount` are
+/// never read for display and don't need to look real. Always outgoing (from this account) —
+/// unlike the photo/voice/file/call inserts above, "gifting" only makes sense one direction,
+/// same reasoning `pampGramConfirmSendRealBears` already settled on for the one real gift in
+/// this same menu.
+public func pampGramPresentInsertPremiumGift(context: AccountContext, peerId: EnginePeer.Id) {
+    guard let presentingController = pampGramTopController(context: context) else {
+        return
+    }
+    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+
+    let insertGift: (Int32) -> Void = { days in
+        let action = TelegramMediaAction(action: .giftPremium(currency: "USD", amount: 0, days: days, cryptoCurrency: nil, cryptoAmount: nil, text: nil, entities: nil))
+        let _ = pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: "", media: [action]).start()
+        pampGramPresentTooltip(context: context, text: "Подарок Premium добавлен.")
+    }
+
+    let durationSheet = ActionSheetController(presentationData: presentationData)
+    durationSheet.setItemGroups([
+        ActionSheetItemGroup(items: [
+            ActionSheetTextItem(title: "На сколько подарить Premium?"),
+            ActionSheetButtonItem(title: "3 месяца", color: .accent, action: { [weak durationSheet] in
+                durationSheet?.dismissAnimated()
+                insertGift(90)
+            }),
+            ActionSheetButtonItem(title: "6 месяцев", color: .accent, action: { [weak durationSheet] in
+                durationSheet?.dismissAnimated()
+                insertGift(180)
+            }),
+            ActionSheetButtonItem(title: "1 год", color: .accent, action: { [weak durationSheet] in
+                durationSheet?.dismissAnimated()
+                insertGift(365)
+            })
+        ]),
+        ActionSheetItemGroup(items: [
+            ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak durationSheet] in
+                durationSheet?.dismissAnimated()
+            })
+        ])
+    ])
+    presentingController.present(durationSheet, in: .window(.root))
+}
+
 // MARK: - Text
 
 /// "Текст от собеседника" / "Текст от меня": a brand-new plain-text message, inserted the same
@@ -388,4 +441,92 @@ public func pampGramInsertTextDirect(context: AccountContext, peerId: EnginePeer
         : pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: trimmed, media: [])
     let _ = insert.start()
     pampGramPresentTooltip(context: context, text: "Сообщение добавлено.")
+}
+
+// MARK: - Visual chat (per-chat automatic routing)
+
+/// Every message "Сделать визуальный чат" rewrites locally lands outgoing ("от меня") first —
+/// no guessing from letter case, no "which side is this" prompt. `PampGramVisualChatMessageAttribute`
+/// is what makes `ChatMessageItemImpl`/`ChatMessageDateHeader` show the small role-switch button
+/// to its left afterwards (see `pampGramToggleVisualChatMessageSide`).
+private func pampGramInsertVisualChatMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media], attributes: [MessageAttribute], inlineMedia: [Media]) -> Signal<EngineMessage.Id?, NoError> {
+    return pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: text, media: media, extraAttributes: [PampGramVisualChatMessageAttribute()] + attributes, inlineMedia: inlineMedia)
+}
+
+/// What of a composed message's attributes a visual-chat message keeps: the text entities (bold,
+/// italic, spoiler, quote, links, and custom emoji, which live there too) and the media
+/// spoiler/caption-position flags. They are stored with the message and ride along unchanged when
+/// the role-switch button flips its side, so the formatting and emoji look the same either way.
+/// Everything else on a composed message (reply, schedule, silent, timers, effects) belongs to the
+/// real send and has no meaning for a local-only message.
+private func pampGramVisualChatKeptAttributes(_ attributes: [MessageAttribute]) -> [MessageAttribute] {
+    return attributes.filter { attribute in
+        return attribute is TextEntitiesMessageAttribute || attribute is MediaSpoilerMessageAttribute || attribute is InvertMediaMessageAttribute
+    }
+}
+
+/// Called from every one of `ChatController.swift`'s send funnels — `chatDisplayNode.sendMessages`
+/// for a normal tap on the send button, `sendMessages(_:)` for stickers/custom emoji/quick
+/// replies, `sendMediaRecording` for a recorded voice note, `commitEnqueueMediaMessages` for a
+/// gallery photo/video — for every chat in `pampGramSettings.visualChatEnabledPeerIds`. Returns
+/// `false` (nothing handled, caller falls through to the real send) whenever the batch contains
+/// anything this can't rewrite locally — a forward, for one, since faking "they forwarded this"
+/// isn't what this feature asked for. Everything else (text, a sticker, a custom emoji, a
+/// photo, a voice note — whatever `EnqueueMessage.message` is carrying) inserts uniformly, with
+/// its text/media carried straight through; the per-message role-switch button handles getting
+/// it to the right side afterwards; no reason to ask or guess up front.
+public func pampGramHandleVisualChatMessages(context: AccountContext, peerId: EnginePeer.Id, messages: [EnqueueMessage], pampGramSettings: PampGramSettings) -> Bool {
+    guard pampGramSettings.visualChatEnabledPeerIds.contains(peerId) else {
+        return false
+    }
+    guard messages.allSatisfy({ if case .message = $0 { return true } else { return false } }) else {
+        return false
+    }
+    for message in messages {
+        guard case let .message(text, attributes, inlineStickers, mediaReference, _, _, _, _, _, _) = message else {
+            continue
+        }
+        let media: [Media] = mediaReference.map { [$0.media] } ?? []
+        if text.isEmpty && media.isEmpty {
+            continue
+        }
+        let _ = pampGramInsertVisualChatMessage(context: context, peerId: peerId, text: text, media: media, attributes: pampGramVisualChatKeptAttributes(attributes), inlineMedia: Array(inlineStickers.values)).start()
+    }
+    return true
+}
+
+/// The avatar-header button's tap action (see the patch to `ChatMessageDateHeader.swift`):
+/// flips a "Сделать визуальный чат" message between incoming and outgoing in place, rather than
+/// deleting and re-inserting it — keeps its id, so it stays put in the history instead of
+/// jumping to a new timestamp. Only ever touches messages carrying
+/// `PampGramVisualChatMessageAttribute`; every other PampGram local insert (phantom gifts, the
+/// long-press text-edit flow, fake admin posts, …) is untouched by this and keeps whatever side
+/// it was given when it was inserted.
+public func pampGramToggleVisualChatMessageSide(context: AccountContext, messageId: EngineMessage.Id) {
+    let _ = context.account.postbox.transaction { transaction -> Void in
+        transaction.updateMessage(messageId, update: { message -> PostboxUpdateMessage in
+            guard message.attributes.contains(where: { $0 is PampGramVisualChatMessageAttribute }) else {
+                return .skip
+            }
+            let isCurrentlyIncoming = message.flags.contains(.Incoming)
+            let updatedMessage = StoreMessage(
+                id: messageId,
+                customStableId: nil,
+                globallyUniqueId: message.globallyUniqueId,
+                groupingKey: message.groupingKey,
+                threadId: message.threadId,
+                timestamp: message.timestamp,
+                flags: isCurrentlyIncoming ? StoreMessageFlags() : StoreMessageFlags.Incoming,
+                tags: message.tags,
+                globalTags: message.globalTags,
+                localTags: message.localTags,
+                forwardInfo: message.forwardInfo.map(StoreMessageForwardInfo.init),
+                authorId: isCurrentlyIncoming ? context.account.peerId : messageId.peerId,
+                text: message.text,
+                attributes: message.attributes,
+                media: message.media
+            )
+            return .update(updatedMessage)
+        })
+    }.start()
 }

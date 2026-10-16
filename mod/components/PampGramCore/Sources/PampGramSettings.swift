@@ -159,7 +159,14 @@ public struct PampGramSettings: Codable, Equatable {
     public var fakeTonDisplayEnabled: Bool
     /// Whether a message deleted by the other side is kept, visibly marked, in this chat's
     /// history instead of vanishing. Purely local: it never tells Telegram, or the person who
-    /// deleted it, that a copy was kept.
+    /// deleted it, that a copy was kept. Covers self-destructing/view-once photos, videos, and
+    /// voice messages too, and not just their text: `PampGramSecretMediaPrefetch` (in
+    /// `TelegramCore`) silently downloads such a message's media the moment it arrives, before
+    /// it's ever opened, so the bytes are already cached locally by the time
+    /// `PampGramDeletedMessageCapture` rebuilds the message on deletion/consumption — without
+    /// that prefetch the resurrected copy would reference a resource the server has already
+    /// invalidated. One toggle for both, on purpose: there's no separate "also cache media"
+    /// setting, since the point is for this feature's own promise to hold for media too.
     public var antiDeleteMessagesEnabled: Bool
     /// Legacy Ghost toggles, kept only so old stored settings still decode and can be
     /// migrated. The Ghost section is now the granular `ghostMode*` set below; `init(from:)`
@@ -209,12 +216,32 @@ public struct PampGramSettings: Codable, Equatable {
     /// being kept and shown like every other chat's deletions are. Checked by
     /// `PampGramDeletedMessageCapture.captureBeforeDelete` per message's `peerId`.
     public var antiDeleteExcludedPeerIds: [PeerId]
-    /// "Изменить визуально": lets the long-press menu on a message from the other side offer
-    /// "PampGram" → "Изменить визуально", rewriting that message's text as stored in this
-    /// device's own Postbox. Purely local — the edit is never sent, and the sender's copy is
-    /// untouched; the bubble carries a small pencil badge (`PampGramVisualEditAttribute`) so
-    /// it stays distinguishable from what they actually sent.
+    /// "Изменить визуально": master switch for the whole "PampGram" entry in a message's
+    /// long-press menu — off hides the entry entirely. On, which of its individual items
+    /// (`visualEdit*ItemEnabled` below) actually show up in that menu is each its own toggle.
     public var visualEditEnabled: Bool
+    /// "Изменить текст" item in the "PampGram" long-press menu.
+    public var visualEditTextItemEnabled: Bool
+    /// "Отправить фото" item.
+    public var visualEditPhotoItemEnabled: Bool
+    /// "Отправить голосовое" item.
+    public var visualEditVoiceItemEnabled: Bool
+    /// "Отправить файл" item.
+    public var visualEditFileItemEnabled: Bool
+    /// "Показать звонок" item.
+    public var visualEditCallItemEnabled: Bool
+    /// "Подарить Premium" item.
+    public var visualEditPremiumGiftItemEnabled: Bool
+    /// "Поставить реакцию" item.
+    public var visualEditReactionItemEnabled: Bool
+    /// "Сохранить одноразовое" item.
+    public var visualEditSaveOneTimeItemEnabled: Bool
+    /// "Визуальное фото в канал" item.
+    public var visualEditChannelPhotoItemEnabled: Bool
+    /// "Подарить 2 мишек" item — the one real-money, real-Stars action in this menu (see
+    /// `pampGramConfirmSendRealBears`); still its own on/off toggle like every other item here,
+    /// so it can be hidden from the menu entirely for anyone who'd rather it never show up.
+    public var visualEditRealBearsItemEnabled: Bool
     /// "От него": shows a 5th tab ("Подарок мне") next to the "Подарок ему" tab in the real
     /// gift-sending screen — the same real market, but a purchase from it inserts the
     /// message as if the *other* side bought and sent the gift, not this account. Nothing is
@@ -253,18 +280,58 @@ public struct PampGramSettings: Codable, Equatable {
     /// Telegram never verifies server-side — a locally-shown Premium badge/status, premium
     /// stickers & reactions in the picker, and the relaxed folder/pin client limits.
     public var legalPremiumEnabled: Bool
-    /// "Фейковый криптобот" (Дополнительно): пока включено — попытка открыть мини-апп
-    /// у @CryptoBot (ссылка `t.me/send?start=…` или `?startapp=…`, кнопка «Open App» из
-    /// профиля бота) перехватывается, вместо реального веб-вью показывается локальный
-    /// визуал (см. `PampGramFakeCryptoBotScreen.swift`). Балансы в этом визуале
-    /// хранятся в `fakeCryptoBotBalances` и настраиваются «секретной» кнопкой на
-    /// самом экране.
-    public var fakeCryptoBotEnabled: Bool
-    /// Визуальные балансы для «Фейкового криптобота» — локальные play-money значения
-    /// в единицах соответствующей валюты (USDT, TON, BTC, GRAM, …). Ни на что в
-    /// Telegram не влияют и никуда не отправляются. Dictionary, а не отдельные поля:
-    /// набор поддерживаемых валют может меняться, миграции не требуются.
-    public var fakeCryptoBotBalances: [String: Double]
+    /// Legacy "Показывать временную медиа" toggle, kept only so old stored settings still
+    /// decode and can be migrated — see `bypassViewOnceMediaEnabled`/`bypassTimedMediaEnabled`,
+    /// which replaced it as two independent toggles. Nothing reads this directly any more.
+    public var showTemporaryMediaEnabled: Bool
+    /// "Обход одноразовых" (Дополнительно): draws a view-once photo/video (`minAutoremoveOrClearTimeout
+    /// == viewOnceTimeout`) in the chat bubble like an ordinary photo — visible immediately, no
+    /// blur overlay, no one-time-open gesture. Purely a local display choice for the inline
+    /// bubble, read synchronously by `PampGramTemporaryMediaDisplay` from
+    /// `ChatMessageInteractiveMediaNode` (its layout runs off the main thread, so it can't open a
+    /// Postbox transaction there). Opening the media still goes through Telegram's own
+    /// secret-media viewer untouched — this never changes the message's real timer, consumption,
+    /// or deletion. Independent of `bypassTimedMediaEnabled`: either can be on without the other.
+    public var bypassViewOnceMediaEnabled: Bool
+    /// "Обход с таймером" (Дополнительно): same display override as `bypassViewOnceMediaEnabled`,
+    /// for a self-destruct photo/video sent with a short timer instead of "посмотреть один раз"
+    /// (`minAutoremoveOrClearTimeout` set but not equal to `viewOnceTimeout` — Telegram only
+    /// allows such a timer up to 60 seconds, see `containsSecretMedia`). Read the same way, by
+    /// the same class.
+    public var bypassTimedMediaEnabled: Bool
+    /// "Сохранение историй" (Дополнительно): two related effects for a story that has
+    /// forwarding disabled (`StoryItem.isForwardingDisabled`):
+    /// 1. A screenshot or screen recording of it comes out normal instead of black. Stock
+    ///    Telegram renders such a story's image through a `UITextField.isSecureTextEntry` view
+    ///    (`StoryItemImageView.swift`) specifically so iOS blacks it out in any screenshot or
+    ///    screen recording — a real OS-level effect, not a UI overlay, so there's nothing to
+    ///    "clean up" after the fact. This setting just stops that secure wrapper from being
+    ///    used for this account, in `StoryItemContentComponent.swift`.
+    /// 2. The "..." menu on someone else's story gets a "Сохранить" item even though forwarding
+    ///    is disabled (`StoryItemSetContainerComponent.swift`'s `performOtherMoreAction`) —
+    ///    stock Telegram hides that item entirely for such a story. Saving itself still goes
+    ///    through the same unmodified `requestSave()`/`saveToCameraRoll` stock Telegram already
+    ///    uses for a normal, unprotected story, Premium requirement included.
+    /// Both are read synchronously by `PampGramStorySavingDisplay` (same pattern as
+    /// `PampGramTemporaryMediaDisplay`). Purely local and purely visual/functional on this
+    /// device: Telegram has no "story was screenshotted" report to begin with (that only exists
+    /// for Secret Chats), and a locally-saved copy is never sent anywhere — so neither changes
+    /// what the story's author sees or is told.
+    public var storySavingEnabled: Bool
+    /// "Обход защиты от скриншотов" (Дополнительно): the same `UITextField.isSecureTextEntry`
+    /// black-screen trick `storySavingEnabled` already turns off for stories, now for the other
+    /// place stock Telegram uses it — copy-protected channels/groups/DMs (`copyProtectionEnabled`/
+    /// `myCopyProtectionEnabled`, a peer or per-message flag independent of chat type) and the
+    /// per-message extended-media preview flag. Patched at every call site that combines that
+    /// flag with `peerId.namespace == Namespaces.Peer.SecretChat` (`ChatMessageInteractiveMediaNode.swift`,
+    /// `ChatControllerNode.swift`, `ChatController.swift`, `ChatControllerOpenMessageContextMenu.swift`)
+    /// — only the copy-protection term is gated by this setting; the secret-chat term next to it
+    /// is left untouched at every one of those sites, on purpose. A real secret chat's own
+    /// screenshot handling — the one place Telegram actually tells the other person their
+    /// message was captured — keeps working exactly as stock Telegram ships it, same as before
+    /// this setting existed. Read synchronously by `PampGramScreenshotBypassDisplay` (same
+    /// pattern as `PampGramStorySavingDisplay`).
+    public var bypassScreenshotProtectionEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -280,18 +347,148 @@ public struct PampGramSettings: Codable, Equatable {
     /// keeps working. Stored values are preserved; the settings SCREENS read the raw value
     /// (`rawSettings`/`rawSettingsSignal`) so they still show and edit the real state.
     public var masterEnabled: Bool
+    /// "Фейковый криптобот" (Дополнительно): while on, opening @CryptoBot's mini app is replaced
+    /// by a local visual (see `PampGramFakeCryptoBotScreen.swift`).
+    public var fakeCryptoBotEnabled: Bool = false
+    /// The visual balances of that screen, stored as one "CODE=amount;CODE=amount" string.
+    /// Deliberately not a `[String: Double]`: Postbox's keyed decoder implements `allKeys` as
+    /// `preconditionFailure()`, so decoding any Codable dictionary crashes the app.
+    public var fakeCryptoBotBalancesRaw: String = ""
+    public var fakeCryptoBotBalances: [String: Double] {
+        get {
+            var result: [String: Double] = [:]
+            for pair in self.fakeCryptoBotBalancesRaw.split(separator: ";") {
+                let parts = pair.split(separator: "=", maxSplits: 1)
+                if parts.count == 2, let value = Double(parts[1]) {
+                    result[String(parts[0])] = value
+                }
+            }
+            return result
+        }
+        set {
+            self.fakeCryptoBotBalancesRaw = newValue.keys.sorted().map { "\($0)=\(newValue[$0] ?? 0)" }.joined(separator: ";")
+        }
+    }
+    /// "Скрыть иконку в настройках" (Подарки): removes the "PampGram" row Telegram's own
+    /// Settings screen shows under "Мой профиль" (see `PeerInfoSettingsItems.swift`).
+    /// Everything else keeps working exactly as before — this only hides the one visible
+    /// entry point into it. The way back in without this toggle is a long-press on
+    /// Settings' own "Помощь" row, wired the same place.
+    public var hidePampGramIconEnabled: Bool
+    /// Mirrors a full ban from the admin panel's server (`PampGramSubscriptionAPI.fetchBanStatus`,
+    /// `full` non-nil) — written locally by `PampGramBanEnforcer`, which polls that endpoint and,
+    /// on first seeing a full ban, sets this to `true` in the same transaction that zeroes the
+    /// visual balances below. `PampGramCore.settings`/`settingsSignal` check this before the
+    /// gifts-only `masterEnabled` gate and, when it's `true`, return `allFeaturesOff()` instead
+    /// of the raw settings — every feature-effect/display call site already reads through one of
+    /// those two functions, so this one flag is enough to make every toggle stop doing anything,
+    /// without each of those call sites needing its own ban check. `rawSettings`/`rawSettingsSignal`
+    /// are unaffected, same as `masterEnabled` — the settings screens still show what's actually
+    /// stored. Cleared back to `false` by the same enforcer once the server reports the ban lifted;
+    /// the zeroed balances are not restored, since zeroing them was itself the point.
+    public var bannedLocally: Bool
+    /// Same kill switch as `bannedLocally`, independent trigger: written locally by
+    /// `PampGramChannelSubscriptionEnforcer`, which polls this account's real membership in
+    /// `pampGramRequiredChannelUsername` (Telegram's own `channels.getParticipant`, not
+    /// anything server-side of PampGram's) and sets this to `true` the moment it's no longer a
+    /// member. `PampGramCore.settings`/`settingsSignal` check this the same way as
+    /// `bannedLocally` — see those functions — so every feature stops doing anything the moment
+    /// this flips, and `pampGramGateSection`/`pampGramGateFullAccess`/`pampGramGateTier` show
+    /// `PampGramFrozenScreen.swift` instead of the real section. Cleared back to `false` the
+    /// same way once the poll sees the account re-subscribed.
+    public var channelUnsubscribedLocally: Bool
+    /// Set once, locally, by `AccountContextImpl.init` when the signed-in account's id equals
+    /// `PampGramSubscriptionAPI.adminAccountId` (@kopimastera) — never by anything server-side,
+    /// and never for any other account. `PampGramCore.settings`/`settingsSignal` check this
+    /// before `bannedLocally`, so this account's own device can never be locked out by a ban
+    /// record landing on this specific id (by mistake or otherwise) — but every individual
+    /// toggle still reads back exactly as stored, same as any other account, so the owner can
+    /// actually test turning a feature off on their own device instead of it silently staying on.
+    public var isOwnerAccount: Bool
+    /// "Скрыть номер телефона": hides this account's own phone number from the Settings
+    /// screen header subtitle and from the phone-number row in "Мой профиль". Purely a local
+    /// display change — the number is still there in the real account, other people who
+    /// already have it (or view it through Telegram's own privacy settings) are unaffected;
+    /// this only stops PampGram's own device from showing it back to its owner.
+    public var hideOwnPhoneNumber: Bool
+    /// "Фейковый номер телефона": free-form text shown in place of the real number, same two
+    /// spots as `hideOwnPhoneNumber` (Settings header subtitle, "Мой профиль" phone row) —
+    /// purely local, same as every other PampGram display override. Empty means off. When
+    /// both this and `hideOwnPhoneNumber` are set, this one wins: showing a chosen fake
+    /// number is a stronger statement than hiding the row outright, so there's never a case
+    /// where the two fight over the same row.
+    public var fakePhoneNumber: String
+    /// Local cache of whether `PampGramSubscriptionAPI.fetchTier` last reported `.pro` for this
+    /// account. Refreshed opportunistically whenever the PampGram tab opens (see
+    /// `PampGramHubScreen.swift`) — a plain `Bool`, not the `PampGramSubscriptionTier` enum
+    /// itself, because that type's `Codable` conformance is the plain synthesized one (needed
+    /// for decoding the server's JSON response) and would hit the same
+    /// `PostboxEncoder`/`PostboxDecoder` `singleValueContainer` crash `PampGramVoicePreset`'s
+    /// doc comment warns about if stored here directly. Exists so code that needs the tier
+    /// synchronously inside a Postbox transaction (the "Закрепить чаты" pin-count cap in
+    /// `TogglePeerChatPinned.swift`, which can't await a network call) has *something* to read,
+    /// at the cost of it being at most one tab-open stale.
+    public var cachedIsProSubscriber: Bool
+    /// "ID Профилей" (Дополнительно): shows every user's real numeric account id as an extra
+    /// row in their profile info table — purely local display, read straight off the already
+    /// resolved `EnginePeer.Id` every profile screen already has (no extra request).
+    public var profileIdsEnabled: Bool
+    /// "Ссылка аккаунта" (Дополнительно): adds a row to every user's profile that copies a
+    /// `tg://user?id=<id>` deep link to their profile — unlike a `t.me/<username>` link, this
+    /// resolves regardless of whether they have a public username (Telegram's own "user" URL
+    /// handler looks the id up in the local Postbox, see OpenUrl.swift).
+    public var accountLinkEnabled: Bool
+    /// "Не улучшенный гифт" (Подарки): while on, a long-press on "Вопросы о Telegram" in the
+    /// Settings tab opens the picker of plain (not yet upgraded) gifts to add to the own profile
+    /// (`PampGramGiftPickerScreen.swift`). Off by default; the long-press does nothing then.
+    public var unupgradedGiftEntryEnabled: Bool
+    /// "Автомодерация" (Дополнительно): while on, every new incoming picture/sticker is checked by a
+    /// vision model (Anthropic API, the user's own key in `moderationApiKey`); explicit (18+) or
+    /// graphic-violence content is deleted from this device and, with `moderationBlockSender`, its
+    /// sender is blocked. Nothing is ever sent unless this is on AND a key is set.
+    public var moderationEnabled: Bool
+    public var moderationApiKey: String
+    /// Block the sender (in addition to deleting the message). On by default.
+    public var moderationBlockSender: Bool
+    /// Skip people in the user's contacts: only strangers and group/channel posts are checked.
+    public var moderationStrangersOnly: Bool
+    /// Chats auto-moderation skips entirely ("Исключения").
+    public var moderationExcludedPeerIds: [PeerId]
+    /// Records both sides of one-to-one calls (own microphone + the other party) into a local audio file
+    /// that never leaves the device unless the user shares it. Off by default.
+    public var callRecordingEnabled: Bool
+    /// Visual-only "transfer cooldown": gifts show the regular "can be transferred on <date>" alert.
+    public var fakeTransferCooldownEnabled: Bool
+    /// How long the cooldown lasts, as picked on the timer wheels, and the moment it ends (unix time)
+    /// — it starts when the user starts it, then runs out like a real timer.
+    public var fakeTransferCooldownSeconds: Int32
+    public var fakeTransferCooldownUntil: Int32
+    /// Accepting a gift purchase offer pretends to fail locally; nothing is sent to the other party.
+    public var fakeOfferAcceptFailEnabled: Bool
+    /// "Сделать визуальный чат" (long-press the peer avatar in a chat's nav bar): chats where a
+    /// normal send — no long-pressing the send button, and whatever it's sending (text, a
+    /// sticker, a voice note, a photo) — is rewritten as a local-only message instead of a real
+    /// one, inserted as outgoing ("от меня") by default. Each such message shows a small
+    /// role-switch button to its left (see the patch to `ChatMessageDateHeader.swift`) that
+    /// flips it to/from the other side afterwards — no guessing from letter case, no "which
+    /// side" prompt. See `ChatController.swift`'s `sendMessages`/`chatDisplayNode.sendMessages`
+    /// hooks for where a send gets rewritten, and `PampGramVisualChatMessageAttribute` for how
+    /// a rewritten message is told apart from a real one.
+    public var visualChatEnabledPeerIds: [PeerId]
 
-    public static let defaultFakeStarsBalance: Int64 = 50_000
+    // A brand-new install (and "Сбросить балансы", which resets to this same constant) starts
+    // at 0 — nothing pre-loaded before the person has looked at a single toggle.
+    public static let defaultFakeStarsBalance: Int64 = 0
     public static let defaultFakeTonBalanceNanos: Int64 = 0
 
     public static var defaultSettings: PampGramSettings {
         return PampGramSettings(
-            phantomGiftsEnabled: true,
+            phantomGiftsEnabled: false,
             fakeStarsBalance: defaultFakeStarsBalance,
             fakeTonBalanceNanos: defaultFakeTonBalanceNanos,
-            fakeStarsDisplayEnabled: true,
-            fakeTonDisplayEnabled: true,
-            antiDeleteMessagesEnabled: true,
+            fakeStarsDisplayEnabled: false,
+            fakeTonDisplayEnabled: false,
+            antiDeleteMessagesEnabled: false,
             ghostReaderEnabled: false,
             onlineMaskEnabled: false,
             ghostModeEnabled: false,
@@ -307,6 +504,16 @@ public struct PampGramSettings: Codable, Equatable {
             ghostExcludedPeerIds: [],
             antiDeleteExcludedPeerIds: [],
             visualEditEnabled: false,
+            visualEditTextItemEnabled: true,
+            visualEditPhotoItemEnabled: true,
+            visualEditVoiceItemEnabled: true,
+            visualEditFileItemEnabled: true,
+            visualEditCallItemEnabled: true,
+            visualEditPremiumGiftItemEnabled: true,
+            visualEditReactionItemEnabled: true,
+            visualEditSaveOneTimeItemEnabled: true,
+            visualEditChannelPhotoItemEnabled: true,
+            visualEditRealBearsItemEnabled: true,
             fromHimGiftsEnabled: false,
             voiceChangerMessagesEnabled: false,
             voicePreset: .male,
@@ -322,13 +529,37 @@ public struct PampGramSettings: Codable, Equatable {
             localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
-            fakeCryptoBotEnabled: false,
-            fakeCryptoBotBalances: [:],
-            masterEnabled: true
+            showTemporaryMediaEnabled: false,
+            bypassViewOnceMediaEnabled: false,
+            bypassTimedMediaEnabled: false,
+            storySavingEnabled: false,
+            bypassScreenshotProtectionEnabled: false,
+            masterEnabled: false,
+            hidePampGramIconEnabled: false,
+            bannedLocally: false,
+            channelUnsubscribedLocally: false,
+            isOwnerAccount: false,
+            hideOwnPhoneNumber: false,
+            fakePhoneNumber: "",
+            cachedIsProSubscriber: false,
+            profileIdsEnabled: false,
+            accountLinkEnabled: false,
+            unupgradedGiftEntryEnabled: false,
+            moderationEnabled: false,
+            moderationApiKey: "",
+            moderationBlockSender: true,
+            moderationStrangersOnly: false,
+            moderationExcludedPeerIds: [],
+            callRecordingEnabled: false,
+            fakeTransferCooldownEnabled: false,
+            fakeTransferCooldownSeconds: 7 * 24 * 60 * 60,
+            fakeTransferCooldownUntil: 0,
+            fakeOfferAcceptFailEnabled: false,
+            visualChatEnabledPeerIds: []
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, fakeCryptoBotEnabled: Bool, fakeCryptoBotBalances: [String: Double], masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool, moderationExcludedPeerIds: [PeerId], callRecordingEnabled: Bool, fakeTransferCooldownEnabled: Bool, fakeTransferCooldownSeconds: Int32, fakeTransferCooldownUntil: Int32, fakeOfferAcceptFailEnabled: Bool, visualChatEnabledPeerIds: [PeerId]) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -350,6 +581,16 @@ public struct PampGramSettings: Codable, Equatable {
         self.ghostExcludedPeerIds = ghostExcludedPeerIds
         self.antiDeleteExcludedPeerIds = antiDeleteExcludedPeerIds
         self.visualEditEnabled = visualEditEnabled
+        self.visualEditTextItemEnabled = visualEditTextItemEnabled
+        self.visualEditPhotoItemEnabled = visualEditPhotoItemEnabled
+        self.visualEditVoiceItemEnabled = visualEditVoiceItemEnabled
+        self.visualEditFileItemEnabled = visualEditFileItemEnabled
+        self.visualEditCallItemEnabled = visualEditCallItemEnabled
+        self.visualEditPremiumGiftItemEnabled = visualEditPremiumGiftItemEnabled
+        self.visualEditReactionItemEnabled = visualEditReactionItemEnabled
+        self.visualEditSaveOneTimeItemEnabled = visualEditSaveOneTimeItemEnabled
+        self.visualEditChannelPhotoItemEnabled = visualEditChannelPhotoItemEnabled
+        self.visualEditRealBearsItemEnabled = visualEditRealBearsItemEnabled
         self.fromHimGiftsEnabled = fromHimGiftsEnabled
         self.voiceChangerMessagesEnabled = voiceChangerMessagesEnabled
         self.voicePreset = voicePreset
@@ -365,9 +606,33 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = localRublesPurchaseEnabled
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
-        self.fakeCryptoBotEnabled = fakeCryptoBotEnabled
-        self.fakeCryptoBotBalances = fakeCryptoBotBalances
+        self.showTemporaryMediaEnabled = showTemporaryMediaEnabled
+        self.bypassViewOnceMediaEnabled = bypassViewOnceMediaEnabled
+        self.bypassTimedMediaEnabled = bypassTimedMediaEnabled
+        self.storySavingEnabled = storySavingEnabled
+        self.bypassScreenshotProtectionEnabled = bypassScreenshotProtectionEnabled
         self.masterEnabled = masterEnabled
+        self.hidePampGramIconEnabled = hidePampGramIconEnabled
+        self.bannedLocally = bannedLocally
+        self.channelUnsubscribedLocally = channelUnsubscribedLocally
+        self.isOwnerAccount = isOwnerAccount
+        self.hideOwnPhoneNumber = hideOwnPhoneNumber
+        self.fakePhoneNumber = fakePhoneNumber
+        self.cachedIsProSubscriber = cachedIsProSubscriber
+        self.profileIdsEnabled = profileIdsEnabled
+        self.accountLinkEnabled = accountLinkEnabled
+        self.unupgradedGiftEntryEnabled = unupgradedGiftEntryEnabled
+        self.moderationEnabled = moderationEnabled
+        self.moderationApiKey = moderationApiKey
+        self.moderationBlockSender = moderationBlockSender
+        self.moderationStrangersOnly = moderationStrangersOnly
+        self.moderationExcludedPeerIds = moderationExcludedPeerIds
+        self.callRecordingEnabled = callRecordingEnabled
+        self.fakeTransferCooldownEnabled = fakeTransferCooldownEnabled
+        self.fakeTransferCooldownSeconds = fakeTransferCooldownSeconds
+        self.fakeTransferCooldownUntil = fakeTransferCooldownUntil
+        self.fakeOfferAcceptFailEnabled = fakeOfferAcceptFailEnabled
+        self.visualChatEnabledPeerIds = visualChatEnabledPeerIds
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -421,6 +686,16 @@ public struct PampGramSettings: Codable, Equatable {
         self.ghostExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .ghostExcludedPeerIds) ?? defaults.ghostExcludedPeerIds
         self.antiDeleteExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .antiDeleteExcludedPeerIds) ?? defaults.antiDeleteExcludedPeerIds
         self.visualEditEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditEnabled) ?? defaults.visualEditEnabled
+        self.visualEditTextItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditTextItemEnabled) ?? defaults.visualEditTextItemEnabled
+        self.visualEditPhotoItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditPhotoItemEnabled) ?? defaults.visualEditPhotoItemEnabled
+        self.visualEditVoiceItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditVoiceItemEnabled) ?? defaults.visualEditVoiceItemEnabled
+        self.visualEditFileItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditFileItemEnabled) ?? defaults.visualEditFileItemEnabled
+        self.visualEditCallItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditCallItemEnabled) ?? defaults.visualEditCallItemEnabled
+        self.visualEditPremiumGiftItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditPremiumGiftItemEnabled) ?? defaults.visualEditPremiumGiftItemEnabled
+        self.visualEditReactionItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditReactionItemEnabled) ?? defaults.visualEditReactionItemEnabled
+        self.visualEditSaveOneTimeItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditSaveOneTimeItemEnabled) ?? defaults.visualEditSaveOneTimeItemEnabled
+        self.visualEditChannelPhotoItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditChannelPhotoItemEnabled) ?? defaults.visualEditChannelPhotoItemEnabled
+        self.visualEditRealBearsItemEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualEditRealBearsItemEnabled) ?? defaults.visualEditRealBearsItemEnabled
         self.fromHimGiftsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fromHimGiftsEnabled) ?? defaults.fromHimGiftsEnabled
         self.voiceChangerMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .voiceChangerMessagesEnabled) ?? defaults.voiceChangerMessagesEnabled
         self.voicePreset = try container.decodeIfPresent(PampGramVoicePreset.self, forKey: .voicePreset) ?? defaults.voicePreset
@@ -436,9 +711,43 @@ public struct PampGramSettings: Codable, Equatable {
         self.localRublesPurchaseEnabled = try container.decodeIfPresent(Bool.self, forKey: .localRublesPurchaseEnabled) ?? defaults.localRublesPurchaseEnabled
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
-        self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
-        self.fakeCryptoBotBalances = try container.decodeIfPresent([String: Double].self, forKey: .fakeCryptoBotBalances) ?? defaults.fakeCryptoBotBalances
+        self.showTemporaryMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .showTemporaryMediaEnabled) ?? defaults.showTemporaryMediaEnabled
+        // Migration: the split toggles didn't exist before. `bypassViewOnceMediaEnabled` is the
+        // marker key — present → new settings, honor them verbatim; absent → seed both from the
+        // legacy single toggle, so an account that already had it on keeps both halves on.
+        if let bypassViewOnceMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassViewOnceMediaEnabled) {
+            self.bypassViewOnceMediaEnabled = bypassViewOnceMediaEnabled
+            self.bypassTimedMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassTimedMediaEnabled) ?? defaults.bypassTimedMediaEnabled
+        } else {
+            self.bypassViewOnceMediaEnabled = self.showTemporaryMediaEnabled
+            self.bypassTimedMediaEnabled = self.showTemporaryMediaEnabled
+        }
+        self.storySavingEnabled = try container.decodeIfPresent(Bool.self, forKey: .storySavingEnabled) ?? defaults.storySavingEnabled
+        self.bypassScreenshotProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassScreenshotProtectionEnabled) ?? defaults.bypassScreenshotProtectionEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
+        self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
+        self.fakeCryptoBotBalancesRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotBalancesRaw) ?? defaults.fakeCryptoBotBalancesRaw
+        self.hidePampGramIconEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePampGramIconEnabled) ?? defaults.hidePampGramIconEnabled
+        self.bannedLocally = try container.decodeIfPresent(Bool.self, forKey: .bannedLocally) ?? defaults.bannedLocally
+        self.channelUnsubscribedLocally = try container.decodeIfPresent(Bool.self, forKey: .channelUnsubscribedLocally) ?? defaults.channelUnsubscribedLocally
+        self.isOwnerAccount = try container.decodeIfPresent(Bool.self, forKey: .isOwnerAccount) ?? defaults.isOwnerAccount
+        self.hideOwnPhoneNumber = try container.decodeIfPresent(Bool.self, forKey: .hideOwnPhoneNumber) ?? defaults.hideOwnPhoneNumber
+        self.fakePhoneNumber = try container.decodeIfPresent(String.self, forKey: .fakePhoneNumber) ?? defaults.fakePhoneNumber
+        self.cachedIsProSubscriber = try container.decodeIfPresent(Bool.self, forKey: .cachedIsProSubscriber) ?? defaults.cachedIsProSubscriber
+        self.profileIdsEnabled = try container.decodeIfPresent(Bool.self, forKey: .profileIdsEnabled) ?? defaults.profileIdsEnabled
+        self.accountLinkEnabled = try container.decodeIfPresent(Bool.self, forKey: .accountLinkEnabled) ?? defaults.accountLinkEnabled
+        self.unupgradedGiftEntryEnabled = try container.decodeIfPresent(Bool.self, forKey: .unupgradedGiftEntryEnabled) ?? defaults.unupgradedGiftEntryEnabled
+        self.moderationEnabled = try container.decodeIfPresent(Bool.self, forKey: .moderationEnabled) ?? defaults.moderationEnabled
+        self.moderationApiKey = try container.decodeIfPresent(String.self, forKey: .moderationApiKey) ?? defaults.moderationApiKey
+        self.moderationBlockSender = try container.decodeIfPresent(Bool.self, forKey: .moderationBlockSender) ?? defaults.moderationBlockSender
+        self.moderationStrangersOnly = try container.decodeIfPresent(Bool.self, forKey: .moderationStrangersOnly) ?? defaults.moderationStrangersOnly
+        self.moderationExcludedPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .moderationExcludedPeerIds) ?? defaults.moderationExcludedPeerIds
+        self.callRecordingEnabled = try container.decodeIfPresent(Bool.self, forKey: .callRecordingEnabled) ?? defaults.callRecordingEnabled
+        self.fakeTransferCooldownEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeTransferCooldownEnabled) ?? defaults.fakeTransferCooldownEnabled
+        self.fakeTransferCooldownSeconds = try container.decodeIfPresent(Int32.self, forKey: .fakeTransferCooldownSeconds) ?? defaults.fakeTransferCooldownSeconds
+        self.fakeTransferCooldownUntil = try container.decodeIfPresent(Int32.self, forKey: .fakeTransferCooldownUntil) ?? defaults.fakeTransferCooldownUntil
+        self.fakeOfferAcceptFailEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeOfferAcceptFailEnabled) ?? defaults.fakeOfferAcceptFailEnabled
+        self.visualChatEnabledPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .visualChatEnabledPeerIds) ?? defaults.visualChatEnabledPeerIds
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -452,6 +761,52 @@ public struct PampGramSettings: Codable, Equatable {
         settings.fakeStarsDisplayEnabled = false
         settings.fakeTonDisplayEnabled = false
         settings.localRublesPurchaseEnabled = false
+        settings.unupgradedGiftEntryEnabled = false
+        settings.fakeTransferCooldownEnabled = false
+        settings.fakeOfferAcceptFailEnabled = false
+        return settings
+    }
+
+    /// The full-ban counterpart of `withGiftsVisualsOff()`: every feature toggle across every
+    /// section turned off, not just the gifts ones, plus the visual balances zeroed out (the
+    /// stored values are already zero by the time this ever runs — `PampGramBanEnforcer` zeroes
+    /// them in the same transaction it sets `bannedLocally`, before this read-side view is ever
+    /// consulted — this only makes that guarantee hold even if something read the balance fields
+    /// directly instead of through here). Non-feature bookkeeping (the chat-lock PIN, voice
+    /// preset, speed modes, exclusion lists, the admin token itself) is left as stored: there's
+    /// nothing to "turn off" about a stored preference the corresponding disabled toggle already
+    /// keeps from being read.
+    public func allFeaturesOff() -> PampGramSettings {
+        var settings = self.withGiftsVisualsOff()
+        settings.fakeStarsBalance = 0
+        settings.fakeTonBalanceNanos = 0
+        settings.localRublesBalanceKopecks = 0
+        settings.antiDeleteMessagesEnabled = false
+        settings.ghostReaderEnabled = false
+        settings.onlineMaskEnabled = false
+        settings.ghostModeEnabled = false
+        settings.ghostHideReadReceipts = false
+        settings.ghostHideStoryViews = false
+        settings.ghostHideOnline = false
+        settings.ghostHideTyping = false
+        settings.ghostAutoOffline = false
+        settings.ghostReadOnAction = false
+        settings.visualEditEnabled = false
+        settings.voiceChangerMessagesEnabled = false
+        settings.fakeLocationEnabled = false
+        settings.chatLockEnabled = false
+        settings.infinitePinsEnabled = false
+        settings.legalPremiumEnabled = false
+        settings.unupgradedGiftEntryEnabled = false
+        settings.moderationEnabled = false
+        settings.callRecordingEnabled = false
+        settings.showTemporaryMediaEnabled = false
+        settings.bypassViewOnceMediaEnabled = false
+        settings.bypassTimedMediaEnabled = false
+        settings.storySavingEnabled = false
+        settings.bypassScreenshotProtectionEnabled = false
+        settings.fakeCryptoBotEnabled = false
+        settings.masterEnabled = false
         return settings
     }
 
@@ -461,21 +816,27 @@ public struct PampGramSettings: Codable, Equatable {
     /// the chat filters themselves — this module can't reference those TelegramCore types.
     /// Presence (online/auto-offline) is global and never routed through here.
     public func ghostExcludesPeer(peerId: PeerId?, isChannel: Bool, isGroup: Bool, folderIds: [Int32]) -> Bool {
+        return self.ghostExclusionReason(peerId: peerId, isChannel: isChannel, isGroup: isGroup, folderIds: folderIds) != nil
+    }
+
+    /// Same decision as `ghostExcludesPeer`, but says which exception applied (shown in the
+    /// Ghost screen's diagnostics when a signal was let through on purpose). `nil` = not exempt.
+    public func ghostExclusionReason(peerId: PeerId?, isChannel: Bool, isGroup: Bool, folderIds: [Int32]) -> String? {
         if let peerId, self.ghostExcludedPeerIds.contains(peerId) {
-            return true
+            return "этот чат в исключениях"
         }
         if isChannel && self.ghostExcludeAllChannels {
-            return true
+            return "включено исключение «Все каналы»"
         }
         if isGroup && self.ghostExcludeAllGroups {
-            return true
+            return "включено исключение «Все группы»"
         }
         if !self.ghostExcludedFolderIds.isEmpty && !folderIds.isEmpty {
             for folderId in folderIds where self.ghostExcludedFolderIds.contains(folderId) {
-                return true
+                return "чат лежит в папке-исключении"
             }
         }
-        return false
+        return nil
     }
 }
 
@@ -496,9 +857,12 @@ public enum PampGramPreferencesKeys {
     public static let adminToken = key(900_300)
     public static let localOperations = key(900_400)
     public static let profileVisuals = key(900_500)
-    public static let appearance = key(900_600)
     public static let behavior = key(900_700)
     public static let fakeAdmin = key(900_800)
+    public static let scheduledGifts = key(900_900)
+    public static let wornGiftStatus = key(901_000)
+    public static let localPremiumPeers = key(901_100)
+    public static let moderationLog = key(901_200)
 }
 
 public enum PampGramCore {
@@ -511,8 +875,17 @@ public enum PampGramCore {
     /// Gifts-gated settings, used by all feature EFFECT and display code: when "Включить
     /// визуалку" is off, only the gift-visual features read as disabled; every other section is
     /// unaffected. Screens that need the real stored gift state use `rawSettings` instead.
+    /// A full ban (`bannedLocally`, set by `PampGramBanEnforcer`) or having left the required
+    /// channel (`channelUnsubscribedLocally`, set by `PampGramChannelSubscriptionEnforcer`)
+    /// reports every feature off, not just gifts — see `allFeaturesOff()` — except for
+    /// @kopimastera's own device (`isOwnerAccount`), which neither can ever lock out. That's the
+    /// only thing `isOwnerAccount` overrides: every individual toggle still comes back exactly
+    /// as stored, same as any other account.
     public static func settings(transaction: Transaction) -> PampGramSettings {
         let raw = self.rawSettings(transaction: transaction)
+        if (raw.bannedLocally || raw.channelUnsubscribedLocally) && !raw.isOwnerAccount {
+            return raw.allFeaturesOff()
+        }
         return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
     }
 
@@ -525,20 +898,31 @@ public enum PampGramCore {
 
     /// Live raw settings, for the settings screens.
     public static func rawSettingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
-        return postbox.preferencesView(keys: [PampGramPreferencesKeys.settings])
-        |> map { view -> PampGramSettings in
-            return view.values[PampGramPreferencesKeys.settings]?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
-        }
-        |> distinctUntilChanged
+        // One shared, already-decoded copy per account (see `PampGramSharedSignals`): this is read
+        // from chat bubbles, every media fetch/upload and most screens.
+        return PampGramSharedSignals.shared(postbox: postbox, name: "rawSettings", make: {
+            return postbox.preferencesView(keys: [PampGramPreferencesKeys.settings])
+            |> map { view -> PampGramSettings in
+                return view.values[PampGramPreferencesKeys.settings]?.get(PampGramSettings.self) ?? PampGramSettings.defaultSettings
+            }
+            |> distinctUntilChanged
+        })
     }
 
-    /// Live gifts-gated settings, for feature effect/display code.
+    /// Live gifts-gated settings, for feature effect/display code. See `settings(transaction:)`
+    /// for the `isOwnerAccount`/`bannedLocally`/`channelUnsubscribedLocally` check this applies
+    /// first.
     public static func settingsSignal(postbox: Postbox) -> Signal<PampGramSettings, NoError> {
-        return self.rawSettingsSignal(postbox: postbox)
-        |> map { raw -> PampGramSettings in
-            return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
-        }
-        |> distinctUntilChanged
+        return PampGramSharedSignals.shared(postbox: postbox, name: "gatedSettings", make: {
+            return self.rawSettingsSignal(postbox: postbox)
+            |> map { raw -> PampGramSettings in
+                if (raw.bannedLocally || raw.channelUnsubscribedLocally) && !raw.isOwnerAccount {
+                    return raw.allFeaturesOff()
+                }
+                return raw.masterEnabled ? raw : raw.withGiftsVisualsOff()
+            }
+            |> distinctUntilChanged
+        })
     }
 
     public static func updateSettingsInteractively(postbox: Postbox, _ f: @escaping (PampGramSettings) -> PampGramSettings) -> Signal<Never, NoError> {

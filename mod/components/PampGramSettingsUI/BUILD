@@ -27,6 +27,7 @@ swift_library(
         "//submodules/TelegramPresentationData",
         "//submodules/TelegramUIPreferences",
         "//submodules/ItemListUI",
+        "//submodules/ItemListPeerItem",
         "//submodules/PresentationDataUtils",
         "//submodules/AccountContext",
         "//submodules/PromptUI",
@@ -34,7 +35,10 @@ swift_library(
         "//submodules/OverlayStatusController",
         "//submodules/TelegramUI/Components/PampGram/PampGramCore",
         "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
+        "//submodules/ComponentFlow",
+        "//submodules/TelegramUI/Components/Gifts/GiftItemComponent",
         "//submodules/AppBundle",
+        "//submodules/Utils/DeviceModel",
     ],
     visibility = [
         "//visibility:public",

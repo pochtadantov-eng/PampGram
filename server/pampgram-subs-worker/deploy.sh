@@ -17,20 +17,20 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-echo "== 1/6: checking for npm =="
+echo "== 1/7: checking for npm =="
 if ! command -v npm >/dev/null 2>&1; then
 	echo "npm not found. Install Node.js from https://nodejs.org first, then re-run this script." >&2
 	exit 1
 fi
 
-echo "== 2/6: installing wrangler (via npx, no global install needed) =="
+echo "== 2/7: installing wrangler (via npx, no global install needed) =="
 WRANGLER="npx --yes wrangler"
 
-echo "== 3/6: Cloudflare login =="
+echo "== 3/7: Cloudflare login =="
 echo "A browser window will open — click Allow. If you're already logged in, this is instant."
 $WRANGLER login
 
-echo "== 4/6: creating the KV namespace and patching wrangler.toml =="
+echo "== 4/7: creating the KV namespace and patching wrangler.toml =="
 if grep -q "REPLACE_WITH_KV_NAMESPACE_ID" wrangler.toml; then
 	KV_OUTPUT="$($WRANGLER kv namespace create SUBS 2>&1)"
 	echo "$KV_OUTPUT"
@@ -47,11 +47,21 @@ else
 	echo "wrangler.toml already has a KV namespace id — skipping creation."
 fi
 
-echo "== 5/6: generating ADMIN_TOKEN and setting it as a Cloudflare secret =="
+echo "== 5/7: generating ADMIN_TOKEN and setting it as a Cloudflare secret =="
 ADMIN_TOKEN="$(openssl rand -hex 32)"
 echo "$ADMIN_TOKEN" | $WRANGLER secret put ADMIN_TOKEN
 
-echo "== 6/6: deploying =="
+echo "== 6/7: setting RESPONSE_SIGNING_KEY =="
+# Fixed, not randomly generated: this exact value is already baked into every copy of the
+# app (PampGramSubscriptionAPI.swift's `responseSigningKey` constant) -- it has to match
+# byte-for-byte, not be freshly minted per deploy, or every /status, /ban-status and
+# /min-version response's signature check fails on every single install, and the app falls
+# back to its safe default (STANDARD) even for accounts the admin actually granted PRO.
+# Previously this step was missing from this script entirely (only documented as a separate
+# manual step in README.md's "Подпись ответов" section), which is exactly the bug this fixes.
+echo "00b78acae40c265d6b68038d5922283d153e7a18f8b150e27b84e02804b605b1" | $WRANGLER secret put RESPONSE_SIGNING_KEY
+
+echo "== 7/7: deploying =="
 DEPLOY_OUTPUT="$($WRANGLER deploy 2>&1)"
 echo "$DEPLOY_OUTPUT"
 WORKER_URL="$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' | head -1)"

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Display
 import SwiftSignalKit
 import TelegramCore
@@ -41,6 +42,7 @@ private enum PampGramGhostSection: Int32 {
     case master
     case features
     case exceptions
+    case diagnostics
 }
 
 private enum PampGramGhostEntry: ItemListNodeEntry {
@@ -63,6 +65,10 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     case exceptionsRow(String, String, Bool)
     case exceptionsFooter(String)
 
+    case diagnosticsHeader(String)
+    case diagnosticsText(String)
+    case diagnosticsFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .masterToggle, .masterFooter:
@@ -71,6 +77,8 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return PampGramGhostSection.features.rawValue
         case .exceptionsHeader, .excludeAllChannels, .excludeAllGroups, .foldersRow, .exceptionsRow, .exceptionsFooter:
             return PampGramGhostSection.exceptions.rawValue
+        case .diagnosticsHeader, .diagnosticsText, .diagnosticsFooter:
+            return PampGramGhostSection.diagnostics.rawValue
         }
     }
 
@@ -108,6 +116,12 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
             return 14
         case .exceptionsFooter:
             return 15
+        case .diagnosticsHeader:
+            return 16
+        case .diagnosticsText:
+            return 17
+        case .diagnosticsFooter:
+            return 18
         }
     }
 
@@ -118,59 +132,79 @@ private enum PampGramGhostEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramGhostArguments
         switch self {
-        case let .masterFooter(text), let .featuresFooter(text), let .exceptionsFooter(text):
+        case let .masterFooter(text), let .featuresFooter(text), let .exceptionsFooter(text), let .diagnosticsText(text), let .diagnosticsFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .featuresHeader(text), let .exceptionsHeader(text):
+        case let .featuresHeader(text), let .exceptionsHeader(text), let .diagnosticsHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .masterToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleMaster(value)
             })
         case let .hideReadReceipts(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "checkmark.message.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleHideReadReceipts(value)
             })
         case let .hideStoryViews(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x8e44ec)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleHideStoryViews(value)
             })
         case let .hideOnline(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "wifi.slash", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleHideOnline(value)
             })
         case let .hideTyping(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "keyboard.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleHideTyping(value)
             })
         case let .autoOffline(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "moon.fill", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleAutoOffline(value)
             })
         case let .readOnAction(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bolt.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleReadOnAction(value)
             })
         case let .excludeAllChannels(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleExcludeAllChannels(value)
             })
         case let .excludeAllGroups(title, value, enabled):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "person.3.fill", backgroundColor: UIColor(rgb: 0x30b0c7)), title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleExcludeAllGroups(value)
             })
         case let .foldersRow(title, label, enabled):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "folder.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openFolders()
             })
         case let .exceptionsRow(title, label, enabled):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "person.crop.circle.badge.exclamationmark", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, enabled: enabled, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openExceptions()
             })
         }
     }
 }
 
-private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, exceptionCount: Int) -> [PampGramGhostEntry] {
+/// The "Диагностика" block: what Ghost actually did since the app was launched. Ghost can't be
+/// checked from the phone that runs it — a read receipt is only visible on the other person's
+/// phone — so this is the owner's way to see it work (or see exactly why a signal got through).
+private func pampGramGhostDiagnosticsText(_ d: PampGramGhostDiagnosticsSnapshot) -> String {
+    var lines: [String] = []
+    lines.append("Скрыто: прочтений — \(d.readHidden), историй — \(d.storyHidden), «печатает» — \(d.typingHidden)")
+    lines.append("Ушло наружу: прочтений — \(d.readSent), историй — \(d.storySent), «печатает» — \(d.typingSent)")
+    lines.append("Статус отправлен: «онлайн» — \(d.onlineSent), «офлайн» — \(d.offlineSent)")
+    if !d.lastReadSentReason.isEmpty {
+        lines.append("Прочтение ушло, потому что: \(d.lastReadSentReason)")
+    }
+    if !d.lastStorySentReason.isEmpty {
+        lines.append("Просмотр истории ушёл, потому что: \(d.lastStorySentReason)")
+    }
+    if !d.lastTypingSentReason.isEmpty {
+        lines.append("«Печатает» ушло, потому что: \(d.lastTypingSentReason)")
+    }
+    return lines.joined(separator: "\n")
+}
+
+private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, exceptionCount: Int, diagnostics: PampGramGhostDiagnosticsSnapshot) -> [PampGramGhostEntry] {
     var entries: [PampGramGhostEntry] = []
 
     let on = settings.ghostModeEnabled
@@ -193,6 +227,10 @@ private func pampGramGhostEntries(settings: PampGramSettings, folderCount: Int, 
     entries.append(.foldersRow("Папки", folderCount == 0 ? "Не выбрано" : "\(folderCount)", on))
     entries.append(.exceptionsRow("Добавить исключение", exceptionCount == 0 ? "" : "\(exceptionCount)", on))
     entries.append(.exceptionsFooter("Режим призрака не действует в выбранных чатах, типах чатов или папках. Для папок учитываются чаты, добавленные в папку вручную."))
+
+    entries.append(.diagnosticsHeader("ДИАГНОСТИКА"))
+    entries.append(.diagnosticsText(pampGramGhostDiagnosticsText(diagnostics)))
+    entries.append(.diagnosticsFooter("Счётчики с момента запуска приложения, обновляются сами. Откройте чат с непрочитанным и вернитесь сюда: «скрыто» должно вырасти. Если растёт «ушло наружу» — ниже написано почему. Сам собеседник увидит «прочитано» или «онлайн» только если сигнал ушёл. Когда вы пишете в чат, Telegram сам может показать вас «в сети» — поэтому, пока включено «Не отправлять онлайн», приложение каждые 20 секунд заново отправляет «офлайн»."))
 
     return entries
 }
@@ -281,12 +319,27 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
         }
     )
 
+    // Redraws the "Диагностика" counters about once a second while this screen is open.
+    let ticker = Signal<Int, NoError> { subscriber in
+        var counter = 0
+        subscriber.putNext(counter)
+        let timer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: {
+            counter += 1
+            subscriber.putNext(counter)
+        }, queue: Queue.mainQueue())
+        timer.start()
+        return ActionDisposable {
+            timer.invalidate()
+        }
+    }
+
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox),
+        ticker
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, _ -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Режим призрака"),
@@ -297,7 +350,7 @@ public func pampGramGhostSettingsController(context: AccountContext) -> ViewCont
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramGhostEntries(settings: settings, folderCount: settings.ghostExcludedFolderIds.count, exceptionCount: settings.ghostExcludedPeerIds.count),
+            entries: pampGramGhostEntries(settings: settings, folderCount: settings.ghostExcludedFolderIds.count, exceptionCount: settings.ghostExcludedPeerIds.count, diagnostics: PampGramGhostDiagnostics.shared.snapshot()),
             style: .blocks,
             animateChanges: true
         )

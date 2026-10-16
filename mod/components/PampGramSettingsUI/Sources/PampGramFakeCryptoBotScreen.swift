@@ -6,16 +6,14 @@ import SwiftSignalKit
 import Postbox
 import TelegramCore
 import TelegramPresentationData
-import ItemListUI
-import PresentationDataUtils
 import AccountContext
 import PromptUI
+import UndoUI
 import PampGramCore
 
-/// Визуальный «CryptoBot мини-апп». Запускается либо из «Дополнительно» → «Открыть фейковый
-/// криптобот», либо автоматически — когда включён `fakeCryptoBotEnabled` и пользователь
-/// открывает чат с @CryptoBot через `botAppStart` (ссылка `?start=…` / `?startapp=…`,
-/// кнопка «Open App» из профиля бота; см. патч `navigateToChatControllerImpl`).
+/// Визуальный «CryptoBot мини-апп». Открывается вместо настоящего мини-аппа @CryptoBot, пока
+/// включён `fakeCryptoBotEnabled` (подмена в `standaloneWebAppController`, см. патч), либо
+/// напрямую из «Дополнительно» → «Открыть фейковый криптобот».
 ///
 /// Экран полностью локальный — ни одна цифра, ни одна кнопка никуда не отправляется.
 /// Балансы хранятся в `PampGramSettings.fakeCryptoBotBalances` и редактируются скрытым
@@ -331,19 +329,15 @@ private final class PampGramFakeCryptoBotScreen: ViewController {
     }
 
     @objc private func actionButtonPressed() {
-        // Любая из «настоящих» кнопок визуально реагирует одинаково — через тултип,
-        // ничего реально не отправляется.
-        let hud = UIAlertController(title: nil, message: "Функция недоступна", preferredStyle: .alert)
-        hud.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-        self.present(hud, animated: true, completion: nil)
+        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+        self.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Функция недоступна", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
     }
 
     @objc private func logoLongPressed(_ recognizer: UILongPressGestureRecognizer) {
         guard recognizer.state == .began else { return }
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
-        let editor = pampGramFakeCryptoBotBalanceEditorController(context: self.context)
-        self.push(editor)
+        pampGramFakeCryptoBotPresentBalanceEditor(context: self.context, presenter: self)
     }
 }
 
@@ -498,124 +492,81 @@ private final class PampGramFakeCryptoBotCoinRow: UIView {
 
 // MARK: - Балансы: редактор
 
-private func pampGramFakeCryptoBotBalanceEditorController(context: AccountContext) -> ViewController {
-    var presentControllerImpl: ((ViewController) -> Void)?
+private func pampGramFakeCryptoBotPlain(_ amount: Double) -> String {
+    if amount == amount.rounded(), abs(amount) < 1e15 {
+        return String(Int64(amount))
+    }
+    return String(amount)
+}
 
-    let openEditor: (PampGramFakeCryptoBotCurrency) -> Void = { currency in
-        let _ = (PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
-        |> take(1)
-        |> deliverOnMainQueue).start(next: { settings in
-            let current = settings.fakeCryptoBotBalances[currency.code] ?? 0
-            let placeholder = pampGramFakeCryptoBotFormat(current, fractionDigits: currency.fractionDigits)
-            presentControllerImpl?(promptController(
-                context: context,
-                text: "Баланс \(currency.code)",
-                subtitle: "Введите произвольное число, оно будет храниться только на этом устройстве.",
-                value: placeholder,
-                placeholder: "0",
-                characterLimit: 32,
-                apply: { entered in
-                    guard let entered = entered else { return }
-                    let cleaned = entered.replacingOccurrences(of: ",", with: ".").replacingOccurrences(of: " ", with: "")
-                    let value = Double(cleaned) ?? 0
-                    let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                        var settings = settings
-                        if value <= 0 {
-                            settings.fakeCryptoBotBalances.removeValue(forKey: currency.code)
-                        } else {
-                            settings.fakeCryptoBotBalances[currency.code] = value
-                        }
-                        return settings
-                    }).start()
+/// Выбор монеты (ActionSheet), затем ввод суммы (promptController). Оба показываются через
+/// `present(_, in: .window(.root))`, поэтому работают и когда экран открыт модально
+/// мини-аппом, и когда он запушен из настроек.
+private func pampGramFakeCryptoBotPresentBalanceEditor(context: AccountContext, presenter: ViewController) {
+    let _ = (PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
+    |> take(1)
+    |> deliverOnMainQueue).start(next: { [weak presenter] settings in
+        guard let presenter = presenter else {
+            return
+        }
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        let balances = settings.fakeCryptoBotBalances
+        let sheet = ActionSheetController(presentationData: presentationData)
+        var items: [ActionSheetItem] = [ActionSheetTextItem(title: "Баланс какой монеты изменить?")]
+        for currency in pampGramFakeCryptoBotCurrencies {
+            let amount = balances[currency.code] ?? 0
+            let title = "\(currency.code) — \(pampGramFakeCryptoBotFormat(amount, fractionDigits: currency.fractionDigits))"
+            items.append(ActionSheetButtonItem(title: title, color: .accent, action: { [weak sheet, weak presenter] in
+                sheet?.dismissAnimated()
+                guard let presenter = presenter else {
+                    return
                 }
-            ))
-        })
-    }
-
-    let signal = combineLatest(
-        context.sharedContext.presentationData,
-        PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
-    )
-    |> deliverOnMainQueue
-    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
-        var entries: [PampGramFakeCryptoBotEditorEntry] = []
-        entries.append(.header("БАЛАНСЫ"))
-        for (index, currency) in pampGramFakeCryptoBotCurrencies.enumerated() {
-            let amount = settings.fakeCryptoBotBalances[currency.code] ?? 0
-            entries.append(.coin(index, currency.code, pampGramFakeCryptoBotFormat(amount, fractionDigits: currency.fractionDigits)))
+                pampGramFakeCryptoBotPromptBalance(context: context, presenter: presenter, currency: currency, current: amount)
+            }))
         }
-        entries.append(.footer("Введённые суммы отображаются только в «Фейковом криптоботе» и ни на что в Telegram не влияют. 0 или пустое поле убирает значение."))
-
-        let controllerState = ItemListControllerState(
-            presentationData: ItemListPresentationData(presentationData),
-            title: .text("Балансы"),
-            leftNavigationButton: nil,
-            rightNavigationButton: nil,
-            backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),
-            animateChanges: false
-        )
-        let listState = ItemListNodeState(
-            presentationData: ItemListPresentationData(presentationData),
-            entries: entries,
-            style: .blocks,
-            animateChanges: true
-        )
-        return (controllerState, (listState, PampGramFakeCryptoBotEditorArguments(openCoin: openEditor)))
-    }
-
-    let controller = ItemListController(context: context, state: signal)
-    presentControllerImpl = { [weak controller] c in
-        controller?.present(c, in: .window(.root))
-    }
-    return controller
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: items),
+            ActionSheetItemGroup(items: [
+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                })
+            ])
+        ])
+        presenter.present(sheet, in: .window(.root))
+    })
 }
 
-private final class PampGramFakeCryptoBotEditorArguments {
-    let openCoin: (PampGramFakeCryptoBotCurrency) -> Void
-    init(openCoin: @escaping (PampGramFakeCryptoBotCurrency) -> Void) {
-        self.openCoin = openCoin
-    }
-}
-
-private enum PampGramFakeCryptoBotEditorSection: Int32 {
-    case coins
-}
-
-private enum PampGramFakeCryptoBotEditorEntry: ItemListNodeEntry {
-    case header(String)
-    case coin(Int, String, String)
-    case footer(String)
-
-    var section: ItemListSectionId {
-        return PampGramFakeCryptoBotEditorSection.coins.rawValue
-    }
-
-    var stableId: Int32 {
-        switch self {
-        case .header: return 0
-        case let .coin(index, _, _): return Int32(10 + index)
-        case .footer: return 1000
+private func pampGramFakeCryptoBotPromptBalance(context: AccountContext, presenter: ViewController, currency: PampGramFakeCryptoBotCurrency, current: Double) {
+    presenter.present(promptController(
+        context: context,
+        text: "Баланс \(currency.code)",
+        subtitle: "Любое число. Хранится только на этом устройстве. 0 — убрать.",
+        value: current > 0 ? pampGramFakeCryptoBotPlain(current) : "",
+        placeholder: "0",
+        characterLimit: 24,
+        apply: { entered in
+            guard let entered = entered else {
+                return
+            }
+            let cleaned = entered.replacingOccurrences(of: ",", with: ".").replacingOccurrences(of: " ", with: "")
+            var value = Double(cleaned) ?? 0
+            if !value.isFinite || value < 0 {
+                value = 0
+            }
+            value = min(value, 1e15)
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                var balances = settings.fakeCryptoBotBalances
+                if value <= 0 {
+                    balances.removeValue(forKey: currency.code)
+                } else {
+                    balances[currency.code] = value
+                }
+                settings.fakeCryptoBotBalances = balances
+                return settings
+            }).start()
         }
-    }
-
-    static func <(lhs: PampGramFakeCryptoBotEditorEntry, rhs: PampGramFakeCryptoBotEditorEntry) -> Bool {
-        return lhs.stableId < rhs.stableId
-    }
-
-    func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
-        let arguments = arguments as! PampGramFakeCryptoBotEditorArguments
-        switch self {
-        case let .header(text):
-            return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .footer(text):
-            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .coin(_, code, label):
-            let currency = pampGramFakeCryptoBotCurrencies.first(where: { $0.code == code }) ?? pampGramFakeCryptoBotCurrencies[0]
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "circle.fill", backgroundColor: currency.color), title: "\(currency.name) · \(currency.code)", label: label, sectionId: self.section, style: .blocks, action: {
-                arguments.openCoin(currency)
-            })
-        }
-    }
+    ), in: .window(.root))
 }
 
 // MARK: - Публичный конструктор

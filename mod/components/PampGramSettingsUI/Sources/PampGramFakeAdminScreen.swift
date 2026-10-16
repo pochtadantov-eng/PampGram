@@ -90,6 +90,7 @@ private enum PampGramFakeAdminEntry: ItemListNodeEntry {
         case let .channelsHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .addChannel(title):
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.addChannel()
             })

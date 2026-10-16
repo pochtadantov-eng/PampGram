@@ -86,8 +86,16 @@ public struct PampGramLocalOperation: Codable, Equatable, Identifiable {
     public let peerId: PeerId?
     public let giftId: Int64?
     public let balanceAfter: Int64?
+    // Optional so decoding an operation written before this field existed defaults to nil
+    // (read as "visible") rather than failing the whole list's decode — Swift's synthesized
+    // Codable already does this for Optional properties, no custom CodingKeys needed. `false`
+    // is for a raw balance overwrite (manual edit in Settings, "Сбросить балансы"): it still
+    // belongs in PampGram's own ledger screen, but it isn't a transaction that ever happened
+    // anywhere, so it has no business appearing in the real Stars/TON screen dressed up as an
+    // App Store top-up — see `PampGramFakeTransactions.swift`.
+    public let visibleInRealHistory: Bool?
 
-    public init(id: Int64 = Int64.random(in: 1 ... (Int64.max / 4)), currency: PampGramLocalCurrency, kind: PampGramLocalOperationKind, amount: Int64, date: Int32 = Int32(Date().timeIntervalSince1970), title: String, details: String = "", peerId: PeerId? = nil, giftId: Int64? = nil, balanceAfter: Int64? = nil) {
+    public init(id: Int64 = Int64.random(in: 1 ... (Int64.max / 4)), currency: PampGramLocalCurrency, kind: PampGramLocalOperationKind, amount: Int64, date: Int32 = Int32(Date().timeIntervalSince1970), title: String, details: String = "", peerId: PeerId? = nil, giftId: Int64? = nil, balanceAfter: Int64? = nil, visibleInRealHistory: Bool? = nil) {
         self.id = id
         self.currency = currency
         self.kind = kind
@@ -98,6 +106,7 @@ public struct PampGramLocalOperation: Codable, Equatable, Identifiable {
         self.peerId = peerId
         self.giftId = giftId
         self.balanceAfter = balanceAfter
+        self.visibleInRealHistory = visibleInRealHistory
     }
 }
 
@@ -126,8 +135,9 @@ public enum PampGramLocalLedgerStore {
         transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.localOperations, { entry in
             var list = entry?.get(PampGramLocalOperationList.self) ?? PampGramLocalOperationList(items: [])
             list.items.append(operation)
-            if list.items.count > 5000 {
-                list.items.removeFirst(list.items.count - 5000)
+            // Every write re-encodes the whole list, so keep it bounded.
+            if list.items.count > 2000 {
+                list.items.removeFirst(list.items.count - 2000)
             }
             return PreferencesEntry(list)
         })
@@ -141,22 +151,123 @@ public enum PampGramLocalLedgerStore {
         })
     }
 
+    /// Moves `delta` (old -> new) worth of effect from one balance to another in one go —
+    /// shared by `update` (an edit) and `removeAndReverse` (a delete, i.e. "move to zero").
+    /// A no-op when nothing actually changed.
+    private static func applyDelta(transaction: Transaction, from oldCurrency: PampGramLocalCurrency, oldAmount: Int64, to newCurrency: PampGramLocalCurrency, newAmount: Int64) {
+        guard oldCurrency != newCurrency || oldAmount != newAmount else {
+            return
+        }
+        PampGramCore.updateSettings(transaction: transaction, { settings in
+            var settings = settings
+            func adjust(_ currency: PampGramLocalCurrency, _ delta: Int64) {
+                guard delta != 0 else { return }
+                switch currency {
+                case .stars: settings.fakeStarsBalance += delta
+                case .ton: settings.fakeTonBalanceNanos += delta
+                case .rubles: settings.localRublesBalanceKopecks += delta
+                }
+            }
+            adjust(oldCurrency, -oldAmount)
+            adjust(newCurrency, newAmount)
+            return settings
+        })
+    }
+
+    /// Edits one operation in place (matched by `id`) — long-press on a row in the Stars/TON
+    /// history. Any parameter left `nil` keeps that field as it was; `clearPeerId` removes the
+    /// counterparty entirely (distinct from "leave it as-is", which is what passing neither
+    /// `peerId` nor `clearPeerId: true` does). A changed `amount`/`currency` moves the live
+    /// balance by exactly the difference, via `applyDelta` — the same reasoning
+    /// `addAndApply`'s doc comment gives for why a balance change only ever happens alongside
+    /// the journal entry that explains it: an edited entry's "explanation" is now different, so
+    /// the balance it produced has to follow. Returns `false` if `id` wasn't found.
+    @discardableResult
+    public static func update(transaction: Transaction, id: Int64, amount: Int64? = nil, currency: PampGramLocalCurrency? = nil, date: Int32? = nil, peerId: PeerId? = nil, clearPeerId: Bool = false) -> Bool {
+        var oldAmount: Int64?
+        var oldCurrency: PampGramLocalCurrency = .stars
+        var newAmount: Int64 = 0
+        var newCurrency: PampGramLocalCurrency = .stars
+        transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.localOperations, { entry in
+            var list = entry?.get(PampGramLocalOperationList.self) ?? PampGramLocalOperationList(items: [])
+            guard let index = list.items.firstIndex(where: { $0.id == id }) else {
+                return entry ?? PreferencesEntry(list)
+            }
+            let existing = list.items[index]
+            oldAmount = existing.amount
+            oldCurrency = existing.currency
+            newAmount = amount ?? existing.amount
+            newCurrency = currency ?? existing.currency
+            list.items[index] = PampGramLocalOperation(
+                id: existing.id,
+                currency: newCurrency,
+                kind: existing.kind,
+                amount: newAmount,
+                date: date ?? existing.date,
+                title: existing.title,
+                details: existing.details,
+                peerId: clearPeerId ? nil : (peerId ?? existing.peerId),
+                giftId: existing.giftId,
+                balanceAfter: existing.balanceAfter,
+                visibleInRealHistory: existing.visibleInRealHistory
+            )
+            return PreferencesEntry(list)
+        })
+        guard let oldAmount else {
+            return false
+        }
+        self.applyDelta(transaction: transaction, from: oldCurrency, oldAmount: oldAmount, to: newCurrency, newAmount: newAmount)
+        return true
+    }
+
+    /// Deletes one operation — long-press → "Удалить" on a row — and reverses its effect on
+    /// the live balance, so the removed entry doesn't leave a permanent, unexplained gap
+    /// between what the journal shows and what the balance actually is. Deliberately
+    /// different from the "Очистить историю" bulk action (`remove`, used directly), which
+    /// clears the log without touching the balance on purpose — wiping the whole log is "stop
+    /// keeping a record", not "undo these transactions", while deleting one specific entry
+    /// here is explicitly about correcting/undoing that one transaction.
+    public static func removeAndReverse(transaction: Transaction, id: Int64) {
+        guard let existing = self.all(transaction: transaction).first(where: { $0.id == id }) else {
+            return
+        }
+        self.remove(transaction: transaction, id: id)
+        self.applyDelta(transaction: transaction, from: existing.currency, oldAmount: existing.amount, to: existing.currency, newAmount: 0)
+    }
+
     public static func clear(transaction: Transaction) {
         transaction.setPreferencesEntry(key: PampGramPreferencesKeys.localOperations, value: PreferencesEntry(PampGramLocalOperationList(items: [])))
     }
 
     public static func signal(postbox: Postbox) -> Signal<[PampGramLocalOperation], NoError> {
-        return postbox.preferencesView(keys: [PampGramPreferencesKeys.localOperations])
-        |> map { view in
-            let items = view.values[PampGramPreferencesKeys.localOperations]?.get(PampGramLocalOperationList.self)?.items ?? []
-            return items.sorted(by: { $0.date > $1.date })
-        }
+        // Decoded and sorted once per change and shared (see `PampGramSharedSignals`) — the
+        // ledger screens, the fake-transaction merge and the server sync all watch it.
+        return PampGramSharedSignals.shared(postbox: postbox, name: "ledger", make: {
+            return postbox.preferencesView(keys: [PampGramPreferencesKeys.localOperations])
+            |> map { view -> [PampGramLocalOperation] in
+                let items = view.values[PampGramPreferencesKeys.localOperations]?.get(PampGramLocalOperationList.self)?.items ?? []
+                return items.sorted(by: { $0.date > $1.date })
+            }
+        })
     }
 
     /// Adds an operation and applies its amount to the matching local balance in one Postbox
     /// transaction. Positive amounts credit, negative amounts debit. The operation receives
     /// the exact balance-after value so the history remains useful even after later edits.
-    public static func addAndApply(transaction: Transaction, currency: PampGramLocalCurrency, kind: PampGramLocalOperationKind, amount: Int64, title: String, details: String = "", peerId: PeerId? = nil, giftId: Int64? = nil) {
+    /// Returns the resulting balance, since callers (a purchase's "remaining balance", a
+    /// gift's post-purchase state) usually need it right away.
+    ///
+    /// This is the **only** place that changes `fakeStarsBalance`/`fakeTonBalanceNanos`/
+    /// `localRublesBalanceKopecks` — every spend or top-up funnels through here so a balance
+    /// change can never happen without an entry in the same local journal explaining it. Both
+    /// live in the same `PreferencesEntry`-backed Postbox transaction, so they're written and
+    /// persisted to disk atomically: nothing but an explicit "Очистить историю"/"Сбросить
+    /// балансы" action in the settings/ledger screens ever removes a row, and neither survives
+    /// only in memory — an app relaunch, or flipping "Включить визуалку"/"Показывать фейковый
+    /// баланс" (which only change what's *displayed*, never what's stored), leaves every past
+    /// operation and the balance it produced exactly as it was.
+    @discardableResult
+    public static func addAndApply(transaction: Transaction, currency: PampGramLocalCurrency, kind: PampGramLocalOperationKind, amount: Int64, title: String, details: String = "", peerId: PeerId? = nil, giftId: Int64? = nil, visibleInRealHistory: Bool? = nil) -> Int64 {
         var balanceAfter: Int64 = 0
         PampGramCore.updateSettings(transaction: transaction, { settings in
             var settings = settings
@@ -173,7 +284,8 @@ public enum PampGramLocalLedgerStore {
             }
             return settings
         })
-        self.add(transaction: transaction, operation: PampGramLocalOperation(currency: currency, kind: kind, amount: amount, title: title, details: details, peerId: peerId, giftId: giftId, balanceAfter: balanceAfter))
+        self.add(transaction: transaction, operation: PampGramLocalOperation(currency: currency, kind: kind, amount: amount, title: title, details: details, peerId: peerId, giftId: giftId, balanceAfter: balanceAfter, visibleInRealHistory: visibleInRealHistory))
+        return balanceAfter
     }
 
     public static func currentBalance(transaction: Transaction, currency: PampGramLocalCurrency) -> Int64 {
@@ -268,141 +380,6 @@ public enum PampGramProfileVisualStore {
         |> map { view in
             view.values[PampGramPreferencesKeys.profileVisuals]?.get(PampGramProfileVisualState.self) ?? .default
         }
-        |> distinctUntilChanged
-    }
-}
-
-public enum PampGramAppearancePreset: String, CaseIterable {
-    case standard
-    case glass
-    case compact
-
-    public var displayName: String {
-        switch self {
-        case .standard: return "Стандартный"
-        case .glass: return "Glass"
-        case .compact: return "Compact"
-        }
-    }
-}
-
-extension PampGramAppearancePreset: Codable {
-    private enum CodingKeys: String, CodingKey {
-        case value
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let rawValue = try container.decode(String.self, forKey: .value)
-        self = PampGramAppearancePreset(rawValue: rawValue) ?? .standard
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(self.rawValue, forKey: .value)
-    }
-}
-
-public struct PampGramAppearanceState: Codable, Equatable {
-    public var preset: PampGramAppearancePreset
-    public var bubbleRadius: Int32
-    public var bubbleOpacityPercent: Int32
-    public var chatDensity: Int32
-    public var blurStrength: Int32
-    public var animationsMode: Int32
-    public var reduceAnimations: Bool
-    public var oledBlack: Bool
-    public var compactHub: Bool
-    public var monochromeIcons: Bool
-    public var showChatPreview: Bool
-    public var showChatDate: Bool
-    public var avatarSize: Int32
-    public var profileHeaderBlur: Int32
-    public var incomingColorHex: String
-    public var outgoingColorHex: String
-    public var inputRadius: Int32
-    public var cardScalePercent: Int32
-    public var iconScalePercent: Int32
-    public var textScalePercent: Int32
-    public var boldHeaders: Bool
-    public var glassCards: Bool
-    public var minimalMode: Bool
-    public var avatarShape: Int32
-    public var profileGradientHex: String
-
-    public static var `default`: PampGramAppearanceState {
-        return PampGramAppearanceState(preset: .standard, bubbleRadius: 16, bubbleOpacityPercent: 100, chatDensity: 1, blurStrength: 40, animationsMode: 1, reduceAnimations: false, oledBlack: false, compactHub: false, monochromeIcons: false, showChatPreview: true, showChatDate: true, avatarSize: 48, profileHeaderBlur: 30, incomingColorHex: "#FFFFFF", outgoingColorHex: "#DCF8C6", inputRadius: 22, cardScalePercent: 100, iconScalePercent: 100, textScalePercent: 100, boldHeaders: true, glassCards: false, minimalMode: false, avatarShape: 0, profileGradientHex: "#2AABEE,#8774E1")
-    }
-
-    public init(preset: PampGramAppearancePreset, bubbleRadius: Int32, bubbleOpacityPercent: Int32, chatDensity: Int32, blurStrength: Int32, animationsMode: Int32, reduceAnimations: Bool, oledBlack: Bool, compactHub: Bool, monochromeIcons: Bool, showChatPreview: Bool, showChatDate: Bool, avatarSize: Int32, profileHeaderBlur: Int32, incomingColorHex: String, outgoingColorHex: String, inputRadius: Int32, cardScalePercent: Int32, iconScalePercent: Int32, textScalePercent: Int32, boldHeaders: Bool, glassCards: Bool, minimalMode: Bool, avatarShape: Int32, profileGradientHex: String) {
-        self.preset = preset
-        self.bubbleRadius = bubbleRadius
-        self.bubbleOpacityPercent = bubbleOpacityPercent
-        self.chatDensity = chatDensity
-        self.blurStrength = blurStrength
-        self.animationsMode = animationsMode
-        self.reduceAnimations = reduceAnimations
-        self.oledBlack = oledBlack
-        self.compactHub = compactHub
-        self.monochromeIcons = monochromeIcons
-        self.showChatPreview = showChatPreview
-        self.showChatDate = showChatDate
-        self.avatarSize = avatarSize
-        self.profileHeaderBlur = profileHeaderBlur
-        self.incomingColorHex = incomingColorHex
-        self.outgoingColorHex = outgoingColorHex
-        self.inputRadius = inputRadius
-        self.cardScalePercent = cardScalePercent
-        self.iconScalePercent = iconScalePercent
-        self.textScalePercent = textScalePercent
-        self.boldHeaders = boldHeaders
-        self.glassCards = glassCards
-        self.minimalMode = minimalMode
-        self.avatarShape = avatarShape
-        self.profileGradientHex = profileGradientHex
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        let d = PampGramAppearanceState.default
-        self.preset = try c.decodeIfPresent(PampGramAppearancePreset.self, forKey: .preset) ?? d.preset
-        self.bubbleRadius = try c.decodeIfPresent(Int32.self, forKey: .bubbleRadius) ?? d.bubbleRadius
-        self.bubbleOpacityPercent = try c.decodeIfPresent(Int32.self, forKey: .bubbleOpacityPercent) ?? d.bubbleOpacityPercent
-        self.chatDensity = try c.decodeIfPresent(Int32.self, forKey: .chatDensity) ?? d.chatDensity
-        self.blurStrength = try c.decodeIfPresent(Int32.self, forKey: .blurStrength) ?? d.blurStrength
-        self.animationsMode = try c.decodeIfPresent(Int32.self, forKey: .animationsMode) ?? d.animationsMode
-        self.reduceAnimations = try c.decodeIfPresent(Bool.self, forKey: .reduceAnimations) ?? d.reduceAnimations
-        self.oledBlack = try c.decodeIfPresent(Bool.self, forKey: .oledBlack) ?? d.oledBlack
-        self.compactHub = try c.decodeIfPresent(Bool.self, forKey: .compactHub) ?? d.compactHub
-        self.monochromeIcons = try c.decodeIfPresent(Bool.self, forKey: .monochromeIcons) ?? d.monochromeIcons
-        self.showChatPreview = try c.decodeIfPresent(Bool.self, forKey: .showChatPreview) ?? d.showChatPreview
-        self.showChatDate = try c.decodeIfPresent(Bool.self, forKey: .showChatDate) ?? d.showChatDate
-        self.avatarSize = try c.decodeIfPresent(Int32.self, forKey: .avatarSize) ?? d.avatarSize
-        self.profileHeaderBlur = try c.decodeIfPresent(Int32.self, forKey: .profileHeaderBlur) ?? d.profileHeaderBlur
-        self.incomingColorHex = try c.decodeIfPresent(String.self, forKey: .incomingColorHex) ?? d.incomingColorHex
-        self.outgoingColorHex = try c.decodeIfPresent(String.self, forKey: .outgoingColorHex) ?? d.outgoingColorHex
-        self.inputRadius = try c.decodeIfPresent(Int32.self, forKey: .inputRadius) ?? d.inputRadius
-        self.cardScalePercent = try c.decodeIfPresent(Int32.self, forKey: .cardScalePercent) ?? d.cardScalePercent
-        self.iconScalePercent = try c.decodeIfPresent(Int32.self, forKey: .iconScalePercent) ?? d.iconScalePercent
-        self.textScalePercent = try c.decodeIfPresent(Int32.self, forKey: .textScalePercent) ?? d.textScalePercent
-        self.boldHeaders = try c.decodeIfPresent(Bool.self, forKey: .boldHeaders) ?? d.boldHeaders
-        self.glassCards = try c.decodeIfPresent(Bool.self, forKey: .glassCards) ?? d.glassCards
-        self.minimalMode = try c.decodeIfPresent(Bool.self, forKey: .minimalMode) ?? d.minimalMode
-        self.avatarShape = try c.decodeIfPresent(Int32.self, forKey: .avatarShape) ?? d.avatarShape
-        self.profileGradientHex = try c.decodeIfPresent(String.self, forKey: .profileGradientHex) ?? d.profileGradientHex
-    }
-}
-
-public enum PampGramAppearanceStore {
-    public static func state(transaction: Transaction) -> PampGramAppearanceState {
-        return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.appearance)?.get(PampGramAppearanceState.self) ?? .default
-    }
-    public static func update(transaction: Transaction, _ f: (PampGramAppearanceState) -> PampGramAppearanceState) {
-        transaction.setPreferencesEntry(key: PampGramPreferencesKeys.appearance, value: PreferencesEntry(f(self.state(transaction: transaction))))
-    }
-    public static func signal(postbox: Postbox) -> Signal<PampGramAppearanceState, NoError> {
-        return postbox.preferencesView(keys: [PampGramPreferencesKeys.appearance])
-        |> map { $0.values[PampGramPreferencesKeys.appearance]?.get(PampGramAppearanceState.self) ?? .default }
         |> distinctUntilChanged
     }
 }

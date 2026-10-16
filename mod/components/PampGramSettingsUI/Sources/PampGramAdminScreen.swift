@@ -12,27 +12,81 @@ import PromptUI
 import UndoUI
 import PampGramCore
 
+/// Parses free-text durations like "3д 12ч", "5д", "18ч" or a bare "18" (taken as hours) into
+/// total hours. Returns `nil` for empty input or a string with no recognizable number — the
+/// caller treats that as "didn't understand it" rather than silently granting zero hours.
+private func parseDurationHours(_ raw: String) -> Double? {
+    let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !value.isEmpty else {
+        return nil
+    }
+    if let plainHours = Double(value.replacingOccurrences(of: ",", with: ".")), plainHours > 0 {
+        return plainHours
+    }
+    guard let regex = try? NSRegularExpression(pattern: "(\\d+(?:[.,]\\d+)?)\\s*(д|ч)") else {
+        return nil
+    }
+    let nsRange = NSRange(value.startIndex..., in: value)
+    var totalHours: Double = 0
+    var matched = false
+    regex.enumerateMatches(in: value, range: nsRange) { match, _, _ in
+        guard let match, let numberRange = Range(match.range(at: 1), in: value), let unitRange = Range(match.range(at: 2), in: value) else {
+            return
+        }
+        guard let number = Double(value[numberRange].replacingOccurrences(of: ",", with: ".")) else {
+            return
+        }
+        matched = true
+        totalHours += value[unitRange] == "д" ? number * 24 : number
+    }
+    return matched && totalHours > 0 ? totalHours : nil
+}
+
+/// The inverse of `parseDurationHours`, for tooltips — "27" becomes "1д 3ч", "24" becomes "1д",
+/// "3" becomes "3ч".
+private func formatDurationHours(_ hours: Double) -> String {
+    let totalHours = max(1, Int((hours * 60).rounded()) / 60)
+    let days = totalHours / 24
+    let remainingHours = totalHours % 24
+    var parts: [String] = []
+    if days > 0 {
+        parts.append("\(days)д")
+    }
+    if remainingHours > 0 || parts.isEmpty {
+        parts.append("\(remainingHours)ч")
+    }
+    return parts.joined(separator: " ")
+}
+
 private final class PampGramAdminArguments {
     let setAdminToken: () -> Void
     let grantSubscription: () -> Void
+    let openUsersList: () -> Void
+    let generateKey: () -> Void
     let banFull: () -> Void
     let banSection: () -> Void
-    let openBannedList: () -> Void
+    let setMinVersion: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, openBannedList: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
+        self.openUsersList = openUsersList
+        self.generateKey = generateKey
         self.banFull = banFull
         self.banSection = banSection
-        self.openBannedList = openBannedList
+        self.setMinVersion = setMinVersion
     }
 }
 
+// "grant"/"users" have no header of their own, and "keys"/"ban"/"version" each already label
+// themselves with their own header row — folding all five into the token section's number
+// (rather than each getting its own) keeps every header/footer/button flowing as one
+// continuous block instead of a full section-gap before each one, which is what actually made
+// the screen feel spaced out: five extra gaps for groups that were never meant to read as
+// separate top-level sections, just as sub-groups under "СЕРВЕР".
 private enum PampGramAdminSection: Int32 {
     case about
     case token
-    case grant
-    case ban
 }
 
 private enum PampGramAdminEntry: ItemListNodeEntry {
@@ -45,22 +99,28 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     case grantAction(String, Bool)
     case grantFooter(String)
 
+    case usersAction(String, Bool)
+    case usersFooter(String)
+
+    case keysHeader(String)
+    case generateKeyAction(String, Bool)
+    case keysFooter(String)
+
     case banHeader(String)
     case banFullAction(String, Bool)
     case banSectionAction(String, Bool)
-    case unbanAction(String, Bool)
     case banFooter(String)
+
+    case versionHeader(String)
+    case versionRow(String, String)
+    case versionFooter(String)
 
     var section: ItemListSectionId {
         switch self {
         case .aboutText:
             return PampGramAdminSection.about.rawValue
-        case .tokenHeader, .tokenRow, .tokenFooter:
+        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .versionHeader, .versionRow, .versionFooter:
             return PampGramAdminSection.token.rawValue
-        case .grantAction, .grantFooter:
-            return PampGramAdminSection.grant.rawValue
-        case .banHeader, .banFullAction, .banSectionAction, .unbanAction, .banFooter:
-            return PampGramAdminSection.ban.rawValue
         }
     }
 
@@ -78,16 +138,30 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 4
         case .grantFooter:
             return 5
-        case .banHeader:
+        case .usersAction:
             return 6
-        case .banFullAction:
+        case .usersFooter:
             return 7
-        case .banSectionAction:
+        case .keysHeader:
             return 8
-        case .unbanAction:
+        case .generateKeyAction:
             return 9
-        case .banFooter:
+        case .keysFooter:
             return 10
+        case .banHeader:
+            return 11
+        case .banFullAction:
+            return 12
+        case .banSectionAction:
+            return 13
+        case .banFooter:
+            return 14
+        case .versionHeader:
+            return 15
+        case .versionRow:
+            return 16
+        case .versionFooter:
+            return 17
         }
     }
 
@@ -105,15 +179,29 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.grantFooter(lhsText), .grantFooter(rhsText)):
             return lhsText == rhsText
+        case let (.usersAction(lhsTitle, lhsEnabled), .usersAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.usersFooter(lhsText), .usersFooter(rhsText)):
+            return lhsText == rhsText
+        case let (.keysHeader(lhsText), .keysHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.generateKeyAction(lhsTitle, lhsEnabled), .generateKeyAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.keysFooter(lhsText), .keysFooter(rhsText)):
+            return lhsText == rhsText
         case let (.banHeader(lhsText), .banHeader(rhsText)):
             return lhsText == rhsText
         case let (.banFullAction(lhsTitle, lhsEnabled), .banFullAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.banSectionAction(lhsTitle, lhsEnabled), .banSectionAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
-        case let (.unbanAction(lhsTitle, lhsEnabled), .unbanAction(rhsTitle, rhsEnabled)):
-            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.banFooter(lhsText), .banFooter(rhsText)):
+            return lhsText == rhsText
+        case let (.versionHeader(lhsText), .versionHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.versionRow(lhsTitle, lhsLabel), .versionRow(rhsTitle, rhsLabel)):
+            return lhsTitle == rhsTitle && lhsLabel == rhsLabel
+        case let (.versionFooter(lhsText), .versionFooter(rhsText)):
             return lhsText == rhsText
         default:
             return false
@@ -127,17 +215,29 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdminArguments
         switch self {
-        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .banFooter(text):
+        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .usersFooter(text), let .keysFooter(text), let .banFooter(text), let .versionFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .tokenHeader(text), let .banHeader(text):
+        case let .tokenHeader(text), let .keysHeader(text), let .banHeader(text), let .versionHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .tokenRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.setAdminToken()
             })
+        case let .versionRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.setMinVersion()
+            })
         case let .grantAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.grantSubscription()
+            })
+        case let .usersAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.openUsersList()
+            })
+        case let .generateKeyAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.generateKey()
             })
         case let .banFullAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -146,10 +246,6 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let .banSectionAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.banSection()
-            })
-        case let .unbanAction(title, enabled):
-            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
-                arguments.openBannedList()
             })
         }
     }
@@ -164,6 +260,7 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
     var presentControllerImpl: ((ViewController) -> Void)?
     var presentTooltipImpl: ((String) -> Void)?
+    var refreshMinVersion: (() -> Void)?
 
     // Same username-or-numeric-ID resolve as grantSubscription below, kept as its own copy
     // rather than shared: the two flows diverge right after (tier choice vs. ban reason), and
@@ -241,16 +338,81 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
         })
     }
 
+    // Shared by both the "Выдать подписку" and "Сгенерировать ключ" flows below, once a tier is
+    // already picked. Standard never reaches this: the server drops any duration for it (it's
+    // just "no subscription"), so both call sites skip straight to `completion(nil)` for it.
+    let showDurationChoice: (String, @escaping (Double?) -> Void) -> Void = { subtitle, completion in
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        let sheet = ActionSheetController(presentationData: presentationData)
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: [
+                ActionSheetTextItem(title: subtitle),
+                ActionSheetButtonItem(title: "Навсегда", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(nil)
+                }),
+                ActionSheetButtonItem(title: "1 час", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(1)
+                }),
+                ActionSheetButtonItem(title: "24 часа", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(24)
+                }),
+                ActionSheetButtonItem(title: "7 дней", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(7 * 24)
+                }),
+                ActionSheetButtonItem(title: "30 дней", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    completion(30 * 24)
+                }),
+                ActionSheetButtonItem(title: "Свой срок…", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    presentControllerImpl?(promptController(
+                        context: context,
+                        text: "Свой срок",
+                        subtitle: "Например «3д 12ч», «5д» или «18ч»",
+                        value: "",
+                        placeholder: "3д 12ч",
+                        characterLimit: 32,
+                        apply: { value in
+                            guard let hours = parseDurationHours(value ?? "") else {
+                                presentTooltipImpl?("Не разобрал срок — попробуй, например, «3д 12ч».")
+                                return
+                            }
+                            completion(hours)
+                        }
+                    ))
+                })
+            ]),
+            ActionSheetItemGroup(items: [
+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                })
+            ])
+        ])
+        presentControllerImpl?(sheet)
+    }
+
     let showTierChoice: (Int64, String, String) -> Void = { userId, displayName, adminToken in
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
 
         let apply: (PampGramSubscriptionTier) -> Void = { tier in
-            PampGramSubscriptionAPI.grantTier(userId: userId, tier: tier, adminToken: adminToken) { ok in
-                if ok {
-                    presentTooltipImpl?("\(displayName): выдан тариф \(tier == .pro ? "PRO" : "STANDARD").")
-                } else {
-                    presentTooltipImpl?("Не получилось — проверь, что бэкенд задеплоен, baseURL заполнен, а токен совпадает с ADMIN_TOKEN на сервере.")
+            let grant: (Double?) -> Void = { durationHours in
+                PampGramSubscriptionAPI.grantTier(userId: userId, tier: tier, durationHours: durationHours, adminToken: adminToken) { ok in
+                    if ok {
+                        let durationText = durationHours.map { " (\(formatDurationHours($0)))" } ?? ""
+                        presentTooltipImpl?("\(displayName): выдан тариф \(tier == .pro ? "PRO" : "STANDARD")\(durationText).")
+                    } else {
+                        presentTooltipImpl?("Не получилось — проверь, что бэкенд задеплоен, baseURL заполнен, а токен совпадает с ADMIN_TOKEN на сервере.")
+                    }
                 }
+            }
+            if tier == .pro {
+                showDurationChoice("На какой срок для \(displayName)?", grant)
+            } else {
+                grant(nil)
             }
         }
 
@@ -258,6 +420,50 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
         sheet.setItemGroups([
             ActionSheetItemGroup(items: [
                 ActionSheetTextItem(title: "Тариф для \(displayName)"),
+                ActionSheetButtonItem(title: "PRO", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    apply(.pro)
+                }),
+                ActionSheetButtonItem(title: "STANDARD", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    apply(.standard)
+                })
+            ]),
+            ActionSheetItemGroup(items: [
+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                })
+            ])
+        ])
+        presentControllerImpl?(sheet)
+    }
+
+    let showKeyTierChoice: (String) -> Void = { adminToken in
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+
+        let apply: (PampGramSubscriptionTier) -> Void = { tier in
+            let generate: (Double?) -> Void = { durationHours in
+                PampGramSubscriptionAPI.generateKey(tier: tier, durationHours: durationHours, adminToken: adminToken) { key in
+                    guard let key else {
+                        presentTooltipImpl?("Не получилось — проверь, что бэкенд задеплоен, baseURL заполнен, а токен совпадает с ADMIN_TOKEN на сервере.")
+                        return
+                    }
+                    UIPasteboard.general.string = key
+                    let durationText = durationHours.map { " (\(formatDurationHours($0)))" } ?? ""
+                    presentTooltipImpl?("Ключ \(tier == .pro ? "PRO" : "STANDARD")\(durationText) скопирован: \(key)")
+                }
+            }
+            if tier == .pro {
+                showDurationChoice("Срок действия ключа", generate)
+            } else {
+                generate(nil)
+            }
+        }
+
+        let sheet = ActionSheetController(presentationData: presentationData)
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: [
+                ActionSheetTextItem(title: "Тариф для ключа"),
                 ActionSheetButtonItem(title: "PRO", color: .accent, action: { [weak sheet] in
                     sheet?.dismissAnimated()
                     apply(.pro)
@@ -289,6 +495,12 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                     value: current ?? "",
                     placeholder: "токен",
                     characterLimit: 256,
+                    // The stock prompt field autocapitalizes the first character by default
+                    // (`.sentences`) and lets iOS autocorrect touch what's typed — both silently
+                    // corrupt an opaque secret that has to match the server byte-for-byte. This
+                    // field needs the raw text back exactly as entered.
+                    autocapitalizationType: .none,
+                    autocorrectionType: .no,
                     apply: { value in
                         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
                             return
@@ -342,6 +554,14 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                     }
                 ))
             })
+        },
+        openUsersList: {
+            pushControllerImpl?(pampGramUsersListController(context: context))
+        },
+        generateKey: {
+            requireAdminToken { adminToken in
+                showKeyTierChoice(adminToken)
+            }
         },
         banFull: {
             requireAdminToken { adminToken in
@@ -400,17 +620,46 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                 ))
             }
         },
-        openBannedList: {
-            pushControllerImpl?(pampGramBannedUsersController(context: context))
+        setMinVersion: {
+            requireAdminToken { adminToken in
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Минимальная версия",
+                    subtitle: "Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Все версии ниже указанной перестанут открывать PampGram и покажут экран «Вышло новое обновление». Введи 0, чтобы снять ограничение.",
+                    value: "",
+                    placeholder: "например, \(PampGramSubscriptionAPI.currentBuildVersion)",
+                    characterLimit: 9,
+                    apply: { value in
+                        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), let minVersion = Int(value), minVersion >= 0 else {
+                            return
+                        }
+                        PampGramSubscriptionAPI.setMinVersion(minVersion, adminToken: adminToken) { ok in
+                            if ok {
+                                presentTooltipImpl?(minVersion == 0 ? "Ограничение по версии снято." : "Версии ниже \(minVersion) теперь заблокированы.")
+                                refreshMinVersion?()
+                            } else {
+                                presentTooltipImpl?("Не получилось — проверь токен и сервер.")
+                            }
+                        }
+                    }
+                ))
+            }
         }
     )
 
+    let minVersionPromise = Promise<Int>()
+    minVersionPromise.set(PampGramSubscriptionAPI.fetchMinVersion())
+    refreshMinVersion = {
+        minVersionPromise.set(PampGramSubscriptionAPI.fetchMinVersion())
+    }
+
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramSubscriptionAPI.adminTokenSignal(postbox: context.account.postbox)
+        PampGramSubscriptionAPI.adminTokenSignal(postbox: context.account.postbox),
+        minVersionPromise.get()
     )
     |> deliverOnMainQueue
-    |> map { presentationData, adminToken -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, adminToken, minVersion -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Админ-панель"),
@@ -425,12 +674,19 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .tokenRow("Админ-токен", adminToken == nil ? "Не задан" : "Задан"),
             .tokenFooter("Секрет для авторизации на сервере — задаётся один раз, хранится только на этом устройстве."),
             .grantAction("Выдать подписку", adminToken != nil),
-            .grantFooter("Меняет тариф человека на всех его устройствах — это единственная функция PampGram, которая обращается к серверу, а не хранит всё локально."),
+            .grantFooter("Меняет тариф человека на всех его устройствах. Для PRO можно выбрать срок (часы или дни) или выдать навсегда. Это, «Пользователи» и ключи ниже — единственные функции PampGram, которые обращаются к серверу, а не хранят всё локально."),
+            .usersAction("Пользователи", adminToken != nil),
+            .usersFooter("Все аккаунты, которые PampGram знает — открывали мод или были забанены: тариф, когда сервер видел их в последний раз, и статус бана. Отсюда же снимаются баны."),
+            .keysHeader("КЛЮЧИ АКТИВАЦИИ"),
+            .generateKeyAction("Сгенерировать ключ", adminToken != nil),
+            .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются. Для PRO можно выбрать срок (часы или дни) — он начинает отсчитываться с момента активации, а не с момента генерации ключа."),
             .banHeader("ДОСТУП"),
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),
-            .unbanAction("Разбанить", adminToken != nil),
-            .banFooter("Забаненный видит вместо раздела (или всего PampGram, если бан полный) закрытый замок и причину, которую ты укажешь.")
+            .banFooter("Забаненный видит вместо раздела (или всего PampGram, если бан полный) закрытый замок и причину, которую ты укажешь. Разбанить — в разделе «Пользователи» выше."),
+            .versionHeader("ВЕРСИЯ"),
+            .versionRow("Минимальная версия", minVersion == 0 ? "Не ограничена" : "\(minVersion)"),
+            .versionFooter("Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Подними минимальную версию до номера новой сборки, чтобы все более старые (включая уже установленные у людей) сразу показывали «Вышло новое обновление» вместо PampGram.")
         ]
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),

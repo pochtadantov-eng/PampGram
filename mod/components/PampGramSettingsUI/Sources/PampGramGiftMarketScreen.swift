@@ -1,10 +1,12 @@
 import Foundation
+import UIKit
 import Display
 import SwiftSignalKit
 import Postbox
 import TelegramCore
 import TelegramPresentationData
 import ItemListUI
+import PresentationDataUtils
 import AccountContext
 import PromptUI
 import PhantomGiftKit
@@ -64,7 +66,7 @@ private enum PampGramGiftMarketEntry: ItemListNodeEntry {
             } else {
                 title = baseTitle
             }
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: detail, sectionId: self.section, style: .blocks, action: { a.openGift(gift) })
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "gift.fill", backgroundColor: UIColor(rgb: 0x8e44ec)), title: title, label: detail, sectionId: self.section, style: .blocks, action: { a.openGift(gift) })
         }
     }
 }
@@ -84,6 +86,23 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
     }
 
     func transfer(gift: PampGramPhantomGift) {
+        let _ = (PampGramPhantomGiftManager.canAffordTransferFee(context: context)
+        |> deliverOnMainQueue).start(next: { canAfford in
+            guard canAfford else {
+                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+                present?(textAlertController(
+                    context: context,
+                    title: "Недостаточно Stars",
+                    text: "Передача подарка стоит \(PampGramPhantomGiftManager.transferFeeStars) ⭐.",
+                    actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]
+                ))
+                return
+            }
+            presentTransferRecipientPicker(gift: gift)
+        })
+    }
+
+    func presentTransferRecipientPicker(gift: PampGramPhantomGift) {
         // Cross-device visual transfer: pick a recipient, send them a real carrier message with
         // the encoded gift, and remove it from this collection. A recipient running PampGram can
         // then receive it ("Получить подарок" on the message) and manage it as their own.
@@ -141,15 +160,20 @@ public func pampGramGiftMarketController(context: AccountContext) -> ViewControl
         if gift.peerId == context.account.peerId {
             items.append(ActionSheetButtonItem(title: gift.pinnedToTop ? "Открепить в профиле" : "Закрепить в профиле", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
-                let _ = PampGramPhantomGiftManager.setPinnedToTop(context: context, matching: gift.asProfileGift, pinnedToTop: !gift.pinnedToTop).start()
+                let _ = PampGramPhantomGiftManager.setPinnedToTop(context: context, matching: gift.asProfileGift(fromPeer: nil), pinnedToTop: !gift.pinnedToTop).start()
             }))
             items.append(ActionSheetButtonItem(title: gift.savedToProfile ? "Скрыть из профиля" : "Показать в профиле", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
-                let _ = PampGramPhantomGiftManager.setSavedToProfile(context: context, matching: gift.asProfileGift, savedToProfile: !gift.savedToProfile).start()
+                let _ = PampGramPhantomGiftManager.setSavedToProfile(context: context, matching: gift.asProfileGift(fromPeer: nil), savedToProfile: !gift.savedToProfile).start()
             }))
             items.append(ActionSheetButtonItem(title: gift.worn ? "Перестать носить" : "Носить", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
                 let _ = PampGramPhantomGiftManager.setWorn(context: context, giftId: gift.id, worn: !gift.worn).start()
+            }))
+            items.append(ActionSheetButtonItem(title: "Продать", color: .destructive, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                let _ = PampGramPhantomGiftManager.sell(context: context, matching: gift.asProfileGift(fromPeer: nil)).start()
+                present?(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Подарок продан, стоимость зачислена на баланс.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }))
             }))
         }
         items.append(ActionSheetButtonItem(title: "Выставить за Stars", color: .accent, action: { [weak sheet] in sheet?.dismissAnimated(); setMarketPrice(gift: gift, currency: .stars) }))

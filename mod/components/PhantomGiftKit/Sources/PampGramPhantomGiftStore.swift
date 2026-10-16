@@ -38,6 +38,18 @@ public enum PampGramPhantomGiftStore {
         })
     }
 
+    /// Several gifts in one write — the list is decoded and re-encoded once instead of once per gift.
+    public static func addAll(transaction: Transaction, gifts: [PampGramPhantomGift]) {
+        if gifts.isEmpty {
+            return
+        }
+        transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.phantomGifts, { entry in
+            var list = entry?.get(PampGramPhantomGiftList.self) ?? PampGramPhantomGiftList(gifts: [])
+            list.gifts.append(contentsOf: gifts)
+            return PreferencesEntry(list)
+        })
+    }
+
     public static func remove(transaction: Transaction, id: Int64) {
         transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.phantomGifts, { entry in
             var list = entry?.get(PampGramPhantomGiftList.self) ?? PampGramPhantomGiftList(gifts: [])
@@ -59,28 +71,17 @@ public enum PampGramPhantomGiftStore {
         })
     }
 
+    /// Read-only. There is deliberately no matching setter here: every change to this balance
+    /// must go through `PampGramLocalLedgerStore.addAndApply`, so a spend or top-up can never
+    /// happen without a matching row in the local history explaining it (see that function's
+    /// doc comment).
     public static func fakeStarsBalance(transaction: Transaction) -> Int64 {
         return PampGramCore.settings(transaction: transaction).fakeStarsBalance
     }
 
-    public static func setFakeStarsBalance(transaction: Transaction, stars: Int64) {
-        PampGramCore.updateSettings(transaction: transaction, { settings in
-            var settings = settings
-            settings.fakeStarsBalance = stars
-            return settings
-        })
-    }
-
+    /// Read-only, same reasoning as `fakeStarsBalance`.
     public static func fakeTonBalanceNanos(transaction: Transaction) -> Int64 {
         return PampGramCore.settings(transaction: transaction).fakeTonBalanceNanos
-    }
-
-    public static func setFakeTonBalanceNanos(transaction: Transaction, nanos: Int64) {
-        PampGramCore.updateSettings(transaction: transaction, { settings in
-            var settings = settings
-            settings.fakeTonBalanceNanos = nanos
-            return settings
-        })
     }
 
     /// Live fake balance, for display (e.g. the "⭐ 50 000" label in the composer).
@@ -92,11 +93,17 @@ public enum PampGramPhantomGiftStore {
 
     /// Live list of every Phantom Gift on this device, newest first.
     public static func allGiftsSignal(context: AccountContext) -> Signal<[PampGramPhantomGift], NoError> {
-        return context.account.postbox.preferencesView(keys: [PampGramPreferencesKeys.phantomGifts])
-        |> map { view -> [PampGramPhantomGift] in
-            let gifts = view.values[PampGramPreferencesKeys.phantomGifts]?.get(PampGramPhantomGiftList.self)?.gifts ?? []
-            return gifts.sorted(by: { $0.date > $1.date })
-        }
+        // One shared decode of the whole list per change: the profile grid, the pinned gifts
+        // around the avatar, the worn-gift runtime and the settings screens all watch it.
+        let postbox = context.account.postbox
+        return PampGramSharedSignals.shared(postbox: postbox, name: "phantomGifts", make: {
+            return postbox.preferencesView(keys: [PampGramPreferencesKeys.phantomGifts])
+            |> map { view -> [PampGramPhantomGift] in
+                let gifts = view.values[PampGramPreferencesKeys.phantomGifts]?.get(PampGramPhantomGiftList.self)?.gifts ?? []
+                return gifts.sorted(by: { $0.date > $1.date })
+            }
+            |> distinctUntilChanged
+        })
     }
 
     /// Live list of local visual gifts assigned to a profile. The recipient profile is
@@ -104,16 +111,60 @@ public enum PampGramPhantomGiftStore {
     /// records live only in the local Postbox and are never sent to Telegram.
     public static func profileGiftsSignal(context: AccountContext, peerId: EnginePeer.Id? = nil) -> Signal<[PampGramPhantomGift], NoError> {
         let profilePeerId = peerId ?? context.account.peerId
+        let isOwnProfile = profilePeerId == context.account.peerId
         return self.allGiftsSignal(context: context)
         |> map { gifts -> [PampGramPhantomGift] in
+            // A hidden gift ("Скрыть из профиля") stays in the owner's own grid, drawn with the
+            // crossed-out eye, exactly like a real hidden gift does — only everyone else's view
+            // of the profile drops it. A sold gift is the other reason `savedToProfile` goes
+            // false (see `withSold`), and that one really is gone, hence the `soldDate` check.
             return gifts
-                .filter { $0.peerId == profilePeerId && $0.savedToProfile }
+                .filter { $0.peerId == profilePeerId && $0.soldDate == nil && ($0.savedToProfile || isOwnProfile) }
                 .sorted { lhs, rhs in
                     if lhs.pinnedToTop != rhs.pinnedToTop {
                         return lhs.pinnedToTop
                     }
                     return lhs.date > rhs.date
                 }
+        }
+        // A change to another profile's gifts (or to a gift that isn't on this profile) must not
+        // rebuild this one's grid and pinned-gift animations.
+        |> distinctUntilChanged
+    }
+
+    /// How many visual gifts a profile shows. Telegram only offers a profile its "Подарки" tab when
+    /// the account's real gift count is above zero, so a person with no real gifts at all never got
+    /// the tab and a visual gift given to them had nowhere to appear — this count is what that check
+    /// also consults.
+    public static func profileGiftCountSignal(context: AccountContext, peerId: EnginePeer.Id) -> Signal<Int, NoError> {
+        return self.profileGiftsSignal(context: context, peerId: peerId)
+        |> map { $0.count }
+        |> distinctUntilChanged
+    }
+
+    /// Same as `profileGiftsSignal`, mapped to the real profile grid's own item type with
+    /// `fromPeer` actually resolved — `PampGramPhantomGift` only stores a `fromPeerId`, since
+    /// `ProfileGiftsContext.State.StarGift` needs a full `EnginePeer` for the "Подарок от X"
+    /// attribution a plain (non-unique) gift card shows (`GiftsListView.swift` falls back to
+    /// "Anonymous" whenever `fromPeer` is nil, which `PampGramPhantomGift.asProfileGift` used
+    /// to pass unconditionally). This is what `GiftsListView` should call instead of building
+    /// `.asProfileGift` off `profileGiftsSignal`'s raw list itself.
+    public static func resolvedProfileGiftsSignal(context: AccountContext, peerId: EnginePeer.Id? = nil) -> Signal<[ProfileGiftsContext.State.StarGift], NoError> {
+        return self.profileGiftsSignal(context: context, peerId: peerId)
+        |> mapToSignal { gifts -> Signal<[ProfileGiftsContext.State.StarGift], NoError> in
+            let fromPeerIds = Array(Set(gifts.compactMap { $0.fromPeerId }))
+            let peerSignals = fromPeerIds.map { id in
+                context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: id))
+                |> map { peer -> (EnginePeer.Id, EnginePeer?) in (id, peer) }
+            }
+            return combineLatest(peerSignals)
+            |> map { resolved -> [ProfileGiftsContext.State.StarGift] in
+                let peersById = Dictionary(uniqueKeysWithValues: resolved)
+                return gifts.map { gift in
+                    let fromPeer: EnginePeer? = gift.fromPeerId.flatMap { peersById[$0] ?? nil }
+                    return gift.asProfileGift(fromPeer: fromPeer)
+                }
+            }
         }
     }
 
@@ -135,6 +186,7 @@ public enum PampGramPhantomGiftStore {
         |> map { gifts in
             gifts.first(where: { $0.peerId == selfPeerId && $0.worn && $0.soldDate == nil })
         }
+        |> distinctUntilChanged
     }
 
 }

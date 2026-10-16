@@ -25,6 +25,20 @@ private struct PampGramSeendsPayload {
     let mode: Mode
 }
 
+/// Entry point for the chat's send paths: true when any outgoing text message is an `@seends`
+/// command (it was turned into a local receipt instead of being sent).
+public func pampGramTryHandleSeendsMessages(context: AccountContext, peerId: EnginePeer.Id, messages: [EnqueueMessage]) -> Bool {
+    var handled = false
+    for message in messages {
+        if case let .message(text, _, _, _, _, _, _, _, _, _) = message {
+            if pampGramTryHandleSeendsCommand(context: context, peerId: peerId, text: text) {
+                handled = true
+            }
+        }
+    }
+    return handled
+}
+
 public func pampGramTryHandleSeendsCommand(context: AccountContext, peerId: EnginePeer.Id, text: String) -> Bool {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let payload = pampGramParseSeends(trimmed) else {

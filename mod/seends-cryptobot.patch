@@ -1,0 +1,107 @@
+diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
+index 0f40cdc9..72735f2f 100644
+--- a/submodules/TelegramUI/Sources/AccountContext.swift
++++ b/submodules/TelegramUI/Sources/AccountContext.swift
+@@ -10,6 +10,7 @@ import AccountContext
+ import LiveLocationManager
+ import PhantomGiftKit
+ import PampGramCore
++import PampGramSettingsUI
+ import TemporaryCachedPeerDataManager
+ import PhoneNumberFormat
+ import TelegramUIPreferences
+@@ -515,6 +516,13 @@ public final class AccountContextImpl: AccountContext {
+             PampGramLocalPremiumRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
+             PampGramModerationRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
+             PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
++            PampGramFakeCryptoBotRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
++            PampGramFakeCryptoBotRuntime.shared.setControllerFactory({ contextObject in
++                guard let context = contextObject as? AccountContext else {
++                    return nil
++                }
++                return pampGramFakeCryptoBotController(context: context)
++            })
+             PampGramGiftBehavior.shared.start(postbox: account.postbox)
+             PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
+             PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
+index 952db67c..0c805e7c 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
+@@ -1004,6 +1004,17 @@ extension ChatControllerImpl {
+             strongSelf.commitPurposefulAction()
+             
+             if let peerId = strongSelf.chatLocation.peerId {
++                // PampGram @seends: "@seends 100$ чек" is turned into a local receipt instead of
++                // being sent. This is the composer's normal send path, which never reaches
++                // ChatControllerImpl.sendMessages(_:), so it needs its own copy of the hook.
++                if pampGramTryHandleSeendsMessages(context: strongSelf.context, peerId: peerId, messages: messages) {
++                    strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
++                        $0.updatedInterfaceState { $0.withUpdatedReplyMessageSubject(nil).withUpdatedSendMessageEffect(nil).withUpdatedPostSuggestionState(nil).withUpdatedComposeInputState(ChatTextInputState(inputText: NSAttributedString(string: ""))) }
++                    })
++                    strongSelf.chatDisplayNode.historyNode.scrollToEndOfHistory()
++                    return
++                }
++
+                 // PampGram визуальный чат: the composer's normal send button (no long-press)
+                 // never reaches ChatControllerImpl.sendMessages(_:) — this closure calls
+                 // enqueueMessages directly — so this is its own copy of the same hook that
+diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
+index 31808802..3f27d025 100644
+--- a/submodules/TelegramUI/Sources/ChatController.swift
++++ b/submodules/TelegramUI/Sources/ChatController.swift
+@@ -9044,6 +9044,16 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+             return
+         }
+ 
++        // PampGram @seends: same as the composer hook in ChatControllerLoadDisplayNode.swift, for
++        // the sends that reach this method (long-press send menu, quick replies, ...).
++        if pampGramTryHandleSeendsMessages(context: self.context, peerId: peerId, messages: messages) {
++            self.interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
++                return (ChatTextInputState(inputText: NSAttributedString(string: "")), inputMode)
++            }
++            self.chatDisplayNode.historyNode.scrollToEndOfHistory()
++            return
++        }
++
+         // PampGram фейк админ: в канале с включённым фейк-админом «пост» вставляется только в
+         // локальную копию чата — на сервер ничего не уходит. Текст добавляется как пост канала,
+         // всё остальное молча проглатывается, чтобы не было реальных неудачных отправок.
+diff --git a/submodules/WebUI/BUILD b/submodules/WebUI/BUILD
+index 23c32514..dd456732 100644
+--- a/submodules/WebUI/BUILD
++++ b/submodules/WebUI/BUILD
+@@ -13,6 +13,7 @@ swift_library(
+         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+     	"//submodules/AsyncDisplayKit:AsyncDisplayKit",
+         "//submodules/Display:Display",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+         "//submodules/TelegramCore:TelegramCore",
+         "//submodules/TelegramPresentationData:TelegramPresentationData",
+         "//submodules/PresentationDataUtils:PresentationDataUtils",
+diff --git a/submodules/WebUI/Sources/WebAppController.swift b/submodules/WebUI/Sources/WebAppController.swift
+index ee39fd29..497de9e3 100644
+--- a/submodules/WebUI/Sources/WebAppController.swift
++++ b/submodules/WebUI/Sources/WebAppController.swift
+@@ -8,6 +8,7 @@ import SwiftSignalKit
+ import ComponentFlow
+ import TelegramPresentationData
+ import AccountContext
++import PampGramCore
+ import AttachmentUI
+ import ContextUI
+ import PresentationDataUtils
+@@ -4292,6 +4293,13 @@ public func standaloneWebAppController(
+     verifyAgeCompletion: ((Int) -> Void)? = nil,
+     onControllerCreated: @escaping (WebAppController) -> Void = { _ in }
+ ) -> ViewController {
++    // PampGram "Фейковый криптобот": every way of opening a bot's mini app (menu button, inline
++    // button, link, profile) ends up here, so this is the one place to swap @CryptoBot's for
++    // the local visual.
++    if let replacement = PampGramFakeCryptoBotRuntime.shared.replacementController(accountKey: context.account.peerId.toInt64(), context: context, botUserId: params.botId.id._internalGetInt64Value(), botName: params.botName) as? ViewController {
++        return replacement
++    }
++
+     let controller = AttachmentController(
+         context: context,
+         updatedPresentationData: updatedPresentationData,

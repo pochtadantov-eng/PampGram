@@ -13,14 +13,22 @@ import UndoUI
 import PampGramCore
 import PhantomGiftKit
 
+private let pampGramCooldownDateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "dd.MM.yyyy HH:mm"
+    return formatter
+}()
+
 private final class PampGramSettingsArguments {
     let toggleVisual: (Bool) -> Void
+    let toggleHideIcon: (Bool) -> Void
     let togglePhantomGifts: (Bool) -> Void
     let toggleFakeStarsDisplay: (Bool) -> Void
     let toggleFakeTonDisplay: (Bool) -> Void
     let editStarsBalance: () -> Void
     let editTonBalance: () -> Void
     let toggleFromHimGifts: (Bool) -> Void
+    let toggleUnupgradedGift: (Bool) -> Void
     let toggleLocalRublesPurchase: (Bool) -> Void
     let topUpLocalRubles: () -> Void
     let resetBalances: () -> Void
@@ -28,17 +36,25 @@ private final class PampGramSettingsArguments {
     let openVisualNumberEditor: () -> Void
     let openVisualRatingEditor: () -> Void
     let openCollectionMarket: () -> Void
+    let openGiftConstructor: () -> Void
     let openStarsLedger: () -> Void
     let openTonLedger: () -> Void
+    let sellRegularGifts: () -> Void
+    let openFakeSale: () -> Void
+    let toggleFakeCooldown: (Bool) -> Void
+    let pickFakeCooldown: () -> Void
+    let toggleFakeOfferFail: (Bool) -> Void
 
     init(
         toggleVisual: @escaping (Bool) -> Void,
+        toggleHideIcon: @escaping (Bool) -> Void,
         togglePhantomGifts: @escaping (Bool) -> Void,
         toggleFakeStarsDisplay: @escaping (Bool) -> Void,
         toggleFakeTonDisplay: @escaping (Bool) -> Void,
         editStarsBalance: @escaping () -> Void,
         editTonBalance: @escaping () -> Void,
         toggleFromHimGifts: @escaping (Bool) -> Void,
+        toggleUnupgradedGift: @escaping (Bool) -> Void,
         toggleLocalRublesPurchase: @escaping (Bool) -> Void,
         topUpLocalRubles: @escaping () -> Void,
         resetBalances: @escaping () -> Void,
@@ -46,16 +62,24 @@ private final class PampGramSettingsArguments {
         openVisualNumberEditor: @escaping () -> Void,
         openVisualRatingEditor: @escaping () -> Void,
         openCollectionMarket: @escaping () -> Void,
+        openGiftConstructor: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
-        openTonLedger: @escaping () -> Void
+        openTonLedger: @escaping () -> Void,
+        sellRegularGifts: @escaping () -> Void,
+        openFakeSale: @escaping () -> Void,
+        toggleFakeCooldown: @escaping (Bool) -> Void,
+        pickFakeCooldown: @escaping () -> Void,
+        toggleFakeOfferFail: @escaping (Bool) -> Void
     ) {
         self.toggleVisual = toggleVisual
+        self.toggleHideIcon = toggleHideIcon
         self.togglePhantomGifts = togglePhantomGifts
         self.toggleFakeStarsDisplay = toggleFakeStarsDisplay
         self.toggleFakeTonDisplay = toggleFakeTonDisplay
         self.editStarsBalance = editStarsBalance
         self.editTonBalance = editTonBalance
         self.toggleFromHimGifts = toggleFromHimGifts
+        self.toggleUnupgradedGift = toggleUnupgradedGift
         self.toggleLocalRublesPurchase = toggleLocalRublesPurchase
         self.topUpLocalRubles = topUpLocalRubles
         self.resetBalances = resetBalances
@@ -63,29 +87,41 @@ private final class PampGramSettingsArguments {
         self.openVisualNumberEditor = openVisualNumberEditor
         self.openVisualRatingEditor = openVisualRatingEditor
         self.openCollectionMarket = openCollectionMarket
+        self.openGiftConstructor = openGiftConstructor
         self.openStarsLedger = openStarsLedger
         self.openTonLedger = openTonLedger
+        self.sellRegularGifts = sellRegularGifts
+        self.openFakeSale = openFakeSale
+        self.toggleFakeCooldown = toggleFakeCooldown
+        self.pickFakeCooldown = pickFakeCooldown
+        self.toggleFakeOfferFail = toggleFakeOfferFail
     }
 }
 
 private enum PampGramSettingsSection: Int32 {
     case visual
+    case hideIcon
     case about
     case phantomGifts
     case starsBalance
     case tonBalance
     case localRubles
-    case fromHimGifts
     case profileVisuals
     case collectionMarket
+    case realGifts
     case ledger
     case resetBalances
     case storage
+    case unupgradedGift
+    case giftBehavior
 }
 
 private enum PampGramSettingsEntry: ItemListNodeEntry {
     case visualToggle(Bool)
     case visualFooter(String)
+
+    case hideIconToggle(Bool)
+    case hideIconFooter(String)
 
     case aboutText(String)
 
@@ -116,7 +152,13 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case visualRating(String, String)
     case collectionHeader(String)
     case collectionMarket(String, String)
+    case giftConstructor(String)
     case collectionFooter(String)
+
+    case realGiftsHeader(String)
+    case sellRegularGiftsAction(String)
+    case fakeSaleAction(String)
+    case realGiftsFooter(String)
 
     case ledgerHeader(String)
     case starsLedger(String, String)
@@ -131,13 +173,27 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case deleteAllPhantomGifts(String, Bool)
     case storageFooter(String)
 
+    case unupgradedGiftToggle(String, Bool)
+    case unupgradedGiftFooter(String)
+
+    case fakeCooldownToggle(String, Bool)
+    case fakeCooldownRow(String, String, String)
+    case fakeCooldownFooter(String)
+    case fakeOfferFailToggle(String, Bool)
+    case fakeOfferFailFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .visualToggle, .visualFooter:
             return PampGramSettingsSection.visual.rawValue
+        case .hideIconToggle, .hideIconFooter:
+            return PampGramSettingsSection.hideIcon.rawValue
         case .aboutText:
             return PampGramSettingsSection.about.rawValue
-        case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter:
+        case .phantomGiftsHeader, .phantomGiftsToggle, .phantomGiftsFooter, .fromHimGiftsToggle, .fromHimGiftsFooter:
+            // "«Подарок ему»" and "«Подарок мне»" are the same logical group (send/receive
+            // sides of the same visual-gift toggle) — grouped under one section so they read
+            // together instead of each forcing its own full section gap.
             return PampGramSettingsSection.phantomGifts.rawValue
         case .starsBalanceHeader, .fakeStarsDisplayToggle, .starsBalance, .starsBalanceFooter:
             return PampGramSettingsSection.starsBalance.rawValue
@@ -145,25 +201,31 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.tonBalance.rawValue
         case .localRublesHeader, .localRublesPurchaseToggle, .localRublesBalance, .localRublesFooter:
             return PampGramSettingsSection.localRubles.rawValue
-        case .fromHimGiftsToggle, .fromHimGiftsFooter:
-            return PampGramSettingsSection.fromHimGifts.rawValue
         case .profileVisualsHeader, .visualNumberEditor, .visualRating:
             return PampGramSettingsSection.profileVisuals.rawValue
-        case .collectionHeader, .collectionMarket, .collectionFooter:
+        case .collectionHeader, .collectionMarket, .giftConstructor, .collectionFooter:
             return PampGramSettingsSection.collectionMarket.rawValue
+        case .realGiftsHeader, .sellRegularGiftsAction, .fakeSaleAction, .realGiftsFooter:
+            return PampGramSettingsSection.realGifts.rawValue
         case .ledgerHeader, .starsLedger, .tonLedger, .ledgerFooter:
             return PampGramSettingsSection.ledger.rawValue
         case .resetBalances, .resetBalancesFooter:
             return PampGramSettingsSection.resetBalances.rawValue
         case .storageHeader, .phantomGiftsCount, .deleteAllPhantomGifts, .storageFooter:
             return PampGramSettingsSection.storage.rawValue
+        case .unupgradedGiftToggle, .unupgradedGiftFooter:
+            return PampGramSettingsSection.unupgradedGift.rawValue
+        case .fakeCooldownToggle, .fakeCooldownRow, .fakeCooldownFooter, .fakeOfferFailToggle, .fakeOfferFailFooter:
+            return PampGramSettingsSection.giftBehavior.rawValue
         }
     }
 
     var stableId: Int32 {
         switch self {
-        case .visualToggle: return -2
-        case .visualFooter: return -1
+        case .visualToggle: return -4
+        case .visualFooter: return -3
+        case .hideIconToggle: return -2
+        case .hideIconFooter: return -1
         case .aboutText: return 1
         case .phantomGiftsHeader: return 2
         case .phantomGiftsToggle: return 3
@@ -187,17 +249,29 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .visualRating: return 21
         case .collectionHeader: return 22
         case .collectionMarket: return 23
+        case .giftConstructor: return 39
         case .collectionFooter: return 24
-        case .ledgerHeader: return 25
-        case .starsLedger: return 26
-        case .tonLedger: return 27
-        case .ledgerFooter: return 29
-        case .resetBalances: return 30
-        case .resetBalancesFooter: return 31
-        case .storageHeader: return 32
-        case .phantomGiftsCount: return 33
-        case .deleteAllPhantomGifts: return 34
-        case .storageFooter: return 35
+        case .realGiftsHeader: return 25
+        case .sellRegularGiftsAction: return 26
+        case .fakeSaleAction: return 27
+        case .realGiftsFooter: return 28
+        case .ledgerHeader: return 29
+        case .starsLedger: return 30
+        case .tonLedger: return 31
+        case .ledgerFooter: return 32
+        case .resetBalances: return 33
+        case .resetBalancesFooter: return 34
+        case .storageHeader: return 35
+        case .phantomGiftsCount: return 36
+        case .deleteAllPhantomGifts: return 37
+        case .storageFooter: return 38
+        case .unupgradedGiftToggle: return 41
+        case .unupgradedGiftFooter: return 42
+        case .fakeCooldownToggle: return 43
+        case .fakeCooldownRow: return 44
+        case .fakeCooldownFooter: return 45
+        case .fakeOfferFailToggle: return 46
+        case .fakeOfferFailFooter: return 47
         }
     }
 
@@ -212,62 +286,91 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "wand.and.stars", backgroundColor: UIColor(rgb: 0x8e44ec)), title: "Включить визуалку", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleVisual(value)
             })
-        case let .visualFooter(text):
+        case let .visualFooter(text), let .hideIconFooter(text), let .aboutText(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .aboutText(text):
-            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .profileVisualsHeader(text), let .collectionHeader(text), let .ledgerHeader(text), let .storageHeader(text):
+        case let .hideIconToggle(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash", backgroundColor: UIColor(rgb: 0x8e8e93)), title: "Скрыть иконку в настройках", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideIcon(value)
+            })
+        case let .phantomGiftsHeader(text), let .starsBalanceHeader(text), let .tonBalanceHeader(text), let .localRublesHeader(text), let .profileVisualsHeader(text), let .collectionHeader(text), let .realGiftsHeader(text), let .ledgerHeader(text), let .storageHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
-        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .collectionFooter(text), let .ledgerFooter(text), let .resetBalancesFooter(text), let .storageFooter(text):
+        case let .phantomGiftsFooter(text), let .starsBalanceFooter(text), let .tonBalanceFooter(text), let .localRublesFooter(text), let .fromHimGiftsFooter(text), let .collectionFooter(text), let .realGiftsFooter(text), let .ledgerFooter(text), let .resetBalancesFooter(text), let .storageFooter(text), let .unupgradedGiftFooter(text), let .fakeCooldownFooter(text), let .fakeOfferFailFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .localRublesPurchaseToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "rublesign.circle.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleLocalRublesPurchase(value)
             })
         case let .localRublesBalance(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "banknote.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.topUpLocalRubles()
             })
         case let .phantomGiftsToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrow.up.forward.circle.fill", backgroundColor: UIColor(rgb: 0x8e44ec)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.togglePhantomGifts(value)
             })
         case let .fakeStarsDisplayToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "star.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFakeStarsDisplay(value)
             })
         case let .fakeTonDisplayToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "diamond.fill", backgroundColor: UIColor(rgb: 0x0098ea)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFakeTonDisplay(value)
             })
         case let .starsBalance(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "star.circle.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editStarsBalance()
             })
         case let .tonBalance(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "diamond.fill", backgroundColor: UIColor(rgb: 0x0098ea)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editTonBalance()
             })
+        case let .unupgradedGiftToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "gift.circle.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleUnupgradedGift(value)
+            })
+        case let .fakeCooldownToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "hourglass", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeCooldown(value)
+            })
+        case let .fakeCooldownRow(title, label, detail):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "timer", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, label: label, additionalDetailLabel: detail, sectionId: self.section, style: .blocks, action: {
+                arguments.pickFakeCooldown()
+            })
+        case let .fakeOfferFailToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "xmark.seal.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeOfferFail(value)
+            })
         case let .fromHimGiftsToggle(title, value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrow.down.forward.circle.fill", backgroundColor: UIColor(rgb: 0xff2d55)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFromHimGifts(value)
             })
         case let .visualNumberEditor(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualNumberEditor)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "number.circle.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualNumberEditor)
         case let .visualRating(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualRatingEditor)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "trophy.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualRatingEditor)
         case let .collectionMarket(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openCollectionMarket)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "square.grid.2x2.fill", backgroundColor: UIColor(rgb: 0x30b0c7)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openCollectionMarket)
+        case let .giftConstructor(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "paintpalette.fill", backgroundColor: UIColor(rgb: 0xaf52de)), title: title, label: "", sectionId: self.section, style: .blocks, action: arguments.openGiftConstructor)
+        case let .sellRegularGiftsAction(title):
+            // ItemListActionItem has no icon support at all (unlike ItemListSwitchItem/
+            // ItemListDisclosureItem) — this and the two other action rows below stay without
+            // one for that reason, not by choice.
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.sellRegularGifts()
+            })
+        case let .fakeSaleAction(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bag.fill.badge.plus", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: "", sectionId: self.section, style: .blocks, action: arguments.openFakeSale)
         case let .starsLedger(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openStarsLedger)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "chart.bar.fill", backgroundColor: UIColor(rgb: 0xffcc00)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openStarsLedger)
         case let .tonLedger(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openTonLedger)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "chart.bar.fill", backgroundColor: UIColor(rgb: 0x0098ea)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openTonLedger)
         case let .resetBalances(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.resetBalances()
             })
         case let .phantomGiftsCount(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, enabled: false, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "archivebox.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, enabled: false, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
         case let .deleteAllPhantomGifts(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.deleteAllPhantomGifts()
@@ -397,6 +500,9 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.visualToggle(settings.masterEnabled))
     entries.append(.visualFooter(settings.masterEnabled ? "Визуальные функции подарков включены. Выключи — и вкладки «Подарок мне»/«Подарок ему» и локальные балансы перестанут действовать, но настройки сохранятся." : "Визуалка подарков выключена: вкладки и локальные балансы не работают. Включи, чтобы вернуть всё как было. Остальные разделы PampGram это не затрагивает."))
 
+    entries.append(.hideIconToggle(settings.hidePampGramIconEnabled))
+    entries.append(.hideIconFooter("Скрывает строку «PampGram» из настроек. Чтобы вернуться сюда — зажми «Помощь»."))
+
     entries.append(.aboutText("Все значения в этом разделе сохраняются только на устройстве. Ниже находятся две настройки визуального номера и рейтинга профиля."))
 
     entries.append(.phantomGiftsHeader("ВИЗУАЛЬНЫЕ ПОДАРКИ"))
@@ -429,7 +535,13 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
 
     entries.append(.collectionHeader("КОЛЛЕКЦИЯ И МАРКЕТ"))
     entries.append(.collectionMarket("Коллекция и маркет", "\(phantomGiftCount) подарков"))
+    entries.append(.giftConstructor("Конструктор подарка"))
     entries.append(.collectionFooter("Ношение, закрепление, скрытие, передача и локальный маркет подарков."))
+
+    entries.append(.realGiftsHeader("НАСТОЯЩИЕ ПОДАРКИ"))
+    entries.append(.sellRegularGiftsAction("Продать подарки 15–100 ⭐"))
+    entries.append(.fakeSaleAction("Fake покупка TG"))
+    entries.append(.realGiftsFooter("Настоящая, необратимая операция: находит в вашем реальном профиле обычные (не NFT) подарки ценой от 15 до 100 звёзд, которые ещё можно обменять, и обменивает каждый на настоящие Stars — тем же способом, что и кнопка «Обменять» у одного подарка. Уникальные подарки не трогает. «Fake покупка TG» — отдельная, визуальная функция: подтверждает продажу подарков с локального маркета, без реальных операций."))
 
     entries.append(.ledgerHeader("ИСТОРИЯ И СТАТИСТИКА"))
     entries.append(.starsLedger("Stars", "История · статистика"))
@@ -443,6 +555,24 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.phantomGiftsCount("Фантом-подарков на устройстве", "\(phantomGiftCount)"))
     entries.append(.deleteAllPhantomGifts("Удалить все фантом-подарки", phantomGiftCount > 0))
     entries.append(.storageFooter("Уберёт записи и их сообщения из истории."))
+
+    entries.append(.unupgradedGiftToggle("Не улучшенный гифт", settings.unupgradedGiftEntryEnabled))
+    entries.append(.unupgradedGiftFooter("Включите, затем в Настройках Telegram зажмите «Вопросы о Telegram»: откроется выбор обычных подарков с картинками. Найдите подарок (сверху есть поиск), кнопками «−» и «+» выберите, сколько копий добавить, и нажмите «Добавить в профиль»: они появятся в вашем профиле, а в каждом будет кнопка «Улучшить бесплатно»."))
+
+    entries.append(.fakeCooldownToggle("Фейк КД на передачу", settings.fakeTransferCooldownEnabled))
+    if settings.fakeTransferCooldownEnabled {
+        let now = Int32(Date().timeIntervalSince1970)
+        let detail: String
+        if settings.fakeTransferCooldownUntil > now {
+            detail = "до " + pampGramCooldownDateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(settings.fakeTransferCooldownUntil)))
+        } else {
+            detail = "закончился, нажмите, чтобы запустить заново"
+        }
+        entries.append(.fakeCooldownRow("Срок КД", pampGramDurationDescription(seconds: settings.fakeTransferCooldownSeconds), detail))
+    }
+    entries.append(.fakeCooldownFooter("Когда включено, при нажатии «Передать» на любом подарке появляется обычное окно Telegram «Передача будет доступна ...» с датой окончания КД. Срок задаётся колёсиками, как таймер в Часах: дни, часы, минуты и секунды. КД идёт как настоящий таймер: когда время вышло, «Передать» снова работает как обычно. Подарок при этом никто не блокирует: это лишь то, что видите вы на этом телефоне."))
+    entries.append(.fakeOfferFailToggle("Фейк: оффер не принимается", settings.fakeOfferAcceptFailEnabled))
+    entries.append(.fakeOfferFailFooter("Когда вам присылают предложение купить подарок, кнопка «Принять» нажимается, но предложение не принимается: ни окна подтверждения, ни ошибки, ничего не происходит. Предложение остаётся без ответа, собеседнику ничего не отправляется. «Отклонить» работает как обычно."))
 
     return entries
 }
@@ -462,6 +592,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.masterEnabled = value
+                return settings
+            }).start()
+        },
+        toggleHideIcon: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.hidePampGramIconEnabled = value
                 return settings
             }).start()
         },
@@ -504,8 +641,9 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                         let _ = context.account.postbox.transaction { transaction -> Void in
                             let current = PampGramCore.rawSettings(transaction: transaction).fakeStarsBalance
                             let delta = stars - current
-                            PampGramCore.updateSettings(transaction: transaction, { settings in var settings = settings; settings.fakeStarsBalance = stars; return settings })
-                            if delta != 0 { PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .stars, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", balanceAfter: stars)) }
+                            if delta != 0 {
+                                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", visibleInRealHistory: false)
+                            }
                         }.start()
                     }
                 ))
@@ -529,8 +667,9 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                         let _ = context.account.postbox.transaction { transaction -> Void in
                             let current = PampGramCore.rawSettings(transaction: transaction).fakeTonBalanceNanos
                             let delta = nanos - current
-                            PampGramCore.updateSettings(transaction: transaction, { settings in var settings = settings; settings.fakeTonBalanceNanos = nanos; return settings })
-                            if delta != 0 { PampGramLocalLedgerStore.add(transaction: transaction, operation: PampGramLocalOperation(currency: .ton, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", balanceAfter: nanos)) }
+                            if delta != 0 {
+                                let _ = PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .ton, kind: delta > 0 ? .credit : .debit, amount: delta, title: "Корректировка баланса", visibleInRealHistory: false)
+                            }
                         }.start()
                     }
                 ))
@@ -540,6 +679,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.fromHimGiftsEnabled = value
+                return settings
+            }).start()
+        },
+        toggleUnupgradedGift: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.unupgradedGiftEntryEnabled = value
                 return settings
             }).start()
         },
@@ -580,8 +726,8 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
                             let current = PampGramCore.rawSettings(transaction: transaction)
                             let starsDelta = PampGramSettings.defaultFakeStarsBalance - current.fakeStarsBalance
                             let tonDelta = PampGramSettings.defaultFakeTonBalanceNanos - current.fakeTonBalanceNanos
-                            if starsDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: starsDelta > 0 ? .credit : .debit, amount: starsDelta, title: "Сброс баланса Stars") }
-                            if tonDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .ton, kind: tonDelta > 0 ? .credit : .debit, amount: tonDelta, title: "Сброс баланса TON") }
+                            if starsDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .stars, kind: starsDelta > 0 ? .credit : .debit, amount: starsDelta, title: "Сброс баланса Stars", visibleInRealHistory: false) }
+                            if tonDelta != 0 { PampGramLocalLedgerStore.addAndApply(transaction: transaction, currency: .ton, kind: tonDelta > 0 ? .credit : .debit, amount: tonDelta, title: "Сброс баланса TON", visibleInRealHistory: false) }
                         }.start()
                         presentTooltipImpl?("Локальные балансы сброшены.")
                     }),
@@ -613,8 +759,66 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         openVisualNumberEditor: { presentNumberEditorImpl?() },
         openVisualRatingEditor: { presentRatingEditorImpl?() },
         openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
+        openGiftConstructor: { pushControllerImpl?(pampGramGiftConstructorController(context: context)) },
         openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },
-        openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) }
+        openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) },
+        sellRegularGifts: {
+            presentControllerImpl?(textAlertController(
+                context: context,
+                title: "Продать настоящие подарки?",
+                text: "Найдёт в вашем реальном профиле обычные (не NFT) подарки ценой от 15 до 100 звёзд и обменяет каждый на настоящие Stars — то же самое, что нажать «Обменять» у одного подарка, только сразу у всех подходящих. Уникальные подарки не трогает. Действие настоящее и необратимое.",
+                actions: [
+                    TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
+                    TextAlertAction(type: .destructiveAction, title: "Продать", action: {
+                        presentTooltipImpl?("Ищем и продаём подходящие подарки…")
+                        PampGramRealGiftTools.sellRegularGifts(context: context, priceRange: 15...100, progress: { _, _ in
+                        }, completion: { summary in
+                            if summary.sold == 0 {
+                                presentTooltipImpl?("Подходящих подарков не нашлось.")
+                            } else {
+                                presentTooltipImpl?("Продано \(summary.sold) подарков, получено ⭐ \(summary.totalStars).")
+                            }
+                        })
+                    }),
+                ],
+                actionLayout: .horizontal
+            ))
+        },
+        openFakeSale: { pushControllerImpl?(pampGramFakeSaleController(context: context)) },
+        toggleFakeCooldown: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeTransferCooldownEnabled = value
+                if value {
+                    // Turning it on starts the timer from now.
+                    settings.fakeTransferCooldownUntil = Int32(Date().timeIntervalSince1970) + max(1, settings.fakeTransferCooldownSeconds)
+                }
+                return settings
+            }).start()
+        },
+        pickFakeCooldown: {
+            let _ = (context.account.postbox.transaction { transaction -> Int32 in
+                return PampGramCore.rawSettings(transaction: transaction).fakeTransferCooldownSeconds
+            }
+            |> deliverOnMainQueue).start(next: { currentSeconds in
+                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+                pampGramPresentCooldownSheet(presentationData: presentationData, initialSeconds: currentSeconds, present: { presentControllerImpl?($0) }, completion: { seconds in
+                    let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                        var settings = settings
+                        settings.fakeTransferCooldownSeconds = seconds
+                        settings.fakeTransferCooldownUntil = Int32(Date().timeIntervalSince1970) + seconds
+                        return settings
+                    }).start()
+                })
+            })
+        },
+        toggleFakeOfferFail: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeOfferAcceptFailEnabled = value
+                return settings
+            }).start()
+        }
     )
 
     let signal = combineLatest(

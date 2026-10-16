@@ -89,6 +89,7 @@ private enum PampGramMessagesExclusionsEntry: ItemListNodeEntry {
         case let .excludedHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .addChat(title):
+            // ItemListActionItem has no icon support.
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.addChat()
             })
@@ -96,6 +97,7 @@ private enum PampGramMessagesExclusionsEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "text.bubble.fill", backgroundColor: UIColor(rgb: 0x3b82f6)),
                 title: title,
                 label: "",
                 additionalDetailLabel: "Убрать",

@@ -11,34 +11,29 @@ import PampGramCore
 
 private enum PampGramHubSection: Int32 {
     case hero
-    case search
     case sections
-    case status
     case team
 }
 
 private enum PampGramHubEntry: ItemListNodeEntry {
     case hero
-    case search
     case gifts
     case messages
     case privacy
     case appearance
     case advanced
     case admin
-    case status(Int, Int)
+    case moderation
+    case callRecording
+    case performance
     case team
 
     var section: ItemListSectionId {
         switch self {
         case .hero:
             return PampGramHubSection.hero.rawValue
-        case .search:
-            return PampGramHubSection.search.rawValue
-        case .gifts, .messages, .privacy, .appearance, .advanced, .admin:
+        case .gifts, .messages, .privacy, .appearance, .advanced, .admin, .moderation, .callRecording, .performance:
             return PampGramHubSection.sections.rawValue
-        case .status:
-            return PampGramHubSection.status.rawValue
         case .team:
             return PampGramHubSection.team.rawValue
         }
@@ -48,8 +43,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
         switch self {
         case .hero:
             return 0
-        case .search:
-            return 1
         case .gifts:
             return 2
         case .messages:
@@ -62,10 +55,14 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return 6
         case .admin:
             return 7
-        case .status:
+        case .moderation:
             return 8
-        case .team:
+        case .callRecording:
             return 9
+        case .performance:
+            return 10
+        case .team:
+            return 11
         }
     }
 
@@ -91,19 +88,6 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 disclosureStyle: .none,
                 action: {
                     arguments.openAbout()
-                }
-            )
-        case .search:
-            return ItemListDisclosureItem(
-                presentationData: presentationData,
-                systemStyle: .glass,
-                icon: generatePampGramSectionIcon(systemName: "magnifyingglass", backgroundColor: UIColor(rgb: 0x636366)),
-                title: "Найти функцию или раздел",
-                label: "",
-                sectionId: self.section,
-                style: .blocks,
-                action: {
-                    arguments.openSearch()
                 }
             )
         case .gifts:
@@ -159,7 +143,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 title: "Внешний вид",
                 titleFont: .bold,
                 label: "",
-                additionalDetailLabel: "Темы, иконки, интерфейс",
+                additionalDetailLabel: "Бейджик наверху экрана",
                 sectionId: self.section,
                 style: .blocks,
                 action: {
@@ -196,20 +180,49 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                     arguments.openAdmin()
                 }
             )
-        case let .status(activeCount, totalCount):
+        case .moderation:
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
-                icon: generatePampGramSectionIcon(systemName: "checkmark.shield.fill", backgroundColor: UIColor(rgb: 0x8e44ec)),
-                title: "Статус",
+                icon: generatePampGramSectionIcon(systemName: "shield.lefthalf.filled", backgroundColor: UIColor(rgb: 0x34c759)),
+                title: "Автомодерация",
                 titleFont: .bold,
                 label: "",
-                additionalDetailLabel: "\(activeCount) из \(totalCount) функций активны",
-                additionalDetailLabelColor: activeCount == totalCount ? .constructive : .generic,
+                additionalDetailLabel: "ИИ удаляет 18+ и жестокость",
                 sectionId: self.section,
                 style: .blocks,
                 action: {
-                    arguments.openStatus()
+                    arguments.openModeration()
+                }
+            )
+        case .callRecording:
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "record.circle.fill", backgroundColor: UIColor(rgb: 0xff3b30)),
+                title: "Запись звонков",
+                titleFont: .bold,
+                label: "",
+                additionalDetailLabel: "Свой голос и собеседник",
+                sectionId: self.section,
+                style: .blocks,
+                action: {
+                    arguments.openCallRecording()
+                }
+            )
+        case .performance:
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "bolt.batteryblock.fill", backgroundColor: UIColor(rgb: 0xffcc00)),
+                title: "Плавность и заряд",
+                titleFont: .bold,
+                label: "",
+                additionalDetailLabel: "Меньше лагов и расхода батареи",
+                sectionId: self.section,
+                style: .blocks,
+                action: {
+                    arguments.openPerformance()
                 }
             )
         case .team:
@@ -238,22 +251,26 @@ private final class PampGramHubArguments {
     let openAppearance: () -> Void
     let openAdditional: () -> Void
     let openAdmin: () -> Void
-    let openStatus: () -> Void
+    let openModeration: () -> Void
+    let openCallRecording: () -> Void
+    let openPerformance: () -> Void
     let openAbout: () -> Void
     let openSupport: () -> Void
-    let openSearch: () -> Void
+    let openPremium: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSearch: @escaping () -> Void, openSupport: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openModeration: @escaping () -> Void, openCallRecording: @escaping () -> Void, openPerformance: @escaping () -> Void, openAbout: @escaping () -> Void, openSupport: @escaping () -> Void, openPremium: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
         self.openGhost = openGhost
         self.openAppearance = openAppearance
         self.openAdditional = openAdditional
         self.openAdmin = openAdmin
-        self.openStatus = openStatus
+        self.openModeration = openModeration
+        self.openCallRecording = openCallRecording
+        self.openPerformance = openPerformance
         self.openAbout = openAbout
         self.openSupport = openSupport
-        self.openSearch = openSearch
+        self.openPremium = openPremium
     }
 }
 
@@ -268,22 +285,9 @@ private func pampGramDonateUrl(currencyLabel: String) -> String {
     return "https://t.me/\(pampGramSupportUsername)?text=\(encoded)"
 }
 
-private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, isAdmin: Bool) -> [PampGramHubEntry] {
-    let toggles = [
-        settings.phantomGiftsEnabled,
-        settings.fakeStarsDisplayEnabled,
-        settings.fakeTonDisplayEnabled,
-        settings.fromHimGiftsEnabled,
-        profileVisuals.anonymousNumberEnabled,
-        profileVisuals.ratingEnabled,
-        settings.antiDeleteMessagesEnabled,
-        settings.visualEditEnabled,
-        settings.ghostModeEnabled
-    ]
-    let activeCount = toggles.filter { $0 }.count
+private func pampGramHubEntries(settings: PampGramSettings, isAdmin: Bool) -> [PampGramHubEntry] {
     var entries: [PampGramHubEntry] = [
         .hero,
-        .search,
         .gifts,
         .messages,
         .privacy,
@@ -293,7 +297,9 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
     if isAdmin {
         entries.append(.admin)
     }
-    entries.append(.status(activeCount, toggles.count))
+    entries.append(.moderation)
+    entries.append(.callRecording)
+    entries.append(.performance)
     entries.append(.team)
     return entries
 }
@@ -308,8 +314,11 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
 
     let arguments = PampGramHubArguments(
         openGifts: {
-            pampGramGateSection(context: context, section: .gifts) {
-                pushControllerImpl?(pampGramGiftsSettingsController(context: context))
+            guard let push = pushControllerImpl else { return }
+            pampGramGateTier(context: context, push: push) {
+                pampGramGateSection(context: context, section: .gifts) {
+                    push(pampGramGiftsSettingsController(context: context))
+                }
             }
         },
         openMessages: {
@@ -323,7 +332,10 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
             }
         },
         openAppearance: {
-            pushControllerImpl?(pampGramAppearanceController(context: context))
+            guard let push = pushControllerImpl else { return }
+            pampGramGateTier(context: context, push: push) {
+                push(pampGramAppearanceController(context: context))
+            }
         },
         openAdditional: {
             pushControllerImpl?(pampGramAdditionalSettingsController(context: context))
@@ -331,14 +343,17 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         openAdmin: {
             pushControllerImpl?(pampGramAdminController(context: context))
         },
-        openStatus: {
-            pushControllerImpl?(pampGramStatusController(context: context))
+        openModeration: {
+            pushControllerImpl?(pampGramModerationController(context: context))
+        },
+        openCallRecording: {
+            pushControllerImpl?(pampGramCallRecordingController(context: context))
+        },
+        openPerformance: {
+            pushControllerImpl?(pampGramPerformanceController(context: context))
         },
         openAbout: {
-            pushControllerImpl?(pampGramAboutController(context: context))
-        },
-        openSearch: {
-            pushControllerImpl?(pampGramSearchController(context: context))
+            pushControllerImpl?(pampGramSubscriptionController(context: context))
         },
         openSupport: {
             let presentationData = context.sharedContext.currentPresentationData.with { $0 }
@@ -399,38 +414,62 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
                 ])
             ])
             presentControllerImpl?(mainSheet)
+        },
+        openPremium: {
+            pampGramPresentPremiumScreen(context: context)
         }
     )
 
-    let isAdmin = context.account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId
+    let selfAccountId = context.account.peerId.id._internalGetInt64Value()
+    let isAdmin = selfAccountId == PampGramSubscriptionAPI.adminAccountId
 
-    // A full ban blocks the hub itself, not just its sections — checked once per open rather
-    // than on every redraw, same one-shot pattern as pampGramGateSection.
-    let _ = (PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value())
-    |> deliverOnMainQueue).start(next: { status in
-        if let reason = status.full {
-            pampGramPresentBannedScreen(context: context, reason: reason)
-        }
+    // Ban and activation are both checked once, before the hub is ever pushed — see
+    // pampGramPresentHub/pampGramGateFullAccess in PampGramBannedScreen.swift. Checking them
+    // again in here, after the hub's own content is already being built, is exactly the
+    // open-then-correct race that function's doc comment explains: the earlier version of this
+    // block did that (and, separately, presented the activation screen on top of an already-open
+    // hub instead of before it), so it's gone from here rather than duplicated.
+    //
+    // Refreshes `cachedIsProSubscriber` — the tier itself only ever comes from a live network
+    // call (`fetchTier`), but "Закрепить чаты"'s pin-count cap needs to read it synchronously
+    // inside a Postbox transaction (see `TogglePeerChatPinned.swift`), so this is the closest
+    // thing to "live" that spot can use. One-shot per open; at most one tab-open stale — the
+    // same trade-off the hub's own "Ваш план"/top-right badge already accepts. This one isn't a
+    // gate (nothing here decides whether the hub is reachable), so it stays here rather than
+    // moving upstream with the ban/activation checks.
+    let _ = (PampGramSubscriptionAPI.fetchTier(userId: selfAccountId)
+    |> deliverOnMainQueue).start(next: { tier in
+        let _ = context.account.postbox.transaction { transaction in
+            let isPro = tier == .pro
+            if PampGramCore.rawSettings(transaction: transaction).cachedIsProSubscriber != isPro {
+                PampGramCore.updateSettings(transaction: transaction, { settings in
+                    var settings = settings
+                    settings.cachedIsProSubscriber = isPro
+                    return settings
+                })
+            }
+        }.start()
     })
 
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramCore.settingsSignal(postbox: context.account.postbox),
-        PampGramProfileVisualStore.signal(postbox: context.account.postbox)
+        PampGramCore.settingsSignal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings, profileVisuals -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("PampGram"),
             leftNavigationButton: nil,
-            rightNavigationButton: nil,
+            rightNavigationButton: ItemListNavigationButton(content: .text(settings.cachedIsProSubscriber ? "Premium" : "Стандарт"), style: .bold, enabled: true, action: {
+                arguments.openPremium()
+            }),
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back),
             animateChanges: false
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramHubEntries(settings: settings, profileVisuals: profileVisuals, isAdmin: isAdmin),
+            entries: pampGramHubEntries(settings: settings, isAdmin: isAdmin),
             style: .blocks,
             animateChanges: true
         )
@@ -448,4 +487,16 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
         return controller?.navigationController as? NavigationController
     }
     return controller
+}
+
+/// The only way the hub should ever be reached — checks a full ban BEFORE building or pushing
+/// the hub at all, instead of pushing it and correcting course once the check comes back (that
+/// pattern is exactly what let a banned account use the hub for a moment before the lock screen
+/// caught up, same bug `pampGramGateSection` used to have). A banned account never sees the hub
+/// push happen, so "Закрыть" on the lock screen leaves them exactly where they tapped from —
+/// Settings — with nothing to pop back out of.
+public func pampGramPresentHub(context: AccountContext, push: @escaping (ViewController) -> Void) {
+    pampGramGateFullAccess(context: context) {
+        push(pampGramSettingsController(context: context))
+    }
 }

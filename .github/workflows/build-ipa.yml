@@ -9,6 +9,12 @@ jobs:
   build:
     runs-on: macos-26
     timeout-minutes: 350 # under the 6h hosted-runner cap
+    # contents: write is for the release-based IPA upload below — Actions artifact storage
+    # has its own, separate quota (and GitHub's own error says that counter is only
+    # recalculated every 6-12 hours, so it can get stuck well after the actual usage drops),
+    # while a GitHub Release's assets are a different storage pool entirely.
+    permissions:
+      contents: write
     steps:
       - name: Check out PampGram (patch + PhantomGiftKit)
         uses: actions/checkout@v4
@@ -29,8 +35,6 @@ jobs:
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
           xcodebuild -version
 
-      # Pinned: mod/telegram-ios.patch is written against this release. Cloning the default
-      # branch makes the patch fail to apply as soon as upstream moves (13.x already does).
       - name: Check out Telegram-iOS
         run: |
           git clone --recursive --shallow-submodules --depth 1 -j8 \
@@ -43,35 +47,38 @@ jobs:
       # regenerating the patch.
       - name: Apply the PampGram patch
         working-directory: telegram-ios
-        env:
-          # Optional: the personal casino bridge (mod/components/PhantomGiftKit/Sources/PampGramCasinoBridge.swift).
-          # Repo secrets CASINO_BRIDGE_URL / CASINO_BRIDGE_TOKEN; when unset the bridge stays off.
-          CASINO_BRIDGE_URL: ${{ secrets.CASINO_BRIDGE_URL }}
-          CASINO_BRIDGE_TOKEN: ${{ secrets.CASINO_BRIDGE_TOKEN }}
         run: |
           git apply --check ../pampgram/mod/telegram-ios.patch
           git apply ../pampgram/mod/telegram-ios.patch
+          # @seends + the fake CryptoBot: a small second patch on top of the main one.
+          git apply --check ../pampgram/mod/seends-cryptobot.patch
+          git apply ../pampgram/mod/seends-cryptobot.patch
           mkdir -p submodules/TelegramUI/Components/PampGram
           cp -R ../pampgram/mod/components/. submodules/TelegramUI/Components/PampGram/
           # The visual profile state is rendered in Telegram's profile screen by this
           # anchor-checked post-patch, after the base PampGram patch is in place.
           python3 ../pampgram/mod/apply-profile-visuals.py
-          # Fill the bridge's URL/token into the build copy only (never into the repo).
-          python3 - <<'PY'
-          import os
-          p = "submodules/TelegramUI/Components/PampGram/PhantomGiftKit/Sources/PampGramCasinoBridge.swift"
-          s = open(p).read()
-          url = os.environ.get("CASINO_BRIDGE_URL", "").strip().rstrip("/")
-          tok = os.environ.get("CASINO_BRIDGE_TOKEN", "").strip()
-          if url and tok and all(c.isalnum() or c in ":/.-_" for c in url) and tok.isalnum():
-              s = s.replace('private static let baseURL = ""', 'private static let baseURL = "%s"' % url)
-              s = s.replace('private static let token = ""', 'private static let token = "%s"' % tok)
-              open(p, "w").write(s)
-              print("casino bridge: enabled")
-          else:
-              print("casino bridge: off (secrets not set or not URL-safe)")
-          PY
           ls -1 submodules/TelegramUI/Components/PampGram
+
+      # Telegram's own fake-codesigning/profiles/*.mobileprovision all declare
+      # "C67CF9S4VU.ph.telegra.Telegraph[.suffix]" as their application-identifier — the same
+      # bundle id as the real App Store Telegram. Installed side by side, iOS treats the two
+      # as the same app (whichever installs last wins), so PampGram silently replaces or gets
+      # replaced by a real Telegram install. These 9 profiles are regenerated copies —
+      # every occurrence of "ph.telegra.Telegraph" swapped for "ph.telegra.PampGram"
+      # (application-identifier, the app-groups/iCloud container ids, nothing else touched),
+      # re-signed with the exact same self-signed certificate this repo already ships in
+      # build-system/fake-codesigning/certs/SelfSigned.p12 — nothing here required a real
+      # Apple Developer Portal registration. BuildConfiguration.py's copy_profiles_from_directory
+      # matches profiles by application-identifier PREFIX against the configured bundle_id
+      # below, so once these are in place, the matching bundle_id is all Make.py needs to pick
+      # them up as the app's own profiles instead of the stock ones.
+      - name: Swap in PampGram's own bundle id profiles
+        working-directory: telegram-ios
+        run: |
+          set -euo pipefail
+          cp ../pampgram/mod/fake-codesigning-profiles/*.mobileprovision build-system/fake-codesigning/profiles/
+          ls -1 build-system/fake-codesigning/profiles/
 
       # Signing, the whole story in one place.
       #
@@ -158,8 +165,10 @@ jobs:
           echo "OK: signing identity is installed and trusted."
 
       # The bundle_id and team_id MUST match what's baked into the fake provisioning profiles
-      # shipped in build-system/fake-codesigning/profiles/ (Telegram.mobileprovision carries
-      # application-identifier C67CF9S4VU.ph.telegra.Telegraph) — a mismatch fails codesigning.
+      # in build-system/fake-codesigning/profiles/ — a mismatch fails codesigning. The "Swap
+      # in PampGram's own bundle id profiles" step above already replaced those with copies
+      # carrying application-identifier C67CF9S4VU.ph.telegra.PampGram[.suffix], so bundle_id
+      # below has to say "ph.telegra.PampGram", not the real Telegram app's "ph.telegra.Telegraph".
       #
       # api_id/api_hash come from repo secrets TELEGRAM_API_ID / TELEGRAM_API_HASH (get a free
       # pair at https://my.telegram.org/apps). The fallback is Telegram's own public App Store
@@ -236,7 +245,7 @@ jobs:
 
           cat > build-system/pampgram-configuration.json <<EOF
           {
-            "bundle_id": "ph.telegra.Telegraph",
+            "bundle_id": "ph.telegra.PampGram",
             "api_id": "${TELEGRAM_API_ID}",
             "api_hash": "${TELEGRAM_API_HASH}",
             "team_id": "C67CF9S4VU",
@@ -300,11 +309,34 @@ jobs:
         if: always()
         run: ls -lh "$GITHUB_WORKSPACE/output" || echo "no output directory — the build did not reach packaging"
 
-      - name: Upload IPA
+      # Best-effort: free, and sometimes just works, but Actions artifact storage has hit
+      # its own quota before while genuinely empty — continue-on-error so a stuck quota here
+      # never fails the whole job when the release upload below is the one that matters.
+      - name: Upload IPA (artifact)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: PampGram-ipa
           path: output/Telegram.ipa
           if-no-files-found: warn
           retention-days: 14
+
+      # The reliable download: a GitHub Release's assets are a separate storage pool from
+      # Actions artifacts, so this sidesteps that quota entirely. Tagged by run number so
+      # repeated runs don't collide; gh is preinstalled on GitHub-hosted runners.
+      - name: Upload IPA (release)
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -f output/Telegram.ipa ]; then
+            echo "no output/Telegram.ipa — the build did not reach packaging, nothing to release"
+            exit 0
+          fi
+          TAG="build-${{ github.run_number }}"
+          gh release create "$TAG" output/Telegram.ipa \
+            --repo "${{ github.repository }}" \
+            --title "PampGram build #${{ github.run_number }}" \
+            --notes "Automated build from commit ${{ github.sha }}."

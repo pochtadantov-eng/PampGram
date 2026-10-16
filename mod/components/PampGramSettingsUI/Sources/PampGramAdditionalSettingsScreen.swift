@@ -7,6 +7,7 @@ import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import PromptUI
 import PampGramCore
 
 private final class PampGramAdditionalArguments {
@@ -18,12 +19,20 @@ private final class PampGramAdditionalArguments {
     let openChatLock: () -> Void
     let openCallOverrides: () -> Void
     let openFakeAdmin: () -> Void
-    let toggleFakeCryptoBot: (Bool) -> Void
-    let openFakeCryptoBot: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
+    let toggleBypassViewOnceMedia: (Bool) -> Void
+    let toggleBypassTimedMedia: (Bool) -> Void
+    let toggleStorySaving: (Bool) -> Void
+    let toggleScreenshotBypass: (Bool) -> Void
+    let toggleHideOwnPhone: (Bool) -> Void
+    let openFakePhoneNumber: () -> Void
+    let toggleProfileIds: (Bool) -> Void
+    let toggleAccountLink: (Bool) -> Void
+    let toggleFakeCryptoBot: (Bool) -> Void
+    let openFakeCryptoBot: () -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleFakeCryptoBot: @escaping (Bool) -> Void, openFakeCryptoBot: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, toggleFakeCryptoBot: @escaping (Bool) -> Void, openFakeCryptoBot: @escaping () -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -32,10 +41,18 @@ private final class PampGramAdditionalArguments {
         self.openChatLock = openChatLock
         self.openCallOverrides = openCallOverrides
         self.openFakeAdmin = openFakeAdmin
-        self.toggleFakeCryptoBot = toggleFakeCryptoBot
-        self.openFakeCryptoBot = openFakeCryptoBot
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
+        self.toggleBypassViewOnceMedia = toggleBypassViewOnceMedia
+        self.toggleBypassTimedMedia = toggleBypassTimedMedia
+        self.toggleStorySaving = toggleStorySaving
+        self.toggleScreenshotBypass = toggleScreenshotBypass
+        self.toggleHideOwnPhone = toggleHideOwnPhone
+        self.openFakePhoneNumber = openFakePhoneNumber
+        self.toggleProfileIds = toggleProfileIds
+        self.toggleAccountLink = toggleAccountLink
+        self.toggleFakeCryptoBot = toggleFakeCryptoBot
+        self.openFakeCryptoBot = openFakeCryptoBot
     }
 }
 
@@ -43,6 +60,7 @@ private enum PampGramAdditionalSection: Int32 {
     case about
     case voice
     case speed
+    case media
     case premium
     case extras
 }
@@ -60,6 +78,13 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case downloadSpeedRow(String, String)
     case speedFooter(String)
 
+    case mediaHeader(String)
+    case viewOnceToggle(String, Bool)
+    case timedToggle(String, Bool)
+    case screenshotsToggle(String, Bool)
+    case chatScreenshotsToggle(String, Bool)
+    case mediaFooter(String)
+
     case premiumHeader(String)
     case infinitePinsToggle(String, Bool)
     case legalPremiumToggle(String, Bool)
@@ -70,6 +95,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case chatLockRow(String, String)
     case callOverridesRow(String)
     case fakeAdminRow(String)
+    case hideOwnPhoneToggle(String, Bool)
+    case fakePhoneNumberRow(String, String)
+    case profileIdsToggle(String, Bool)
+    case accountLinkToggle(String, Bool)
     case fakeCryptoBotToggle(String, Bool)
     case openFakeCryptoBotRow(String)
     case extrasFooter(String)
@@ -82,9 +111,11 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
+        case .mediaHeader, .viewOnceToggle, .timedToggle, .screenshotsToggle, .chatScreenshotsToggle, .mediaFooter:
+            return PampGramAdditionalSection.media.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .fakeCryptoBotToggle, .openFakeCryptoBotRow, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .fakePhoneNumberRow, .profileIdsToggle, .accountLinkToggle, .fakeCryptoBotToggle, .openFakeCryptoBotRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -109,30 +140,50 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 7
         case .speedFooter:
             return 8
-        case .premiumHeader:
+        case .mediaHeader:
             return 9
-        case .infinitePinsToggle:
+        case .viewOnceToggle:
             return 10
-        case .legalPremiumToggle:
+        case .timedToggle:
             return 11
-        case .premiumFooter:
+        case .screenshotsToggle:
             return 12
-        case .extrasHeader:
+        case .chatScreenshotsToggle:
             return 13
-        case .fakeLocationRow:
+        case .mediaFooter:
             return 14
-        case .chatLockRow:
+        case .premiumHeader:
             return 15
-        case .callOverridesRow:
+        case .infinitePinsToggle:
             return 16
-        case .fakeAdminRow:
+        case .legalPremiumToggle:
             return 17
-        case .fakeCryptoBotToggle:
+        case .premiumFooter:
             return 18
-        case .openFakeCryptoBotRow:
+        case .extrasHeader:
             return 19
-        case .extrasFooter:
+        case .fakeLocationRow:
             return 20
+        case .chatLockRow:
+            return 21
+        case .callOverridesRow:
+            return 22
+        case .fakeAdminRow:
+            return 23
+        case .hideOwnPhoneToggle:
+            return 24
+        case .fakePhoneNumberRow:
+            return 25
+        case .profileIdsToggle:
+            return 27
+        case .accountLinkToggle:
+            return 28
+        case .fakeCryptoBotToggle:
+            return 30
+        case .openFakeCryptoBotRow:
+            return 31
+        case .extrasFooter:
+            return 40
         }
     }
 
@@ -143,10 +194,26 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .mediaFooter(text), let .premiumFooter(text), let .extrasFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .mediaHeader(text), let .premiumHeader(text), let .extrasHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .viewOnceToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBypassViewOnceMedia(value)
+            })
+        case let .timedToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "timer", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBypassTimedMedia(value)
+            })
+        case let .screenshotsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "camera.viewfinder", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleStorySaving(value)
+            })
+        case let .chatScreenshotsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.trianglebadge.exclamationmark", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleScreenshotBypass(value)
+            })
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleInfinitePins(value)
@@ -183,10 +250,6 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openCallOverrides()
             })
-        case let .fakeAdminRow(title):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
-                arguments.openFakeAdmin()
-            })
         case let .fakeCryptoBotToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bitcoinsign.circle.fill", backgroundColor: UIColor(rgb: 0x1b8ed2)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFakeCryptoBot(value)
@@ -195,6 +258,26 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openFakeCryptoBot()
             })
+        case let .fakeAdminRow(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
+                arguments.openFakeAdmin()
+            })
+        case let .hideOwnPhoneToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "phone.down.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleHideOwnPhone(value)
+            })
+        case let .fakePhoneNumberRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "phone.badge.plus", backgroundColor: UIColor(rgb: 0x34c759)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openFakePhoneNumber()
+            })
+        case let .profileIdsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "number", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleProfileIds(value)
+            })
+        case let .accountLinkToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "link", backgroundColor: UIColor(rgb: 0x007aff)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleAccountLink(value)
+            })
         }
     }
 }
@@ -202,33 +285,44 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
 private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramAdditionalEntry] {
     var entries: [PampGramAdditionalEntry] = []
 
-    entries.append(.aboutText("Другие возможности PampGram: голос и скорость передачи файлов."))
+    entries.append(.aboutText("Другие возможности PampGram: голос, скорость передачи файлов и отображение временной медиа."))
 
     entries.append(.voiceHeader("ИЗМЕНЕНИЕ ГОЛОСА"))
     entries.append(.voiceToggle("Изменять голос в сообщениях", settings.voiceChangerMessagesEnabled))
     entries.append(.voicePresetRow("Голос", settings.voicePreset.displayName))
-    entries.append(.voiceFooter("Применяется только к новым голосовым сообщениям, до отправки. Звонков не касается."))
+    entries.append(.voiceFooter("Только для новых голосовых, до отправки. Звонков не касается."))
 
     entries.append(.speedHeader("СКОРОСТЬ ПЕРЕДАЧИ"))
     entries.append(.uploadSpeedRow("Ускорение загрузки", settings.uploadSpeedMode.displayName))
     entries.append(.downloadSpeedRow("Ускорение скачивания", settings.downloadSpeedMode.displayName))
-    entries.append(.speedFooter("Меняет, насколько параллельно Telegram передаёт части файлов. «Турбо» задействует потолок, уже используемый самим приложением для переноса истории — реальная скорость всё равно зависит от сети и сервера."))
+    entries.append(.speedFooter("«Турбо» — максимум, который поддерживает сеть Telegram. Реальная скорость всё равно зависит от вашего интернета и сервера."))
+
+    entries.append(.mediaHeader("МЕДИА И СКРИНШОТЫ"))
+    entries.append(.viewOnceToggle("Обход одноразовых", settings.bypassViewOnceMediaEnabled))
+    entries.append(.timedToggle("Обход с таймером", settings.bypassTimedMediaEnabled))
+    entries.append(.screenshotsToggle("Сохранение историй", settings.storySavingEnabled))
+    entries.append(.chatScreenshotsToggle("Обход скриншотов", settings.bypassScreenshotProtectionEnabled))
+    entries.append(.mediaFooter("Одноразовое и временное медиа становится обычным: без отсчёта, остаётся в чате, его можно сохранить, а отметка «просмотрено» не отправляется. «Обход скриншотов» снимает защиту скриншотов и записи экрана. Секретных чатов не касается — там всё как в стоке."))
 
     entries.append(.premiumHeader("ПРЕМИУМ"))
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
     entries.append(.legalPremiumToggle("Легальный премиум", settings.legalPremiumEnabled))
-    entries.append(.premiumFooter("«Закрепить чаты ∞» снимает лимит на количество закреплённых чатов. «Легальный премиум» включает клиентские премиум-послабления, которые Telegram не проверяет на сервере (лимиты закреплений и папок). Закрепления сверх серверного лимита действуют на этом устройстве и могут не синхронизироваться на другие."))
+    entries.append(.premiumFooter("Снимает лимиты закреплений и папок на этом устройстве. Может не синхронизироваться на другие."))
 
     entries.append(.extrasHeader("ЕЩЁ"))
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.fakeAdminRow("Фейк админ"))
+    entries.append(.hideOwnPhoneToggle("Скрыть номер телефона", settings.hideOwnPhoneNumber))
+    entries.append(.fakePhoneNumberRow("Фейковый номер телефона", settings.fakePhoneNumber.isEmpty ? "Выключено" : settings.fakePhoneNumber))
+    entries.append(.profileIdsToggle("ID Профилей", settings.profileIdsEnabled))
+    entries.append(.accountLinkToggle("Ссылка аккаунта", settings.accountLinkEnabled))
     entries.append(.fakeCryptoBotToggle("Фейковый криптобот", settings.fakeCryptoBotEnabled))
     if settings.fakeCryptoBotEnabled {
         entries.append(.openFakeCryptoBotRow("Открыть фейковый криптобот"))
     }
-    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Фейковый криптобот» подменяет мини-апп @CryptoBot локальным визуалом; балансы редактируются длинным нажатием на логотип внутри визуала."))
+    entries.append(.extrasFooter("Работает только на этом устройстве. «Фейк админ» — визуальные посты в любом канале. «Скрыть/фейковый номер» меняют то, что видно другим в профиле, не настоящий номер. «ID Профилей» и «Ссылка аккаунта» добавляют эти строки в чужие профили."))
 
     return entries
 }
@@ -278,9 +372,14 @@ private func pampGramPresentVoicePresetPicker(context: AccountContext, presentCo
 }
 
 /// "Дополнительно": the voice-message pitch/tempo changer (5 fixed presets, messages only —
-/// never live calls, see `PampGramVoiceChanger.swift`) and the upload/download speed presets
+/// never live calls, see `PampGramVoiceChanger.swift`), the upload/download speed presets
 /// (Стандарт/Быстрый/Турбо — each just toggles existing, already-used parallelism knobs in
-/// Telegram's own upload/download code).
+/// Telegram's own upload/download code), "Обход одноразовых"/"Обход с таймером" — the bubble is drawn as a normal
+/// photo/video (`PampGramTemporaryMediaDisplay`, `ChatMessageInteractiveMediaNode.swift`) and the
+/// message loses its self-destruct timers locally (`PampGramTemporaryMediaBypass`), so there is no
+/// countdown and the picture can be saved — and
+/// "Сохранение историй" — see `PampGramStorySavingDisplay` and its use in
+/// `StoryItemContentComponent.swift` and `StoryItemSetContainerComponent.swift`.
 public func pampGramAdditionalSettingsController(context: AccountContext) -> ViewController {
     var presentControllerImpl: ((ViewController) -> Void)?
     var pushControllerImpl: ((ViewController) -> Void)?
@@ -338,16 +437,6 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         openFakeAdmin: {
             pushControllerImpl?(pampGramFakeAdminController(context: context))
         },
-        toggleFakeCryptoBot: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.fakeCryptoBotEnabled = value
-                return settings
-            }).start()
-        },
-        openFakeCryptoBot: {
-            pushControllerImpl?(pampGramFakeCryptoBotController(context: context))
-        },
         toggleInfinitePins: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
@@ -361,6 +450,85 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                 settings.legalPremiumEnabled = value
                 return settings
             }).start()
+        },
+        toggleBypassViewOnceMedia: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.bypassViewOnceMediaEnabled = value
+                return settings
+            }).start()
+        },
+        toggleBypassTimedMedia: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.bypassTimedMediaEnabled = value
+                return settings
+            }).start()
+        },
+        toggleStorySaving: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.storySavingEnabled = value
+                return settings
+            }).start()
+        },
+        toggleScreenshotBypass: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.bypassScreenshotProtectionEnabled = value
+                return settings
+            }).start()
+        },
+        toggleHideOwnPhone: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.hideOwnPhoneNumber = value
+                return settings
+            }).start()
+        },
+        openFakePhoneNumber: {
+            let _ = (PampGramCore.settingsSignal(postbox: context.account.postbox) |> take(1) |> deliverOnMainQueue).start(next: { settings in
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Фейковый номер телефона",
+                    subtitle: "Показывается вместо настоящего — в настройках и в «Моём профиле». Пусто — выключено.",
+                    value: settings.fakePhoneNumber,
+                    placeholder: "+1 234 567 89 00",
+                    characterLimit: 32,
+                    apply: { value in
+                        let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                            var settings = settings
+                            settings.fakePhoneNumber = trimmed
+                            return settings
+                        }).start()
+                    }
+                ))
+            })
+        },
+        toggleProfileIds: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.profileIdsEnabled = value
+                return settings
+            }).start()
+        },
+        toggleAccountLink: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.accountLinkEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeCryptoBot: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeCryptoBotEnabled = value
+                return settings
+            }).start()
+        },
+        openFakeCryptoBot: {
+            pushControllerImpl?(pampGramFakeCryptoBotController(context: context))
         }
     )
 
