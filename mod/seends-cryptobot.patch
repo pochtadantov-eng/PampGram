@@ -67,11 +67,44 @@ index 31808802..3f27d025 100644
          // PampGram фейк админ: в канале с включённым фейк-админом «пост» вставляется только в
          // локальную копию чата — на сервер ничего не уходит. Текст добавляется как пост канала,
          // всё остальное молча проглатывается, чтобы не было реальных неудачных отправок.
+diff --git a/submodules/TelegramUI/Sources/ChatControllerNode.swift b/submodules/TelegramUI/Sources/ChatControllerNode.swift
+index b094f8c8..fc3b216c 100644
+--- a/submodules/TelegramUI/Sources/ChatControllerNode.swift
++++ b/submodules/TelegramUI/Sources/ChatControllerNode.swift
+@@ -4868,8 +4868,18 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+         // pampGramApplyVisualEditDirect, but the pending edit and input are still cleared so a
+         // later unrelated send in this chat doesn't surprise-edit it.
+         if let peerId = self.chatLocation.peerId, let pendingMessageId = PampGramVisualEditRuntime.shared.pending(peerId: peerId.toInt64()) {
+-            let text = effectivePresentationInterfaceState.interfaceState.effectiveInputState.inputText.string
+-            pampGramApplyVisualEditDirect(context: self.context, messageId: pendingMessageId, text: text)
++            // The composer's attributed text, trimmed and turned back into entities the way a real
++            // edit does it, so the local copy keeps all formatting and every custom emoji; the
++            // emoji's sticker files go along so the chat can draw them.
++            let inputText = trimChatInputText(effectivePresentationInterfaceState.interfaceState.effectiveInputState.inputText)
++            let entities = generateTextEntities(inputText.string, enabledTypes: .all, currentEntities: generateChatInputTextEntities(inputText, maxAnimatedEmojisInText: 0))
++            var customEmojiFiles: [Media] = []
++            inputText.enumerateAttribute(ChatTextInputAttributes.customEmoji, in: NSRange(location: 0, length: inputText.length), using: { value, _, _ in
++                if let value = value as? ChatTextInputTextCustomEmojiAttribute, let file = value.file {
++                    customEmojiFiles.append(file)
++                }
++            })
++            pampGramApplyVisualEditDirect(context: self.context, messageId: pendingMessageId, text: inputText.string, entities: entities, inlineMedia: customEmojiFiles)
+             PampGramVisualEditRuntime.shared.clearPending(peerId: peerId.toInt64())
+             self.interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
+                 return (ChatTextInputState(inputText: NSAttributedString(string: "")), inputMode)
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 50beb232..d1a715b9 100644
+index 50beb232..28538b21 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-@@ -518,31 +518,24 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -1,6 +1,7 @@
+ import Foundation
+ import UIKit
+ import TelegramCore
++import TextFormat
+ import AsyncDisplayKit
+ import Display
+ import UIKit
+@@ -518,31 +519,24 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
          newList.insert(.separator, at: 0)
          newList.insert(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
              return pampGramSettingsIcon(size: 24.0)
@@ -110,7 +143,7 @@ index 50beb232..d1a715b9 100644
              })
          })), at: 0)
          items.content = .list(newList)
-@@ -550,24 +543,29 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -550,110 +544,101 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
      }
  }
  
@@ -157,9 +190,14 @@ index 50beb232..d1a715b9 100644
              // PampGram: pre-fills the real message input field with this message's current
              // text and arms PampGramVisualEditRuntime, instead of opening a separate screen —
              // typing normally and tapping Send (see sendCurrentMessage in ChatControllerNode.swift)
-@@ -576,84 +574,67 @@ private func pampGramPresentMessageActionsSheet(context: AccountContext, message
+             // commits it as a local-only edit to this message.
+             PampGramVisualEditRuntime.shared.setPending(peerId: message.id.peerId.toInt64(), messageId: message.id)
++            // The text goes in WITH its entities (bold, italic, quotes, links, custom emoji, ...),
++            // exactly as stock Telegram fills the composer when editing a real message.
++            let entities = message.textEntitiesAttribute?.entities ?? []
              interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
-                 return (ChatTextInputState(inputText: NSAttributedString(string: message.text)), inputMode)
+-                return (ChatTextInputState(inputText: NSAttributedString(string: message.text)), inputMode)
++                return (ChatTextInputState(inputText: chatInputStateStringWithAppliedEntities(message.text, entities: entities)), inputMode)
              }
 -            topController.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Напечатайте новый текст и нажмите отправить — сообщение изменится только у вас.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
 -        }))

@@ -46,13 +46,22 @@ public final class PampGramVisualEditRuntime {
 /// device's own Postbox via `Transaction.updateMessage`. Nothing is sent, the sender's own copy
 /// is untouched. An empty result (the whole composer was cleared before sending) is a no-op —
 /// there is no "clear a message's text" affordance here, only edits to something.
-public func pampGramApplyVisualEditDirect(context: AccountContext, messageId: MessageId, text: String) {
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else {
+public func pampGramApplyVisualEditDirect(context: AccountContext, messageId: MessageId, text: String, entities: [MessageTextEntity] = [], inlineMedia: [Media] = []) {
+    // `text` arrives already trimmed (the entity ranges refer to it), so it is stored as is.
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         return
     }
     let _ = context.account.postbox.transaction { transaction -> Void in
+        // The custom-emoji stickers the entities point at have to be in the media table for the
+        // chat to draw them — the real send path stores them the same way.
+        for file in inlineMedia {
+            transaction.storeMediaIfNotPresent(media: file)
+        }
         transaction.updateMessage(messageId, update: { message -> PostboxUpdateMessage in
+            var attributes = message.attributes.filter { !($0 is TextEntitiesMessageAttribute) }
+            if !entities.isEmpty {
+                attributes.append(TextEntitiesMessageAttribute(entities: entities))
+            }
             let updatedMessage = StoreMessage(
                 id: messageId,
                 customStableId: nil,
@@ -66,8 +75,8 @@ public func pampGramApplyVisualEditDirect(context: AccountContext, messageId: Me
                 localTags: message.localTags,
                 forwardInfo: message.forwardInfo.map(StoreMessageForwardInfo.init),
                 authorId: message.author?.id,
-                text: trimmed,
-                attributes: message.attributes.filter { !($0 is TextEntitiesMessageAttribute) },
+                text: text,
+                attributes: attributes,
                 media: message.media
             )
             return .update(updatedMessage)
