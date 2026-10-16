@@ -93,6 +93,16 @@ mod/
   — строка «PampGram» в настройках и переход на её экран;
 - `AccountContext.swift` — запускает `PampGramTemporaryMediaDisplay.shared.start(...)` при
   создании аккаунта (тем же способом, что уже используется для `PampGramFakeAdminRuntime`);
+- «Режим призрака» — диагностика и принудительный «офлайн». `PampGramGhostDiagnostics`
+  (PampGramCore) — счётчики в памяти «скрыто / ушло наружу + причина», которые пишет единственная
+  точка решения `pampGramGhostShouldSuppress` (`TelegramCore/Sources/State/PampGramGhostHelpers.swift`;
+  повторный вопрос про тот же сигнал в `validatePeerReadState` идёт с `record: false`, чтобы не
+  считаться дважды) и `ManagedAccountPresence.swift` (счётчик «онлайн»/«офлайн»). Экран
+  «Режим призрака» показывает их блоком «Диагностика» и обновляет раз в секунду. Отдельно:
+  Telegram сам ставит аккаунт «в сети» после действий вроде отправки сообщения, а «Не отправлять
+  онлайн» лишь не посылает `updateStatus(offline: false)`. Поэтому `SharedWakeupManager` выставляет
+  `Account.pampGramShouldPulseOffline` (включено «Не отправлять онлайн», приложение на экране,
+  аккаунт основной), и `AccountPresenceManagerImpl` каждые 20 с повторяет `updateStatus(offline: true)`;
 - «Обход одноразовых»/«Обход с таймером» (одна настройка — для «посмотреть один раз»,
   другая — для короткого таймера самоуничтожения, различаются по
   `minAutoremoveOrClearTimeout == viewOnceTimeout`). Стоковый Telegram считает сообщение

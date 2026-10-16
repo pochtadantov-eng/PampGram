@@ -791,21 +791,27 @@ public struct PampGramSettings: Codable, Equatable {
     /// the chat filters themselves — this module can't reference those TelegramCore types.
     /// Presence (online/auto-offline) is global and never routed through here.
     public func ghostExcludesPeer(peerId: PeerId?, isChannel: Bool, isGroup: Bool, folderIds: [Int32]) -> Bool {
+        return self.ghostExclusionReason(peerId: peerId, isChannel: isChannel, isGroup: isGroup, folderIds: folderIds) != nil
+    }
+
+    /// Same decision as `ghostExcludesPeer`, but says which exception applied (shown in the
+    /// Ghost screen's diagnostics when a signal was let through on purpose). `nil` = not exempt.
+    public func ghostExclusionReason(peerId: PeerId?, isChannel: Bool, isGroup: Bool, folderIds: [Int32]) -> String? {
         if let peerId, self.ghostExcludedPeerIds.contains(peerId) {
-            return true
+            return "этот чат в исключениях"
         }
         if isChannel && self.ghostExcludeAllChannels {
-            return true
+            return "включено исключение «Все каналы»"
         }
         if isGroup && self.ghostExcludeAllGroups {
-            return true
+            return "включено исключение «Все группы»"
         }
         if !self.ghostExcludedFolderIds.isEmpty && !folderIds.isEmpty {
             for folderId in folderIds where self.ghostExcludedFolderIds.contains(folderId) {
-                return true
+                return "чат лежит в папке-исключении"
             }
         }
-        return false
+        return nil
     }
 }
 

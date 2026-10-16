@@ -17750,6 +17750,133 @@ index 00000000..58a50975
 +        }
 +    }
 +}
+diff --git a/submodules/TelegramCore/Sources/State/ManagedAccountPresence.swift b/submodules/TelegramCore/Sources/State/ManagedAccountPresence.swift
+index 8c8a4fa3..b941b8b7 100644
+--- a/submodules/TelegramCore/Sources/State/ManagedAccountPresence.swift
++++ b/submodules/TelegramCore/Sources/State/ManagedAccountPresence.swift
+@@ -3,6 +3,7 @@ import TelegramApi
+ import Postbox
+ import SwiftSignalKit
+ import MtProtoKit
++import PampGramCore
+ 
+ private typealias SignalKitTimer = SwiftSignalKit.Timer
+ 
+@@ -16,9 +17,14 @@ private final class AccountPresenceManagerImpl {
+     private let currentRequestDisposable = MetaDisposable()
+     private var onlineTimer: SignalKitTimer?
+     
++    // PampGram Ghost, "Не отправлять «онлайн»": see `startOfflinePulse`.
++    private var shouldPulseOfflineDisposable: Disposable?
++    private let offlinePulseRequestDisposable = MetaDisposable()
++    private var offlinePulseTimer: SignalKitTimer?
++    
+     private var wasOnline: Bool = false
+     
+-    init(queue: Queue, shouldKeepOnlinePresence: Signal<Bool, NoError>, network: Network) {
++    init(queue: Queue, shouldKeepOnlinePresence: Signal<Bool, NoError>, shouldPulseOffline: Signal<Bool, NoError>, network: Network) {
+         self.queue = queue
+         self.network = network
+         
+@@ -33,6 +39,19 @@ private final class AccountPresenceManagerImpl {
+                 self.updatePresence(value)
+             }
+         })
++        
++        self.shouldPulseOfflineDisposable = (shouldPulseOffline
++        |> distinctUntilChanged
++        |> deliverOn(self.queue)).start(next: { [weak self] value in
++            guard let `self` = self else {
++                return
++            }
++            if value {
++                self.startOfflinePulse()
++            } else {
++                self.stopOfflinePulse()
++            }
++        })
+     }
+     
+     deinit {
+@@ -40,9 +59,42 @@ private final class AccountPresenceManagerImpl {
+         self.shouldKeepOnlinePresenceDisposable?.dispose()
+         self.currentRequestDisposable.dispose()
+         self.onlineTimer?.invalidate()
++        self.shouldPulseOfflineDisposable?.dispose()
++        self.offlinePulseRequestDisposable.dispose()
++        self.offlinePulseTimer?.invalidate()
++    }
++    
++    // PampGram Ghost: "Не отправлять «онлайн»" already stops this app from ever *saying* it is
++    // online (see SharedWakeupManager), but Telegram's server also flips an account to online by
++    // itself after some actions — sending a message is the usual one — and then keeps showing
++    // it until it expires or an explicit offline arrives. While the app is in use with that
++    // option on, repeat the offline status every 20 seconds so any such flip is undone within
++    // moments. Cheap (one tiny request), and only ever runs while the option is on.
++    private func startOfflinePulse() {
++        self.offlinePulseTimer?.invalidate()
++        self.sendOfflinePulse()
++        let timer = SignalKitTimer(timeout: 20.0, repeat: true, completion: { [weak self] in
++            self?.sendOfflinePulse()
++        }, queue: self.queue)
++        self.offlinePulseTimer = timer
++        timer.start()
++    }
++    
++    private func stopOfflinePulse() {
++        self.offlinePulseTimer?.invalidate()
++        self.offlinePulseTimer = nil
++    }
++    
++    private func sendOfflinePulse() {
++        PampGramGhostDiagnostics.shared.recordPresence(online: false)
++        self.offlinePulseRequestDisposable.set((self.network.request(Api.functions.account.updateStatus(offline: .boolTrue))
++        |> `catch` { _ -> Signal<Api.Bool, NoError> in
++            return .single(.boolFalse)
++        }).start())
+     }
+     
+     private func updatePresence(_ isOnline: Bool) {
++        PampGramGhostDiagnostics.shared.recordPresence(online: isOnline)
+         let request: Signal<Api.Bool, MTRpcError>
+         if isOnline {
+             let timer = SignalKitTimer(timeout: 30.0, repeat: false, completion: { [weak self] in
+@@ -77,10 +129,10 @@ final class AccountPresenceManager {
+     private let queue = Queue()
+     private let impl: QueueLocalObject<AccountPresenceManagerImpl>
+     
+-    init(shouldKeepOnlinePresence: Signal<Bool, NoError>, network: Network) {
++    init(shouldKeepOnlinePresence: Signal<Bool, NoError>, shouldPulseOffline: Signal<Bool, NoError>, network: Network) {
+         let queue = self.queue
+         self.impl = QueueLocalObject(queue: self.queue, generate: {
+-            return AccountPresenceManagerImpl(queue: queue, shouldKeepOnlinePresence: shouldKeepOnlinePresence, network: network)
++            return AccountPresenceManagerImpl(queue: queue, shouldKeepOnlinePresence: shouldKeepOnlinePresence, shouldPulseOffline: shouldPulseOffline, network: network)
+         })
+     }
+     
+diff --git a/submodules/TelegramCore/Sources/Account/Account.swift b/submodules/TelegramCore/Sources/Account/Account.swift
+index ffff9140..e705a15b 100644
+--- a/submodules/TelegramCore/Sources/Account/Account.swift
++++ b/submodules/TelegramCore/Sources/Account/Account.swift
+@@ -1197,6 +1197,9 @@ public class Account {
+     
+     public let shouldBeServiceTaskMaster = Promise<AccountServiceTaskMasterMode>()
+     public let shouldKeepOnlinePresence = Promise<Bool>()
++    /// PampGram Ghost: true while "Не отправлять «онлайн»" is on and the app is in use — see
++    /// `AccountPresenceManagerImpl.startOfflinePulse`.
++    public let pampGramShouldPulseOffline = Promise<Bool>(false)
+     public let autolockReportDeadline = Promise<Int32?>()
+     public let shouldExplicitelyKeepWorkerConnections = Promise<Bool>(false)
+     public let shouldKeepBackgroundDownloadConnections = Promise<Bool>(false)
+@@ -1291,7 +1294,7 @@ public class Account {
+         
+         self.contactSyncManager = ContactSyncManager(postbox: postbox, network: network, accountPeerId: peerId, stateManager: self.stateManager)
+         self.localInputActivityManager = PeerInputActivityManager()
+-        self.accountPresenceManager = AccountPresenceManager(shouldKeepOnlinePresence: self.shouldKeepOnlinePresence.get(), network: network)
++        self.accountPresenceManager = AccountPresenceManager(shouldKeepOnlinePresence: self.shouldKeepOnlinePresence.get(), shouldPulseOffline: self.pampGramShouldPulseOffline.get(), network: network)
+         let _ = (postbox.transaction { transaction -> Void in
+             transaction.updatePeerPresencesInternal(presences: [peerId: TelegramUserPresence(status: .present(until: Int32.max - 1), lastActivity: 0)], merge: { _, updated in return updated })
+             transaction.setNeedsPeerGroupMessageStatsSynchronization(groupId: Namespaces.PeerGroup.archive, namespace: Namespaces.Message.Cloud)
 diff --git a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
 index 58db6c71..92a8d960 100644
 --- a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
@@ -18061,10 +18188,10 @@ index bebd6915..ad848f4c 100644
                                  return .complete()
 diff --git a/submodules/TelegramCore/Sources/State/PampGramGhostHelpers.swift b/submodules/TelegramCore/Sources/State/PampGramGhostHelpers.swift
 new file mode 100644
-index 00000000..a07edb0a
+index 00000000..22aa1593
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/State/PampGramGhostHelpers.swift
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,113 @@
 +import Foundation
 +import Postbox
 +import PampGramCore
@@ -18106,10 +18233,31 @@ index 00000000..a07edb0a
 +/// Whether the given per-peer Ghost feature should suppress its outgoing signal for this peer,
 +/// right now: master on, the feature on, "Читать при действиях" not already relaxing it for
 +/// this chat, and the peer not covered by any exception.
-+func pampGramGhostShouldSuppress(transaction: Transaction, peerId: PeerId, feature: PampGramGhostPeerFeature) -> Bool {
++///
++/// Every answer is also counted in `PampGramGhostDiagnostics` (what the Ghost screen's
++/// "Диагностика" shows), with the reason when the signal is let through. A caller that only
++/// re-asks the same question for the same signal — rather than sending or withholding one —
++/// passes `record: false` so it isn't counted twice.
++func pampGramGhostShouldSuppress(transaction: Transaction, peerId: PeerId, feature: PampGramGhostPeerFeature, record: Bool = true) -> Bool {
++    let kind: PampGramGhostDiagnostics.Kind
++    switch feature {
++    case .readReceipts:
++        kind = .readReceipts
++    case .storyViews:
++        kind = .storyViews
++    case .typing:
++        kind = .typing
++    }
++    func letThrough(_ reason: String) -> Bool {
++        if record {
++            PampGramGhostDiagnostics.shared.recordSent(kind, reason: reason)
++        }
++        return false
++    }
++
 +    let settings = PampGramCore.settings(transaction: transaction)
 +    guard settings.ghostModeEnabled else {
-+        return false
++        return letThrough("«Режим призрака» выключен")
 +    }
 +
 +    let featureEnabled: Bool
@@ -18122,14 +18270,14 @@ index 00000000..a07edb0a
 +        featureEnabled = settings.ghostHideTyping
 +    }
 +    guard featureEnabled else {
-+        return false
++        return letThrough("эта функция выключена")
 +    }
 +
 +    // "Читать при действиях" relaxes read receipts (only) for a chat once you've messaged in
 +    // it this session — you've already revealed you're there, so hiding your reads stops
 +    // helping. Other features are unaffected.
 +    if case .readReceipts = feature, settings.ghostReadOnAction, PampGramGhostRuntime.shared.hasActed(peerId: peerId.toInt64()) {
-+        return false
++        return letThrough("вы писали в этот чат («Читать при действиях»)")
 +    }
 +
 +    var isChannel = false
@@ -18148,14 +18296,17 @@ index 00000000..a07edb0a
 +    }
 +
 +    let folderIds = pampGramGhostFolderIds(transaction: transaction, peerId: peerId)
-+    if settings.ghostExcludesPeer(peerId: peerId, isChannel: isChannel, isGroup: isGroup, folderIds: folderIds) {
-+        return false
++    if let reason = settings.ghostExclusionReason(peerId: peerId, isChannel: isChannel, isGroup: isGroup, folderIds: folderIds) {
++        return letThrough(reason)
 +    }
 +
++    if record {
++        PampGramGhostDiagnostics.shared.recordHidden(kind)
++    }
 +    return true
 +}
 diff --git a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
-index 66242579..1fccd67b 100644
+index 66242579..55e75ea5 100644
 --- a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
 +++ b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
 @@ -2,6 +2,7 @@ import Foundation
@@ -18174,7 +18325,7 @@ index 66242579..1fccd67b 100644
 +                                        // push for this chat is withheld (see `pushPeerReadState`), so
 +                                        // it will never catch up and retrying would only spin on the
 +                                        // network forever. Keep the local read state and stop here.
-+                                        if pampGramGhostShouldSuppress(transaction: transaction, peerId: peerId, feature: .readReceipts) {
++                                        if pampGramGhostShouldSuppress(transaction: transaction, peerId: peerId, feature: .readReceipts, record: false) {
 +                                            transaction.confirmSynchronizedIncomingReadState(peerId)
 +                                            return nil
 +                                        }
@@ -22296,7 +22447,7 @@ index 5637c9e3..beaabb04 100644
      }
      
 diff --git a/submodules/TelegramUI/Sources/SharedWakeupManager.swift b/submodules/TelegramUI/Sources/SharedWakeupManager.swift
-index 97de618..9b36774 100644
+index 97de6187..5c14d88f 100644
 --- a/submodules/TelegramUI/Sources/SharedWakeupManager.swift
 +++ b/submodules/TelegramUI/Sources/SharedWakeupManager.swift
 @@ -9,6 +9,7 @@ import AccountContext
@@ -22307,7 +22458,7 @@ index 97de618..9b36774 100644
  
  private struct AccountTasks {
      let stateSynchronization: Bool
-@@ -1147,7 +1148,31 @@ public final class SharedWakeupManager {
+@@ -1147,7 +1148,42 @@ public final class SharedWakeupManager {
                      account.shouldBeServiceTaskMaster.set(.single(.never))
                  }
                  account.shouldExplicitelyKeepWorkerConnections.set(.single(tasks.backgroundAudio || tasks.backgroundLocation || tasks.importantTasks.pendingStoryCount != 0 || tasks.importantTasks.pendingMessageCount != 0))
@@ -22325,8 +22476,9 @@ index 97de618..9b36774 100644
 +                // immediately without waiting for the next foreground/background transition.
 +                let pampGramInForegroundNow = self.inForeground
 +                let pampGramHasBackgroundKeepAliveWork = tasks.backgroundAudio || tasks.backgroundLocation || tasks.importantTasks.pendingStoryCount != 0 || tasks.importantTasks.pendingMessageCount != 0
++                let pampGramGhostSettings = PampGramCore.settingsSignal(postbox: account.postbox)
 +                account.shouldKeepOnlinePresence.set(
-+                    PampGramCore.settingsSignal(postbox: account.postbox)
++                    pampGramGhostSettings
 +                    |> map { settings -> Bool in
 +                        if settings.ghostModeEnabled && settings.ghostHideOnline {
 +                            return false
@@ -22337,10 +22489,20 @@ index 97de618..9b36774 100644
 +                        return primary && (pampGramInForegroundNow || pampGramHasBackgroundKeepAliveWork)
 +                    }
 +                )
++                // "Не отправлять «онлайн»": while the app is in use, keep re-sending "офлайн" —
++                // the server marks an account online by itself after some actions (sending a
++                // message), and never sending "онлайн" doesn't undo that. See
++                // `AccountPresenceManagerImpl.startOfflinePulse`.
++                account.pampGramShouldPulseOffline.set(
++                    pampGramGhostSettings
++                    |> map { settings -> Bool in
++                        return settings.ghostModeEnabled && settings.ghostHideOnline && primary && pampGramInForegroundNow
++                    }
++                )
                  account.shouldKeepBackgroundDownloadConnections.set(.single(tasks.backgroundDownloads))
              }
              
-@@ -1194,6 +1219,10 @@ public final class SharedWakeupManager {
+@@ -1194,7 +1230,12 @@ public final class SharedWakeupManager {
                      checkCompletionState(accountId)
                  })
                  account.shouldBeServiceTaskMaster.set(.single(.never))
@@ -22349,8 +22511,10 @@ index 97de618..9b36774 100644
 +                // window) with no per-account override, since PampGram no longer offers an
 +                // always-online mask.
                  account.shouldKeepOnlinePresence.set(.single(false))
++                account.pampGramShouldPulseOffline.set(.single(false))
                  account.shouldKeepBackgroundDownloadConnections.set(.single(false))
              }
+             
 diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
 index b1e8596..4a6ef79 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
