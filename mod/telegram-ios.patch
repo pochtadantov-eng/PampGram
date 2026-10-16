@@ -20775,9 +20775,28 @@ diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/Tel
 +import PampGramCore
 +import PampGramSettingsUI
  import InviteLinksUI
-@@ -8985,3 +8987,22 @@ extension ChatControllerImpl {
+@@ -8985,3 +8987,41 @@ extension ChatControllerImpl {
          }
          
++        // PampGram @seends: любой текст вида "@seends <сумма><валюта> <режим>" превращается
++        // в локально вставленный визуал чека CryptoBot (см. PampGramSeendsCheck.swift) —
++        // реальная отправка не выполняется, поле ввода очищается.
++        var pampGramSeendsHandled = false
++        for message in messages {
++            if case let .message(text, _, _, _, _, _, _, _, _, _) = message {
++                if pampGramTryHandleSeendsCommand(context: self.context, peerId: peerId, text: text) {
++                    pampGramSeendsHandled = true
++                }
++            }
++        }
++        if pampGramSeendsHandled {
++            self.interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
++                return (ChatTextInputState(inputText: NSAttributedString(string: "")), inputMode)
++            }
++            self.chatDisplayNode.historyNode.scrollToEndOfHistory()
++            return
++        }
++
 +        // PampGram фейк админ: в канале с включённым фейк-админом «пост» вставляется только в
 +        // локальную копию чата — на сервер ничего не уходит. Текст добавляется как пост канала,
 +        // всё остальное молча проглатывается, чтобы не было реальных неудачных отправок.
