@@ -37,7 +37,7 @@ private final class PampGramGiftPickerFadeView: UIView {
     }
 }
 
-private final class PampGramGiftPickerController: ViewController, UIScrollViewDelegate {
+private final class PampGramGiftPickerController: ViewController, UIScrollViewDelegate, UITextFieldDelegate {
     private let context: AccountContext
     private let presentationData: PresentationData
 
@@ -53,7 +53,15 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
     private var holdDelayTimer: SwiftSignalKit.Timer?
     private var holdRepeatTimer: SwiftSignalKit.Timer?
 
+    // The whole catalog (most expensive collectibles first) and what the search currently lets through.
+    private var catalog: [StarGift.Gift] = []
     private var gifts: [StarGift.Gift] = []
+    private var isCatalogLoaded = false
+    private var query = ""
+    private let searchContainer = UIView()
+    private let searchIcon = UIImageView()
+    private let searchField = UITextField()
+    private let searchHeight: CGFloat = 40.0
     private var tiles: [Int64: ComponentView<Empty>] = [:]
     private var selectedGiftId: Int64?
     private var validLayout: ContainerViewLayout?
@@ -114,6 +122,34 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         } else {
             self.view.addSubview(self.scrollView)
         }
+        self.scrollView.keyboardDismissMode = .onDrag
+
+        // The search box is the first thing in the scrolling content, like a list's search bar.
+        let listTheme = self.presentationData.theme.list
+        self.searchContainer.backgroundColor = listTheme.itemBlocksBackgroundColor
+        self.searchContainer.layer.cornerRadius = 12.0
+        self.searchContainer.clipsToBounds = true
+        self.scrollView.addSubview(self.searchContainer)
+
+        self.searchIcon.image = UIImage(systemName: "magnifyingglass")
+        self.searchIcon.tintColor = listTheme.itemSecondaryTextColor
+        self.searchIcon.contentMode = .scaleAspectFit
+        self.searchContainer.addSubview(self.searchIcon)
+
+        self.searchField.attributedPlaceholder = NSAttributedString(string: "Поиск: Plush Pepe, ролекс, кольцо", attributes: [
+            .foregroundColor: listTheme.itemPlaceholderTextColor,
+            .font: UIFont.systemFont(ofSize: 16.0)
+        ])
+        self.searchField.font = UIFont.systemFont(ofSize: 16.0)
+        self.searchField.textColor = listTheme.itemPrimaryTextColor
+        self.searchField.tintColor = listTheme.itemAccentColor
+        self.searchField.autocorrectionType = .no
+        self.searchField.autocapitalizationType = .none
+        self.searchField.returnKeyType = .search
+        self.searchField.clearButtonMode = .whileEditing
+        self.searchField.delegate = self
+        self.searchField.addTarget(self, action: #selector(self.searchChanged), for: .editingChanged)
+        self.searchContainer.addSubview(self.searchField)
 
         self.emptyLabel.text = "Каталог подарков загружается…"
         self.emptyLabel.textAlignment = .center
@@ -186,7 +222,7 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
             }
             // Limited and sold-out gifts first (the collectible ones people look for), then the
             // unlimited ones, each group most expensive first.
-            self.gifts = generic.sorted(by: { lhs, rhs in
+            self.catalog = generic.sorted(by: { lhs, rhs in
                 let lhsLimited = lhs.soldOut != nil || lhs.availability != nil
                 let rhsLimited = rhs.soldOut != nil || rhs.availability != nil
                 if lhsLimited != rhsLimited {
@@ -194,12 +230,38 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
                 }
                 return lhs.price > rhs.price
             })
-            self.emptyLabel.isHidden = !self.gifts.isEmpty
-            if self.gifts.isEmpty {
-                self.emptyLabel.text = "Подарки не найдены."
-            }
+            self.isCatalogLoaded = true
+            self.applyFilter()
             self.updateLayoutIfPossible()
         }))
+    }
+
+    private func applyFilter() {
+        let query = self.query
+        self.gifts = self.catalog.filter { pampGramGiftMatches($0, query: query) }
+        self.emptyLabel.isHidden = !self.gifts.isEmpty
+        if self.gifts.isEmpty {
+            if !self.isCatalogLoaded {
+                self.emptyLabel.text = "Каталог подарков загружается…"
+            } else if self.catalog.isEmpty {
+                self.emptyLabel.text = "Подарки не найдены."
+            } else {
+                self.emptyLabel.text = "Ничего не найдено."
+            }
+        }
+    }
+
+    @objc private func searchChanged() {
+        self.query = self.searchField.text ?? ""
+        self.applyFilter()
+        self.updateLayoutIfPossible()
+        self.scrollView.setContentOffset(CGPoint(x: 0.0, y: -self.scrollView.contentInset.top), animated: false)
+        self.updateVisibleTiles()
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        textField.resignFirstResponder()
+        return true
     }
 
     override func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
@@ -214,7 +276,9 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         }
         let navigationHeight = self.navigationLayout(layout: layout).navigationFrame.maxY
         let size = layout.size
-        let bottomInset = max(layout.intrinsicInsets.bottom, 12.0)
+        // With the keyboard up the bottom bar rides on top of it.
+        let keyboardHeight = layout.inputHeight ?? 0.0
+        let bottomInset = keyboardHeight > 0.0 ? keyboardHeight + 12.0 : max(layout.intrinsicInsets.bottom, 12.0)
 
         let buttonFrame = CGRect(x: self.sideInset, y: size.height - bottomInset - self.buttonHeight, width: size.width - self.sideInset * 2.0, height: self.buttonHeight)
         self.addButton.frame = buttonFrame
@@ -233,7 +297,11 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         self.scrollView.frame = CGRect(origin: .zero, size: size)
         let itemSize = self.itemSize(width: size.width)
         let rows = (self.gifts.count + self.columns - 1) / self.columns
-        let contentHeight = CGFloat(rows) * (itemSize.height + self.spacing)
+        let headerHeight = self.searchHeight + self.spacing
+        let contentHeight = headerHeight + CGFloat(rows) * (itemSize.height + self.spacing)
+        self.searchContainer.frame = CGRect(x: self.sideInset, y: 0.0, width: size.width - self.sideInset * 2.0, height: self.searchHeight)
+        self.searchIcon.frame = CGRect(x: 10.0, y: 0.0, width: 20.0, height: self.searchHeight)
+        self.searchField.frame = CGRect(x: 38.0, y: 0.0, width: max(0.0, self.searchContainer.bounds.width - 46.0), height: self.searchHeight)
         let topInset = navigationHeight + self.spacing
         let scrollBottomInset = size.height - rowFrame.minY + self.spacing
         self.scrollView.contentInset = UIEdgeInsets(top: topInset, left: 0.0, bottom: scrollBottomInset, right: 0.0)
@@ -247,7 +315,7 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
             }
         }
 
-        self.emptyLabel.frame = CGRect(x: self.sideInset, y: navigationHeight + 40.0, width: size.width - self.sideInset * 2.0, height: 60.0)
+        self.emptyLabel.frame = CGRect(x: self.sideInset, y: navigationHeight + headerHeight + 40.0, width: size.width - self.sideInset * 2.0, height: 60.0)
 
         self.updateVisibleTiles()
     }
@@ -267,8 +335,9 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         let size = layout.size
         let itemSize = self.itemSize(width: size.width)
         let rowHeight = itemSize.height + self.spacing
-        let visibleTop = self.scrollView.contentOffset.y + self.scrollView.contentInset.top - 400.0
-        let visibleBottom = self.scrollView.contentOffset.y + size.height + 400.0
+        let headerHeight = self.searchHeight + self.spacing
+        let visibleTop = self.scrollView.contentOffset.y + self.scrollView.contentInset.top - 400.0 - headerHeight
+        let visibleBottom = self.scrollView.contentOffset.y + size.height + 400.0 - headerHeight
         let firstRow = max(0, Int(floor(visibleTop / rowHeight)))
         let lastRow = max(firstRow, Int(ceil(visibleBottom / rowHeight)))
 
@@ -307,6 +376,7 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
                             guard let self else {
                                 return
                             }
+                            self.searchField.resignFirstResponder()
                             self.selectedGiftId = (self.selectedGiftId == giftId) ? nil : giftId
                             self.updateButton()
                             self.updateVisibleTiles()
@@ -322,7 +392,7 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
                 }
                 view.frame = CGRect(
                     x: self.sideInset + CGFloat(column) * (itemSize.width + self.spacing),
-                    y: CGFloat(row) * rowHeight,
+                    y: headerHeight + CGFloat(row) * rowHeight,
                     width: itemSize.width,
                     height: itemSize.height
                 )
@@ -390,7 +460,7 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         self.countLabel.text = "\(self.quantity)"
         self.minusButton.isEnabled = self.quantity > 1 && !self.isAdding
         self.plusButton.isEnabled = self.quantity < PampGramPhantomGiftManager.maxGiftsPerAdd && !self.isAdding
-        if let selectedGiftId = self.selectedGiftId, let gift = self.gifts.first(where: { $0.id == selectedGiftId }) {
+        if let selectedGiftId = self.selectedGiftId, let gift = self.catalog.first(where: { $0.id == selectedGiftId }) {
             self.captionLabel.text = "\(gift.title ?? "Подарок") · ⭐️ \(gift.price)"
         } else {
             self.captionLabel.text = nil
@@ -410,7 +480,7 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
     }
 
     @objc private func addPressed() {
-        guard let selectedGiftId = self.selectedGiftId, !self.isAdding, let gift = self.gifts.first(where: { $0.id == selectedGiftId }) else {
+        guard let selectedGiftId = self.selectedGiftId, !self.isAdding, let gift = self.catalog.first(where: { $0.id == selectedGiftId }) else {
             return
         }
         self.stopHold()
