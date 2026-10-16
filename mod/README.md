@@ -93,13 +93,26 @@ mod/
   — строка «PampGram» в настройках и переход на её экран;
 - `AccountContext.swift` — запускает `PampGramTemporaryMediaDisplay.shared.start(...)` при
   создании аккаунта (тем же способом, что уже используется для `PampGramFakeAdminRuntime`);
-- `ChatMessageInteractiveMediaNode.swift` — «Обход одноразовых»/«Обход с таймером»: если
-  соответствующая настройка включена (одна — для «посмотреть один раз», другая — для короткого
-  таймера самоуничтожения, определяется через `minAutoremoveOrClearTimeout == viewOnceTimeout`),
-  локальный флаг `isSecretMedia` для такого фото/видео принудительно сбрасывается в `false` в
-  обоих местах, откуда он читается (`asyncLayout()` и `updateStatus()`), — после этого весь
-  существующий код бабла рисует медиа как обычное фото/видео (без размытия, бейджа таймера и
-  жеста «посмотреть один раз»). Экран, куда сообщение открывается по тапу, не тронут;
+- «Обход одноразовых»/«Обход с таймером» (одна настройка — для «посмотреть один раз»,
+  другая — для короткого таймера самоуничтожения, различаются по
+  `minAutoremoveOrClearTimeout == viewOnceTimeout`). Стоковый Telegram считает сообщение
+  секретным по двум атрибутам, `AutoremoveTimeoutMessageAttribute` и
+  `AutoclearTimeoutMessageAttribute` (`Message.containsSecretMedia`), и от них зависит всё:
+  размытие, `SecretMediaPreviewController` с отсчётом (он же и отправляет
+  `readMessageContents`), защита от захвата, скрытые «Сохранить»/«Переслать». Поэтому снятия
+  одного размытия мало. `TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift`
+  (новый файл) убирает эти два атрибута (только с таймером ≤ 60 с или `viewOnceTimeout`) у
+  локальной копии входящего фото/видео/GIF в облачном чате — после этого сообщение обычное
+  для всех экранов, отсчёт и `readMessageContents` не запускаются, фото не пропадает. Круглые
+  видео, голосовые и музыка не трогаются; секретные чаты не трогаются совсем. Убирается в
+  трёх местах: при получении (`AccountStateManagementUtils.swift` → `replayFinalState`, сразу
+  после `PampGramSecretMediaPrefetch`, чтобы тот ещё видел сообщение секретным), при показе
+  пузыря (`ChatMessageInteractiveMediaNode.swift` — там же `isSecretMedia` сбрасывается в
+  `false` в `asyncLayout()` и `updateStatus()`, а фоновая запись в Postbox дедуплицируется
+  на время выполнения) и перед открытием (`GalleryData.swift`: обычная галерея вместо
+  секретной, а сама галерея строится после записи, чтобы увидеть уже обычное сообщение).
+  Вместе с атрибутами возвращаются теги `photoOrVideo`/`photo`/`video` (у секретных их нет),
+  и фото появляется в «Общих медиа». На сервер ничего не отправляется;
 - `AccountStateManagementUtils.swift` и `TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift`
   (новый файл) — расширяет «Восстановление удалённых сообщений» на одноразовые/с таймером фото,
   видео и голосовые. `PampGramDeletedMessageCapture` (уже перехватывает удаление в этом же файле,

@@ -284,7 +284,7 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.timedToggle("Обход с таймером", settings.bypassTimedMediaEnabled))
     entries.append(.screenshotsToggle("Сохранение историй", settings.storySavingEnabled))
     entries.append(.chatScreenshotsToggle("Обход скриншотов", settings.bypassScreenshotProtectionEnabled))
-    entries.append(.mediaFooter("Показывает одноразовое и временное медиа как обычное, снимает защиту скриншотов и запись экрана. Секретных чатов не касается — там всё как в стоке."))
+    entries.append(.mediaFooter("Одноразовое и временное медиа становится обычным: без отсчёта, остаётся в чате, его можно сохранить, а отметка «просмотрено» не отправляется. «Обход скриншотов» снимает защиту скриншотов и записи экрана. Секретных чатов не касается — там всё как в стоке."))
 
     entries.append(.premiumHeader("ПРЕМИУМ"))
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
@@ -352,8 +352,10 @@ private func pampGramPresentVoicePresetPicker(context: AccountContext, presentCo
 /// "Дополнительно": the voice-message pitch/tempo changer (5 fixed presets, messages only —
 /// never live calls, see `PampGramVoiceChanger.swift`), the upload/download speed presets
 /// (Стандарт/Быстрый/Турбо — each just toggles existing, already-used parallelism knobs in
-/// Telegram's own upload/download code), "Обход одноразовых"/"Обход с таймером" — display-only, see
-/// `PampGramTemporaryMediaDisplay` and its use in `ChatMessageInteractiveMediaNode.swift` — and
+/// Telegram's own upload/download code), "Обход одноразовых"/"Обход с таймером" — the bubble is drawn as a normal
+/// photo/video (`PampGramTemporaryMediaDisplay`, `ChatMessageInteractiveMediaNode.swift`) and the
+/// message loses its self-destruct timers locally (`PampGramTemporaryMediaBypass`), so there is no
+/// countdown and the picture can be saved — and
 /// "Сохранение историй" — see `PampGramStorySavingDisplay` and its use in
 /// `StoryItemContentComponent.swift` and `StoryItemSetContainerComponent.swift`.
 public func pampGramAdditionalSettingsController(context: AccountContext) -> ViewController {
