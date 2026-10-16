@@ -29,9 +29,12 @@ jobs:
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
           xcodebuild -version
 
+      # Pinned: mod/telegram-ios.patch is written against this release. Cloning the default
+      # branch makes the patch fail to apply as soon as upstream moves (13.x already does).
       - name: Check out Telegram-iOS
         run: |
           git clone --recursive --shallow-submodules --depth 1 -j8 \
+            --branch release-12.9.2 \
             https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
 
       # mod/components/* are whole new Bazel packages, dropped in as-is under a single

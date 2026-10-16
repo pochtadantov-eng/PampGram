@@ -20093,7 +20093,7 @@ index 4a25558..192f9fc 100644
              })
              return
          }
--
+-        
 +
 +        if let pampGramChatLockPin = pampGramChatLockPin {
 +            let pinController = PasscodeSetupController(context: params.context, mode: .entry(.numericalPassword(value: pampGramChatLockPin)))
