@@ -22534,7 +22534,7 @@ diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift b
                          return (currentPanel, nil)
                      } else {
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
-index 23695c21..c4ee5398 100644
+index 23695c21..31808802 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
 @@ -53,6 +53,8 @@ import StatisticsUI
@@ -22584,7 +22584,7 @@ index 23695c21..c4ee5398 100644
                      let _ = (strongSelf.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: message.id.peerId))
                      |> deliverOnMainQueue).start(next: { [weak self] peer in
                          guard let self, let peer, case let .unique(gift) = gift else {
-@@ -5927,7 +5942,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -5927,7 +5942,14 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                  return
              }
              self.displayPollRestrictedToast(messageId: messageId)
@@ -22594,11 +22594,13 @@ index 23695c21..c4ee5398 100644
 +                return
 +            }
 +            pampGramToggleVisualChatMessageSide(context: self.context, messageId: messageId)
++        }, pampGramVisualChatEnabled: { [weak self] peerId in
++            return self?.pampGramSettings.visualChatEnabledPeerIds.contains(peerId) ?? false
 +        })
          controllerInteraction.enableFullTranslucency = context.sharedContext.energyUsageSettings.fullTranslucency
          
          self.controllerInteraction = controllerInteraction
-@@ -5982,7 +6002,31 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -5982,7 +6004,31 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                              f(.dismissWithoutContent)
                              self?.navigationButtonAction(.openChatInfo(expandAvatar: true, section: nil))
                          })))
@@ -22631,7 +22633,7 @@ index 23695c21..c4ee5398 100644
                          if canViewStats {
                              items.append(.action(ContextMenuActionItem(text: strongSelf.presentationData.strings.ChannelInfo_Stats, icon: { theme in
                                  return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Statistics"), color: theme.actionSheet.primaryTextColor)
-@@ -6332,6 +6376,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -6332,6 +6378,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
              }
          }
          self.moreBarButton.addTarget(self, action: #selector(self.moreButtonPressed), forControlEvents: .touchUpInside)
@@ -22643,7 +22645,7 @@ index 23695c21..c4ee5398 100644
          
          self.navigationItem.titleView = self.chatTitleView
          self.chatTitleView?.tapAction = { [weak self] in
-@@ -6972,6 +7021,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -6972,6 +7023,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
          }
  
          self.historyStateDisposable?.dispose()
@@ -22651,7 +22653,7 @@ index 23695c21..c4ee5398 100644
          self.messageIndexDisposable.dispose()
          self.navigationActionDisposable.dispose()
          self.galleryHiddenMesageAndMediaDisposable.dispose()
-@@ -7812,7 +7862,15 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -7812,7 +7864,15 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                          |> deliverOnMainQueue).startStandalone(next: { [weak self] playlistStateAndType in
                              if let self, let (_, playbackState, _) = playlistStateAndType, case let .state(state) = playbackState {
                                  if let source = state.item.playbackData?.source, case let .telegramFile(_, _, isViewOnce) = source, isViewOnce {
@@ -22668,7 +22670,7 @@ index 23695c21..c4ee5398 100644
                                  }
                              }
                          })
-@@ -8983,7 +9041,39 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -8983,7 +9043,39 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
          guard let peerId = self.chatLocation.peerId else {
              return
          }
@@ -23757,7 +23759,7 @@ index a5e2f3cd..20a272dd 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
-index 8499f95c..4be48bb5 100644
+index 8499f95c..f2e56d60 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
 @@ -16,6 +16,8 @@ import ChatMessageItemView
@@ -23769,7 +23771,7 @@ index 8499f95c..4be48bb5 100644
  
  private func mediaMergeableStyle(_ media: EngineRawMedia) -> ChatMessageMerge {
      if let story = media as? TelegramMediaStory, story.isMention {
-@@ -355,7 +357,15 @@ public final class ChatMessageItemImpl: ChatMessageItem, CustomStringConvertible
+@@ -355,7 +357,18 @@ public final class ChatMessageItemImpl: ChatMessageItem, CustomStringConvertible
                      }
                  }
                  displayAuthorInfo = incoming && peerId.isGroupOrChannel && effectiveAuthor != nil
@@ -23778,15 +23780,18 @@ index 8499f95c..4be48bb5 100644
 +                // PampGram: a "Сделать визуальный чат" message shows the avatar-header slot
 +                // (normally group-chat-only, and only on the incoming side) on BOTH sides, in a
 +                // private chat too — its role-switch button rides there instead of a real
-+                // peer avatar; see the patch to ChatMessageDateHeader.swift.
-+                if content.firstMessage.attributes.contains(where: { $0 is PampGramVisualChatMessageAttribute }) {
++                // peer avatar; see the patch to ChatMessageDateHeader.swift. Gated on the
++                // CURRENT toggle, not just the attribute: turning "Визуальный чат" off for this
++                // chat should hide the button on every message it already rewrote, not just
++                // stop adding it to new ones.
++                if content.firstMessage.attributes.contains(where: { $0 is PampGramVisualChatMessageAttribute }), controllerInteraction.pampGramVisualChatEnabled(peerId) {
 +                    displayAuthorInfo = effectiveAuthor != nil
 +                }
 +
                  if let _ = content.firstMessage.guestChatAttribute {
                      displayAuthorInfo = true
                  }
-@@ -465,7 +475,19 @@ public final class ChatMessageItemImpl: ChatMessageItem, CustomStringConvertible
+@@ -465,7 +478,19 @@ public final class ChatMessageItemImpl: ChatMessageItem, CustomStringConvertible
                          }
                      }
                      
@@ -23906,10 +23911,10 @@ index bad3a3a2..0ea8da9d 100644
              } else if let peer = self.peer {
                  if peer.id.isVerificationCodes {
 diff --git a/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift b/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift
-index 0546d4be..69f546e9 100644
+index 0546d4be..a96e3a7e 100644
 --- a/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift
 +++ b/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift
-@@ -196,6 +196,11 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
+@@ -196,6 +196,15 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
      
      public let openMessage: (EngineRawMessage, OpenMessageParams) -> Bool
      public let openPeer: (EnginePeer, ChatControllerInteractionNavigateToPeer, MessageReference?, OpenPeerSource) -> Void
@@ -23918,24 +23923,30 @@ index 0546d4be..69f546e9 100644
 +    // default so the other ChatControllerInteraction call sites (previews, recent actions, the
 +    // audio player overlay, …) don't need to know this exists.
 +    public let pampGramToggleVisualChatMessageSide: (EngineMessage.Id) -> Void
++    // PampGram: whether "Сделать визуальный чат" is currently on for a peer — read at
++    // message-item construction time so the role-switch button hides as soon as the mode is
++    // turned off, instead of staying on every message it was ever added to.
++    public let pampGramVisualChatEnabled: (EnginePeer.Id) -> Bool
      public let openPeerMention: (String, Promise<Bool>?) -> Void
      public let openMessageContextMenu: (EngineRawMessage, Bool, ASDisplayNode, CGRect, UIGestureRecognizer?, CGPoint?) -> Void
      public let updateMessageReaction: (EngineRawMessage, ChatControllerInteractionReaction, Bool, ContextExtractedContentContainingView?) -> Void
-@@ -511,7 +516,8 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
+@@ -511,7 +520,9 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
          automaticMediaDownloadSettings: MediaAutoDownloadSettings,
          pollActionState: ChatInterfacePollActionState,
          stickerSettings: ChatInterfaceStickerSettings,
 -        presentationContext: ChatPresentationContext
 +        presentationContext: ChatPresentationContext,
-+        pampGramToggleVisualChatMessageSide: @escaping (EngineMessage.Id) -> Void = { _ in }
++        pampGramToggleVisualChatMessageSide: @escaping (EngineMessage.Id) -> Void = { _ in },
++        pampGramVisualChatEnabled: @escaping (EnginePeer.Id) -> Bool = { _ in false }
      ) {
          self.openMessage = openMessage
          self.openPeer = openPeer
-@@ -650,6 +656,7 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
+@@ -650,6 +661,8 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
          self.stickerSettings = stickerSettings
  
          self.presentationContext = presentationContext
 +        self.pampGramToggleVisualChatMessageSide = pampGramToggleVisualChatMessageSide
++        self.pampGramVisualChatEnabled = pampGramVisualChatEnabled
      }
      
      deinit {
