@@ -46,6 +46,12 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
     private let emptyLabel = UILabel()
     private let fadeView = PampGramGiftPickerFadeView()
     private let captionLabel = UILabel()
+    private let minusButton = UIButton(type: .custom)
+    private let plusButton = UIButton(type: .custom)
+    private let countLabel = UILabel()
+    private var quantity = 1
+    private var holdDelayTimer: SwiftSignalKit.Timer?
+    private var holdRepeatTimer: SwiftSignalKit.Timer?
 
     private var gifts: [StarGift.Gift] = []
     private var tiles: [Int64: ComponentView<Empty>] = [:]
@@ -61,7 +67,9 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
     private let sideInset: CGFloat = 16.0
     private let spacing: CGFloat = 10.0
     private let buttonHeight: CGFloat = 50.0
-    private let captionHeight: CGFloat = 22.0
+    private let stepperHeight: CGFloat = 44.0
+    private let stepperButtonSize: CGFloat = 44.0
+    private let countLabelWidth: CGFloat = 48.0
 
     init(context: AccountContext) {
         self.context = context
@@ -78,6 +86,8 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
     }
 
     deinit {
+        self.holdDelayTimer?.invalidate()
+        self.holdRepeatTimer?.invalidate()
         self.refreshDisposable.dispose()
         self.giftsDisposable.dispose()
         self.addDisposable.dispose()
@@ -120,12 +130,35 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         self.fadeView.setColor(self.presentationData.theme.list.blocksBackgroundColor)
         self.view.addSubview(self.fadeView)
 
-        self.captionLabel.textAlignment = .center
+        self.captionLabel.textAlignment = .left
         self.captionLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .semibold)
         self.captionLabel.textColor = self.presentationData.theme.list.itemPrimaryTextColor
         self.captionLabel.adjustsFontSizeToFitWidth = true
         self.captionLabel.minimumScaleFactor = 0.7
         self.view.addSubview(self.captionLabel)
+
+        // "−  N  +": how many copies of the selected gift "Добавить в профиль" drops in. Holding
+        // either button keeps counting, so 50 copies isn't 50 taps.
+        for (button, title) in [(self.minusButton, "−"), (self.plusButton, "+")] {
+            button.setTitle(title, for: .normal)
+            button.titleLabel?.font = UIFont.systemFont(ofSize: 26.0, weight: .medium)
+            button.setTitleColor(self.presentationData.theme.list.itemAccentColor, for: .normal)
+            button.setTitleColor(self.presentationData.theme.list.itemDisabledTextColor, for: .disabled)
+            button.backgroundColor = self.presentationData.theme.list.itemBlocksBackgroundColor
+            button.layer.cornerRadius = self.stepperButtonSize / 2.0
+            button.clipsToBounds = true
+            self.view.addSubview(button)
+        }
+        self.minusButton.addTarget(self, action: #selector(self.minusDown), for: .touchDown)
+        self.plusButton.addTarget(self, action: #selector(self.plusDown), for: .touchDown)
+        for button in [self.minusButton, self.plusButton] {
+            button.addTarget(self, action: #selector(self.stepperReleased), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+        }
+
+        self.countLabel.textAlignment = .center
+        self.countLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 22.0, weight: .semibold)
+        self.countLabel.textColor = self.presentationData.theme.list.itemPrimaryTextColor
+        self.view.addSubview(self.countLabel)
 
         self.addButton.layer.cornerRadius = self.buttonHeight / 2.0
         self.addButton.clipsToBounds = true
@@ -185,11 +218,16 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
 
         let buttonFrame = CGRect(x: self.sideInset, y: size.height - bottomInset - self.buttonHeight, width: size.width - self.sideInset * 2.0, height: self.buttonHeight)
         self.addButton.frame = buttonFrame
-        // The name and price of the selected gift sit right above the button, so it is clear what
-        // "Добавить в профиль" is about even though the tiles show only pictures.
-        let captionFrame = CGRect(x: self.sideInset, y: buttonFrame.minY - 6.0 - self.captionHeight, width: size.width - self.sideInset * 2.0, height: self.captionHeight)
-        self.captionLabel.frame = captionFrame
-        let fadeTop = captionFrame.minY - 24.0
+        // One row right above the button: the selected gift's name and price on the left (the tiles
+        // show only pictures), the "−  N  +" quantity picker on the right.
+        let rowFrame = CGRect(x: self.sideInset, y: buttonFrame.minY - 10.0 - self.stepperHeight, width: size.width - self.sideInset * 2.0, height: self.stepperHeight)
+        let stepperWidth = self.stepperButtonSize * 2.0 + self.countLabelWidth
+        let stepperOriginX = rowFrame.maxX - stepperWidth
+        self.minusButton.frame = CGRect(x: stepperOriginX, y: rowFrame.minY, width: self.stepperButtonSize, height: self.stepperButtonSize)
+        self.countLabel.frame = CGRect(x: stepperOriginX + self.stepperButtonSize, y: rowFrame.minY, width: self.countLabelWidth, height: self.stepperHeight)
+        self.plusButton.frame = CGRect(x: stepperOriginX + self.stepperButtonSize + self.countLabelWidth, y: rowFrame.minY, width: self.stepperButtonSize, height: self.stepperButtonSize)
+        self.captionLabel.frame = CGRect(x: rowFrame.minX, y: rowFrame.minY, width: max(0.0, stepperOriginX - rowFrame.minX - 8.0), height: self.stepperHeight)
+        let fadeTop = rowFrame.minY - 24.0
         self.fadeView.frame = CGRect(x: 0.0, y: fadeTop, width: size.width, height: size.height - fadeTop)
 
         self.scrollView.frame = CGRect(origin: .zero, size: size)
@@ -197,7 +235,7 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         let rows = (self.gifts.count + self.columns - 1) / self.columns
         let contentHeight = CGFloat(rows) * (itemSize.height + self.spacing)
         let topInset = navigationHeight + self.spacing
-        let scrollBottomInset = size.height - captionFrame.minY + self.spacing
+        let scrollBottomInset = size.height - rowFrame.minY + self.spacing
         self.scrollView.contentInset = UIEdgeInsets(top: topInset, left: 0.0, bottom: scrollBottomInset, right: 0.0)
         self.scrollView.scrollIndicatorInsets = UIEdgeInsets(top: navigationHeight, left: 0.0, bottom: scrollBottomInset, right: 0.0)
         let newContentSize = CGSize(width: size.width, height: contentHeight)
@@ -301,14 +339,71 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         self.updateVisibleTiles()
     }
 
+    private func changeQuantity(by delta: Int) {
+        let updated = max(1, min(PampGramPhantomGiftManager.maxGiftsPerAdd, self.quantity + delta))
+        if updated == self.quantity {
+            return
+        }
+        self.quantity = updated
+        self.updateButton()
+    }
+
+    @objc private func minusDown() {
+        self.startHold(delta: -1)
+    }
+
+    @objc private func plusDown() {
+        self.startHold(delta: 1)
+    }
+
+    @objc private func stepperReleased() {
+        self.stopHold()
+    }
+
+    /// One step right away, then — if the finger stays down — a steady run of them.
+    private func startHold(delta: Int) {
+        self.stopHold()
+        self.changeQuantity(by: delta)
+        let delayTimer = SwiftSignalKit.Timer(timeout: 0.45, repeat: false, completion: { [weak self] in
+            guard let self else {
+                return
+            }
+            let repeatTimer = SwiftSignalKit.Timer(timeout: 0.07, repeat: true, completion: { [weak self] in
+                self?.changeQuantity(by: delta)
+            }, queue: Queue.mainQueue())
+            self.holdRepeatTimer = repeatTimer
+            repeatTimer.start()
+        }, queue: Queue.mainQueue())
+        self.holdDelayTimer = delayTimer
+        delayTimer.start()
+    }
+
+    private func stopHold() {
+        self.holdDelayTimer?.invalidate()
+        self.holdDelayTimer = nil
+        self.holdRepeatTimer?.invalidate()
+        self.holdRepeatTimer = nil
+    }
+
     private func updateButton() {
         let hasSelection = self.selectedGiftId != nil
+        self.countLabel.text = "\(self.quantity)"
+        self.minusButton.isEnabled = self.quantity > 1 && !self.isAdding
+        self.plusButton.isEnabled = self.quantity < PampGramPhantomGiftManager.maxGiftsPerAdd && !self.isAdding
         if let selectedGiftId = self.selectedGiftId, let gift = self.gifts.first(where: { $0.id == selectedGiftId }) {
             self.captionLabel.text = "\(gift.title ?? "Подарок") · ⭐️ \(gift.price)"
         } else {
             self.captionLabel.text = nil
         }
-        self.addButton.setTitle(hasSelection ? "Добавить в профиль" : "Выберите подарок", for: .normal)
+        let addTitle: String
+        if !hasSelection {
+            addTitle = "Выберите подарок"
+        } else if self.quantity > 1 {
+            addTitle = "Добавить в профиль · \(self.quantity) шт."
+        } else {
+            addTitle = "Добавить в профиль"
+        }
+        self.addButton.setTitle(addTitle, for: .normal)
         self.addButton.backgroundColor = self.presentationData.theme.list.itemCheckColors.fillColor
         self.addButton.alpha = (hasSelection && !self.isAdding) ? 1.0 : 0.5
         self.addButton.isEnabled = hasSelection && !self.isAdding
@@ -318,23 +413,32 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         guard let selectedGiftId = self.selectedGiftId, !self.isAdding, let gift = self.gifts.first(where: { $0.id == selectedGiftId }) else {
             return
         }
+        self.stopHold()
         self.isAdding = true
         self.updateButton()
-        self.addDisposable.set((PampGramPhantomGiftManager.addGenericGiftToProfile(context: self.context, gift: gift)
-        |> deliverOnMainQueue).start(next: { [weak self] _ in
+        self.addDisposable.set((PampGramPhantomGiftManager.addGenericGiftsToProfile(context: self.context, gift: gift, count: self.quantity)
+        |> deliverOnMainQueue).start(next: { [weak self] addedCount in
             guard let self else {
                 return
             }
             self.isAdding = false
             self.selectedGiftId = nil
+            self.quantity = 1
             self.updateButton()
             self.updateVisibleTiles()
 
+            let name = gift.title ?? "Подарок"
             let text: String
-            if gift.upgradeStars != nil {
-                text = "«\(gift.title ?? "Подарок")» добавлен в профиль. Откройте его там и нажмите «Улучшить бесплатно»."
+            if addedCount > 1 {
+                if gift.upgradeStars != nil {
+                    text = "«\(name)» × \(addedCount) добавлены в профиль. Откройте любой из них там и нажмите «Улучшить бесплатно»."
+                } else {
+                    text = "«\(name)» × \(addedCount) добавлены в профиль."
+                }
+            } else if gift.upgradeStars != nil {
+                text = "«\(name)» добавлен в профиль. Откройте его там и нажмите «Улучшить бесплатно»."
             } else {
-                text = "«\(gift.title ?? "Подарок")» добавлен в профиль."
+                text = "«\(name)» добавлен в профиль."
             }
             self.present(UndoOverlayController(presentationData: self.presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
         }))

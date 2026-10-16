@@ -38,6 +38,18 @@ public enum PampGramPhantomGiftStore {
         })
     }
 
+    /// Several gifts in one write — the list is decoded and re-encoded once instead of once per gift.
+    public static func addAll(transaction: Transaction, gifts: [PampGramPhantomGift]) {
+        if gifts.isEmpty {
+            return
+        }
+        transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.phantomGifts, { entry in
+            var list = entry?.get(PampGramPhantomGiftList.self) ?? PampGramPhantomGiftList(gifts: [])
+            list.gifts.append(contentsOf: gifts)
+            return PreferencesEntry(list)
+        })
+    }
+
     public static func remove(transaction: Transaction, id: Int64) {
         transaction.updatePreferencesEntry(key: PampGramPreferencesKeys.phantomGifts, { entry in
             var list = entry?.get(PampGramPhantomGiftList.self) ?? PampGramPhantomGiftList(gifts: [])

@@ -407,6 +407,40 @@ public enum PampGramPhantomGiftManager {
         }
     }
 
+    /// The same as `addGenericGiftToProfile`, `count` times in one go: each copy is its own gift
+    /// (own id, so it can be pinned, hidden or upgraded on its own). Dates are one second apart so
+    /// the copies keep a stable order in the profile. Returns how many were added.
+    public static func addGenericGiftsToProfile(context: AccountContext, gift: StarGift.Gift, count: Int) -> Signal<Int, NoError> {
+        let count = max(1, min(count, maxGiftsPerAdd))
+        return context.account.postbox.transaction { transaction -> Int in
+            let now = Int32(Date().timeIntervalSince1970)
+            var gifts: [PampGramPhantomGift] = []
+            var usedIds = Set<Int64>()
+            for index in 0 ..< count {
+                var id = Int64.random(in: 1...Int64.max)
+                while usedIds.contains(id) {
+                    id = Int64.random(in: 1...Int64.max)
+                }
+                usedIds.insert(id)
+                gifts.append(PampGramPhantomGift(
+                    id: id,
+                    peerId: context.account.peerId,
+                    gift: .generic(gift),
+                    price: CurrencyAmount(amount: StarsAmount(value: gift.price, nanos: 0), currency: .stars),
+                    date: now - Int32(index),
+                    localMessageId: nil,
+                    fromPeerId: context.account.peerId,
+                    isReceived: true
+                ))
+            }
+            PampGramPhantomGiftStore.addAll(transaction: transaction, gifts: gifts)
+            return gifts.count
+        }
+    }
+
+    /// The most copies of one gift a single "Добавить в профиль" can drop in.
+    public static let maxGiftsPerAdd = 99
+
     private static func pickWeighted(_ attributes: [StarGift.UniqueGift.Attribute], rarity: (StarGift.UniqueGift.Attribute) -> StarGift.UniqueGift.Attribute.Rarity?) -> StarGift.UniqueGift.Attribute? {
         guard !attributes.isEmpty else {
             return nil
