@@ -9,6 +9,12 @@ jobs:
   build:
     runs-on: macos-26
     timeout-minutes: 350 # under the 6h hosted-runner cap
+    # contents: write is for the release-based IPA upload below — Actions artifact storage
+    # has its own, separate quota (and GitHub's own error says that counter is only
+    # recalculated every 6-12 hours, so it can get stuck well after the actual usage drops),
+    # while a GitHub Release's assets are a different storage pool entirely.
+    permissions:
+      contents: write
     steps:
       - name: Check out PampGram (patch + PhantomGiftKit)
         uses: actions/checkout@v4
@@ -300,11 +306,34 @@ jobs:
         if: always()
         run: ls -lh "$GITHUB_WORKSPACE/output" || echo "no output directory — the build did not reach packaging"
 
-      - name: Upload IPA
+      # Best-effort: free, and sometimes just works, but Actions artifact storage has hit
+      # its own quota before while genuinely empty — continue-on-error so a stuck quota here
+      # never fails the whole job when the release upload below is the one that matters.
+      - name: Upload IPA (artifact)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: PampGram-ipa
           path: output/Telegram.ipa
           if-no-files-found: warn
           retention-days: 14
+
+      # The reliable download: a GitHub Release's assets are a separate storage pool from
+      # Actions artifacts, so this sidesteps that quota entirely. Tagged by run number so
+      # repeated runs don't collide; gh is preinstalled on GitHub-hosted runners.
+      - name: Upload IPA (release)
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -f output/Telegram.ipa ]; then
+            echo "no output/Telegram.ipa — the build did not reach packaging, nothing to release"
+            exit 0
+          fi
+          TAG="build-${{ github.run_number }}"
+          gh release create "$TAG" output/Telegram.ipa \
+            --repo "${{ github.repository }}" \
+            --title "PampGram build #${{ github.run_number }}" \
+            --notes "Automated build from commit ${{ github.sha }}."

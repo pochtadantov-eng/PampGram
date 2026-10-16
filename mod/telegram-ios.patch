@@ -16889,7 +16889,7 @@ index 53c9a721..3cca62e2 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramCore/Sources/Account/AccountManager.swift b/submodules/TelegramCore/Sources/Account/AccountManager.swift
-index 3f2b4794..8b0fdfbb 100644
+index 3f2b4794..37e985b6 100644
 --- a/submodules/TelegramCore/Sources/Account/AccountManager.swift
 +++ b/submodules/TelegramCore/Sources/Account/AccountManager.swift
 @@ -3,6 +3,7 @@ import Postbox
@@ -16900,12 +16900,13 @@ index 3f2b4794..8b0fdfbb 100644
  
  private enum AccountKind {
      case authorized
-@@ -138,6 +139,8 @@ private var declaredEncodables: Void = {
+@@ -138,6 +139,9 @@ private var declaredEncodables: Void = {
      declareEncodable(SourceReferenceMessageAttribute.self, f: { SourceReferenceMessageAttribute(decoder: $0) })
      declareEncodable(SourceAuthorInfoMessageAttribute.self, f: { SourceAuthorInfoMessageAttribute(decoder: $0) })
      declareEncodable(EditedMessageAttribute.self, f: { EditedMessageAttribute(decoder: $0) })
 +    declareEncodable(PampGramDeletedByRemoteAttribute.self, f: { PampGramDeletedByRemoteAttribute(decoder: $0) })
 +    declareEncodable(PampGramCallOverrideAttribute.self, f: { PampGramCallOverrideAttribute(decoder: $0) })
++    declareEncodable(PampGramVisualChatMessageAttribute.self, f: { PampGramVisualChatMessageAttribute(decoder: $0) })
      declareEncodable(ReplyMarkupMessageAttribute.self, f: { ReplyMarkupMessageAttribute(decoder: $0) })
      declareEncodable(OutgoingChatContextResultMessageAttribute.self, f: { OutgoingChatContextResultMessageAttribute(decoder: $0) })
      declareEncodable(HttpReferenceMediaResource.self, f: { HttpReferenceMediaResource(decoder: $0) })
@@ -21287,18 +21288,19 @@ index b1ea96b8..7b96dcac 100644
              } else {
                  return []
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
-index 2e4d308a..5a99b742 100644
+index 2e4d308a..627de2ec 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
-@@ -42,6 +42,7 @@ import RaiseToListen
+@@ -42,6 +42,8 @@ import RaiseToListen
  import UrlHandling
  import AvatarNode
  import AppBundle
 +import PampGramCore
++import PampGramSettingsUI
  import LocalizedPeerData
  import PhoneNumberFormat
  import SettingsUI
-@@ -350,53 +351,82 @@ extension ChatControllerImpl {
+@@ -350,53 +352,82 @@ extension ChatControllerImpl {
                              strongSelf.audioRecorder.set(.single(nil))
                              strongSelf.recorderDataDisposable.set(nil)
                          } else {
@@ -21424,6 +21426,23 @@ index 2e4d308a..5a99b742 100644
                          }
                      }
                  }))
+@@ -756,7 +787,15 @@ extension ChatControllerImpl {
+             guard let peerId = self.chatLocation.peerId else {
+                 return
+             }
+-            
++
++            // PampGram визуальный чат: a recorded voice note is its own funnel straight to
++            // enqueueMessages — never reaches ChatControllerImpl.sendMessages(_:) at all — so
++            // it needs this same hook copied here too.
++            if pampGramHandleVisualChatMessages(context: self.context, peerId: peerId, messages: transformedMessages, pampGramSettings: self.pampGramSettings) {
++                self.chatDisplayNode.historyNode.scrollToEndOfHistory()
++                return
++            }
++
+             let _ = (enqueueMessages(account: self.context.account, peerId: peerId, messages: transformedMessages)
+             |> deliverOnMainQueue).startStandalone(next: { [weak self] _ in
+                 if let strongSelf = self, strongSelf.presentationInterfaceState.subject != .scheduledMessages {
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift b/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift
 index a1a8f61d..8d28620c 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift
@@ -22515,7 +22534,7 @@ diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift b
                          return (currentPanel, nil)
                      } else {
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
-index 23695c21..4aa6c523 100644
+index 23695c21..c4ee5398 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
 @@ -53,6 +53,8 @@ import StatisticsUI
@@ -22527,7 +22546,22 @@ index 23695c21..4aa6c523 100644
  import InviteLinksUI
  import Markdown
  import TelegramPermissionsUI
-@@ -2193,7 +2195,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -306,7 +308,13 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+     var moreInfoNavigationButton: ChatNavigationButton?
+     
+     var historyStateDisposable: Disposable?
+-    
++
++    // PampGram: kept current for the avatar-button "Сделать визуальный чат" toggle and for the
++    // sendMessages/chatDisplayNode.sendMessages hooks below, which need it read synchronously
++    // at send time rather than via a fresh signal round-trip on every tap.
++    var pampGramSettings = PampGramSettings.defaultSettings
++    var pampGramSettingsDisposable: Disposable?
++
+     let galleryHiddenMesageAndMediaDisposable = MetaDisposable()
+     let temporaryHiddenGalleryMediaDisposable = MetaDisposable()
+     
+@@ -2193,7 +2201,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                  }
              }
  
@@ -22538,7 +22572,7 @@ index 23695c21..4aa6c523 100644
              let pinchController = makePinchController(sourceNode: sourceNode, disableScreenshots: isSecret, getContentAreaInScreenSpace: {
                  guard let strongSelf = self else {
                      return CGRect()
-@@ -2693,6 +2697,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -2693,6 +2703,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                          ], parseMarkdown: true), in: .window(.root))
                      })
                  case 1:
@@ -22550,7 +22584,74 @@ index 23695c21..4aa6c523 100644
                      let _ = (strongSelf.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: message.id.peerId))
                      |> deliverOnMainQueue).start(next: { [weak self] peer in
                          guard let self, let peer, case let .unique(gift) = gift else {
-@@ -7812,7 +7821,15 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -5927,7 +5942,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                 return
+             }
+             self.displayPollRestrictedToast(messageId: messageId)
+-        }, automaticMediaDownloadSettings: self.automaticMediaDownloadSettings, pollActionState: ChatInterfacePollActionState(), stickerSettings: self.stickerSettings, presentationContext: ChatPresentationContext(context: context, backgroundNode: self.chatBackgroundNode))
++        }, automaticMediaDownloadSettings: self.automaticMediaDownloadSettings, pollActionState: ChatInterfacePollActionState(), stickerSettings: self.stickerSettings, presentationContext: ChatPresentationContext(context: context, backgroundNode: self.chatBackgroundNode), pampGramToggleVisualChatMessageSide: { [weak self] messageId in
++            guard let self else {
++                return
++            }
++            pampGramToggleVisualChatMessageSide(context: self.context, messageId: messageId)
++        })
+         controllerInteraction.enableFullTranslucency = context.sharedContext.energyUsageSettings.fullTranslucency
+         
+         self.controllerInteraction = controllerInteraction
+@@ -5982,7 +6002,31 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+                             f(.dismissWithoutContent)
+                             self?.navigationButtonAction(.openChatInfo(expandAvatar: true, section: nil))
+                         })))
+-                        
++
++                        // PampGram: toggles this chat into/out of visualChatEnabledPeerIds — see
++                        // sendMessages(_:)/chatDisplayNode.sendMessages below for what the mode
++                        // actually does to a normal send.
++                        let pampGramVisualChatEnabled = strongSelf.pampGramSettings.visualChatEnabledPeerIds.contains(peer.id)
++                        items.append(.action(ContextMenuActionItem(text: pampGramVisualChatEnabled ? "Визуальный чат: выключить" : "Сделать визуальный чат", icon: { _ in
++                            return pampGramSettingsIcon(size: 24.0)
++                        }, action: { _, f in
++                            f(.dismissWithoutContent)
++                            guard let strongSelf = self else {
++                                return
++                            }
++                            let peerId = peer.id
++                            let _ = PampGramCore.updateSettingsInteractively(postbox: strongSelf.context.account.postbox, { settings in
++                                var settings = settings
++                                if let index = settings.visualChatEnabledPeerIds.firstIndex(of: peerId) {
++                                    settings.visualChatEnabledPeerIds.remove(at: index)
++                                } else {
++                                    settings.visualChatEnabledPeerIds.append(peerId)
++                                }
++                                return settings
++                            }).start()
++                            strongSelf.present(UndoOverlayController(presentationData: strongSelf.presentationData, content: .info(title: nil, text: pampGramVisualChatEnabled ? "Визуальный чат выключен." : "Визуальный чат включён: обычная отправка (без удержания кнопки) теперь идёт в чат локально. У каждого такого сообщения слева кнопка ⇄ — меняет, от кого оно.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
++                        })))
++
+                         if canViewStats {
+                             items.append(.action(ContextMenuActionItem(text: strongSelf.presentationData.strings.ChannelInfo_Stats, icon: { theme in
+                                 return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Statistics"), color: theme.actionSheet.primaryTextColor)
+@@ -6332,6 +6376,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+             }
+         }
+         self.moreBarButton.addTarget(self, action: #selector(self.moreButtonPressed), forControlEvents: .touchUpInside)
++
++        self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: context.account.postbox)
++        |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
++            self?.pampGramSettings = settings
++        })
+         
+         self.navigationItem.titleView = self.chatTitleView
+         self.chatTitleView?.tapAction = { [weak self] in
+@@ -6972,6 +7021,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+         }
+ 
+         self.historyStateDisposable?.dispose()
++        self.pampGramSettingsDisposable?.dispose()
+         self.messageIndexDisposable.dispose()
+         self.navigationActionDisposable.dispose()
+         self.galleryHiddenMesageAndMediaDisposable.dispose()
+@@ -7812,7 +7862,15 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                          |> deliverOnMainQueue).startStandalone(next: { [weak self] playlistStateAndType in
                              if let self, let (_, playbackState, _) = playlistStateAndType, case let .state(state) = playbackState {
                                  if let source = state.item.playbackData?.source, case let .telegramFile(_, _, isViewOnce) = source, isViewOnce {
@@ -22567,10 +22668,11 @@ index 23695c21..4aa6c523 100644
                                  }
                              }
                          })
-@@ -8983,6 +9000,25 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -8983,7 +9041,39 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
          guard let peerId = self.chatLocation.peerId else {
              return
          }
+-        
 +
 +        // PampGram фейк админ: в канале с включённым фейк-админом «пост» вставляется только в
 +        // локальную копию чата — на сервер ничего не уходит. Текст добавляется как пост канала,
@@ -22590,9 +22692,23 @@ index 23695c21..4aa6c523 100644
 +            self.chatDisplayNode.historyNode.scrollToEndOfHistory()
 +            return
 +        }
-         
++
++        // PampGram визуальный чат: covers every other funnel into this method — stickers,
++        // custom-emoji sends that fall through to sendMessages, quick replies. The normal
++        // composer text path has its own, earlier copy of this same call in
++        // chatDisplayNode.sendMessages (ChatControllerLoadDisplayNode.swift), since that path
++        // never reaches this method at all.
++        if pampGramHandleVisualChatMessages(context: self.context, peerId: peerId, messages: messages, pampGramSettings: self.pampGramSettings) {
++            self.interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
++                return (ChatTextInputState(inputText: NSAttributedString(string: "")), inputMode)
++            }
++            self.chatDisplayNode.historyNode.scrollToEndOfHistory()
++            return
++        }
++
          let _ = (self.shouldDivertMessagesToScheduled(messages: messages)
          |> deliverOnMainQueue).startStandalone(next: { [weak self] shouldDivert in
+             guard let self else {
 diff --git a/submodules/TelegramUI/Sources/ChatControllerNode.swift b/submodules/TelegramUI/Sources/ChatControllerNode.swift
 index 83c19884..b094f8c8 100644
 --- a/submodules/TelegramUI/Sources/ChatControllerNode.swift
@@ -23628,3 +23744,230 @@ index 00000000..de3255a8
 +}
 +
 +@end
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/BUILD
+index a5e2f3cd..20a272dd 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/BUILD
+@@ -37,6 +37,7 @@ swift_library(
+         "//submodules/AvatarVideoNode",
+         "//submodules/ComponentFlow",
+         "//submodules/TelegramUI/Components/EmojiStatusComponent",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
+index 8499f95c..4be48bb5 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
+@@ -16,6 +16,8 @@ import ChatMessageItemView
+ import ChatMessageStickerItemNode
+ import ChatMessageAnimatedStickerItemNode
+ import ChatMessageBubbleItemNode
++import PampGramCore
++import Postbox
+ 
+ private func mediaMergeableStyle(_ media: EngineRawMedia) -> ChatMessageMerge {
+     if let story = media as? TelegramMediaStory, story.isMention {
+@@ -355,7 +357,15 @@ public final class ChatMessageItemImpl: ChatMessageItem, CustomStringConvertible
+                     }
+                 }
+                 displayAuthorInfo = incoming && peerId.isGroupOrChannel && effectiveAuthor != nil
+-                
++
++                // PampGram: a "Сделать визуальный чат" message shows the avatar-header slot
++                // (normally group-chat-only, and only on the incoming side) on BOTH sides, in a
++                // private chat too — its role-switch button rides there instead of a real
++                // peer avatar; see the patch to ChatMessageDateHeader.swift.
++                if content.firstMessage.attributes.contains(where: { $0 is PampGramVisualChatMessageAttribute }) {
++                    displayAuthorInfo = effectiveAuthor != nil
++                }
++
+                 if let _ = content.firstMessage.guestChatAttribute {
+                     displayAuthorInfo = true
+                 }
+@@ -465,7 +475,19 @@ public final class ChatMessageItemImpl: ChatMessageItem, CustomStringConvertible
+                         }
+                     }
+                     
+-                    avatarHeader = ChatMessageAvatarHeader(timestamp: content.index.timestamp, peerId: effectiveAuthor.id, peer: effectiveAuthor, messageReference: MessageReference(message), message: message, presentationData: presentationData, context: context, controllerInteraction: controllerInteraction, storyStats: storyStats)
++                    // PampGram: each "Сделать визуальный чат" message gets its own header
++                    // identity (a synthetic peerId derived from the message's own id) instead
++                    // of the real author's — ChatMessageAvatarHeader.combinesWith merges
++                    // consecutive headers that share one, which would otherwise let one
++                    // role-switch button cover several messages at once.
++                    let pampGramVisualChatMessageId: EngineMessage.Id? = message.attributes.contains(where: { $0 is PampGramVisualChatMessageAttribute }) ? message.id : nil
++                    let avatarHeaderPeerId: PeerId
++                    if let pampGramVisualChatMessageId {
++                        avatarHeaderPeerId = PeerId(namespace: Namespaces.Peer.Empty, id: PeerId.Id._internalFromInt64Value(Int64(pampGramVisualChatMessageId.id)))
++                    } else {
++                        avatarHeaderPeerId = effectiveAuthor.id
++                    }
++                    avatarHeader = ChatMessageAvatarHeader(timestamp: content.index.timestamp, peerId: avatarHeaderPeerId, peer: effectiveAuthor, messageReference: MessageReference(message), message: message, presentationData: presentationData, context: context, controllerInteraction: controllerInteraction, storyStats: storyStats, pampGramVisualChatMessageId: pampGramVisualChatMessageId)
+                 }
+             }
+         }
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift
+index bad3a3a2..0ea8da9d 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift
+@@ -896,11 +896,15 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
+     public let context: AccountContext
+     public let controllerInteraction: ChatControllerInteraction?
+     public let storyStats: PeerStoryStats?
++    // PampGram: non-nil only for a "Сделать визуальный чат" message — see ChatMessageItemImpl.swift
++    // for how peerId above is kept unique per such message instead of per real author.
++    public let pampGramVisualChatMessageId: EngineMessage.Id?
+ 
+-    public init(timestamp: Int32, peerId: PeerId, peer: Peer?, messageReference: MessageReference?, message: Message, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?) {
++    public init(timestamp: Int32, peerId: PeerId, peer: Peer?, messageReference: MessageReference?, message: Message, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?, pampGramVisualChatMessageId: EngineMessage.Id? = nil) {
+         self.peerId = peerId
+         self.peer = peer
+         self.messageReference = messageReference
++        self.pampGramVisualChatMessageId = pampGramVisualChatMessageId
+         if message.adAttribute != nil {
+             self.adMessageId = message.id
+         } else {
+@@ -941,7 +945,7 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
+     }
+ 
+     public func node(synchronousLoad: Bool) -> ListViewItemHeaderNode {
+-        return ChatMessageAvatarHeaderNodeImpl(peerId: self.peerId, peer: self.peer, messageReference: self.messageReference, adMessageId: self.adMessageId, presentationData: self.presentationData, context: self.context, controllerInteraction: self.controllerInteraction, storyStats: self.storyStats, synchronousLoad: synchronousLoad)
++        return ChatMessageAvatarHeaderNodeImpl(peerId: self.peerId, peer: self.peer, messageReference: self.messageReference, adMessageId: self.adMessageId, presentationData: self.presentationData, context: self.context, controllerInteraction: self.controllerInteraction, storyStats: self.storyStats, synchronousLoad: synchronousLoad, pampGramVisualChatMessageId: self.pampGramVisualChatMessageId)
+     }
+ 
+     public func updateNode(_ node: ListViewItemHeaderNode, previous: ListViewItemHeader?, next: ListViewItemHeader?) {
+@@ -949,7 +953,9 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
+             return
+         }
+         node.updatePresentationData(self.presentationData, context: self.context)
+-        if let peer = self.peer {
++        // PampGram: never let a reused node's updatePeer overwrite the role-switch icon back
++        // to a real avatar image for one of these.
++        if self.pampGramVisualChatMessageId == nil, let peer = self.peer {
+             node.updatePeer(peer: peer)
+         }
+         node.updateStoryStats(storyStats: self.storyStats, theme: self.presentationData.theme.theme, force: false)
+@@ -970,6 +976,7 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+     private let messageReference: MessageReference?
+     private var peer: Peer?
+     private let adMessageId: EngineMessage.Id?
++    private let pampGramVisualChatMessageId: EngineMessage.Id?
+ 
+     private let containerNode: ContextControllerSourceNode
+     public let avatarNode: AvatarNode
+@@ -995,7 +1002,7 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+         }
+     }
+     
+-    public init(peerId: PeerId, peer: Peer?, messageReference: MessageReference?, adMessageId: EngineMessage.Id?, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?, synchronousLoad: Bool) {
++    public init(peerId: PeerId, peer: Peer?, messageReference: MessageReference?, adMessageId: EngineMessage.Id?, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?, synchronousLoad: Bool, pampGramVisualChatMessageId: EngineMessage.Id? = nil) {
+         self.peerId = peerId
+         self.peer = peer
+         self.messageReference = messageReference
+@@ -1004,6 +1011,7 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+         self.context = context
+         self.controllerInteraction = controllerInteraction
+         self.storyStats = storyStats
++        self.pampGramVisualChatMessageId = pampGramVisualChatMessageId
+ 
+         self.containerNode = ContextControllerSourceNode()
+ 
+@@ -1021,10 +1029,15 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+         self.addSubnode(self.containerNode)
+         self.containerNode.addSubnode(self.avatarNode)
+ 
+-        if let peer = peer {
++        if pampGramVisualChatMessageId != nil {
++            // PampGram: a role-switch button instead of a real avatar — setCustomLetters also
++            // turns off containerNode's gesture handling, so the long-press "open profile"
++            // context menu real avatars get doesn't show up on this one either.
++            self.setCustomLetters(context: context, theme: presentationData.theme.theme, synchronousLoad: synchronousLoad, letters: ["⇄"], emptyColor: .black)
++        } else if let peer = peer {
+             self.setPeer(context: context, theme: presentationData.theme.theme, synchronousLoad: synchronousLoad, peer: peer, authorOfMessage: messageReference, emptyColor: .black)
+         }
+-        
++
+         if let storyStats {
+             self.updateStoryStats(storyStats: storyStats, theme: presentationData.theme.theme, force: true)
+         }
+@@ -1294,7 +1307,12 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+ 
+     @objc private func tapGesture(_ recognizer: ListViewTapGestureRecognizer) {
+         if case .ended = recognizer.state {
+-            if self.peerId.namespace == Namespaces.Peer.Empty, case let .message(_, _, id, _, _, _, _) = self.messageReference?.content {
++            if let pampGramVisualChatMessageId = self.pampGramVisualChatMessageId {
++                // PampGram: flips this one message's side instead of opening a profile —
++                // checked first since its synthetic peerId (see ChatMessageItemImpl.swift)
++                // also happens to fall in the same "empty" namespace the next branch checks.
++                self.controllerInteraction?.pampGramToggleVisualChatMessageSide(pampGramVisualChatMessageId)
++            } else if self.peerId.namespace == Namespaces.Peer.Empty, case let .message(_, _, id, _, _, _, _) = self.messageReference?.content {
+                 self.controllerInteraction?.displayMessageTooltip(id, self.presentationData.strings.Conversation_ForwardAuthorHiddenTooltip, false, self, self.avatarNode.frame)
+             } else if let peer = self.peer {
+                 if peer.id.isVerificationCodes {
+diff --git a/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift b/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift
+index 0546d4be..69f546e9 100644
+--- a/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift
++++ b/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift
+@@ -196,6 +196,11 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
+     
+     public let openMessage: (EngineRawMessage, OpenMessageParams) -> Bool
+     public let openPeer: (EnginePeer, ChatControllerInteractionNavigateToPeer, MessageReference?, OpenPeerSource) -> Void
++    // PampGram: the avatar-header button "Сделать визуальный чат" messages show in place of a
++    // real peer avatar — flips that one message's side instead of opening a profile. A no-op
++    // default so the other ChatControllerInteraction call sites (previews, recent actions, the
++    // audio player overlay, …) don't need to know this exists.
++    public let pampGramToggleVisualChatMessageSide: (EngineMessage.Id) -> Void
+     public let openPeerMention: (String, Promise<Bool>?) -> Void
+     public let openMessageContextMenu: (EngineRawMessage, Bool, ASDisplayNode, CGRect, UIGestureRecognizer?, CGPoint?) -> Void
+     public let updateMessageReaction: (EngineRawMessage, ChatControllerInteractionReaction, Bool, ContextExtractedContentContainingView?) -> Void
+@@ -511,7 +516,8 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
+         automaticMediaDownloadSettings: MediaAutoDownloadSettings,
+         pollActionState: ChatInterfacePollActionState,
+         stickerSettings: ChatInterfaceStickerSettings,
+-        presentationContext: ChatPresentationContext
++        presentationContext: ChatPresentationContext,
++        pampGramToggleVisualChatMessageSide: @escaping (EngineMessage.Id) -> Void = { _ in }
+     ) {
+         self.openMessage = openMessage
+         self.openPeer = openPeer
+@@ -650,6 +656,7 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
+         self.stickerSettings = stickerSettings
+ 
+         self.presentationContext = presentationContext
++        self.pampGramToggleVisualChatMessageSide = pampGramToggleVisualChatMessageSide
+     }
+     
+     deinit {
+diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
+index 8de49d0f..952db67c 100644
+--- a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
++++ b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
+@@ -127,6 +127,8 @@ import ChatSendAsContextMenu
+ import GlobalControlPanelsContext
+ import ComponentFlow
+ import ComponentDisplayAdapters
++import PampGramCore
++import PampGramSettingsUI
+ 
+ extension ChatControllerImpl {
+     func reloadChatLocation(chatLocation: ChatLocation, chatLocationContextHolder: Atomic<ChatLocationContextHolder?>, historyNode: ChatHistoryListNodeImpl, apply: @escaping ((ContainedViewLayoutTransition?) -> Void) -> Void) {
+@@ -1002,6 +1004,18 @@ extension ChatControllerImpl {
+             strongSelf.commitPurposefulAction()
+             
+             if let peerId = strongSelf.chatLocation.peerId {
++                // PampGram визуальный чат: the composer's normal send button (no long-press)
++                // never reaches ChatControllerImpl.sendMessages(_:) — this closure calls
++                // enqueueMessages directly — so this is its own copy of the same hook that
++                // method carries for every other funnel (stickers, quick replies, ...).
++                if pampGramHandleVisualChatMessages(context: strongSelf.context, peerId: peerId, messages: messages, pampGramSettings: strongSelf.pampGramSettings) {
++                    strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
++                        $0.updatedInterfaceState { $0.withUpdatedReplyMessageSubject(nil).withUpdatedSendMessageEffect(nil).withUpdatedPostSuggestionState(nil).withUpdatedComposeInputState(ChatTextInputState(inputText: NSAttributedString(string: ""))) }
++                    })
++                    strongSelf.chatDisplayNode.historyNode.scrollToEndOfHistory()
++                    return
++                }
++
+                 var hasDisabledContent = false
+                 if "".isEmpty {
+                     hasDisabledContent = false

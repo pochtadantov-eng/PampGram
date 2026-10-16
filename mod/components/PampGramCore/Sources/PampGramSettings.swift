@@ -443,6 +443,16 @@ public struct PampGramSettings: Codable, Equatable {
     public var fakeTransferCooldownUntil: Int32
     /// Accepting a gift purchase offer pretends to fail locally; nothing is sent to the other party.
     public var fakeOfferAcceptFailEnabled: Bool
+    /// "Сделать визуальный чат" (long-press the peer avatar in a chat's nav bar): chats where a
+    /// normal send — no long-pressing the send button, and whatever it's sending (text, a
+    /// sticker, a voice note, a photo) — is rewritten as a local-only message instead of a real
+    /// one, inserted as outgoing ("от меня") by default. Each such message shows a small
+    /// role-switch button to its left (see the patch to `ChatMessageDateHeader.swift`) that
+    /// flips it to/from the other side afterwards — no guessing from letter case, no "which
+    /// side" prompt. See `ChatController.swift`'s `sendMessages`/`chatDisplayNode.sendMessages`
+    /// hooks for where a send gets rewritten, and `PampGramVisualChatMessageAttribute` for how
+    /// a rewritten message is told apart from a real one.
+    public var visualChatEnabledPeerIds: [PeerId]
 
     // A brand-new install (and "Сбросить балансы", which resets to this same constant) starts
     // at 0 — nothing pre-loaded before the person has looked at a single toggle.
@@ -522,11 +532,12 @@ public struct PampGramSettings: Codable, Equatable {
             fakeTransferCooldownEnabled: false,
             fakeTransferCooldownSeconds: 7 * 24 * 60 * 60,
             fakeTransferCooldownUntil: 0,
-            fakeOfferAcceptFailEnabled: false
+            fakeOfferAcceptFailEnabled: false,
+            visualChatEnabledPeerIds: []
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool, moderationExcludedPeerIds: [PeerId], callRecordingEnabled: Bool, fakeTransferCooldownEnabled: Bool, fakeTransferCooldownSeconds: Int32, fakeTransferCooldownUntil: Int32, fakeOfferAcceptFailEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool, moderationExcludedPeerIds: [PeerId], callRecordingEnabled: Bool, fakeTransferCooldownEnabled: Bool, fakeTransferCooldownSeconds: Int32, fakeTransferCooldownUntil: Int32, fakeOfferAcceptFailEnabled: Bool, visualChatEnabledPeerIds: [PeerId]) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -599,6 +610,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.fakeTransferCooldownSeconds = fakeTransferCooldownSeconds
         self.fakeTransferCooldownUntil = fakeTransferCooldownUntil
         self.fakeOfferAcceptFailEnabled = fakeOfferAcceptFailEnabled
+        self.visualChatEnabledPeerIds = visualChatEnabledPeerIds
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -711,6 +723,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.fakeTransferCooldownSeconds = try container.decodeIfPresent(Int32.self, forKey: .fakeTransferCooldownSeconds) ?? defaults.fakeTransferCooldownSeconds
         self.fakeTransferCooldownUntil = try container.decodeIfPresent(Int32.self, forKey: .fakeTransferCooldownUntil) ?? defaults.fakeTransferCooldownUntil
         self.fakeOfferAcceptFailEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeOfferAcceptFailEnabled) ?? defaults.fakeOfferAcceptFailEnabled
+        self.visualChatEnabledPeerIds = try container.decodeIfPresent([PeerId].self, forKey: .visualChatEnabledPeerIds) ?? defaults.visualChatEnabledPeerIds
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
