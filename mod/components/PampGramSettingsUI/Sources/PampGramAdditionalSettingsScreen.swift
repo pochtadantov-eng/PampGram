@@ -18,10 +18,12 @@ private final class PampGramAdditionalArguments {
     let openChatLock: () -> Void
     let openCallOverrides: () -> Void
     let openFakeAdmin: () -> Void
+    let toggleFakeCryptoBot: (Bool) -> Void
+    let openFakeCryptoBot: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleFakeCryptoBot: @escaping (Bool) -> Void, openFakeCryptoBot: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -30,6 +32,8 @@ private final class PampGramAdditionalArguments {
         self.openChatLock = openChatLock
         self.openCallOverrides = openCallOverrides
         self.openFakeAdmin = openFakeAdmin
+        self.toggleFakeCryptoBot = toggleFakeCryptoBot
+        self.openFakeCryptoBot = openFakeCryptoBot
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
     }
@@ -66,6 +70,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case chatLockRow(String, String)
     case callOverridesRow(String)
     case fakeAdminRow(String)
+    case fakeCryptoBotToggle(String, Bool)
+    case openFakeCryptoBotRow(String)
     case extrasFooter(String)
 
     var section: ItemListSectionId {
@@ -78,7 +84,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.speed.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .fakeCryptoBotToggle, .openFakeCryptoBotRow, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -121,8 +127,12 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 16
         case .fakeAdminRow:
             return 17
-        case .extrasFooter:
+        case .fakeCryptoBotToggle:
             return 18
+        case .openFakeCryptoBotRow:
+            return 19
+        case .extrasFooter:
+            return 20
         }
     }
 
@@ -177,6 +187,14 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openFakeAdmin()
             })
+        case let .fakeCryptoBotToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bitcoinsign.circle.fill", backgroundColor: UIColor(rgb: 0x1b8ed2)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeCryptoBot(value)
+            })
+        case let .openFakeCryptoBotRow(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: "", sectionId: self.section, style: .blocks, action: {
+                arguments.openFakeCryptoBot()
+            })
         }
     }
 }
@@ -206,7 +224,11 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
     entries.append(.callOverridesRow("Звонки"))
     entries.append(.fakeAdminRow("Фейк админ"))
-    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас."))
+    entries.append(.fakeCryptoBotToggle("Фейковый криптобот", settings.fakeCryptoBotEnabled))
+    if settings.fakeCryptoBotEnabled {
+        entries.append(.openFakeCryptoBotRow("Открыть фейковый криптобот"))
+    }
+    entries.append(.extrasFooter("Всё работает только на этом устройстве. «Фейк админ» позволяет визуально писать посты в любом канале — только у вас. «Фейковый криптобот» подменяет мини-апп @CryptoBot локальным визуалом; балансы редактируются длинным нажатием на логотип внутри визуала."))
 
     return entries
 }
@@ -315,6 +337,16 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         },
         openFakeAdmin: {
             pushControllerImpl?(pampGramFakeAdminController(context: context))
+        },
+        toggleFakeCryptoBot: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeCryptoBotEnabled = value
+                return settings
+            }).start()
+        },
+        openFakeCryptoBot: {
+            pushControllerImpl?(pampGramFakeCryptoBotController(context: context))
         },
         toggleInfinitePins: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
