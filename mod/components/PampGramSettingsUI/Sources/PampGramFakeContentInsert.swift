@@ -73,8 +73,13 @@ private func pampGramInsertIncomingMessage(context: AccountContext, peerId: Engi
     }
 }
 
-private func pampGramInsertOutgoingMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media], extraAttributes: [MessageAttribute] = []) -> Signal<EngineMessage.Id?, NoError> {
+private func pampGramInsertOutgoingMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media], extraAttributes: [MessageAttribute] = [], inlineMedia: [Media] = []) -> Signal<EngineMessage.Id?, NoError> {
     return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
+        // The stickers a message's custom emoji point at have to be in the media table for the
+        // chat to draw them — the real send path stores them the same way before it inserts.
+        for file in inlineMedia {
+            transaction.storeMediaIfNotPresent(media: file)
+        }
         let globallyUniqueId = Int64.random(in: Int64.min ... Int64.max)
         let storeMessage = StoreMessage(
             id: .Partial(peerId, Namespaces.Message.Local),
@@ -444,8 +449,20 @@ public func pampGramInsertTextDirect(context: AccountContext, peerId: EnginePeer
 /// no guessing from letter case, no "which side is this" prompt. `PampGramVisualChatMessageAttribute`
 /// is what makes `ChatMessageItemImpl`/`ChatMessageDateHeader` show the small role-switch button
 /// to its left afterwards (see `pampGramToggleVisualChatMessageSide`).
-private func pampGramInsertVisualChatMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media]) -> Signal<EngineMessage.Id?, NoError> {
-    return pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: text, media: media, extraAttributes: [PampGramVisualChatMessageAttribute()])
+private func pampGramInsertVisualChatMessage(context: AccountContext, peerId: EnginePeer.Id, text: String, media: [Media], attributes: [MessageAttribute], inlineMedia: [Media]) -> Signal<EngineMessage.Id?, NoError> {
+    return pampGramInsertOutgoingMessage(context: context, peerId: peerId, text: text, media: media, extraAttributes: [PampGramVisualChatMessageAttribute()] + attributes, inlineMedia: inlineMedia)
+}
+
+/// What of a composed message's attributes a visual-chat message keeps: the text entities (bold,
+/// italic, spoiler, quote, links, and custom emoji, which live there too) and the media
+/// spoiler/caption-position flags. They are stored with the message and ride along unchanged when
+/// the role-switch button flips its side, so the formatting and emoji look the same either way.
+/// Everything else on a composed message (reply, schedule, silent, timers, effects) belongs to the
+/// real send and has no meaning for a local-only message.
+private func pampGramVisualChatKeptAttributes(_ attributes: [MessageAttribute]) -> [MessageAttribute] {
+    return attributes.filter { attribute in
+        return attribute is TextEntitiesMessageAttribute || attribute is MediaSpoilerMessageAttribute || attribute is InvertMediaMessageAttribute
+    }
 }
 
 /// Called from every one of `ChatController.swift`'s send funnels — `chatDisplayNode.sendMessages`
@@ -466,14 +483,14 @@ public func pampGramHandleVisualChatMessages(context: AccountContext, peerId: En
         return false
     }
     for message in messages {
-        guard case let .message(text, _, _, mediaReference, _, _, _, _, _, _) = message else {
+        guard case let .message(text, attributes, inlineStickers, mediaReference, _, _, _, _, _, _) = message else {
             continue
         }
         let media: [Media] = mediaReference.map { [$0.media] } ?? []
         if text.isEmpty && media.isEmpty {
             continue
         }
-        let _ = pampGramInsertVisualChatMessage(context: context, peerId: peerId, text: text, media: media).start()
+        let _ = pampGramInsertVisualChatMessage(context: context, peerId: peerId, text: text, media: media, attributes: pampGramVisualChatKeptAttributes(attributes), inlineMedia: Array(inlineStickers.values)).start()
     }
     return true
 }
