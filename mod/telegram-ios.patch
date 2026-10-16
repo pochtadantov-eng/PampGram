@@ -18075,7 +18075,7 @@ index 1ddd9b86..5e5fecbc 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-index 2dcfc95e..901f287a 100644
+index 2dcfc95e..ac533c96 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 @@ -8,6 +8,7 @@ import TelegramCore
@@ -18117,7 +18117,35 @@ index 2dcfc95e..901f287a 100644
      override public var extractedBackgroundNode: ASDisplayNode? {
          return self.shadowNode
      }
-@@ -3981,7 +3995,70 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+@@ -1870,6 +1884,18 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+             avatarInset = 0.0
+         }
+         
++        // PampGram визуальный чат: the role-switch button takes an avatar-sized slot on the
++        // message's outer edge — left for an incoming message, right for an outgoing one — so the
++        // bubble gets the same inset a group-chat avatar gives it instead of sliding under the
++        // button. The width limit is the same on both sides, so a long bubble never runs into it.
++        var pampGramVisualChatOutgoingInset: CGFloat = 0.0
++        if !isSidePanelOpen, item.content.firstMessage.attributes.contains(where: { $0 is PampGramVisualChatMessageAttribute }), item.controllerInteraction.pampGramVisualChatEnabled(chatLocationPeerId) {
++            avatarInset = layoutConstants.avatarInset
++            if !incoming {
++                pampGramVisualChatOutgoingInset = layoutConstants.avatarInset
++            }
++        }
++        
+         let isFailed = item.content.firstMessage.effectivelyFailed(timestamp: item.context.account.network.getApproximateRemoteTimestamp())
+         
+         var needsShareButton = false
+@@ -3694,7 +3720,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
+         let contentUpperRightCorner: CGPoint
+         switch alignment {
+             case .none:
+-                backgroundFrame = CGRect(origin: CGPoint(x: incoming ? (params.leftInset + layoutConstants.bubble.edgeInset + avatarInset) : (params.width - params.rightInset - layoutBubbleSize.width - layoutConstants.bubble.edgeInset - deliveryFailedInset), y: detachedContentNodesHeight + additionalTopHeight), size: layoutBubbleSize)
++                backgroundFrame = CGRect(origin: CGPoint(x: incoming ? (params.leftInset + layoutConstants.bubble.edgeInset + avatarInset) : (params.width - params.rightInset - layoutBubbleSize.width - layoutConstants.bubble.edgeInset - deliveryFailedInset - pampGramVisualChatOutgoingInset), y: detachedContentNodesHeight + additionalTopHeight), size: layoutBubbleSize)
+                 contentOrigin = CGPoint(x: backgroundFrame.origin.x + (incoming ? layoutConstants.bubble.contentInsets.left : layoutConstants.bubble.contentInsets.right), y: backgroundFrame.origin.y + layoutConstants.bubble.contentInsets.top + headerSize.height + contentVerticalOffset)
+                 contentUpperRightCorner = CGPoint(x: backgroundFrame.maxX - (incoming ? layoutConstants.bubble.contentInsets.right : layoutConstants.bubble.contentInsets.left), y: backgroundFrame.origin.y + layoutConstants.bubble.contentInsets.top + headerSize.height)
+             case .center:
+@@ -3981,7 +4007,70 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
          
          let previousBackgroundFrame = strongSelf.backgroundNode.backgroundFrame
          strongSelf.backgroundNode.backgroundFrame = backgroundFrame
@@ -23759,7 +23787,7 @@ index a5e2f3cd..20a272dd 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
-index 8499f95c..f2e56d60 100644
+index 8499f95c..817ea56c 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
 @@ -16,6 +16,8 @@ import ChatMessageItemView
@@ -23808,41 +23836,45 @@ index 8499f95c..f2e56d60 100644
 +                    } else {
 +                        avatarHeaderPeerId = effectiveAuthor.id
 +                    }
-+                    avatarHeader = ChatMessageAvatarHeader(timestamp: content.index.timestamp, peerId: avatarHeaderPeerId, peer: effectiveAuthor, messageReference: MessageReference(message), message: message, presentationData: presentationData, context: context, controllerInteraction: controllerInteraction, storyStats: storyStats, pampGramVisualChatMessageId: pampGramVisualChatMessageId)
++                    avatarHeader = ChatMessageAvatarHeader(timestamp: content.index.timestamp, peerId: avatarHeaderPeerId, peer: effectiveAuthor, messageReference: MessageReference(message), message: message, presentationData: presentationData, context: context, controllerInteraction: controllerInteraction, storyStats: storyStats, pampGramVisualChatMessageId: pampGramVisualChatMessageId, pampGramVisualChatOutgoing: !incoming)
                  }
              }
          }
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift
-index bad3a3a2..0ea8da9d 100644
+index bad3a3a2..4b37cdef 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift
-@@ -896,11 +896,15 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
+@@ -896,11 +896,19 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
      public let context: AccountContext
      public let controllerInteraction: ChatControllerInteraction?
      public let storyStats: PeerStoryStats?
 +    // PampGram: non-nil only for a "Сделать визуальный чат" message — see ChatMessageItemImpl.swift
 +    // for how peerId above is kept unique per such message instead of per real author.
 +    public let pampGramVisualChatMessageId: EngineMessage.Id?
++    // PampGram: which side the role-switch button sits on — the message's own outer edge, so on
++    // an outgoing message it is on the right, next to the bubble, instead of far away on the left.
++    public let pampGramVisualChatOutgoing: Bool
  
 -    public init(timestamp: Int32, peerId: PeerId, peer: Peer?, messageReference: MessageReference?, message: Message, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?) {
-+    public init(timestamp: Int32, peerId: PeerId, peer: Peer?, messageReference: MessageReference?, message: Message, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?, pampGramVisualChatMessageId: EngineMessage.Id? = nil) {
++    public init(timestamp: Int32, peerId: PeerId, peer: Peer?, messageReference: MessageReference?, message: Message, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?, pampGramVisualChatMessageId: EngineMessage.Id? = nil, pampGramVisualChatOutgoing: Bool = false) {
          self.peerId = peerId
          self.peer = peer
          self.messageReference = messageReference
 +        self.pampGramVisualChatMessageId = pampGramVisualChatMessageId
++        self.pampGramVisualChatOutgoing = pampGramVisualChatOutgoing
          if message.adAttribute != nil {
              self.adMessageId = message.id
          } else {
-@@ -941,7 +945,7 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
+@@ -941,7 +949,7 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
      }
  
      public func node(synchronousLoad: Bool) -> ListViewItemHeaderNode {
 -        return ChatMessageAvatarHeaderNodeImpl(peerId: self.peerId, peer: self.peer, messageReference: self.messageReference, adMessageId: self.adMessageId, presentationData: self.presentationData, context: self.context, controllerInteraction: self.controllerInteraction, storyStats: self.storyStats, synchronousLoad: synchronousLoad)
-+        return ChatMessageAvatarHeaderNodeImpl(peerId: self.peerId, peer: self.peer, messageReference: self.messageReference, adMessageId: self.adMessageId, presentationData: self.presentationData, context: self.context, controllerInteraction: self.controllerInteraction, storyStats: self.storyStats, synchronousLoad: synchronousLoad, pampGramVisualChatMessageId: self.pampGramVisualChatMessageId)
++        return ChatMessageAvatarHeaderNodeImpl(peerId: self.peerId, peer: self.peer, messageReference: self.messageReference, adMessageId: self.adMessageId, presentationData: self.presentationData, context: self.context, controllerInteraction: self.controllerInteraction, storyStats: self.storyStats, synchronousLoad: synchronousLoad, pampGramVisualChatMessageId: self.pampGramVisualChatMessageId, pampGramVisualChatOutgoing: self.pampGramVisualChatOutgoing)
      }
  
      public func updateNode(_ node: ListViewItemHeaderNode, previous: ListViewItemHeader?, next: ListViewItemHeader?) {
-@@ -949,7 +953,9 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
+@@ -949,9 +957,15 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
              return
          }
          node.updatePresentationData(self.presentationData, context: self.context)
@@ -23852,33 +23884,42 @@ index bad3a3a2..0ea8da9d 100644
 +        if self.pampGramVisualChatMessageId == nil, let peer = self.peer {
              node.updatePeer(peer: peer)
          }
++        // PampGram: a flipped message keeps its header node (same id) — move the button across.
++        if self.pampGramVisualChatMessageId != nil {
++            node.updatePampGramVisualChatSide(outgoing: self.pampGramVisualChatOutgoing)
++        }
          node.updateStoryStats(storyStats: self.storyStats, theme: self.presentationData.theme.theme, force: false)
-@@ -970,6 +976,7 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+     }
+ }
+@@ -970,6 +984,9 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
      private let messageReference: MessageReference?
      private var peer: Peer?
      private let adMessageId: EngineMessage.Id?
 +    private let pampGramVisualChatMessageId: EngineMessage.Id?
++    private var pampGramVisualChatOutgoing: Bool
++    private var pampGramLastLayout: (size: CGSize, leftInset: CGFloat, rightInset: CGFloat)?
  
      private let containerNode: ContextControllerSourceNode
      public let avatarNode: AvatarNode
-@@ -995,7 +1002,7 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+@@ -995,7 +1012,7 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
          }
      }
      
 -    public init(peerId: PeerId, peer: Peer?, messageReference: MessageReference?, adMessageId: EngineMessage.Id?, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?, synchronousLoad: Bool) {
-+    public init(peerId: PeerId, peer: Peer?, messageReference: MessageReference?, adMessageId: EngineMessage.Id?, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?, synchronousLoad: Bool, pampGramVisualChatMessageId: EngineMessage.Id? = nil) {
++    public init(peerId: PeerId, peer: Peer?, messageReference: MessageReference?, adMessageId: EngineMessage.Id?, presentationData: ChatPresentationData, context: AccountContext, controllerInteraction: ChatControllerInteraction?, storyStats: PeerStoryStats?, synchronousLoad: Bool, pampGramVisualChatMessageId: EngineMessage.Id? = nil, pampGramVisualChatOutgoing: Bool = false) {
          self.peerId = peerId
          self.peer = peer
          self.messageReference = messageReference
-@@ -1004,6 +1011,7 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+@@ -1004,6 +1021,8 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
          self.context = context
          self.controllerInteraction = controllerInteraction
          self.storyStats = storyStats
 +        self.pampGramVisualChatMessageId = pampGramVisualChatMessageId
++        self.pampGramVisualChatOutgoing = pampGramVisualChatOutgoing
  
          self.containerNode = ContextControllerSourceNode()
  
-@@ -1021,10 +1029,15 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+@@ -1021,10 +1040,15 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
          self.addSubnode(self.containerNode)
          self.containerNode.addSubnode(self.avatarNode)
  
@@ -23896,7 +23937,45 @@ index bad3a3a2..0ea8da9d 100644
          if let storyStats {
              self.updateStoryStats(storyStats: storyStats, theme: presentationData.theme.theme, force: true)
          }
-@@ -1294,7 +1307,12 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+@@ -1227,8 +1251,27 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+         }
+     }
+ 
++    public func updatePampGramVisualChatSide(outgoing: Bool) {
++        if self.pampGramVisualChatOutgoing == outgoing {
++            return
++        }
++        self.pampGramVisualChatOutgoing = outgoing
++        self.updateSelectionState(animated: false)
++        if let layout = self.pampGramLastLayout {
++            self.updateLayout(size: layout.size, leftInset: layout.leftInset, rightInset: layout.rightInset, transition: .animated(duration: 0.25, curve: .easeInOut))
++        }
++    }
++
+     override public func updateLayout(size: CGSize, leftInset: CGFloat, rightInset: CGFloat, transition: ContainedViewLayoutTransition) {
+-        transition.updateFrame(node: self.containerNode, frame: CGRect(origin: CGPoint(x: leftInset + 7.0, y: -3.0), size: CGSize(width: avatarHeaderSize(), height: avatarHeaderSize())))
++        self.pampGramLastLayout = (size, leftInset, rightInset)
++        // PampGram: a visual-chat button on an outgoing message sits on the right, mirrored.
++        let containerX: CGFloat
++        if self.pampGramVisualChatOutgoing {
++            containerX = size.width - rightInset - 7.0 - avatarHeaderSize()
++        } else {
++            containerX = leftInset + 7.0
++        }
++        transition.updateFrame(node: self.containerNode, frame: CGRect(origin: CGPoint(x: containerX, y: -3.0), size: CGSize(width: avatarHeaderSize(), height: avatarHeaderSize())))
+         let avatarFrame = CGRect(origin: CGPoint(), size: CGSize(width: avatarHeaderSize(), height: avatarHeaderSize()))
+         self.avatarNode.position = avatarFrame.center
+         self.avatarNode.bounds = CGRect(origin: CGPoint(), size: avatarFrame.size)
+@@ -1258,7 +1301,7 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
+ 
+     public func updateSelectionState(animated: Bool) {
+         let currentSelectionOffset = self.currentSelectionOffset
+-        let offset: CGFloat = self.controllerInteraction?.selectionState != nil ? 42.0 : 0.0
++        let offset: CGFloat = (self.controllerInteraction?.selectionState != nil && !self.pampGramVisualChatOutgoing) ? 42.0 : 0.0
+         self.currentSelectionOffset = offset
+ 
+         let previousSubnodeTransform = CATransform3DMakeTranslation(currentSelectionOffset, 0.0, 0.0)
+@@ -1294,7 +1337,12 @@ public final class ChatMessageAvatarHeaderNodeImpl: ListViewItemHeaderNode, Chat
  
      @objc private func tapGesture(_ recognizer: ListViewTapGestureRecognizer) {
          if case .ended = recognizer.state {
@@ -23982,3 +24061,105 @@ index 8de49d0f..952db67c 100644
                  var hasDisabledContent = false
                  if "".isEmpty {
                      hasDisabledContent = false
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
+index 4d5cd55f..8f9050a1 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
+@@ -7,6 +7,7 @@ import TelegramCore
+ import TelegramPresentationData
+ import TextFormat
+ import AccountContext
++import PampGramCore
+ import StickerResources
+ import ContextUI
+ import Markdown
+@@ -512,6 +513,17 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
+                 hasAvatar = false
+             }
+             
++            // PampGram визуальный чат: the role-switch button takes an avatar-sized slot on the
++            // message's outer edge (left for an incoming message, right for an outgoing one), so the
++            // sticker is moved off it the same way a group-chat avatar moves it.
++            var pampGramVisualChatOutgoingInset: CGFloat = 0.0
++            if item.message.attributes.contains(where: { $0 is PampGramVisualChatMessageAttribute }), item.controllerInteraction.pampGramVisualChatEnabled(item.chatLocation.peerId ?? item.message.id.peerId) {
++                hasAvatar = true
++                if !incoming {
++                    pampGramVisualChatOutgoingInset = layoutConstants.avatarInset
++                }
++            }
++            
+             if hasAvatar {
+                 avatarInset = layoutConstants.avatarInset
+             } else {
+@@ -595,7 +607,7 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
+             
+             let innerImageInset: CGFloat = 10.0
+             let innerImageSize = CGSize(width: imageSize.width + innerImageInset * 2.0, height: imageSize.height + innerImageInset * 2.0)
+-            var imageFrame = CGRect(origin: CGPoint(x: 0.0 + (incoming ? (params.leftInset + layoutConstants.bubble.edgeInset + avatarInset + layoutConstants.bubble.contentInsets.left) : (params.width - params.rightInset - innerImageSize.width - layoutConstants.bubble.edgeInset - layoutConstants.bubble.contentInsets.left - deliveryFailedInset)), y: -innerImageInset), size: innerImageSize)
++            var imageFrame = CGRect(origin: CGPoint(x: 0.0 + (incoming ? (params.leftInset + layoutConstants.bubble.edgeInset + avatarInset + layoutConstants.bubble.contentInsets.left) : (params.width - params.rightInset - innerImageSize.width - layoutConstants.bubble.edgeInset - layoutConstants.bubble.contentInsets.left - deliveryFailedInset - pampGramVisualChatOutgoingInset)), y: -innerImageInset), size: innerImageSize)
+             
+             let arguments = TransformImageArguments(corners: ImageCorners(), imageSize: imageSize, boundingSize: imageSize, intrinsicInsets: UIEdgeInsets(top: innerImageInset, left: innerImageInset, bottom: innerImageInset, right: innerImageInset))
+             
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD
+index 1c4c39b4..b4f4fa33 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD
+@@ -38,6 +38,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/Chat/ChatMessageReactionsFooterContentNode",
+         "//submodules/TelegramUI/Components/Chat/ChatSwipeToReplyRecognizer",
+         "//submodules/TelegramUI/Components/Chat/ChatMessageSuggestedPostInfoNode",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
+index 06d13699..104b74da 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
+@@ -6,6 +6,7 @@ import Display
+ import SwiftSignalKit
+ import Postbox
+ import TelegramCore
++import PampGramCore
+ import CoreImage
+ import TelegramPresentationData
+ import Compression
+@@ -960,6 +961,17 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
+                 hasAvatar = false
+             }
+             
++            // PampGram визуальный чат: the role-switch button takes an avatar-sized slot on the
++            // message's outer edge (left for an incoming message, right for an outgoing one), so the
++            // sticker is moved off it the same way a group-chat avatar moves it.
++            var pampGramVisualChatOutgoingInset: CGFloat = 0.0
++            if item.message.attributes.contains(where: { $0 is PampGramVisualChatMessageAttribute }), item.controllerInteraction.pampGramVisualChatEnabled(item.chatLocation.peerId ?? item.message.id.peerId) {
++                hasAvatar = true
++                if !incoming {
++                    pampGramVisualChatOutgoingInset = layoutConstants.avatarInset
++                }
++            }
++            
+             if hasAvatar {
+                 avatarInset = layoutConstants.avatarInset
+             } else {
+@@ -1103,7 +1115,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
+             
+             var innerImageSize = imageSize
+             imageSize = CGSize(width: imageSize.width + imageInset * 2.0, height: imageSize.height + imageInset * 2.0)
+-            var imageFrame = CGRect(origin: CGPoint(x: 0.0 + (incoming ? (params.leftInset + layoutConstants.bubble.edgeInset + avatarInset + layoutConstants.bubble.contentInsets.left) : (params.width - params.rightInset - imageSize.width - layoutConstants.bubble.edgeInset - layoutConstants.bubble.contentInsets.left - deliveryFailedInset - imageHorizontalOffset)), y: imageVerticalInset + imageTopPadding), size: CGSize(width: imageSize.width, height: imageSize.height))
++            var imageFrame = CGRect(origin: CGPoint(x: 0.0 + (incoming ? (params.leftInset + layoutConstants.bubble.edgeInset + avatarInset + layoutConstants.bubble.contentInsets.left) : (params.width - params.rightInset - imageSize.width - layoutConstants.bubble.edgeInset - layoutConstants.bubble.contentInsets.left - deliveryFailedInset - imageHorizontalOffset - pampGramVisualChatOutgoingInset)), y: imageVerticalInset + imageTopPadding), size: CGSize(width: imageSize.width, height: imageSize.height))
+             if isEmoji {
+                 innerImageSize = imageSize
+             }
+diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD
+index 30fadb76..074075e5 100644
+--- a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD
++++ b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD
+@@ -55,6 +55,7 @@ swift_library(
+         "//submodules/TelegramUI/Components/Chat/MessageHaptics",
+         "//submodules/TelegramUI/Components/Chat/ChatMessageTransitionNode",
+         "//submodules/TelegramUI/Components/Chat/ChatMessageSuggestedPostInfoNode",
++        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
+     ],
+     visibility = [
+         "//visibility:public",

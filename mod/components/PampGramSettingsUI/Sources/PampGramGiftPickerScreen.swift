@@ -21,6 +21,22 @@ public func pampGramGiftPickerController(context: AccountContext) -> ViewControl
     return PampGramGiftPickerController(context: context)
 }
 
+/// A soft fade behind the "Добавить в профиль" button so the tiles scrolling underneath it never
+/// make its label hard to read.
+private final class PampGramGiftPickerFadeView: UIView {
+    override class var layerClass: AnyClass {
+        return CAGradientLayer.self
+    }
+
+    func setColor(_ color: UIColor) {
+        guard let layer = self.layer as? CAGradientLayer else {
+            return
+        }
+        layer.colors = [color.withAlphaComponent(0.0).cgColor, color.withAlphaComponent(0.92).cgColor, color.cgColor]
+        layer.locations = [0.0, 0.35, 1.0]
+    }
+}
+
 private final class PampGramGiftPickerController: ViewController, UIScrollViewDelegate {
     private let context: AccountContext
     private let presentationData: PresentationData
@@ -28,6 +44,8 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
     private let scrollView = UIScrollView()
     private let addButton = UIButton(type: .custom)
     private let emptyLabel = UILabel()
+    private let fadeView = PampGramGiftPickerFadeView()
+    private let captionLabel = UILabel()
 
     private var gifts: [StarGift.Gift] = []
     private var tiles: [Int64: ComponentView<Empty>] = [:]
@@ -43,6 +61,7 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
     private let sideInset: CGFloat = 16.0
     private let spacing: CGFloat = 10.0
     private let buttonHeight: CGFloat = 50.0
+    private let captionHeight: CGFloat = 22.0
 
     init(context: AccountContext) {
         self.context = context
@@ -78,14 +97,35 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
         self.scrollView.alwaysBounceVertical = true
         self.scrollView.showsVerticalScrollIndicator = true
         self.scrollView.contentInsetAdjustmentBehavior = .never
-        self.view.addSubview(self.scrollView)
+        // The tiles scroll UNDER the navigation bar (which blurs them), never over it — the bar
+        // is already in the view hierarchy by now, so they go in right below it.
+        if let navigationBar = self.navigationBar {
+            self.view.insertSubview(self.scrollView, belowSubview: navigationBar.view)
+        } else {
+            self.view.addSubview(self.scrollView)
+        }
 
         self.emptyLabel.text = "Каталог подарков загружается…"
         self.emptyLabel.textAlignment = .center
         self.emptyLabel.numberOfLines = 0
         self.emptyLabel.font = UIFont.systemFont(ofSize: 15.0)
         self.emptyLabel.textColor = self.presentationData.theme.list.itemSecondaryTextColor
-        self.view.addSubview(self.emptyLabel)
+        if let navigationBar = self.navigationBar {
+            self.view.insertSubview(self.emptyLabel, belowSubview: navigationBar.view)
+        } else {
+            self.view.addSubview(self.emptyLabel)
+        }
+
+        self.fadeView.isUserInteractionEnabled = false
+        self.fadeView.setColor(self.presentationData.theme.list.blocksBackgroundColor)
+        self.view.addSubview(self.fadeView)
+
+        self.captionLabel.textAlignment = .center
+        self.captionLabel.font = UIFont.systemFont(ofSize: 15.0, weight: .semibold)
+        self.captionLabel.textColor = self.presentationData.theme.list.itemPrimaryTextColor
+        self.captionLabel.adjustsFontSizeToFitWidth = true
+        self.captionLabel.minimumScaleFactor = 0.7
+        self.view.addSubview(self.captionLabel)
 
         self.addButton.layer.cornerRadius = self.buttonHeight / 2.0
         self.addButton.clipsToBounds = true
@@ -145,13 +185,19 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
 
         let buttonFrame = CGRect(x: self.sideInset, y: size.height - bottomInset - self.buttonHeight, width: size.width - self.sideInset * 2.0, height: self.buttonHeight)
         self.addButton.frame = buttonFrame
+        // The name and price of the selected gift sit right above the button, so it is clear what
+        // "Добавить в профиль" is about even though the tiles show only pictures.
+        let captionFrame = CGRect(x: self.sideInset, y: buttonFrame.minY - 6.0 - self.captionHeight, width: size.width - self.sideInset * 2.0, height: self.captionHeight)
+        self.captionLabel.frame = captionFrame
+        let fadeTop = captionFrame.minY - 24.0
+        self.fadeView.frame = CGRect(x: 0.0, y: fadeTop, width: size.width, height: size.height - fadeTop)
 
         self.scrollView.frame = CGRect(origin: .zero, size: size)
         let itemSize = self.itemSize(width: size.width)
         let rows = (self.gifts.count + self.columns - 1) / self.columns
         let contentHeight = CGFloat(rows) * (itemSize.height + self.spacing)
         let topInset = navigationHeight + self.spacing
-        let scrollBottomInset = size.height - buttonFrame.minY + self.spacing
+        let scrollBottomInset = size.height - captionFrame.minY + self.spacing
         self.scrollView.contentInset = UIEdgeInsets(top: topInset, left: 0.0, bottom: scrollBottomInset, right: 0.0)
         self.scrollView.scrollIndicatorInsets = UIEdgeInsets(top: navigationHeight, left: 0.0, bottom: scrollBottomInset, right: 0.0)
         let newContentSize = CGSize(width: size.width, height: contentHeight)
@@ -257,6 +303,11 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
 
     private func updateButton() {
         let hasSelection = self.selectedGiftId != nil
+        if let selectedGiftId = self.selectedGiftId, let gift = self.gifts.first(where: { $0.id == selectedGiftId }) {
+            self.captionLabel.text = "\(gift.title ?? "Подарок") · ⭐️ \(gift.price)"
+        } else {
+            self.captionLabel.text = nil
+        }
         self.addButton.setTitle(hasSelection ? "Добавить в профиль" : "Выберите подарок", for: .normal)
         self.addButton.backgroundColor = self.presentationData.theme.list.itemCheckColors.fillColor
         self.addButton.alpha = (hasSelection && !self.isAdding) ? 1.0 : 0.5
