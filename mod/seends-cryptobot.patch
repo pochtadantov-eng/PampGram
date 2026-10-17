@@ -1,3 +1,199 @@
+diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift b/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
+deleted file mode 100644
+index 58a50975..00000000
+--- a/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
++++ /dev/null
+@@ -1,190 +0,0 @@
+-import Foundation
+-import Postbox
+-import SwiftSignalKit
+-import PampGramCore
+-
+-/// "Обход одноразовых" / "Обход с таймером" — the part that makes them real.
+-///
+-/// The display half (`ChatMessageInteractiveMediaNode`) only stops drawing a self-destructing
+-/// photo/video blurred. Telegram still treats the message as secret everywhere else: a tap opens
+-/// `SecretMediaPreviewController`, which starts the countdown (and reports the content as opened),
+-/// the picture is capture-protected, and save/copy/forward are hidden — so the photo vanished when
+-/// the timer ran out and could never be saved.
+-///
+-/// This removes the self-destruct timers from the *local copy* of the message: the
+-/// `AutoremoveTimeoutMessageAttribute` / `AutoclearTimeoutMessageAttribute` that
+-/// `Message.containsSecretMedia` is derived from. From then on the message is an ordinary photo or
+-/// video for every screen — regular gallery, regular context menu, "Сохранить" — and nothing ever
+-/// starts a countdown or sends `readMessageContents`, so the original stays where it is and the
+-/// sender never sees it opened. Nothing is sent to Telegram.
+-///
+-/// Scope, on purpose: incoming photos, videos and GIFs in cloud chats only, and only while the
+-/// toggle matching the message's kind is on. Secret chats are never touched (see the footer of the
+-/// "Медиа и скриншоты" block), and neither are voice / music / round videos, which have their own
+-/// players and their own "listened" bookkeeping.
+-///
+-/// Lives here rather than in a separate mod module for the same reason `PampGramSecretMediaPrefetch`
+-/// does: it needs `TelegramCore`-only types, and `PampGramCore` must never depend back on them.
+-public enum PampGramTemporaryMediaBypass {
+-    private final class InFlight {
+-        private let lock = NSLock()
+-        private var ids = Set<MessageId>()
+-
+-        func begin(_ id: MessageId) -> Bool {
+-            self.lock.lock()
+-            defer { self.lock.unlock() }
+-            return self.ids.insert(id).inserted
+-        }
+-
+-        func end(_ id: MessageId) {
+-            self.lock.lock()
+-            self.ids.remove(id)
+-            self.lock.unlock()
+-        }
+-    }
+-
+-    private static let inFlight = InFlight()
+-
+-    /// Same range `Message.containsSecretMedia` and `tagsForStoreMessage` call "secret".
+-    private static func isSecretRangeTimeout(_ timeout: Int32) -> Bool {
+-        return timeout <= 60 || timeout == viewOnceTimeout
+-    }
+-
+-    /// Photos, videos and GIFs — what the bubble's media node draws. Round videos, voice messages
+-    /// and music play through their own nodes and are left exactly as stock Telegram has them.
+-    private static func isPlainMedia(_ message: Message) -> Bool {
+-        for media in message.media {
+-            if media is TelegramMediaImage {
+-                return true
+-            } else if let file = media as? TelegramMediaFile {
+-                if file.isInstantVideo || file.isVoice || file.isMusic {
+-                    return false
+-                }
+-                if file.isVideo || file.isAnimated {
+-                    return true
+-                }
+-            }
+-        }
+-        return false
+-    }
+-
+-    private static func isToggleOn(message: Message, viewOnceEnabled: Bool, timedEnabled: Bool) -> Bool {
+-        return message.minAutoremoveOrClearTimeout == viewOnceTimeout ? viewOnceEnabled : timedEnabled
+-    }
+-
+-    /// The timers can be removed from this message right now.
+-    private static func isStrippable(message: Message, viewOnceEnabled: Bool, timedEnabled: Bool) -> Bool {
+-        guard message.flags.contains(.Incoming), message.id.peerId.namespace != Namespaces.Peer.SecretChat else {
+-            return false
+-        }
+-        guard message.containsSecretMedia, self.isPlainMedia(message) else {
+-            return false
+-        }
+-        return self.isToggleOn(message: message, viewOnceEnabled: viewOnceEnabled, timedEnabled: timedEnabled)
+-    }
+-
+-    private static func strippedAttributes(_ attributes: [MessageAttribute]) -> [MessageAttribute] {
+-        return attributes.filter { attribute in
+-            if let attribute = attribute as? AutoremoveTimeoutMessageAttribute {
+-                return !self.isSecretRangeTimeout(attribute.timeout)
+-            } else if let attribute = attribute as? AutoclearTimeoutMessageAttribute {
+-                return !self.isSecretRangeTimeout(attribute.timeout)
+-            }
+-            return true
+-        }
+-    }
+-
+-    /// Chat bubble: draw the media as a normal one. Uses the in-memory mirror of the settings, so
+-    /// it's safe to call from layout code. Covers outgoing messages too (you can see what you
+-    /// sent), but never a secret chat.
+-    public static func displaysAsPlain(message: Message, accountPeerId: PeerId) -> Bool {
+-        if message.id.peerId.namespace == Namespaces.Peer.SecretChat || !message.containsSecretMedia {
+-            return false
+-        }
+-        let key = accountPeerId.toInt64()
+-        return self.isToggleOn(message: message, viewOnceEnabled: PampGramTemporaryMediaDisplay.shared.isViewOnceEnabled(accountKey: key), timedEnabled: PampGramTemporaryMediaDisplay.shared.isTimedEnabled(accountKey: key))
+-    }
+-
+-    /// Opening: the message should go to the regular gallery instead of the secret viewer.
+-    public static func applies(message: Message, accountPeerId: PeerId) -> Bool {
+-        let key = accountPeerId.toInt64()
+-        return self.isStrippable(message: message, viewOnceEnabled: PampGramTemporaryMediaDisplay.shared.isViewOnceEnabled(accountKey: key), timedEnabled: PampGramTemporaryMediaDisplay.shared.isTimedEnabled(accountKey: key))
+-    }
+-
+-    @discardableResult
+-    private static func strip(transaction: Transaction, id: MessageId, viewOnceEnabled: Bool, timedEnabled: Bool) -> Bool {
+-        guard let message = transaction.getMessage(id), self.isStrippable(message: message, viewOnceEnabled: viewOnceEnabled, timedEnabled: timedEnabled) else {
+-            return false
+-        }
+-        if self.strippedAttributes(message.attributes).count == message.attributes.count {
+-            return false
+-        }
+-        transaction.updateMessage(id, update: { currentMessage in
+-            var storeForwardInfo: StoreMessageForwardInfo?
+-            if let forwardInfo = currentMessage.forwardInfo {
+-                storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
+-            }
+-            let updatedAttributes = self.strippedAttributes(currentMessage.attributes)
+-            // A secret photo/video is stored without its "photo or video" tags (that's what keeps
+-            // it out of Shared Media), so give them back now that it's an ordinary one — a
+-            // rescued photo should show up there like any other.
+-            var tags = currentMessage.tags
+-            let (derivedTags, _) = tagsForStoreMessage(incoming: true, attributes: updatedAttributes, media: currentMessage.media, textEntities: nil, isPinned: false)
+-            tags.formUnion(derivedTags.intersection([.photoOrVideo, .photo, .video]))
+-            return .update(StoreMessage(id: currentMessage.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: updatedAttributes, media: currentMessage.media))
+-        })
+-        return true
+-    }
+-
+-    /// Chat bubble: strips the timers in the background, once per message while a write is already
+-    /// running for it. The bubble re-renders by itself when the message changes.
+-    public static func stripTimersInBackground(postbox: Postbox, accountPeerId: PeerId, message: Message) {
+-        guard self.applies(message: message, accountPeerId: accountPeerId) else {
+-            return
+-        }
+-        let id = message.id
+-        if !self.inFlight.begin(id) {
+-            return
+-        }
+-        let key = accountPeerId.toInt64()
+-        let viewOnceEnabled = PampGramTemporaryMediaDisplay.shared.isViewOnceEnabled(accountKey: key)
+-        let timedEnabled = PampGramTemporaryMediaDisplay.shared.isTimedEnabled(accountKey: key)
+-        let _ = (postbox.transaction { transaction -> Void in
+-            self.strip(transaction: transaction, id: id, viewOnceEnabled: viewOnceEnabled, timedEnabled: timedEnabled)
+-            self.inFlight.end(id)
+-        }).startStandalone()
+-    }
+-
+-    /// Opening: completes once the timers are gone, so the gallery that's built next already sees
+-    /// an ordinary photo (no capture protection, share/save available). `.single` when there's
+-    /// nothing to do, so a normal gallery open stays synchronous.
+-    public static func stripTimers(postbox: Postbox, accountPeerId: PeerId, message: Message) -> Signal<Void, NoError> {
+-        guard self.applies(message: message, accountPeerId: accountPeerId) else {
+-            return .single(Void())
+-        }
+-        let id = message.id
+-        let key = accountPeerId.toInt64()
+-        let viewOnceEnabled = PampGramTemporaryMediaDisplay.shared.isViewOnceEnabled(accountKey: key)
+-        let timedEnabled = PampGramTemporaryMediaDisplay.shared.isTimedEnabled(accountKey: key)
+-        return postbox.transaction { transaction -> Void in
+-            self.strip(transaction: transaction, id: id, viewOnceEnabled: viewOnceEnabled, timedEnabled: timedEnabled)
+-        }
+-    }
+-
+-    /// Incoming messages, as they're stored — see the call site in `AccountStateManagementUtils.swift`'s
+-    /// `replayFinalState`. The earliest point there is: the photo never exists in the database as a
+-    /// secret one. Reads the toggles straight from Postbox rather than the in-memory mirror, so it's
+-    /// right even for the first update after launch.
+-    static func stripIfNeeded(transaction: Transaction, messageIds: [MessageId]) {
+-        if messageIds.isEmpty {
+-            return
+-        }
+-        let settings = PampGramCore.settings(transaction: transaction)
+-        if !settings.bypassViewOnceMediaEnabled && !settings.bypassTimedMediaEnabled {
+-            return
+-        }
+-        for id in messageIds {
+-            self.strip(transaction: transaction, id: id, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
+-        }
+-    }
+-}
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
 index 0f40cdc9..c407e83d 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift

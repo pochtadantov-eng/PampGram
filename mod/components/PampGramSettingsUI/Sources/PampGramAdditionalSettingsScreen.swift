@@ -23,6 +23,7 @@ private final class PampGramAdditionalArguments {
     let toggleLegalPremium: (Bool) -> Void
     let toggleBypassViewOnceMedia: (Bool) -> Void
     let toggleBypassTimedMedia: (Bool) -> Void
+    let toggleBypassMarkViewed: (Bool) -> Void
     let toggleStorySaving: (Bool) -> Void
     let toggleScreenshotBypass: (Bool) -> Void
     let toggleHideOwnPhone: (Bool) -> Void
@@ -32,7 +33,7 @@ private final class PampGramAdditionalArguments {
     let toggleFakeCryptoBot: (Bool) -> Void
     let openFakeCryptoBot: () -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, toggleFakeCryptoBot: @escaping (Bool) -> Void, openFakeCryptoBot: @escaping () -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, toggleFakeCryptoBot: @escaping (Bool) -> Void, openFakeCryptoBot: @escaping () -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -45,6 +46,7 @@ private final class PampGramAdditionalArguments {
         self.toggleLegalPremium = toggleLegalPremium
         self.toggleBypassViewOnceMedia = toggleBypassViewOnceMedia
         self.toggleBypassTimedMedia = toggleBypassTimedMedia
+        self.toggleBypassMarkViewed = toggleBypassMarkViewed
         self.toggleStorySaving = toggleStorySaving
         self.toggleScreenshotBypass = toggleScreenshotBypass
         self.toggleHideOwnPhone = toggleHideOwnPhone
@@ -81,6 +83,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case mediaHeader(String)
     case viewOnceToggle(String, Bool)
     case timedToggle(String, Bool)
+    case markViewedToggle(String, Bool)
     case screenshotsToggle(String, Bool)
     case chatScreenshotsToggle(String, Bool)
     case mediaFooter(String)
@@ -111,7 +114,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
-        case .mediaHeader, .viewOnceToggle, .timedToggle, .screenshotsToggle, .chatScreenshotsToggle, .mediaFooter:
+        case .mediaHeader, .viewOnceToggle, .timedToggle, .markViewedToggle, .screenshotsToggle, .chatScreenshotsToggle, .mediaFooter:
             return PampGramAdditionalSection.media.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
@@ -146,34 +149,36 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 10
         case .timedToggle:
             return 11
+        case .markViewedToggle:
+            return 14
         case .screenshotsToggle:
             return 12
         case .chatScreenshotsToggle:
             return 13
         case .mediaFooter:
-            return 14
-        case .premiumHeader:
             return 15
-        case .infinitePinsToggle:
+        case .premiumHeader:
             return 16
-        case .legalPremiumToggle:
+        case .infinitePinsToggle:
             return 17
-        case .premiumFooter:
+        case .legalPremiumToggle:
             return 18
-        case .extrasHeader:
+        case .premiumFooter:
             return 19
-        case .fakeLocationRow:
+        case .extrasHeader:
             return 20
-        case .chatLockRow:
+        case .fakeLocationRow:
             return 21
-        case .callOverridesRow:
+        case .chatLockRow:
             return 22
-        case .fakeAdminRow:
+        case .callOverridesRow:
             return 23
-        case .hideOwnPhoneToggle:
+        case .fakeAdminRow:
             return 24
-        case .fakePhoneNumberRow:
+        case .hideOwnPhoneToggle:
             return 25
+        case .fakePhoneNumberRow:
+            return 26
         case .profileIdsToggle:
             return 27
         case .accountLinkToggle:
@@ -205,6 +210,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         case let .timedToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "timer", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleBypassTimedMedia(value)
+            })
+        case let .markViewedToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "checkmark.circle.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleBypassMarkViewed(value)
             })
         case let .screenshotsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "camera.viewfinder", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -302,7 +311,8 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.timedToggle("Обход с таймером", settings.bypassTimedMediaEnabled))
     entries.append(.screenshotsToggle("Сохранение историй", settings.storySavingEnabled))
     entries.append(.chatScreenshotsToggle("Обход скриншотов", settings.bypassScreenshotProtectionEnabled))
-    entries.append(.mediaFooter("Одноразовое и временное медиа становится обычным: без отсчёта, остаётся в чате, его можно сохранить, а отметка «просмотрено» не отправляется. «Обход скриншотов» снимает защиту скриншотов и записи экрана. Секретных чатов не касается — там всё как в стоке."))
+    entries.append(.markViewedToggle("Отмечать просмотренным", settings.bypassMarkViewedEnabled))
+    entries.append(.mediaFooter("Одноразовое и временное медиа становится обычным: без отсчёта, остаётся в чате, его можно сохранить, а отметка «просмотрено» не отправляется. «Отмечать просмотренным»: когда вы открываете такое фото или видео, отправителю приходит отметка «просмотрено» (у него оно сгорает), а у вас оно остаётся. Без неё отправитель не узнаёт, что вы открывали. «Обход скриншотов» снимает защиту скриншотов и записи экрана. Секретных чатов не касается — там всё как в стоке."))
 
     entries.append(.premiumHeader("ПРЕМИУМ"))
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
@@ -462,6 +472,13 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.bypassTimedMediaEnabled = value
+                return settings
+            }).start()
+        },
+        toggleBypassMarkViewed: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.bypassMarkViewedEnabled = value
                 return settings
             }).start()
         },

@@ -349,6 +349,10 @@ public struct PampGramSettings: Codable, Equatable {
     public var masterEnabled: Bool
     /// "Фейковый криптобот" (Дополнительно): while on, opening @CryptoBot's mini app is replaced
     /// by a local visual (see `PampGramFakeCryptoBotScreen.swift`).
+    /// "Отмечать просмотренным" (Дополнительно): when a one-time / timed photo or video that the
+    /// bypass turned into an ordinary one is opened, the "viewed" mark is sent to the sender (so it
+    /// burns on their side) while the local copy stays in the chat. Off keeps the bypass fully silent.
+    public var bypassMarkViewedEnabled: Bool = true
     public var fakeCryptoBotEnabled: Bool = false
     /// The visual balances of that screen, stored as one "CODE=amount;CODE=amount" string.
     /// Deliberately not a `[String: Double]`: Postbox's keyed decoder implements `allKeys` as
@@ -725,6 +729,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.storySavingEnabled = try container.decodeIfPresent(Bool.self, forKey: .storySavingEnabled) ?? defaults.storySavingEnabled
         self.bypassScreenshotProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassScreenshotProtectionEnabled) ?? defaults.bypassScreenshotProtectionEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
+        self.bypassMarkViewedEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassMarkViewedEnabled) ?? defaults.bypassMarkViewedEnabled
         self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
         self.fakeCryptoBotBalancesRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotBalancesRaw) ?? defaults.fakeCryptoBotBalancesRaw
         self.hidePampGramIconEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePampGramIconEnabled) ?? defaults.hidePampGramIconEnabled
