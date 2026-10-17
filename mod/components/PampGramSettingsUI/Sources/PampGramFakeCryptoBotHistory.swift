@@ -105,7 +105,7 @@ private final class PampGramFakeCryptoBotFilterPill: UIControl {
         self.layer.cornerRadius = 19.5
         self.layer.borderWidth = 1.0
         self.layer.borderColor = UIColor(rgb: 0x2d2d2d).cgColor
-        self.titleLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
+        self.titleLabel.font = PampGramFakeCryptoBotFonts.font(13.0, .regular)
         self.titleLabel.textColor = pampGramFakeCryptoBotHistoryGray
         self.titleLabel.text = placeholder
         self.titleLabel.isUserInteractionEnabled = false
@@ -156,17 +156,17 @@ private final class PampGramFakeCryptoBotOperationRowView: UIView {
         self.iconView.contentMode = .scaleAspectFit
         self.addSubview(self.iconView)
 
-        self.titleLabel.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
+        self.titleLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
         self.titleLabel.textColor = .white
         self.titleLabel.text = isDeposit ? "Пополнение" : "Вывод"
         self.addSubview(self.titleLabel)
 
-        self.dateLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
+        self.dateLabel.font = PampGramFakeCryptoBotFonts.font(13.0, .regular)
         self.dateLabel.textColor = pampGramFakeCryptoBotHistoryGray
         self.dateLabel.text = pampGramFakeCryptoBotShortDate(operation.date)
         self.addSubview(self.dateLabel)
 
-        self.amountLabel.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
+        self.amountLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
         self.amountLabel.textAlignment = .right
         self.amountLabel.textColor = isDeposit ? pampGramFakeCryptoBotHistoryGreen : .white
         self.amountLabel.text = (isDeposit ? "+" : "-") + pampGramFakeCryptoBotFormat(abs(operation.amount), fractionDigits: 9) + " " + operation.code
@@ -174,7 +174,7 @@ private final class PampGramFakeCryptoBotOperationRowView: UIView {
         self.amountLabel.minimumScaleFactor = 0.7
         self.addSubview(self.amountLabel)
 
-        self.usdLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
+        self.usdLabel.font = PampGramFakeCryptoBotFonts.font(13.0, .regular)
         self.usdLabel.textAlignment = .right
         self.usdLabel.textColor = pampGramFakeCryptoBotHistoryGray
         self.usdLabel.text = "$" + pampGramFakeCryptoBotFormatUSD(operation.usd)
@@ -235,7 +235,7 @@ final class PampGramFakeCryptoBotHistoryView: UIScrollView {
             pill.addTarget(self, action: #selector(self.pillPressed(_:)), for: .touchUpInside)
             self.addSubview(pill)
         }
-        self.emptyLabel.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
+        self.emptyLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
         self.emptyLabel.textColor = pampGramFakeCryptoBotHistoryGray
         self.emptyLabel.textAlignment = .center
         self.emptyLabel.text = "Нет операций"
@@ -337,7 +337,7 @@ final class PampGramFakeCryptoBotHistoryView: UIScrollView {
 
         for group in groups {
             let label = UILabel()
-            label.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
+            label.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
             label.textColor = pampGramFakeCryptoBotHistoryGray
             label.text = group.0
             self.addSubview(label)

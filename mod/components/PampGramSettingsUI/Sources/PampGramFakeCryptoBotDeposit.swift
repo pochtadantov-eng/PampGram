@@ -270,7 +270,7 @@ private final class PampGramFakeCryptoBotActionRowView: UIControl {
         self.badge.addSubview(self.glyph)
 
         self.titleLabel.text = title
-        self.titleLabel.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
+        self.titleLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
         self.titleLabel.textColor = accent ? UIColor(rgb: 0x3b9de3) : .white
         self.titleLabel.isUserInteractionEnabled = false
         self.addSubview(self.titleLabel)
@@ -373,11 +373,11 @@ final class PampGramFakeCryptoBotAddressView: UIScrollView {
         self.addSubview(self.gearControl)
 
         self.titleLabel.text = "Мой адрес"
-        self.titleLabel.font = PampGramFakeCryptoBotFonts.font(17.0, .medium)
+        self.titleLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .medium)
         self.titleLabel.textColor = .white
         self.addSubview(self.titleLabel)
 
-        self.networkLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
+        self.networkLabel.font = PampGramFakeCryptoBotFonts.font(13.0, .regular)
         self.networkLabel.textColor = UIColor(rgb: 0x959595)
         self.networkLabel.textAlignment = .right
         self.addSubview(self.networkLabel)
@@ -391,7 +391,7 @@ final class PampGramFakeCryptoBotAddressView: UIScrollView {
 
         self.minStrip.backgroundColor = UIColor(rgb: 0x1f1f1f)
         self.cardView.addSubview(self.minStrip)
-        self.minLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
+        self.minLabel.font = PampGramFakeCryptoBotFonts.font(12.5, .regular)
         self.minLabel.textColor = UIColor(rgb: 0x959595)
         self.minStrip.addSubview(self.minLabel)
 
@@ -403,7 +403,7 @@ final class PampGramFakeCryptoBotAddressView: UIScrollView {
         self.badgeIcon.contentMode = .scaleAspectFit
         self.cardView.addSubview(self.badgeIcon)
 
-        self.addressLabel.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
+        self.addressLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
         self.addressLabel.textColor = .white
         self.addressLabel.numberOfLines = 2
         self.addressLabel.lineBreakMode = .byCharWrapping

@@ -516,7 +516,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private var operations: [PampGramFakeCryptoBotOperation] = []
     /// True while the coin/network pickers lead to the withdrawal form rather than to an address.
     private var isWithdrawFlow = false
-    private let listTitle = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .left)
+    private let listTitle = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .left)
     private let searchBox = UIView()
     private let searchIcon = UIImageView()
     private let searchField = UITextField()
@@ -803,10 +803,10 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.searchBox.addSubview(self.searchIcon)
 
         self.searchField.attributedPlaceholder = NSAttributedString(string: "Поиск монеты", attributes: [
-            .font: PampGramFakeCryptoBotFonts.font(17.0, .regular),
+            .font: PampGramFakeCryptoBotFonts.font(15.0, .regular),
             .foregroundColor: PampGramFakeCryptoBotColors.secondary
         ])
-        self.searchField.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
+        self.searchField.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
         self.searchField.textColor = .white
         self.searchField.tintColor = PampGramFakeCryptoBotColors.blue
         self.searchField.autocorrectionType = .no
