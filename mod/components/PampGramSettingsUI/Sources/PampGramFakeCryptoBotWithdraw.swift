@@ -7,10 +7,10 @@ import Display
 /// and "Вывод средств" with the transaction details. Nothing is sent anywhere; when the code is
 /// entered the owner of this view writes the balance change and the history entry.
 
-private let pampGramWithdrawGray = UIColor(rgb: 0x959595)
-private let pampGramWithdrawBlue = UIColor(rgb: 0x3b9de3)
-private let pampGramWithdrawCard = UIColor(rgb: 0x171717)
-private let pampGramWithdrawBorder = UIColor(rgb: 0x3a3a3a)
+private let pampGramWithdrawGray = PampGramFakeCryptoBotColors.secondary
+private let pampGramWithdrawBlue = PampGramFakeCryptoBotColors.blue
+private let pampGramWithdrawCard = PampGramFakeCryptoBotColors.card
+private let pampGramWithdrawBorder = PampGramFakeCryptoBotColors.borderStrong
 private let pampGramWithdrawRed = UIColor(rgb: 0xff453a)
 
 private func pampGramWithdrawLabel(_ size: CGFloat, _ weight: UIFont.Weight, _ color: UIColor, _ alignment: NSTextAlignment = .left) -> UILabel {
@@ -143,13 +143,13 @@ private final class PampGramWithdrawField: UIView, UITextViewDelegate {
         // The border is a view of its own so that the label can sit on it and cut it, like in the real page.
         self.borderView.layer.cornerRadius = 14.0
         self.borderView.layer.borderWidth = 1.0
-        self.borderView.layer.borderColor = pampGramWithdrawBorder.cgColor
+        self.borderView.layer.borderColor = self.pampGramFakeCGColor(pampGramWithdrawBorder)
         self.borderView.isUserInteractionEnabled = false
         self.addSubview(self.borderView)
 
         self.textView.backgroundColor = .clear
         self.textView.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
-        self.textView.textColor = .white
+        self.textView.textColor = PampGramFakeCryptoBotColors.text
         self.textView.tintColor = pampGramWithdrawBlue
         self.textView.isScrollEnabled = false
         self.textView.textContainerInset = UIEdgeInsets(top: 13.0, left: 0.0, bottom: 13.0, right: 0.0)
@@ -185,6 +185,16 @@ private final class PampGramWithdrawField: UIView, UITextViewDelegate {
     /// Room kept free on the right for icons.
     var rightInset: CGFloat = 0.0
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        self.updateAppearance()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        self.updateAppearance()
+    }
+
     func updateAppearance() {
         var color = pampGramWithdrawBorder
         var width: CGFloat = 1.0
@@ -195,8 +205,9 @@ private final class PampGramWithdrawField: UIView, UITextViewDelegate {
             color = pampGramWithdrawBlue
             width = 1.5
         }
-        self.borderView.layer.borderColor = color.cgColor
+        self.borderView.layer.borderColor = self.pampGramFakeCGColor(color)
         self.borderView.layer.borderWidth = width
+        self.textView.keyboardAppearance = self.traitCollection.userInterfaceStyle == .light ? .light : .dark
         self.floatingLabel.textColor = self.hasError ? pampGramWithdrawRed : pampGramWithdrawGray
         self.setNeedsLayout()
     }
@@ -276,12 +287,23 @@ private final class PampGramWithdrawTable: UIView {
         super.init(frame: frame)
         self.layer.cornerRadius = 14.0
         self.layer.borderWidth = 1.0
-        self.layer.borderColor = UIColor(rgb: 0x2d2d2d).cgColor
+        self.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.border)
         self.layer.masksToBounds = true
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        self.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.border)
+        self.setNeedsDisplay()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        self.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.border)
     }
 
     func setRows(_ rows: [PampGramWithdrawRow], leftWidth: CGFloat) {
@@ -381,7 +403,7 @@ private final class PampGramWithdrawTable: UIView {
     }
 
     override func draw(_ rect: CGRect) {
-        UIColor(rgb: 0x2d2d2d).setFill()
+        PampGramFakeCryptoBotColors.border.resolvedColor(with: self.traitCollection).setFill()
         let width = self.bounds.width
         var y: CGFloat = 0.0
         UIRectFill(CGRect(x: self.leftWidth, y: 0.0, width: 1.0, height: self.bounds.height))
@@ -429,11 +451,11 @@ private final class PampGramWithdrawCodeSheet: UIView {
         self.sheet.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         self.addSubview(self.sheet)
 
-        self.closeControl.backgroundColor = UIColor(rgb: 0x2a2a2a)
+        self.closeControl.backgroundColor = PampGramFakeCryptoBotColors.surfaceHigh
         self.closeControl.layer.cornerRadius = 16.0
         self.closeControl.addTarget(self, action: #selector(self.closePressed), for: .touchUpInside)
         self.closeIcon.image = UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13.0, weight: .semibold))
-        self.closeIcon.tintColor = UIColor(rgb: 0x9a9a9a)
+        self.closeIcon.tintColor = PampGramFakeCryptoBotColors.secondary
         self.closeIcon.contentMode = .center
         self.closeIcon.isUserInteractionEnabled = false
         self.closeControl.addSubview(self.closeIcon)
@@ -443,13 +465,13 @@ private final class PampGramWithdrawCodeSheet: UIView {
             let box = UIView()
             box.layer.cornerRadius = 12.0
             box.layer.borderWidth = 1.0
-            box.layer.borderColor = UIColor(rgb: 0x333333).cgColor
+            box.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.borderStrong)
             self.sheet.addSubview(box)
             self.boxes.append(box)
             let dot = UILabel()
             dot.text = "•"
             dot.font = PampGramFakeCryptoBotFonts.font(30.0, .bold)
-            dot.textColor = .white
+            dot.textColor = PampGramFakeCryptoBotColors.text
             dot.textAlignment = .center
             dot.isHidden = true
             box.addSubview(dot)
@@ -464,14 +486,14 @@ private final class PampGramWithdrawCodeSheet: UIView {
             let button = UIButton(type: .custom)
             button.setTitle(String(digit), for: .normal)
             button.titleLabel?.font = PampGramFakeCryptoBotFonts.font(28.0, .semibold)
-            button.setTitleColor(.white, for: .normal)
+            button.setTitleColor(PampGramFakeCryptoBotColors.text, for: .normal)
             button.tag = digit
             button.addTarget(self, action: #selector(self.digitPressed(_:)), for: .touchUpInside)
             self.sheet.addSubview(button)
             self.keys.append(button)
         }
         self.backspace.setImage(UIImage(systemName: "delete.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 24.0, weight: .regular)), for: .normal)
-        self.backspace.tintColor = .white
+        self.backspace.tintColor = PampGramFakeCryptoBotColors.text
         self.backspace.addTarget(self, action: #selector(self.backspacePressed), for: .touchUpInside)
         self.sheet.addSubview(self.backspace)
 
@@ -491,6 +513,16 @@ private final class PampGramWithdrawCodeSheet: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        self.refreshBoxes()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        self.refreshBoxes()
+    }
+
     func reset() {
         self.entered = ""
         self.isBusy = false
@@ -506,7 +538,7 @@ private final class PampGramWithdrawCodeSheet: UIView {
     private func refreshBoxes() {
         for (index, box) in self.boxes.enumerated() {
             let isActive = index == self.entered.count && self.entered.count < 4
-            box.layer.borderColor = (isActive ? pampGramWithdrawBlue : UIColor(rgb: 0x333333)).cgColor
+            box.layer.borderColor = self.pampGramFakeCGColor(isActive ? pampGramWithdrawBlue : PampGramFakeCryptoBotColors.borderStrong)
             box.layer.borderWidth = isActive ? 2.0 : 1.0
             self.dots[index].isHidden = index >= self.entered.count
             box.isHidden = self.isBusy
@@ -619,14 +651,14 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
     // Form.
     private let formView = UIView()
     private let coinIcon = UIImageView()
-    private let coinTitle = pampGramWithdrawLabel(15.0, .regular, .white)
+    private let coinTitle = pampGramWithdrawLabel(15.0, .regular, PampGramFakeCryptoBotColors.text)
     private let changeCoinButton = UIButton(type: .custom)
-    private let balanceLabel = pampGramWithdrawLabel(15.0, .regular, .white, .right)
+    private let balanceLabel = pampGramWithdrawLabel(15.0, .regular, PampGramFakeCryptoBotColors.text, .right)
     private let balanceUSD = pampGramWithdrawLabel(13.0, .regular, pampGramWithdrawGray, .right)
     private let networkIcon = UIImageView()
-    private let networkTitle = pampGramWithdrawLabel(15.0, .regular, .white)
+    private let networkTitle = pampGramWithdrawLabel(15.0, .regular, PampGramFakeCryptoBotColors.text)
     private let networkSub = pampGramWithdrawLabel(13.0, .regular, pampGramWithdrawGray)
-    private let feeLabel = pampGramWithdrawLabel(15.0, .regular, .white, .right)
+    private let feeLabel = pampGramWithdrawLabel(15.0, .regular, PampGramFakeCryptoBotColors.text, .right)
     private let feeSub = pampGramWithdrawLabel(13.0, .regular, pampGramWithdrawGray, .right)
     private let addressField = PampGramWithdrawField(title: "Адрес", keyboard: .default)
     private let scanButton = UIButton(type: .custom)
@@ -652,7 +684,7 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
     private let resultBadge = UIView()
     private let resultBadgeIcon = UIImageView()
     private let resultCaption = pampGramWithdrawLabel(15.0, .regular, pampGramWithdrawGray, .center)
-    private let resultAmount = pampGramWithdrawLabel(32.0, .bold, .white, .center)
+    private let resultAmount = pampGramWithdrawLabel(32.0, .bold, PampGramFakeCryptoBotColors.text, .center)
     private let resultUSD = pampGramWithdrawLabel(15.0, .regular, pampGramWithdrawGray, .center)
     private let resultDetailsTitle = pampGramWithdrawLabel(15.0, .regular, pampGramWithdrawGray)
     private let resultTable = PampGramWithdrawTable()
@@ -803,6 +835,16 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
         self.confirmView.addSubview(self.confirmTable)
     }
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        self.resultBadge.layer.borderColor = self.pampGramFakeCGColor(pampGramWithdrawCard)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        self.resultBadge.layer.borderColor = self.pampGramFakeCGColor(pampGramWithdrawCard)
+    }
+
     private func setupResult() {
         self.resultScroll.isHidden = true
         self.resultScroll.showsVerticalScrollIndicator = false
@@ -812,7 +854,7 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
         self.resultScroll.addSubview(self.resultIcon)
         self.resultBadge.backgroundColor = UIColor(rgb: 0x6b6b6e)
         self.resultBadge.layer.borderWidth = 3.0
-        self.resultBadge.layer.borderColor = pampGramWithdrawCard.cgColor
+        self.resultBadge.layer.borderColor = self.pampGramFakeCGColor(pampGramWithdrawCard)
         self.resultBadge.layer.cornerRadius = 15.0
         self.resultScroll.addSubview(self.resultBadge)
         self.resultBadgeIcon.image = UIImage(systemName: "clock", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14.0, weight: .semibold))
@@ -1021,18 +1063,18 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
         let total = amount + self.fee
         var rows: [PampGramWithdrawRow] = [
             PampGramWithdrawRow(title: "Общая сумма", lines: [
-                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(total) + " " + currency.code, color: .white, isLink: false),
+                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(total) + " " + currency.code, color: PampGramFakeCryptoBotColors.text, isLink: false),
                 PampGramWithdrawLine(icon: .dollar, text: pampGramWithdrawUSD(total * currency.price) + " USD", color: pampGramWithdrawGray, isLink: false)
             ], showsCopy: false),
             PampGramWithdrawRow(title: "Комиссия", lines: [
-                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(self.fee) + " " + currency.code, color: .white, isLink: false)
+                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(self.fee) + " " + currency.code, color: PampGramFakeCryptoBotColors.text, isLink: false)
             ], showsCopy: false),
             PampGramWithdrawRow(title: "Отправка", lines: [
-                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(amount) + " " + currency.code, color: .white, isLink: false),
+                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(amount) + " " + currency.code, color: PampGramFakeCryptoBotColors.text, isLink: false),
                 PampGramWithdrawLine(icon: .dollar, text: pampGramWithdrawUSD(amount * currency.price) + " USD", color: pampGramWithdrawGray, isLink: false)
             ], showsCopy: false),
             PampGramWithdrawRow(title: "Сеть", lines: [
-                PampGramWithdrawLine(icon: .coin(network.assetName), text: network.name + " (" + network.short + ")", color: .white, isLink: false)
+                PampGramWithdrawLine(icon: .coin(network.assetName), text: network.name + " (" + network.short + ")", color: PampGramFakeCryptoBotColors.text, isLink: false)
             ], showsCopy: false),
             PampGramWithdrawRow(title: "Адрес", lines: [
                 PampGramWithdrawLine(icon: .none, text: address + " \u{2197}\u{FE0E}", color: pampGramWithdrawBlue, isLink: true)
@@ -1040,7 +1082,7 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
         ]
         if self.weekCount > 0 {
             rows.append(PampGramWithdrawRow(title: "Сводка", lines: [
-                PampGramWithdrawLine(icon: .none, text: pampGramWithdrawWeekText(count: self.weekCount, usd: self.weekUSD), color: .white, isLink: true)
+                PampGramWithdrawLine(icon: .none, text: pampGramWithdrawWeekText(count: self.weekCount, usd: self.weekUSD), color: PampGramFakeCryptoBotColors.text, isLink: true)
             ], showsCopy: false))
         }
         self.confirmTable.setRows(rows, leftWidth: 114.0)
@@ -1074,20 +1116,20 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
             shortAddress = String(address.prefix(7)) + "..." + String(address.suffix(5))
         }
         let rows: [PampGramWithdrawRow] = [
-            PampGramWithdrawRow(title: "ID", lines: [PampGramWithdrawLine(icon: .none, text: self.transactionId, color: .white, isLink: false)], showsCopy: true),
-            PampGramWithdrawRow(title: "Статус", lines: [PampGramWithdrawLine(icon: .none, text: "В обработке", color: .white, isLink: false)], showsCopy: false),
-            PampGramWithdrawRow(title: "Дата", lines: [PampGramWithdrawLine(icon: .none, text: self.transactionDate, color: .white, isLink: false)], showsCopy: false),
+            PampGramWithdrawRow(title: "ID", lines: [PampGramWithdrawLine(icon: .none, text: self.transactionId, color: PampGramFakeCryptoBotColors.text, isLink: false)], showsCopy: true),
+            PampGramWithdrawRow(title: "Статус", lines: [PampGramWithdrawLine(icon: .none, text: "В обработке", color: PampGramFakeCryptoBotColors.text, isLink: false)], showsCopy: false),
+            PampGramWithdrawRow(title: "Дата", lines: [PampGramWithdrawLine(icon: .none, text: self.transactionDate, color: PampGramFakeCryptoBotColors.text, isLink: false)], showsCopy: false),
             PampGramWithdrawRow(title: "Адрес", lines: [PampGramWithdrawLine(icon: .none, text: shortAddress + " \u{2197}\u{FE0E}", color: pampGramWithdrawBlue, isLink: false)], showsCopy: true),
-            PampGramWithdrawRow(title: "Сеть", lines: [PampGramWithdrawLine(icon: .coin(network.assetName), text: network.short, color: .white, isLink: false)], showsCopy: false),
+            PampGramWithdrawRow(title: "Сеть", lines: [PampGramWithdrawLine(icon: .coin(network.assetName), text: network.short, color: PampGramFakeCryptoBotColors.text, isLink: false)], showsCopy: false),
             PampGramWithdrawRow(title: "Общая сумма", lines: [
-                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(total) + " " + currency.code, color: .white, isLink: false),
+                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(total) + " " + currency.code, color: PampGramFakeCryptoBotColors.text, isLink: false),
                 PampGramWithdrawLine(icon: .dollar, text: pampGramWithdrawUSD(usd) + " USD", color: pampGramWithdrawGray, isLink: false)
             ], showsCopy: false),
             PampGramWithdrawRow(title: "Комиссия", lines: [
-                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(self.fee) + " " + currency.code, color: .white, isLink: false)
+                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(self.fee) + " " + currency.code, color: PampGramFakeCryptoBotColors.text, isLink: false)
             ], showsCopy: false),
             PampGramWithdrawRow(title: "Вы отправили", lines: [
-                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(amount) + " " + currency.code, color: .white, isLink: false),
+                PampGramWithdrawLine(icon: .coin(currency.assetName), text: pampGramWithdrawAmount(amount) + " " + currency.code, color: PampGramFakeCryptoBotColors.text, isLink: false),
                 PampGramWithdrawLine(icon: .dollar, text: pampGramWithdrawUSD(amount * currency.price) + " USD", color: pampGramWithdrawGray, isLink: false)
             ], showsCopy: false)
         ]

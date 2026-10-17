@@ -440,7 +440,7 @@ index 23c32514..dd456732 100644
          "//submodules/TelegramPresentationData:TelegramPresentationData",
          "//submodules/PresentationDataUtils:PresentationDataUtils",
 diff --git a/submodules/WebUI/Sources/WebAppController.swift b/submodules/WebUI/Sources/WebAppController.swift
-index ee39fd29..daff23c5 100644
+index ee39fd29..227ceaef 100644
 --- a/submodules/WebUI/Sources/WebAppController.swift
 +++ b/submodules/WebUI/Sources/WebAppController.swift
 @@ -8,6 +8,7 @@ import SwiftSignalKit
@@ -462,7 +462,7 @@ index ee39fd29..daff23c5 100644
          private var placeholderDisposable = MetaDisposable()
          private var keepAliveDisposable: Disposable?
          private var paymentDisposable: Disposable?
-@@ -471,6 +476,30 @@ public final class WebAppController: ViewController, AttachmentContainable {
+@@ -471,6 +476,34 @@ public final class WebAppController: ViewController, AttachmentContainable {
          override func didLoad() {
              super.didLoad()
              
@@ -477,23 +477,27 @@ index ee39fd29..daff23c5 100644
 +                    self.hasBackButton = hasBack
 +                    self.controller?.updateNavigationButtons()
 +                }
-+                Queue.mainQueue().justDispatch { [weak self] in
++                // The page follows the app's theme (dark or light); so do the window's background and header.
++                let applyPageColor: (UIColor) -> Void = { [weak self] pageColor in
 +                    guard let self else {
 +                        return
 +                    }
-+                    let pageColor = UIColor(rgb: 0x171717)
 +                    self.appBackgroundColor = pageColor
 +                    self.placeholderBackgroundColor = pageColor
 +                    self.updateBackgroundColor(transition: .immediate)
 +                    self.headerColor = pageColor
 +                    self.updateHeaderBackgroundColor(transition: .immediate)
 +                }
++                fakeContent.onPageColorChanged = applyPageColor
++                Queue.mainQueue().justDispatch {
++                    applyPageColor(fakeContent.pageColor)
++                }
 +            }
 +            
              self.setupWebView()
              if let pendingExternalUrl = self.controller?.pendingExternalUrl {
                  self.controller?.pendingExternalUrl = nil
-@@ -482,9 +511,16 @@ public final class WebAppController: ViewController, AttachmentContainable {
+@@ -482,9 +515,16 @@ public final class WebAppController: ViewController, AttachmentContainable {
              }
              self.view.addSubview(webView)
              webView.scrollView.insertSubview(self.topOverscrollNode.view, at: 0)
@@ -510,7 +514,7 @@ index ee39fd29..daff23c5 100644
              /*#if DEBUG
              if "".isEmpty {
                  if #available(iOS 16.0, *) {
-@@ -911,6 +947,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
+@@ -911,6 +951,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
              transition.updateFrame(node: self.backgroundNode, frame: CGRect(origin: .zero, size: layout.size))
              transition.updateFrame(node: self.headerBackgroundNode, frame: CGRect(origin: .zero, size: CGSize(width: layout.size.width, height: navigationBarHeight)))
              transition.updateFrame(node: self.topOverscrollNode, frame: CGRect(origin: CGPoint(x: 0.0, y: -1000.0), size: CGSize(width: layout.size.width, height: 1000.0)))
@@ -521,7 +525,7 @@ index ee39fd29..daff23c5 100644
              
              var contentTopInset: CGFloat = 0.0
              if controller.isFullscreen {
-@@ -2142,6 +2182,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
+@@ -2142,6 +2186,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
          }
          
          fileprivate func sendBackButtonEvent() {

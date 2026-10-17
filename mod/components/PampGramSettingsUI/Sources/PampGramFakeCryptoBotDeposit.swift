@@ -140,7 +140,7 @@ final class PampGramFakeCryptoBotQRView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        self.backgroundColor = .white
+        self.backgroundColor = PampGramFakeCryptoBotColors.qrCard
         self.layer.cornerRadius = 20.0
         self.layer.masksToBounds = true
         self.isOpaque = false
@@ -225,7 +225,7 @@ private final class PampGramFakeCryptoBotGemView: UIView {
         gem.addLine(to: CGPoint(x: w * 0.02, y: h * 0.36))
         gem.close()
         gem.lineJoinStyle = .round
-        UIColor(rgb: 0x1b3a54).setFill()
+        PampGramFakeCryptoBotColors.gemFill.setFill()
         gem.fill()
 
         let star = UIBezierPath()
@@ -242,7 +242,7 @@ private final class PampGramFakeCryptoBotGemView: UIView {
         star.addLine(to: CGPoint(x: cx - arm, y: cy))
         star.addLine(to: CGPoint(x: cx - waist, y: cy - waist))
         star.close()
-        UIColor(rgb: 0x0f2232).setFill()
+        PampGramFakeCryptoBotColors.gemStar.setFill()
         star.fill()
     }
 }
@@ -271,18 +271,18 @@ private final class PampGramFakeCryptoBotActionRowView: UIControl {
 
         self.titleLabel.text = title
         self.titleLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
-        self.titleLabel.textColor = accent ? UIColor(rgb: 0x3b9de3) : .white
+        self.titleLabel.textColor = accent ? PampGramFakeCryptoBotColors.blue : PampGramFakeCryptoBotColors.text
         self.titleLabel.isUserInteractionEnabled = false
         self.addSubview(self.titleLabel)
 
         self.arrow.image = UIImage(systemName: "arrow.up.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13.0, weight: .semibold))
-        self.arrow.tintColor = UIColor(rgb: 0x959595)
+        self.arrow.tintColor = PampGramFakeCryptoBotColors.secondary
         self.arrow.contentMode = .center
         self.arrow.isHidden = !showsArrow
         self.arrow.isUserInteractionEnabled = false
         self.addSubview(self.arrow)
 
-        self.separator.backgroundColor = UIColor(rgb: 0x292929)
+        self.separator.backgroundColor = PampGramFakeCryptoBotColors.separator
         self.separator.isHidden = !showsSeparator
         self.separator.isUserInteractionEnabled = false
         self.addSubview(self.separator)
@@ -355,18 +355,18 @@ final class PampGramFakeCryptoBotAddressView: UIScrollView {
         }
         self.addSubview(self.qrView)
 
-        self.qrLogoRing.backgroundColor = .white
+        self.qrLogoRing.backgroundColor = PampGramFakeCryptoBotColors.qrCard
         self.qrLogoRing.isUserInteractionEnabled = false
         self.addSubview(self.qrLogoRing)
         self.qrLogo.contentMode = .scaleAspectFit
         self.qrLogo.isUserInteractionEnabled = false
         self.addSubview(self.qrLogo)
 
-        self.gearControl.backgroundColor = UIColor(rgb: 0x262626)
+        self.gearControl.backgroundColor = PampGramFakeCryptoBotColors.surfaceHigh
         self.gearControl.layer.cornerRadius = 16.0
         self.gearControl.addTarget(self, action: #selector(self.unavailablePressed), for: .touchUpInside)
         self.gearIcon.image = UIImage(systemName: "gearshape", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17.0, weight: .regular))
-        self.gearIcon.tintColor = UIColor(rgb: 0x9a9a9a)
+        self.gearIcon.tintColor = PampGramFakeCryptoBotColors.secondary
         self.gearIcon.contentMode = .center
         self.gearIcon.isUserInteractionEnabled = false
         self.gearControl.addSubview(self.gearIcon)
@@ -374,37 +374,37 @@ final class PampGramFakeCryptoBotAddressView: UIScrollView {
 
         self.titleLabel.text = "Мой адрес"
         self.titleLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .medium)
-        self.titleLabel.textColor = .white
+        self.titleLabel.textColor = PampGramFakeCryptoBotColors.text
         self.addSubview(self.titleLabel)
 
         self.networkLabel.font = PampGramFakeCryptoBotFonts.font(13.0, .regular)
-        self.networkLabel.textColor = UIColor(rgb: 0x959595)
+        self.networkLabel.textColor = PampGramFakeCryptoBotColors.secondary
         self.networkLabel.textAlignment = .right
         self.addSubview(self.networkLabel)
 
-        self.cardView.backgroundColor = UIColor(rgb: 0x171717)
+        self.cardView.backgroundColor = PampGramFakeCryptoBotColors.card
         self.cardView.layer.cornerRadius = 14.0
         self.cardView.layer.borderWidth = 1.0
-        self.cardView.layer.borderColor = UIColor(rgb: 0x2b2b2b).cgColor
+        self.cardView.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.border)
         self.cardView.layer.masksToBounds = true
         self.addSubview(self.cardView)
 
-        self.minStrip.backgroundColor = UIColor(rgb: 0x1f1f1f)
+        self.minStrip.backgroundColor = PampGramFakeCryptoBotColors.surface
         self.cardView.addSubview(self.minStrip)
         self.minLabel.font = PampGramFakeCryptoBotFonts.font(12.5, .regular)
-        self.minLabel.textColor = UIColor(rgb: 0x959595)
+        self.minLabel.textColor = PampGramFakeCryptoBotColors.secondary
         self.minStrip.addSubview(self.minLabel)
 
         self.coinIcon.contentMode = .scaleAspectFit
         self.cardView.addSubview(self.coinIcon)
-        self.badgeRing.backgroundColor = UIColor(rgb: 0x171717)
+        self.badgeRing.backgroundColor = PampGramFakeCryptoBotColors.card
         self.badgeRing.layer.cornerRadius = 11.0
         self.cardView.addSubview(self.badgeRing)
         self.badgeIcon.contentMode = .scaleAspectFit
         self.cardView.addSubview(self.badgeIcon)
 
         self.addressLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
-        self.addressLabel.textColor = .white
+        self.addressLabel.textColor = PampGramFakeCryptoBotColors.text
         self.addressLabel.numberOfLines = 2
         self.addressLabel.lineBreakMode = .byCharWrapping
         self.cardView.addSubview(self.addressLabel)
@@ -467,6 +467,16 @@ final class PampGramFakeCryptoBotAddressView: UIScrollView {
         self.setNeedsLayout()
     }
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        self.cardView.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.border)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        self.cardView.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.border)
+    }
+
     private func coinAttachment(_ image: UIImage?) -> NSAttributedString {
         let attachment = NSTextAttachment()
         attachment.image = image
@@ -477,7 +487,7 @@ final class PampGramFakeCryptoBotAddressView: UIScrollView {
     private func noteOneText(currency: PampGramFakeCryptoBotCurrency, network: PampGramFakeCryptoBotNetwork) -> NSAttributedString {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: PampGramFakeCryptoBotFonts.font(15.0, .regular),
-            .foregroundColor: UIColor(rgb: 0x959595)
+            .foregroundColor: PampGramFakeCryptoBotColors.secondary
         ]
         let text = NSMutableAttributedString(string: "Отправляйте только ", attributes: attributes)
         text.append(self.coinAttachment(PampGramFakeCryptoBotAssets.image(currency.assetName)))
@@ -490,7 +500,7 @@ final class PampGramFakeCryptoBotAddressView: UIScrollView {
     private func noteTwoText() -> NSAttributedString {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: PampGramFakeCryptoBotFonts.font(15.0, .regular),
-            .foregroundColor: UIColor(rgb: 0x959595)
+            .foregroundColor: PampGramFakeCryptoBotColors.secondary
         ]
         let text = NSMutableAttributedString(string: "Перевод из санкционных и высокорисковых сервисов может быть отменён. ", attributes: attributes)
         text.append(NSAttributedString(string: "Подробнее ›", attributes: [

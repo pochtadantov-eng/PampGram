@@ -59,8 +59,8 @@ func pampGramFakeCryptoBotAppendingOperation(raw: String, code: String, old: Dou
 
 // MARK: - Pieces
 
-private let pampGramFakeCryptoBotHistoryGray = UIColor(rgb: 0x959595)
-private let pampGramFakeCryptoBotHistoryGreen = UIColor(rgb: 0x2e9f4f)
+private let pampGramFakeCryptoBotHistoryGray = PampGramFakeCryptoBotColors.secondary
+private let pampGramFakeCryptoBotHistoryGreen = PampGramFakeCryptoBotColors.green
 
 private let pampGramFakeCryptoBotShortMonths = ["янв.", "февр.", "март", "апр.", "мая", "июн.", "июл.", "авг.", "сент.", "окт.", "нояб.", "дек."]
 private let pampGramFakeCryptoBotLongMonths = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
@@ -104,7 +104,7 @@ private final class PampGramFakeCryptoBotFilterPill: UIControl {
         super.init(frame: .zero)
         self.layer.cornerRadius = 19.5
         self.layer.borderWidth = 1.0
-        self.layer.borderColor = UIColor(rgb: 0x2d2d2d).cgColor
+        self.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.border)
         self.titleLabel.font = PampGramFakeCryptoBotFonts.font(13.0, .regular)
         self.titleLabel.textColor = pampGramFakeCryptoBotHistoryGray
         self.titleLabel.text = placeholder
@@ -121,9 +121,19 @@ private final class PampGramFakeCryptoBotFilterPill: UIControl {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        self.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.border)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        self.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.border)
+    }
+
     func setTitle(_ text: String, active: Bool) {
         self.titleLabel.text = text
-        self.titleLabel.textColor = active ? .white : pampGramFakeCryptoBotHistoryGray
+        self.titleLabel.textColor = active ? PampGramFakeCryptoBotColors.text : pampGramFakeCryptoBotHistoryGray
     }
 
     override func layoutSubviews() {
@@ -157,7 +167,7 @@ private final class PampGramFakeCryptoBotOperationRowView: UIView {
         self.addSubview(self.iconView)
 
         self.titleLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
-        self.titleLabel.textColor = .white
+        self.titleLabel.textColor = PampGramFakeCryptoBotColors.text
         self.titleLabel.text = isDeposit ? "Пополнение" : "Вывод"
         self.addSubview(self.titleLabel)
 
@@ -168,7 +178,7 @@ private final class PampGramFakeCryptoBotOperationRowView: UIView {
 
         self.amountLabel.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
         self.amountLabel.textAlignment = .right
-        self.amountLabel.textColor = isDeposit ? pampGramFakeCryptoBotHistoryGreen : .white
+        self.amountLabel.textColor = isDeposit ? pampGramFakeCryptoBotHistoryGreen : PampGramFakeCryptoBotColors.text
         self.amountLabel.text = (isDeposit ? "+" : "-") + pampGramFakeCryptoBotFormat(abs(operation.amount), fractionDigits: 9) + " " + operation.code
         self.amountLabel.adjustsFontSizeToFitWidth = true
         self.amountLabel.minimumScaleFactor = 0.7
@@ -180,7 +190,7 @@ private final class PampGramFakeCryptoBotOperationRowView: UIView {
         self.usdLabel.text = "$" + pampGramFakeCryptoBotFormatUSD(operation.usd)
         self.addSubview(self.usdLabel)
 
-        self.separator.backgroundColor = UIColor(rgb: 0x292929)
+        self.separator.backgroundColor = PampGramFakeCryptoBotColors.separator
         self.separator.isHidden = !showsSeparator
         self.addSubview(self.separator)
     }

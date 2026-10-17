@@ -10,6 +10,11 @@ public protocol PampGramFakeMiniAppContent: UIView {
     /// Called with `true` while the page is showing a sub-screen, so the window can turn its
     /// "Закрыть" button into "Назад".
     var onBackStateChanged: ((Bool) -> Void)? { get set }
+    /// The page's background in the current light/dark theme: the window paints its header and its
+    /// own background with it.
+    var pageColor: UIColor { get }
+    /// Called when the app's theme switches while the page is open, with the new `pageColor`.
+    var onPageColorChanged: ((UIColor) -> Void)? { get set }
     /// The window's back button was pressed.
     func goBack()
 }

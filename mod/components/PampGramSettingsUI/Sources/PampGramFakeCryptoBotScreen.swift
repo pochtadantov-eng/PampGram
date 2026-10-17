@@ -100,18 +100,47 @@ func pampGramFakeCryptoBotFormatUSD(_ value: Double) -> String {
     return formatter.string(from: NSNumber(value: value)) ?? "0"
 }
 
-private enum PampGramFakeCryptoBotColors {
-    static let card = UIColor(rgb: 0x171717)
-    static let secondary = UIColor(rgb: 0x959595)
-    static let subtitle = UIColor(rgb: 0xacacac)
+/// Every colour of the page comes in a dark and a light variant; the page (and the standalone
+/// screen) pins `overrideUserInterfaceStyle` to Telegram's own theme, so the variants follow it.
+enum PampGramFakeCryptoBotColors {
+    static func themed(dark: UInt32, light: UInt32, darkAlpha: CGFloat = 1.0, lightAlpha: CGFloat = 1.0) -> UIColor {
+        return UIColor { traits in
+            if traits.userInterfaceStyle == .light {
+                return UIColor(rgb: light).withAlphaComponent(lightAlpha)
+            }
+            return UIColor(rgb: dark).withAlphaComponent(darkAlpha)
+        }
+    }
+
+    static let card = themed(dark: 0x171717, light: 0xffffff)
+    static let text = themed(dark: 0xffffff, light: 0x000000)
+    static let secondary = themed(dark: 0x959595, light: 0x8a8a8e)
+    static let subtitle = themed(dark: 0xacacac, light: 0x6d6d72)
     static let blue = UIColor(rgb: 0x3b9de3)
-    static let dotInactive = UIColor(rgb: 0x233f53)
+    static let dotInactive = themed(dark: 0x233f53, light: 0xd3e6f6)
     static let dotFill = UIColor(rgb: 0x3997d5)
     static let red = UIColor(rgb: 0xff4b52)
-    static let green = UIColor(rgb: 0x2e9f4f)
-    static let separator = UIColor(rgb: 0x292929)
-    static let tabBar = UIColor(rgb: 0x20262c)
-    static let tabActive = UIColor(rgb: 0x2a2f35)
+    static let green = themed(dark: 0x2e9f4f, light: 0x23984a)
+    static let separator = themed(dark: 0x292929, light: 0xe5e5ea)
+    static let border = themed(dark: 0x2d2d2d, light: 0xe0e0e6)
+    static let borderStrong = themed(dark: 0x3a3a3a, light: 0xcfcfd5)
+    static let surface = themed(dark: 0x1f1f1f, light: 0xf3f3f6)
+    static let surfaceHigh = themed(dark: 0x2a2a2a, light: 0xebebef)
+    static let tabBar = themed(dark: 0x20262c, light: 0xf5f6f8)
+    static let tabActive = themed(dark: 0x2a2f35, light: 0xe2e5ea)
+    static let tabBorder = themed(dark: 0xffffff, light: 0x000000, darkAlpha: 0.07, lightAlpha: 0.07)
+    static let qrCard = themed(dark: 0xffffff, light: 0xf1f6fb)
+    static let gemFill = themed(dark: 0x1b3a54, light: 0xd9eafa)
+    static let gemStar = themed(dark: 0x0f2232, light: 0xbcd8ef)
+    static let outer = themed(dark: 0x000000, light: 0xefeff4)
+}
+
+extension UIView {
+    /// Layer colours are plain CGColors and do not follow the theme by themselves; the owners
+    /// re-apply them through this when the theme or the window changes.
+    func pampGramFakeCGColor(_ color: UIColor) -> CGColor {
+        return color.resolvedColor(with: self.traitCollection).cgColor
+    }
 }
 
 private func pampGramFakeCryptoBotLabel(size: CGFloat, weight: UIFont.Weight, color: UIColor, alignment: NSTextAlignment) -> UILabel {
@@ -169,9 +198,9 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
     let currency: PampGramFakeCryptoBotCurrency
     private let kind: Kind
     private let iconView = UIImageView()
-    private let titleLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: .white, alignment: .left)
+    private let titleLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: PampGramFakeCryptoBotColors.text, alignment: .left)
     private let subtitleLabel = pampGramFakeCryptoBotLabel(size: 13.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .left)
-    private let rightTopLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: .white, alignment: .right)
+    private let rightTopLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: PampGramFakeCryptoBotColors.text, alignment: .right)
     private let rightBottomLabel = pampGramFakeCryptoBotLabel(size: 13.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .right)
     private let chevronView = UIImageView()
     private let separator = UIView()
@@ -277,18 +306,18 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
 /// A bottom-bar item: glyph over a label, with a lighter capsule behind the active one.
 private final class PampGramFakeCryptoBotTabItem: UIControl {
     private let iconView = UIImageView()
-    private let label = pampGramFakeCryptoBotLabel(size: 9.4, weight: .semibold, color: .white, alignment: .center)
+    private let label = pampGramFakeCryptoBotLabel(size: 9.4, weight: .semibold, color: PampGramFakeCryptoBotColors.text, alignment: .center)
 
     init(assetName: String, title: String, active: Bool) {
         super.init(frame: .zero)
         self.iconView.image = PampGramFakeCryptoBotAssets.image(assetName)?.withRenderingMode(.alwaysTemplate)
-        self.iconView.tintColor = active ? PampGramFakeCryptoBotColors.blue : UIColor.white
+        self.iconView.tintColor = active ? PampGramFakeCryptoBotColors.blue : PampGramFakeCryptoBotColors.text
         self.iconView.contentMode = .center
         self.iconView.isUserInteractionEnabled = false
         self.addSubview(self.iconView)
 
         self.label.text = title
-        self.label.textColor = active ? PampGramFakeCryptoBotColors.blue : UIColor.white
+        self.label.textColor = active ? PampGramFakeCryptoBotColors.blue : PampGramFakeCryptoBotColors.text
         self.addSubview(self.label)
     }
 
@@ -299,8 +328,8 @@ private final class PampGramFakeCryptoBotTabItem: UIControl {
     /// The blue highlight itself (the capsule) is drawn by the bar and slides between the items.
     func setActive(_ active: Bool, animated: Bool) {
         let update = {
-            self.iconView.tintColor = active ? PampGramFakeCryptoBotColors.blue : UIColor.white
-            self.label.textColor = active ? PampGramFakeCryptoBotColors.blue : UIColor.white
+            self.iconView.tintColor = active ? PampGramFakeCryptoBotColors.blue : PampGramFakeCryptoBotColors.text
+            self.label.textColor = active ? PampGramFakeCryptoBotColors.blue : PampGramFakeCryptoBotColors.text
         }
         if animated {
             UIView.transition(with: self, duration: 0.25, options: [.transitionCrossDissolve, .allowUserInteraction], animations: update)
@@ -437,7 +466,7 @@ private final class PampGramFakeCryptoBotOdometerView: UIView {
         let prefixCount = prefix.count
         for (index, character) in characters.enumerated() {
             let isPrefix = index < prefixCount
-            let cell = Cell(character: character, color: isPrefix ? PampGramFakeCryptoBotColors.secondary : .white, rolls: !isPrefix)
+            let cell = Cell(character: character, color: isPrefix ? PampGramFakeCryptoBotColors.secondary : PampGramFakeCryptoBotColors.text, rolls: !isPrefix)
             cell.container.frame = CGRect(x: x, y: 0.0, width: cell.width, height: PampGramFakeCryptoBotOdometerView.lineHeight)
             self.addSubview(cell.container)
             self.cells.append(cell)
@@ -479,6 +508,13 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     }
 
     var onBackStateChanged: ((Bool) -> Void)?
+    var onPageColorChanged: ((UIColor) -> Void)?
+    private(set) var isDarkTheme = true
+    private let themeDisposable = MetaDisposable()
+
+    var pageColor: UIColor {
+        return PampGramFakeCryptoBotColors.card.resolvedColor(with: UITraitCollection(userInterfaceStyle: self.isDarkTheme ? .dark : .light))
+    }
 
     private let context: AccountContext
     private weak var presenter: ViewController?
@@ -558,7 +594,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     private let tabBar = UIView()
     private let tabCapsule = UIView()
-    private let tabBlur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let tabBlur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
     private let tabItems: [PampGramFakeCryptoBotTabItem] = [
         PampGramFakeCryptoBotTabItem(assetName: "tab_wallet", title: "Кошелёк", active: true),
         PampGramFakeCryptoBotTabItem(assetName: "tab_exchange", title: "Биржа", active: false),
@@ -571,6 +607,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.context = context
         self.presenter = presenter
         super.init(frame: .zero)
+        // The page follows Telegram's own theme (dark or light), not the system's.
+        self.isDarkTheme = context.sharedContext.currentPresentationData.with { $0 }.theme.overallDarkAppearance
+        self.overrideUserInterfaceStyle = self.isDarkTheme ? .dark : .light
         self.backgroundColor = PampGramFakeCryptoBotColors.card
         // The real page shows nothing for a moment (Telegram's placeholder is under it) and then
         // fades in; see `didMoveToWindow`.
@@ -592,6 +631,11 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             self?.operations = operations
             self?.historyView.setOperations(operations)
         }))
+
+        self.themeDisposable.set((context.sharedContext.presentationData
+        |> deliverOnMainQueue).startStrict(next: { [weak self] presentationData in
+            self?.applyTheme(dark: presentationData.theme.overallDarkAppearance)
+        }))
     }
 
     required init?(coder: NSCoder) {
@@ -600,14 +644,38 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     deinit {
         self.settingsDisposable.dispose()
+        self.themeDisposable.dispose()
         self.bannerTimer?.invalidate()
         self.priceTimer?.invalidate()
     }
 
     // MARK: Appearance
 
+    private func applyTheme(dark: Bool) {
+        guard dark != self.isDarkTheme else {
+            return
+        }
+        self.isDarkTheme = dark
+        self.overrideUserInterfaceStyle = dark ? .dark : .light
+        self.refreshThemeColors()
+        self.onPageColorChanged?(self.pageColor)
+    }
+
+    /// Layer colours and the keyboard are not dynamic; they are set again when the theme changes.
+    private func refreshThemeColors() {
+        self.searchBox.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.separator)
+        self.tabBar.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.tabBorder)
+        self.searchField.keyboardAppearance = self.isDarkTheme ? .dark : .light
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        self.refreshThemeColors()
+    }
+
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        self.refreshThemeColors()
         if self.window == nil {
             self.bannerTimer?.invalidate()
             self.bannerTimer = nil
@@ -888,7 +956,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
         self.searchBox.layer.cornerRadius = 12.0
         self.searchBox.layer.borderWidth = 1.0
-        self.searchBox.layer.borderColor = PampGramFakeCryptoBotColors.separator.cgColor
+        self.searchBox.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.separator)
         self.listScroll.addSubview(self.searchBox)
 
         self.searchIcon.image = pampGramFakeCryptoBotSymbol("magnifyingglass", size: 19.0, weight: .regular)
@@ -901,7 +969,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             .foregroundColor: PampGramFakeCryptoBotColors.secondary
         ])
         self.searchField.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
-        self.searchField.textColor = .white
+        self.searchField.textColor = PampGramFakeCryptoBotColors.text
         self.searchField.tintColor = PampGramFakeCryptoBotColors.blue
         self.searchField.autocorrectionType = .no
         self.searchField.autocapitalizationType = .none
@@ -918,7 +986,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.tabBar.layer.cornerRadius = 33.0
         self.tabBar.layer.masksToBounds = true
         self.tabBar.layer.borderWidth = 1.0
-        self.tabBar.layer.borderColor = UIColor(white: 1.0, alpha: 0.07).cgColor
+        self.tabBar.layer.borderColor = self.pampGramFakeCGColor(PampGramFakeCryptoBotColors.tabBorder)
         self.addSubview(self.tabBar)
         self.tabBlur.isUserInteractionEnabled = false
         self.tabBar.addSubview(self.tabBlur)
@@ -1529,11 +1597,11 @@ private final class PampGramFakeCryptoBotStandaloneView: UIView {
     private let content: PampGramFakeCryptoBotContentView
     private let cardView = UIView()
     private let closeControl = UIControl()
-    private let closeLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: .white, alignment: .left)
+    private let closeLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: PampGramFakeCryptoBotColors.text, alignment: .left)
     private let backControl = UIControl()
     private let backChevron = UIImageView()
-    private let backLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: .white, alignment: .left)
-    private let titleLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .semibold, color: .white, alignment: .center)
+    private let backLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: PampGramFakeCryptoBotColors.text, alignment: .left)
+    private let titleLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .semibold, color: PampGramFakeCryptoBotColors.text, alignment: .center)
     private let subtitleLabel = pampGramFakeCryptoBotLabel(size: 13.0, weight: .regular, color: PampGramFakeCryptoBotColors.subtitle, alignment: .center)
     private let moreControl = UIControl()
     private let moreIcon = UIImageView()
@@ -1541,7 +1609,8 @@ private final class PampGramFakeCryptoBotStandaloneView: UIView {
     init(content: PampGramFakeCryptoBotContentView) {
         self.content = content
         super.init(frame: .zero)
-        self.backgroundColor = .black
+        self.overrideUserInterfaceStyle = content.isDarkTheme ? .dark : .light
+        self.backgroundColor = PampGramFakeCryptoBotColors.outer
 
         self.cardView.backgroundColor = PampGramFakeCryptoBotColors.card
         self.cardView.layer.cornerRadius = 28.0
@@ -1556,7 +1625,7 @@ private final class PampGramFakeCryptoBotStandaloneView: UIView {
         self.cardView.addSubview(self.closeControl)
 
         self.backChevron.image = pampGramFakeCryptoBotSymbol("chevron.left", size: 20.0, weight: .semibold)
-        self.backChevron.tintColor = .white
+        self.backChevron.tintColor = PampGramFakeCryptoBotColors.text
         self.backChevron.contentMode = .center
         self.backChevron.isUserInteractionEnabled = false
         self.backLabel.text = "Назад"
@@ -1572,7 +1641,7 @@ private final class PampGramFakeCryptoBotStandaloneView: UIView {
         self.cardView.addSubview(self.subtitleLabel)
 
         self.moreIcon.image = pampGramFakeCryptoBotSymbol("ellipsis.circle", size: 24.0, weight: .regular)
-        self.moreIcon.tintColor = .white
+        self.moreIcon.tintColor = PampGramFakeCryptoBotColors.text
         self.moreIcon.contentMode = .center
         self.moreIcon.isUserInteractionEnabled = false
         self.moreControl.addSubview(self.moreIcon)
@@ -1582,6 +1651,9 @@ private final class PampGramFakeCryptoBotStandaloneView: UIView {
         content.onBackStateChanged = { [weak self] hasBack in
             self?.closeControl.isHidden = hasBack
             self?.backControl.isHidden = !hasBack
+        }
+        content.onPageColorChanged = { [weak self] _ in
+            self?.overrideUserInterfaceStyle = content.isDarkTheme ? .dark : .light
         }
     }
 
