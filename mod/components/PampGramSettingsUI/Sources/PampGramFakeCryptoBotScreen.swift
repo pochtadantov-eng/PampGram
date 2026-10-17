@@ -111,9 +111,11 @@ enum PampGramFakeCryptoBotColors {
     static let text = themed(dark: 0xffffff, light: 0x000000)
     static let secondary = themed(dark: 0x959595, light: 0x8a8a8e)
     static let subtitle = themed(dark: 0xacacac, light: 0x6d6d72)
-    static let blue = UIColor(rgb: 0x3b9de3)
-    static let dotInactive = themed(dark: 0x233f53, light: 0xd3e6f6)
-    static let dotFill = UIColor(rgb: 0x3997d5)
+    static let blue = themed(dark: 0x3b9de3, light: 0x5ea1d8)
+    static let dotInactive = themed(dark: 0x233f53, light: 0xc4def1)
+    static let dotFill = themed(dark: 0x3997d5, light: 0x5ea1d8)
+    static let roundButton = themed(dark: 0x242424, light: 0xf2f2f2)
+    static let roundGlyph = themed(dark: 0x8c8c8c, light: 0x999999)
     static let red = UIColor(rgb: 0xff4b52)
     static let green = themed(dark: 0x2e9f4f, light: 0x23984a)
     static let separator = themed(dark: 0x292929, light: 0xe5e5ea)
@@ -563,9 +565,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private let toastLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .medium, color: .white, alignment: .center)
 
     private let walletScroll = UIScrollView()
-    private let scanControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("top_scan"))
-    private let imageControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("top_image"))
-    private let currencyControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("top_currency"))
+    private let scanControl = PampGramFakeCryptoBotRoundButton(glyph: "tg_scan")
+    private let imageControl = PampGramFakeCryptoBotRoundButton(glyph: "tg_image")
+    private let currencyControl = PampGramFakeCryptoBotRoundButton(glyph: "tg_currency")
     private let balanceView = PampGramFakeCryptoBotOdometerView()
     private let eyeControl = UIControl()
     private let eyeIcon = UIImageView()
@@ -577,11 +579,11 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private let withdrawLabel = pampGramFakeCryptoBotLabel(size: 12.2, weight: .regular, color: PampGramFakeCryptoBotColors.blue, alignment: .center)
     private let historyLabel = pampGramFakeCryptoBotLabel(size: 12.2, weight: .regular, color: PampGramFakeCryptoBotColors.blue, alignment: .center)
     private let bannerScroll = UIScrollView()
-    private let bannerControls: [PampGramFakeCryptoBotImageControl] = [
-        PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_autumn")),
-        PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_p2p")),
-        PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_qr")),
-        PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_exchange"))
+    private let bannerControls: [PampGramFakeCryptoBotBannerView] = [
+        PampGramFakeCryptoBotBannerView(title: "Осенний фестиваль", lines: ["Криптовалютные подарки всем", "активным пользователям!"], accent: UIColor(rgb: 0xc44610), stripeAsset: "bs_autumn", textX: 84.3, titleCenter: 20.5, lineCenters: [40.3, 57.2]),
+        PampGramFakeCryptoBotBannerView(title: "P2P Маркет", lines: ["Теперь доступен в приложении."], accent: PampGramFakeCryptoBotColors.dotFill, stripeAsset: "bs_p2p", textX: 80.7, titleCenter: 29.8, lineCenters: [49.3]),
+        PampGramFakeCryptoBotBannerView(title: "Оплата по QR-коду", lines: ["Оплачивайте любые покупки с", "помощью криптовалюты."], accent: PampGramFakeCryptoBotColors.dotFill, stripeAsset: "bs_qr", textX: 80.7, titleCenter: 21.0, lineCenters: [40.2, 59.5]),
+        PampGramFakeCryptoBotBannerView(title: "Быстрые обмены", lines: ["Обменивайте криптовалюту в", "несколько кликов."], accent: UIColor(rgb: 0xee8500), stripeAsset: "bs_exchange", textX: 84.7, titleCenter: 21.0, lineCenters: [40.2, 58.3])
     ]
     /// The icon of each banner, drawn over the still picture so it can play its own animation.
     private let bannerIcons: [UIImageView] = [UIImageView(), UIImageView(), UIImageView(), UIImageView()]

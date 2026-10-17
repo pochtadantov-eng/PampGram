@@ -10,7 +10,7 @@ enum PampGramFakeCryptoBotAssets {
         if let cached = self.cache[name] {
             return cached
         }
-        guard let encoded = self.table[name] ?? self.moreTable[name], let data = Data(base64Encoded: encoded), let image = UIImage(data: data, scale: 3.0) else {
+        guard let encoded = self.table[name] ?? self.moreTable[name] ?? self.bannerTable[name], let data = Data(base64Encoded: encoded), let image = UIImage(data: data, scale: 3.0) else {
             return nil
         }
         self.cache[name] = image
