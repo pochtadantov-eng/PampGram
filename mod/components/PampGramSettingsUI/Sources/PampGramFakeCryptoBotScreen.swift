@@ -436,6 +436,10 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         case wallet
         case deposit
         case withdraw
+        /// "Выберите сеть": the networks of the coin picked in the deposit list.
+        case network
+        /// The address and the QR code.
+        case address
         /// Any tab other than the wallet: not drawn yet, only the bar works.
         case emptyTab
     }
@@ -450,6 +454,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private var balances: [String: Double] = [:]
     private var page: Page = .wallet
     private var selectedTab = 0
+    private var selectedCoin: PampGramFakeCryptoBotCurrency?
+    private var selectedNetworkIndex = 0
+    private var addressSerials: [String: Int] = [:]
     private var balanceHidden = false
     private var smallBalancesHidden = false
     private var searchQuery = ""
@@ -497,6 +504,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private var assetRows: [PampGramFakeCryptoBotRowView] = []
 
     private let listScroll = UIScrollView()
+    private let addressView = PampGramFakeCryptoBotAddressView()
     private let listTitle = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .left)
     private let searchBox = UIView()
     private let searchIcon = UIImageView()
@@ -731,6 +739,19 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.listScroll.backgroundColor = .clear
         self.addSubview(self.listScroll)
 
+        self.addressView.isHidden = true
+        self.addressView.onCopy = { [weak self] address in
+            UIPasteboard.general.string = address
+            self?.showToast("Адрес скопирован")
+        }
+        self.addressView.onUnavailable = { [weak self] in
+            self?.showUnavailable()
+        }
+        self.addressView.onNewAddress = { [weak self] in
+            self?.makeNewAddress()
+        }
+        self.addSubview(self.addressView)
+
         self.listScroll.addSubview(self.listTitle)
 
         self.searchBox.layer.cornerRadius = 12.0
@@ -789,6 +810,12 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     }
 
     func showUnavailable() {
+        self.showToast("Функция недоступна")
+    }
+
+    func showToast(_ text: String) {
+        self.toastLabel.text = text
+        self.setNeedsLayout()
         self.toastGeneration += 1
         let generation = self.toastGeneration
         UIView.animate(withDuration: 0.2, animations: {
@@ -805,8 +832,19 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     }
 
     func goBack() {
-        if self.page == .deposit || self.page == .withdraw {
+        switch self.page {
+        case .address:
+            if let coin = self.selectedCoin, pampGramFakeCryptoBotNetworks(for: coin.code).count > 1 {
+                self.setPage(.network)
+            } else {
+                self.setPage(.deposit)
+            }
+        case .network:
+            self.setPage(.deposit)
+        case .deposit, .withdraw:
             self.setPage(.wallet)
+        default:
+            break
         }
     }
 
@@ -854,6 +892,18 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             row.removeFromSuperview()
         }
         self.listRows.removeAll()
+        if self.page == .network, let coin = self.selectedCoin {
+            // The networks of the picked coin, drawn with the same rows as the coins.
+            for (index, network) in pampGramFakeCryptoBotNetworks(for: coin.code).enumerated() {
+                let pseudo = PampGramFakeCryptoBotCurrency(code: network.name, name: network.standard, assetName: network.assetName, price: 0.0, priceText: "", change: 0.0, fractionDigits: 2)
+                let row = PampGramFakeCryptoBotRowView(currency: pseudo, kind: .deposit)
+                row.tag = index
+                row.addTarget(self, action: #selector(self.listRowPressed(_:)), for: .touchUpInside)
+                self.listScroll.addSubview(row)
+                self.listRows.append(row)
+            }
+            return
+        }
         let kind: PampGramFakeCryptoBotRowView.Kind = self.page == .withdraw ? .withdraw : .deposit
         let query = self.searchQuery.trimmingCharacters(in: .whitespaces).lowercased()
         for currency in pampGramFakeCryptoBotCurrencies {
@@ -861,7 +911,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
                 continue
             }
             let row = PampGramFakeCryptoBotRowView(currency: currency, kind: kind)
-            row.addTarget(self, action: #selector(self.unavailablePressed), for: .touchUpInside)
+            row.addTarget(self, action: #selector(self.listRowPressed(_:)), for: .touchUpInside)
             self.listScroll.addSubview(row)
             self.listRows.append(row)
         }
@@ -870,19 +920,29 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     private func applyPage(animated: Bool) {
         let isWallet = self.page == .wallet
-        let isList = self.page == .deposit || self.page == .withdraw
+        let isList = self.page == .deposit || self.page == .withdraw || self.page == .network
+        let isAddress = self.page == .address
         self.walletScroll.isHidden = !isWallet
-        self.tabBar.isHidden = isList
+        self.tabBar.isHidden = isList || isAddress
         self.listScroll.isHidden = !isList
-        self.listTitle.text = self.page == .withdraw ? "Вывод криптовалюты" : "Пополнение криптовалюты"
-        if animated && (isWallet || isList) {
-            let target = isWallet ? self.walletScroll : self.listScroll
+        self.addressView.isHidden = !isAddress
+        self.searchBox.isHidden = self.page == .network
+        switch self.page {
+        case .withdraw:
+            self.listTitle.text = "Вывод криптовалюты"
+        case .network:
+            self.listTitle.text = "Выберите сеть"
+        default:
+            self.listTitle.text = "Пополнение криптовалюты"
+        }
+        if animated && (isWallet || isList || isAddress) {
+            let target: UIView = isWallet ? self.walletScroll : (isAddress ? self.addressView : self.listScroll)
             target.alpha = 0.0
             UIView.animate(withDuration: 0.2, animations: {
                 target.alpha = 1.0
             })
         }
-        self.onBackStateChanged?(isList)
+        self.onBackStateChanged?(isList || isAddress)
         self.setNeedsLayout()
     }
 
@@ -892,7 +952,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.searchField.text = ""
         self.searchQuery = ""
         self.listScroll.contentOffset = .zero
-        if page != .wallet {
+        if page == .deposit || page == .withdraw || page == .network {
             self.rebuildListRows()
         }
         self.applyPage(animated: true)
@@ -907,6 +967,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
         self.walletScroll.frame = self.bounds
         self.listScroll.frame = self.bounds
+        self.addressView.frame = self.bounds
         self.layoutWallet(width: width)
         self.layoutList(width: width)
 
@@ -1012,11 +1073,12 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     }
 
     private func layoutList(width: CGFloat) {
-        self.listTitle.frame = CGRect(x: 16.0, y: 29.0, width: max(0.0, width - 32.0), height: 22.0)
+        let isNetworks = self.page == .network
+        self.listTitle.frame = CGRect(x: 16.0, y: isNetworks ? 25.0 : 29.0, width: max(0.0, width - 32.0), height: 22.0)
         self.searchBox.frame = CGRect(x: 16.0, y: 64.0, width: max(0.0, width - 32.0), height: 46.0)
         self.searchIcon.frame = CGRect(x: 12.0, y: 13.0, width: 24.0, height: 20.0)
         self.searchField.frame = CGRect(x: 48.0, y: 0.0, width: max(0.0, self.searchBox.bounds.width - 60.0), height: 46.0)
-        var y: CGFloat = 123.0
+        var y: CGFloat = isNetworks ? 57.5 : 123.0
         for row in self.listRows {
             row.frame = CGRect(x: 0.0, y: y, width: width, height: 65.0)
             y += 65.0
@@ -1032,6 +1094,65 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     @objc private func withdrawPressed() {
         self.setPage(.withdraw)
+    }
+
+    @objc private func listRowPressed(_ sender: PampGramFakeCryptoBotRowView) {
+        switch self.page {
+        case .deposit:
+            let coin = sender.currency
+            self.selectedCoin = coin
+            if pampGramFakeCryptoBotNetworks(for: coin.code).count > 1 {
+                self.setPage(.network)
+            } else {
+                self.openAddress(networkIndex: 0)
+            }
+        case .network:
+            self.openAddress(networkIndex: sender.tag)
+        default:
+            self.showUnavailable()
+        }
+    }
+
+    private func openAddress(networkIndex: Int) {
+        guard let coin = self.selectedCoin else {
+            return
+        }
+        let networks = pampGramFakeCryptoBotNetworks(for: coin.code)
+        guard networkIndex >= 0 && networkIndex < networks.count else {
+            return
+        }
+        self.selectedNetworkIndex = networkIndex
+        self.configureAddressView()
+        self.setPage(.address)
+    }
+
+    private func configureAddressView() {
+        guard let coin = self.selectedCoin else {
+            return
+        }
+        let networks = pampGramFakeCryptoBotNetworks(for: coin.code)
+        guard self.selectedNetworkIndex >= 0 && self.selectedNetworkIndex < networks.count else {
+            return
+        }
+        let network = networks[self.selectedNetworkIndex]
+        let serial = self.addressSerials[coin.code + "|" + network.name] ?? 0
+        self.addressView.configure(currency: coin, network: network, serial: serial)
+    }
+
+    /// "Получить новый адрес": another made-up address (and QR) for the same coin and network.
+    private func makeNewAddress() {
+        guard let coin = self.selectedCoin else {
+            return
+        }
+        let networks = pampGramFakeCryptoBotNetworks(for: coin.code)
+        guard self.selectedNetworkIndex >= 0 && self.selectedNetworkIndex < networks.count else {
+            return
+        }
+        let key = coin.code + "|" + networks[self.selectedNetworkIndex].name
+        self.addressSerials[key] = (self.addressSerials[key] ?? 0) + 1
+        UIView.transition(with: self.addressView, duration: 0.2, options: [.transitionCrossDissolve], animations: {
+            self.configureAddressView()
+        })
     }
 
     @objc private func unavailablePressed() {
