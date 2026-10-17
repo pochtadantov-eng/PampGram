@@ -283,6 +283,142 @@ private final class PampGramFakeCryptoBotTabItem: UIControl {
     }
 }
 
+// MARK: - Rolling balance
+
+/// The total balance, drawn digit by digit: every digit sits on a vertical strip of 0-9 and rolls
+/// to its new value, the way the real mini app counts up when it opens or when the sum changes.
+private final class PampGramFakeCryptoBotOdometerView: UIView {
+    private static let font = UIFont.monospacedDigitSystemFont(ofSize: 36.0, weight: .bold)
+    private static let lineHeight: CGFloat = 46.0
+
+    private final class Cell {
+        let character: Character
+        private(set) var digit: Int?
+        let width: CGFloat
+        let container = UIView()
+        private let strip = UIView()
+
+        init(character: Character, color: UIColor, rolls: Bool) {
+            let digit: Int? = rolls ? character.wholeNumberValue : nil
+            let font = PampGramFakeCryptoBotOdometerView.font
+            let lineHeight = PampGramFakeCryptoBotOdometerView.lineHeight
+            let sample = digit == nil ? String(character) : "0"
+            self.character = character
+            self.digit = digit
+            self.width = ceil((sample as NSString).size(withAttributes: [.font: font]).width)
+            self.container.isUserInteractionEnabled = false
+            self.container.clipsToBounds = true
+            self.strip.isUserInteractionEnabled = false
+            self.container.addSubview(self.strip)
+            if let digit = digit {
+                for value in 0 ..< 10 {
+                    let label = UILabel(frame: CGRect(x: 0.0, y: CGFloat(value) * lineHeight, width: self.width, height: lineHeight))
+                    label.font = font
+                    label.textColor = color
+                    label.textAlignment = .center
+                    label.text = String(value)
+                    self.strip.addSubview(label)
+                }
+                self.strip.frame = CGRect(x: 0.0, y: -CGFloat(digit) * lineHeight, width: self.width, height: lineHeight * 10.0)
+            } else {
+                let label = UILabel(frame: CGRect(x: 0.0, y: 0.0, width: self.width, height: lineHeight))
+                label.font = font
+                label.textColor = color
+                label.textAlignment = .center
+                label.text = String(character)
+                self.strip.addSubview(label)
+                self.strip.frame = label.frame
+            }
+        }
+
+        func setDigit(_ digit: Int, animated: Bool, delay: Double = 0.0, duration: Double = 0.55) {
+            self.digit = digit
+            let frame = CGRect(x: 0.0, y: -CGFloat(digit) * PampGramFakeCryptoBotOdometerView.lineHeight, width: self.width, height: PampGramFakeCryptoBotOdometerView.lineHeight * 10.0)
+            if animated {
+                UIView.animate(withDuration: duration, delay: delay, options: [.curveEaseOut, .beginFromCurrentState], animations: {
+                    self.strip.frame = frame
+                })
+            } else {
+                self.strip.layer.removeAllAnimations()
+                self.strip.frame = frame
+            }
+        }
+
+        func rollFromZero(delay: Double) {
+            guard let digit = self.digit, digit != 0 else {
+                return
+            }
+            self.strip.layer.removeAllAnimations()
+            self.strip.frame.origin.y = 0.0
+            self.setDigit(digit, animated: true, delay: delay, duration: 0.7)
+        }
+    }
+
+    private var cells: [Cell] = []
+    private var text = ""
+    private(set) var contentSize = CGSize(width: 0.0, height: PampGramFakeCryptoBotOdometerView.lineHeight)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setText(prefix: String, value: String, animated: Bool) {
+        let text = prefix + value
+        if text == self.text {
+            return
+        }
+        self.text = text
+        let characters = Array(text)
+        var reusable = characters.count == self.cells.count
+        if reusable {
+            for (index, character) in characters.enumerated() {
+                let cell = self.cells[index]
+                if (cell.digit == nil) != (character.wholeNumberValue == nil) || (cell.digit == nil && cell.character != character) {
+                    reusable = false
+                    break
+                }
+            }
+        }
+        if reusable {
+            for (index, character) in characters.enumerated() {
+                if let digit = character.wholeNumberValue, self.cells[index].digit != digit {
+                    self.cells[index].setDigit(digit, animated: animated)
+                }
+            }
+            return
+        }
+
+        for cell in self.cells {
+            cell.container.removeFromSuperview()
+        }
+        self.cells.removeAll()
+        var x: CGFloat = 0.0
+        let prefixCount = prefix.count
+        for (index, character) in characters.enumerated() {
+            let isPrefix = index < prefixCount
+            let cell = Cell(character: character, color: isPrefix ? PampGramFakeCryptoBotColors.secondary : .white, rolls: !isPrefix)
+            cell.container.frame = CGRect(x: x, y: 0.0, width: cell.width, height: PampGramFakeCryptoBotOdometerView.lineHeight)
+            self.addSubview(cell.container)
+            self.cells.append(cell)
+            x += cell.width
+        }
+        self.contentSize = CGSize(width: x, height: PampGramFakeCryptoBotOdometerView.lineHeight)
+    }
+
+    /// The first appearance: every digit counts up from zero, left to right.
+    func rollFromZero() {
+        var order = 0
+        for cell in self.cells where cell.digit != nil {
+            cell.rollFromZero(delay: 0.05 * Double(order))
+            order += 1
+        }
+    }
+}
+
 // MARK: - The page
 
 /// What the real mini app shows inside Telegram's web-app window: everything below the window's own
@@ -308,6 +444,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private var smallBalancesHidden = false
     private var searchQuery = ""
     private var bannerPage = 0
+    private var didReveal = false
+    private var bannerTimer: Timer?
+    private var bannerAnimationToken = 0
 
     private let toastView = UIView()
     private let toastLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .medium, color: .white, alignment: .center)
@@ -316,7 +455,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private let scanControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("top_scan"))
     private let imageControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("top_image"))
     private let currencyControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("top_currency"))
-    private let balanceLabel = UILabel()
+    private let balanceView = PampGramFakeCryptoBotOdometerView()
     private let eyeControl = UIControl()
     private let eyeIcon = UIImageView()
     private let balanceCaption = UILabel()
@@ -329,9 +468,19 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private let bannerScroll = UIScrollView()
     private let bannerControls: [PampGramFakeCryptoBotImageControl] = [
         PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_autumn")),
-        PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_p2p"))
+        PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_p2p")),
+        PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_qr")),
+        PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_exchange"))
     ]
-    private let dotViews: [UIView] = [UIView(), UIView()]
+    /// The icon of each banner, drawn over the still picture so it can play its own animation.
+    private let bannerIcons: [UIImageView] = [UIImageView(), UIImageView(), UIImageView(), UIImageView()]
+    private let bannerAnimations: [PampGramFakeCryptoBotIconAnimation?] = [
+        PampGramFakeCryptoBotAnimations.animation(banner: "autumn"),
+        PampGramFakeCryptoBotAnimations.animation(banner: "p2p"),
+        PampGramFakeCryptoBotAnimations.animation(banner: "qr"),
+        PampGramFakeCryptoBotAnimations.animation(banner: "exchange")
+    ]
+    private let dotViews: [UIView] = [UIView(), UIView(), UIView(), UIView()]
     private let assetsTitle = pampGramFakeCryptoBotLabel(size: 17.0, weight: .medium, color: PampGramFakeCryptoBotColors.blue, alignment: .left)
     private let assetsChevron = UIImageView()
     private let hideSmallButton = UIButton(type: .custom)
@@ -358,6 +507,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.presenter = presenter
         super.init(frame: .zero)
         self.backgroundColor = PampGramFakeCryptoBotColors.card
+        // The real page shows nothing for a moment (Telegram's placeholder is under it) and then
+        // fades in; see `didMoveToWindow`.
+        self.alpha = 0.0
 
         self.setupWallet()
         self.setupList()
@@ -379,6 +531,83 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     deinit {
         self.settingsDisposable.dispose()
+        self.bannerTimer?.invalidate()
+    }
+
+    // MARK: Appearance
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if self.window == nil {
+            self.bannerTimer?.invalidate()
+            self.bannerTimer = nil
+            return
+        }
+        if self.didReveal {
+            self.startBannerTimer()
+            return
+        }
+        self.didReveal = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self = self else {
+                return
+            }
+            UIView.animate(withDuration: 0.15, animations: {
+                self.alpha = 1.0
+            })
+            self.balanceView.rollFromZero()
+            self.playBannerAnimation(index: self.bannerPage)
+            self.startBannerTimer()
+        }
+    }
+
+    private func startBannerTimer() {
+        self.bannerTimer?.invalidate()
+        self.bannerTimer = nil
+        guard self.window != nil, self.didReveal else {
+            return
+        }
+        let timer = Timer(timeInterval: 4.0, repeats: true) { [weak self] _ in
+            self?.advanceBanner()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.bannerTimer = timer
+    }
+
+    private func advanceBanner() {
+        let width = self.bannerScroll.bounds.width
+        guard self.page == .wallet, width > 0.0, !self.bannerScroll.isTracking, !self.bannerScroll.isDragging, !self.bannerScroll.isDecelerating else {
+            return
+        }
+        let next = (self.bannerPage + 1) % self.bannerControls.count
+        let offset = CGPoint(x: CGFloat(next) * width, y: 0.0)
+        // After the last banner the real page runs back to the first one, a little faster.
+        UIView.animate(withDuration: next == 0 ? 0.4 : 0.5, delay: 0.0, options: [.curveEaseOut, .allowUserInteraction, .beginFromCurrentState], animations: {
+            self.bannerScroll.contentOffset = offset
+        })
+    }
+
+    private func playBannerAnimation(index: Int) {
+        guard index >= 0, index < self.bannerIcons.count, let animation = self.bannerAnimations[index] else {
+            return
+        }
+        let icon = self.bannerIcons[index]
+        icon.stopAnimating()
+        icon.animationImages = animation.frames
+        icon.animationDuration = Double(animation.frames.count) / 20.0
+        icon.animationRepeatCount = 1
+        icon.startAnimating()
+    }
+
+    private func bannerPageChanged(to index: Int) {
+        self.bannerAnimationToken += 1
+        let token = self.bannerAnimationToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self = self, self.bannerAnimationToken == token, self.bannerPage == index else {
+                return
+            }
+            self.playBannerAnimation(index: index)
+        }
     }
 
     // MARK: Setup
@@ -394,12 +623,11 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             self.walletScroll.addSubview(control)
         }
 
-        self.balanceLabel.textAlignment = .center
-        self.balanceLabel.isUserInteractionEnabled = true
+        self.balanceView.isUserInteractionEnabled = true
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(self.balanceLongPressed(_:)))
         longPress.minimumPressDuration = 1.0
-        self.balanceLabel.addGestureRecognizer(longPress)
-        self.walletScroll.addSubview(self.balanceLabel)
+        self.balanceView.addGestureRecognizer(longPress)
+        self.walletScroll.addSubview(self.balanceView)
 
         self.eyeIcon.tintColor = PampGramFakeCryptoBotColors.secondary
         self.eyeIcon.contentMode = .center
@@ -443,6 +671,12 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         for control in self.bannerControls {
             control.addTarget(self, action: #selector(self.unavailablePressed), for: .touchUpInside)
             self.bannerScroll.addSubview(control)
+        }
+        for (index, icon) in self.bannerIcons.enumerated() {
+            icon.isUserInteractionEnabled = false
+            // The resting pose is the last frame; it is what shows before and after a play.
+            icon.image = self.bannerAnimations[index]?.frames.last
+            self.bannerScroll.addSubview(icon)
         }
         for dot in self.dotViews {
             dot.isUserInteractionEnabled = false
@@ -571,15 +805,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             total += self.amount(for: currency) * currency.price
         }
         let totalText = self.balanceHidden ? "•••••" : pampGramFakeCryptoBotFormatUSD(total)
-        let balance = NSMutableAttributedString(string: "$ ", attributes: [
-            .font: UIFont.systemFont(ofSize: 36.0, weight: .bold),
-            .foregroundColor: PampGramFakeCryptoBotColors.secondary
-        ])
-        balance.append(NSAttributedString(string: totalText, attributes: [
-            .font: UIFont.systemFont(ofSize: 36.0, weight: .bold),
-            .foregroundColor: UIColor.white
-        ]))
-        self.balanceLabel.attributedText = balance
+        self.balanceView.setText(prefix: "$ ", value: totalText, animated: self.alpha > 0.0)
         self.eyeIcon.image = pampGramFakeCryptoBotSymbol(self.balanceHidden ? "eye.slash.fill" : "eye.fill", size: 20.0, weight: .regular)
         self.hideSmallButton.setTitle(self.smallBalancesHidden ? "Показать мелкие балансы" : "Скрыть мелкие балансы", for: .normal)
 
@@ -676,11 +902,11 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.imageControl.frame = CGRect(x: width - 96.0, y: 13.0, width: 34.0, height: 34.0)
         self.currencyControl.frame = CGRect(x: width - 50.0, y: 13.0, width: 34.0, height: 34.0)
 
-        let balanceSize = self.balanceLabel.sizeThatFits(CGSize(width: width, height: 60.0))
+        let balanceSize = self.balanceView.contentSize
         let eyeWidth: CGFloat = 26.0
         let groupWidth = balanceSize.width + 12.0 + eyeWidth
         let groupX = floor((width - groupWidth) / 2.0)
-        self.balanceLabel.frame = CGRect(x: groupX, y: 65.0, width: balanceSize.width, height: 46.0)
+        self.balanceView.frame = CGRect(x: groupX, y: 65.0, width: balanceSize.width, height: 46.0)
         self.eyeControl.frame = CGRect(x: groupX + balanceSize.width + 4.0, y: 65.0, width: eyeWidth + 8.0, height: 46.0)
         self.eyeIcon.frame = self.eyeControl.bounds
         self.balanceCaption.frame = CGRect(x: 0.0, y: 114.0, width: width, height: 22.0)
@@ -702,15 +928,25 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         for (index, control) in self.bannerControls.enumerated() {
             control.frame = CGRect(x: CGFloat(index) * bannerWidth, y: 0.0, width: bannerWidth, height: bannerHeight)
         }
-        var dotX = floor((width - (12.0 + 10.0 + 6.0)) / 2.0)
-        for (index, dot) in self.dotViews.enumerated() {
-            let isActive = index == self.bannerPage
-            let dotWidth: CGFloat = isActive ? 12.0 : 6.0
-            dot.frame = CGRect(x: dotX, y: 321.0, width: dotWidth, height: 6.0)
-            dot.layer.cornerRadius = 3.0
-            dot.backgroundColor = isActive ? PampGramFakeCryptoBotColors.blue : PampGramFakeCryptoBotColors.dotInactive
-            dotX += dotWidth + 10.0
+        // Each icon sits over its banner picture exactly where the picture has the icon; the
+        // picture is shown aspect-fit, so follow the same scale and offset.
+        let pictureWidth: CGFloat = 1110.0 / 3.0
+        let pictureHeight: CGFloat = 223.0 / 3.0
+        let pictureScale = min(bannerWidth / pictureWidth, bannerHeight / pictureHeight)
+        let pictureOffsetX = (bannerWidth - pictureWidth * pictureScale) / 2.0
+        let pictureOffsetY = (bannerHeight - pictureHeight * pictureScale) / 2.0
+        for (index, icon) in self.bannerIcons.enumerated() {
+            guard let box = self.bannerAnimations[index]?.box else {
+                continue
+            }
+            icon.frame = CGRect(
+                x: CGFloat(index) * bannerWidth + pictureOffsetX + box.minX / 3.0 * pictureScale,
+                y: pictureOffsetY + box.minY / 3.0 * pictureScale,
+                width: box.width / 3.0 * pictureScale,
+                height: box.height / 3.0 * pictureScale
+            )
         }
+        self.layoutDots(width: width)
 
         let titleSize = self.assetsTitle.sizeThatFits(CGSize(width: width, height: 22.0))
         self.assetsTitle.frame = CGRect(x: 16.0, y: 351.0, width: titleSize.width, height: 22.0)
@@ -723,6 +959,20 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             y += 65.0
         }
         self.walletScroll.contentSize = CGSize(width: width, height: y + 130.0)
+    }
+
+    /// The page dots: the current one is a wider pill, the others small circles.
+    private func layoutDots(width: CGFloat) {
+        let count = CGFloat(self.dotViews.count)
+        var dotX = floor((width - (12.0 + 6.0 * (count - 1.0) + 10.0 * (count - 1.0))) / 2.0)
+        for (index, dot) in self.dotViews.enumerated() {
+            let isActive = index == self.bannerPage
+            let dotWidth: CGFloat = isActive ? 12.0 : 6.0
+            dot.frame = CGRect(x: dotX, y: 321.0, width: dotWidth, height: 6.0)
+            dot.layer.cornerRadius = 3.0
+            dot.backgroundColor = isActive ? PampGramFakeCryptoBotColors.blue : PampGramFakeCryptoBotColors.dotInactive
+            dotX += dotWidth + 10.0
+        }
     }
 
     private func layoutList(width: CGFloat) {
@@ -798,7 +1048,29 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         let index = max(0, min(self.dotViews.count - 1, Int(round(scrollView.contentOffset.x / scrollView.bounds.width))))
         if index != self.bannerPage {
             self.bannerPage = index
-            self.setNeedsLayout()
+            UIView.animate(withDuration: 0.3, delay: 0.0, options: [.curveEaseInOut, .beginFromCurrentState], animations: {
+                self.layoutDots(width: self.bounds.width)
+            })
+            self.bannerPageChanged(to: index)
+        }
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        if scrollView === self.bannerScroll {
+            self.bannerTimer?.invalidate()
+            self.bannerTimer = nil
+        }
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if scrollView === self.bannerScroll && !decelerate {
+            self.startBannerTimer()
+        }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        if scrollView === self.bannerScroll {
+            self.startBannerTimer()
         }
     }
 }
