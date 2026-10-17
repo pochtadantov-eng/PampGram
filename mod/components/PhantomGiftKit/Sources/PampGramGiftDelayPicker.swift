@@ -195,7 +195,7 @@ public func pampGramPresentGiftDelaySheet(presentationData: PresentationData, pr
             PampGramWheelUnit(name: "мин", count: 60, seconds: 60),
             PampGramWheelUnit(name: "с", count: 60, seconds: 1)
         ],
-        initialSeconds: 5 * 60,
+        initialSeconds: 0,
         textColor: presentationData.theme.actionSheet.primaryTextColor
     )
     sheet.setItemGroups([
