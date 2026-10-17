@@ -442,6 +442,8 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         case address
         /// "История": the operations.
         case history
+        /// The withdrawal form and the steps after it.
+        case withdrawForm
         /// Any tab other than the wallet: not drawn yet, only the bar works.
         case emptyTab
     }
@@ -508,6 +510,10 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private let listScroll = UIScrollView()
     private let addressView = PampGramFakeCryptoBotAddressView()
     private let historyView = PampGramFakeCryptoBotHistoryView()
+    private let withdrawView = PampGramFakeCryptoBotWithdrawView()
+    private var operations: [PampGramFakeCryptoBotOperation] = []
+    /// True while the coin/network pickers lead to the withdrawal form rather than to an address.
+    private var isWithdrawFlow = false
     private let listTitle = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .left)
     private let searchBox = UIView()
     private let searchIcon = UIImageView()
@@ -545,7 +551,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.settingsDisposable.set((PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
         |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
             self?.setBalances(settings.fakeCryptoBotBalances)
-            self?.historyView.setOperations(pampGramFakeCryptoBotParseOperations(settings.fakeCryptoBotHistoryRaw))
+            let operations = pampGramFakeCryptoBotParseOperations(settings.fakeCryptoBotHistoryRaw)
+            self?.operations = operations
+            self?.historyView.setOperations(operations)
         }))
     }
 
@@ -762,6 +770,24 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         }
         self.addSubview(self.historyView)
 
+        self.withdrawView.isHidden = true
+        self.withdrawView.onChangeCoin = { [weak self] in
+            self?.setPage(.withdraw)
+        }
+        self.withdrawView.onUnavailable = { [weak self] in
+            self?.showUnavailable()
+        }
+        self.withdrawView.onToast = { [weak self] text in
+            self?.showToast(text)
+        }
+        self.withdrawView.onOpenWallet = { [weak self] in
+            self?.setPage(.wallet)
+        }
+        self.withdrawView.onCompleted = { [weak self] code, total, usd in
+            self?.withdrawalCompleted(code: code, total: total, usd: usd)
+        }
+        self.addSubview(self.withdrawView)
+
         self.listScroll.addSubview(self.listTitle)
 
         self.searchBox.layer.cornerRadius = 12.0
@@ -849,8 +875,16 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             } else {
                 self.setPage(.deposit)
             }
+        case .withdrawForm:
+            if !self.withdrawView.goBack() {
+                if let coin = self.selectedCoin, pampGramFakeCryptoBotNetworks(for: coin.code).count > 1 {
+                    self.setPage(.network)
+                } else {
+                    self.setPage(.withdraw)
+                }
+            }
         case .network:
-            self.setPage(.deposit)
+            self.setPage(self.isWithdrawFlow ? .withdraw : .deposit)
         case .deposit, .withdraw, .history:
             self.setPage(.wallet)
         default:
@@ -933,9 +967,11 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         let isList = self.page == .deposit || self.page == .withdraw || self.page == .network
         let isAddress = self.page == .address
         let isHistory = self.page == .history
+        let isWithdrawForm = self.page == .withdrawForm
         self.walletScroll.isHidden = !isWallet
-        self.tabBar.isHidden = isList || isAddress || isHistory
+        self.tabBar.isHidden = isList || isAddress || isHistory || isWithdrawForm
         self.historyView.isHidden = !isHistory
+        self.withdrawView.isHidden = !isWithdrawForm
         self.listScroll.isHidden = !isList
         self.addressView.isHidden = !isAddress
         self.searchBox.isHidden = self.page == .network
@@ -947,14 +983,14 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         default:
             self.listTitle.text = "Пополнение криптовалюты"
         }
-        if animated && (isWallet || isList || isAddress || isHistory) {
-            let target: UIView = isWallet ? self.walletScroll : (isAddress ? self.addressView : (isHistory ? self.historyView : self.listScroll))
+        if animated && (isWallet || isList || isAddress || isHistory || isWithdrawForm) {
+            let target: UIView = isWallet ? self.walletScroll : (isAddress ? self.addressView : (isHistory ? self.historyView : (isWithdrawForm ? self.withdrawView : self.listScroll)))
             target.alpha = 0.0
             UIView.animate(withDuration: 0.2, animations: {
                 target.alpha = 1.0
             })
         }
-        self.onBackStateChanged?(isList || isAddress || isHistory)
+        self.onBackStateChanged?(isList || isAddress || isHistory || isWithdrawForm)
         self.setNeedsLayout()
     }
 
@@ -981,6 +1017,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.listScroll.frame = self.bounds
         self.addressView.frame = self.bounds
         self.historyView.frame = self.bounds
+        self.withdrawView.frame = self.bounds
         self.layoutWallet(width: width)
         self.layoutList(width: width)
 
@@ -1164,16 +1201,72 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         case .deposit:
             let coin = sender.currency
             self.selectedCoin = coin
+            self.isWithdrawFlow = false
             if pampGramFakeCryptoBotNetworks(for: coin.code).count > 1 {
                 self.setPage(.network)
             } else {
                 self.openAddress(networkIndex: 0)
             }
+        case .withdraw:
+            let coin = sender.currency
+            self.selectedCoin = coin
+            self.isWithdrawFlow = true
+            if pampGramFakeCryptoBotNetworks(for: coin.code).count > 1 {
+                self.setPage(.network)
+            } else {
+                self.openWithdraw(networkIndex: 0)
+            }
         case .network:
-            self.openAddress(networkIndex: sender.tag)
+            if self.isWithdrawFlow {
+                self.openWithdraw(networkIndex: sender.tag)
+            } else {
+                self.openAddress(networkIndex: sender.tag)
+            }
         default:
             self.showUnavailable()
         }
+    }
+
+    private func openWithdraw(networkIndex: Int) {
+        guard let coin = self.selectedCoin else {
+            return
+        }
+        let networks = pampGramFakeCryptoBotNetworks(for: coin.code)
+        guard networkIndex >= 0 && networkIndex < networks.count else {
+            return
+        }
+        self.selectedNetworkIndex = networkIndex
+        // What was already withdrawn this week feeds the "На этой неделе …" line.
+        let weekAgo = Int32(clamping: Int(Date().timeIntervalSince1970 - 7.0 * 86400.0))
+        var count = 0
+        var usd = 0.0
+        for operation in self.operations where operation.kind == 1 && operation.date >= weekAgo {
+            count += 1
+            usd += operation.usd
+        }
+        self.withdrawView.configure(currency: coin, network: networks[networkIndex], balance: self.balances[coin.code] ?? 0.0, weekCount: count, weekUSD: usd)
+        self.setPage(.withdrawForm)
+    }
+
+    /// The code was entered: the balance goes down by what was sent and the fee, and the history gets a withdrawal.
+    private func withdrawalCompleted(code: String, total: Double, usd: Double) {
+        let context = self.context
+        let price = pampGramFakeCryptoBotCurrencies.first(where: { $0.code == code })?.price ?? 0.0
+        let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+            var settings = settings
+            var balances = settings.fakeCryptoBotBalances
+            let previous = balances[code] ?? 0.0
+            let updated = max(0.0, previous - total)
+            if updated <= 0.0 {
+                balances.removeValue(forKey: code)
+            } else {
+                balances[code] = updated
+            }
+            settings.fakeCryptoBotBalances = balances
+            settings.fakeCryptoBotHistoryRaw = pampGramFakeCryptoBotAppendingOperation(raw: settings.fakeCryptoBotHistoryRaw, code: code, old: previous, new: updated, price: price)
+            return settings
+        }).start()
+        _ = usd
     }
 
     private func openAddress(networkIndex: Int) {
