@@ -45,6 +45,27 @@ let pampGramFakeCryptoBotCurrencies: [PampGramFakeCryptoBotCurrency] = [
     PampGramFakeCryptoBotCurrency(code: "XAUT", name: "Tether Gold", assetName: "coin_XAUT", price: 4152.71, priceText: "$4,152.71", change: 0.0, fractionDigits: 4)
 ]
 
+/// Coins pegged to the dollar move by hundredths of a cent only.
+private func pampGramFakeCryptoBotIsStable(_ code: String) -> Bool {
+    return code == "USDT" || code == "USDC"
+}
+
+/// "$80,555.61" for `price`, with as many decimals as `template` ("$80,555.61") has.
+private func pampGramFakeCryptoBotPriceText(_ price: Double, like template: String) -> String {
+    var decimals = 2
+    if let dot = template.firstIndex(of: ".") {
+        decimals = template.distance(from: dot, to: template.endIndex) - 1
+    }
+    let formatter = NumberFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.numberStyle = .decimal
+    formatter.minimumFractionDigits = decimals
+    formatter.maximumFractionDigits = decimals
+    formatter.groupingSeparator = ","
+    formatter.usesGroupingSeparator = true
+    return "$" + (formatter.string(from: NSNumber(value: price)) ?? "0")
+}
+
 func pampGramFakeCryptoBotFormat(_ amount: Double, fractionDigits: Int) -> String {
     let formatter = NumberFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -181,24 +202,7 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
         switch kind {
         case .asset:
             self.titleLabel.text = currency.name
-            let subtitle = NSMutableAttributedString(string: currency.priceText + " ", attributes: [
-                .font: PampGramFakeCryptoBotFonts.font(13.0, .regular),
-                .foregroundColor: PampGramFakeCryptoBotColors.secondary
-            ])
-            var changeText = "0.00%"
-            var changeColor = PampGramFakeCryptoBotColors.secondary
-            if currency.change > 0.0 {
-                changeText = "+" + String(format: "%.2f", currency.change) + "%"
-                changeColor = PampGramFakeCryptoBotColors.green
-            } else if currency.change < 0.0 {
-                changeText = "-" + String(format: "%.2f", abs(currency.change)) + "%"
-                changeColor = PampGramFakeCryptoBotColors.red
-            }
-            subtitle.append(NSAttributedString(string: changeText, attributes: [
-                .font: PampGramFakeCryptoBotFonts.font(13.0, .regular),
-                .foregroundColor: changeColor
-            ]))
-            self.subtitleLabel.attributedText = subtitle
+            self.setQuote(priceText: currency.priceText, change: currency.change)
             self.chevronView.isHidden = true
         case .deposit:
             self.titleLabel.text = currency.code
@@ -214,6 +218,29 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    /// "$104.21 -1.00%": the price and the day's change under a coin's name in the wallet.
+    func setQuote(priceText: String, change: Double) {
+        let subtitle = NSMutableAttributedString(string: priceText + " ", attributes: [
+            .font: PampGramFakeCryptoBotFonts.font(13.0, .regular),
+            .foregroundColor: PampGramFakeCryptoBotColors.secondary
+        ])
+        var changeText = "0.00%"
+        var changeColor = PampGramFakeCryptoBotColors.secondary
+        let rounded = (change * 100.0).rounded() / 100.0
+        if rounded > 0.0 {
+            changeText = "+" + String(format: "%.2f", rounded) + "%"
+            changeColor = PampGramFakeCryptoBotColors.green
+        } else if rounded < 0.0 {
+            changeText = "-" + String(format: "%.2f", abs(rounded)) + "%"
+            changeColor = PampGramFakeCryptoBotColors.red
+        }
+        subtitle.append(NSAttributedString(string: changeText, attributes: [
+            .font: PampGramFakeCryptoBotFonts.font(13.0, .regular),
+            .foregroundColor: changeColor
+        ]))
+        self.subtitleLabel.attributedText = subtitle
     }
 
     func update(amountText: String, usdText: String) {
@@ -469,6 +496,10 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private var bannerPage = 0
     private var didReveal = false
     private var bannerTimer: Foundation.Timer?
+    private var priceTimer: Foundation.Timer?
+    /// The coin prices and day changes as they drift, like the real app's refreshing rates.
+    private var livePrices: [String: Double] = [:]
+    private var liveChanges: [String: Double] = [:]
     private var bannerAnimationToken = 0
 
     private let toastView = UIView()
@@ -546,6 +577,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.setupList()
         self.setupTabBar()
         self.setupToast()
+        self.startPrices()
 
         self.reload()
         self.applyPage(animated: false)
@@ -566,6 +598,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     deinit {
         self.settingsDisposable.dispose()
         self.bannerTimer?.invalidate()
+        self.priceTimer?.invalidate()
     }
 
     // MARK: Appearance
@@ -575,10 +608,13 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         if self.window == nil {
             self.bannerTimer?.invalidate()
             self.bannerTimer = nil
+            self.priceTimer?.invalidate()
+            self.priceTimer = nil
             return
         }
         if self.didReveal {
             self.startBannerTimer()
+            self.startPriceTimer()
             return
         }
         self.didReveal = true
@@ -594,6 +630,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             })
             self.balanceView.rollFromZero()
             self.startBannerTimer()
+            self.startPriceTimer()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 guard let self = self, self.bannerPage == 0 else {
                     return
@@ -614,6 +651,54 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         }
         RunLoop.main.add(timer, forMode: .common)
         self.bannerTimer = timer
+    }
+
+    // MARK: Rates
+
+    /// Every open starts from slightly different rates, so the numbers are never quite the same twice.
+    private func startPrices() {
+        for currency in pampGramFakeCryptoBotCurrencies {
+            let drift = pampGramFakeCryptoBotIsStable(currency.code) ? 0.0002 : 0.004
+            let step = Double.random(in: -drift ... drift)
+            self.livePrices[currency.code] = currency.price * (1.0 + step)
+            self.liveChanges[currency.code] = currency.change + step * 100.0
+        }
+    }
+
+    private func startPriceTimer() {
+        self.priceTimer?.invalidate()
+        self.priceTimer = nil
+        guard self.window != nil else {
+            return
+        }
+        let timer = Foundation.Timer(timeInterval: 6.0, repeats: true) { [weak self] _ in
+            self?.tickPrices()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.priceTimer = timer
+    }
+
+    /// A small random step for every coin, within a couple of percent of where it started; the totals
+    /// under the balance follow, so the dollars creep up and down by cents.
+    private func tickPrices() {
+        for currency in pampGramFakeCryptoBotCurrencies {
+            let stable = pampGramFakeCryptoBotIsStable(currency.code)
+            let drift = stable ? 0.00004 : 0.0007
+            var step = Double.random(in: -drift ... drift)
+            let current = self.livePrices[currency.code] ?? currency.price
+            let low = currency.price * (stable ? 0.9995 : 0.985)
+            let high = currency.price * (stable ? 1.0005 : 1.015)
+            if current * (1.0 + step) < low || current * (1.0 + step) > high {
+                step = -step
+            }
+            self.livePrices[currency.code] = current * (1.0 + step)
+            self.liveChanges[currency.code] = (self.liveChanges[currency.code] ?? currency.change) + step * 100.0
+        }
+        self.reload()
+    }
+
+    private func price(for currency: PampGramFakeCryptoBotCurrency) -> Double {
+        return self.livePrices[currency.code] ?? currency.price
     }
 
     private func advanceBanner() {
@@ -913,7 +998,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private func reload() {
         var total = 0.0
         for currency in pampGramFakeCryptoBotCurrencies {
-            total += self.amount(for: currency) * currency.price
+            total += self.amount(for: currency) * self.price(for: currency)
         }
         let totalText = self.balanceHidden ? "•••••" : pampGramFakeCryptoBotFormatUSD(total)
         self.balanceView.setText(prefix: "$ ", value: totalText, animated: self.alpha > 0.0)
@@ -922,13 +1007,15 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
         for row in self.assetRows {
             let amount = self.amount(for: row.currency)
-            let usd = amount * row.currency.price
+            let livePrice = self.price(for: row.currency)
+            let usd = amount * livePrice
+            row.setQuote(priceText: pampGramFakeCryptoBotPriceText(livePrice, like: row.currency.priceText), change: self.liveChanges[row.currency.code] ?? row.currency.change)
             row.update(amountText: pampGramFakeCryptoBotFormat(amount, fractionDigits: row.currency.fractionDigits) + " " + row.currency.code, usdText: "$" + pampGramFakeCryptoBotFormatUSD(usd))
             row.isHidden = self.smallBalancesHidden && usd < 1.0
         }
         for row in self.listRows {
             let amount = self.amount(for: row.currency)
-            row.update(amountText: pampGramFakeCryptoBotFormat(amount, fractionDigits: row.currency.fractionDigits) + " " + row.currency.code, usdText: "$" + pampGramFakeCryptoBotFormatUSD(amount * row.currency.price))
+            row.update(amountText: pampGramFakeCryptoBotFormat(amount, fractionDigits: row.currency.fractionDigits) + " " + row.currency.code, usdText: "$" + pampGramFakeCryptoBotFormatUSD(amount * self.price(for: row.currency)))
         }
         self.setNeedsLayout()
     }
@@ -1246,14 +1333,15 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             count += 1
             usd += operation.usd
         }
-        self.withdrawView.configure(currency: coin, network: networks[networkIndex], balance: self.balances[coin.code] ?? 0.0, weekCount: count, weekUSD: usd)
+        let liveCoin = PampGramFakeCryptoBotCurrency(code: coin.code, name: coin.name, assetName: coin.assetName, price: self.price(for: coin), priceText: coin.priceText, change: coin.change, fractionDigits: coin.fractionDigits)
+        self.withdrawView.configure(currency: liveCoin, network: networks[networkIndex], balance: self.balances[coin.code] ?? 0.0, weekCount: count, weekUSD: usd)
         self.setPage(.withdrawForm)
     }
 
     /// The code was entered: the balance goes down by what was sent and the fee, and the history gets a withdrawal.
     private func withdrawalCompleted(code: String, total: Double, usd: Double) {
         let context = self.context
-        let price = pampGramFakeCryptoBotCurrencies.first(where: { $0.code == code })?.price ?? 0.0
+        let price = pampGramFakeCryptoBotCurrencies.first(where: { $0.code == code }).map { self.price(for: $0) } ?? 0.0
         let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
             var settings = settings
             var balances = settings.fakeCryptoBotBalances
