@@ -283,38 +283,34 @@ private final class PampGramFakeCryptoBotTabItem: UIControl {
     }
 }
 
-// MARK: - The mini app
+// MARK: - The page
 
-private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, UITextFieldDelegate {
+/// What the real mini app shows inside Telegram's web-app window: everything below the window's own
+/// header. Used both inside the real window (the window is Telegram's, only the page is ours)
+/// and, wrapped with a drawn header, in the standalone screen opened from the settings.
+private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelegate, UITextFieldDelegate, PampGramFakeMiniAppContent {
     enum Page {
         case wallet
         case deposit
         case withdraw
     }
 
-    var onClose: (() -> Void)?
-    var onUnavailable: (() -> Void)?
-    var onEditBalances: (() -> Void)?
+    var onBackStateChanged: ((Bool) -> Void)?
+
+    private let context: AccountContext
+    private weak var presenter: ViewController?
+    private let settingsDisposable = MetaDisposable()
+    private var toastGeneration = 0
 
     private var balances: [String: Double] = [:]
     private var page: Page = .wallet
-    private var topInset: CGFloat = 59.0
     private var balanceHidden = false
     private var smallBalancesHidden = false
     private var searchQuery = ""
     private var bannerPage = 0
 
-    private let cardView = UIView()
-
-    private let closeControl = UIControl()
-    private let closeLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: .white, alignment: .left)
-    private let backControl = UIControl()
-    private let backChevron = UIImageView()
-    private let backLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: .white, alignment: .left)
-    private let titleLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .semibold, color: .white, alignment: .center)
-    private let subtitleLabel = pampGramFakeCryptoBotLabel(size: 13.0, weight: .regular, color: PampGramFakeCryptoBotColors.subtitle, alignment: .center)
-    private let moreControl = UIControl()
-    private let moreIcon = UIImageView()
+    private let toastView = UIView()
+    private let toastLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .medium, color: .white, alignment: .center)
 
     private let walletScroll = UIScrollView()
     private let scanControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("top_scan"))
@@ -357,67 +353,41 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
         PampGramFakeCryptoBotTabItem(assetName: "tab_more", title: "Ещё", active: false)
     ]
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        self.backgroundColor = .black
+    init(context: AccountContext, presenter: ViewController) {
+        self.context = context
+        self.presenter = presenter
+        super.init(frame: .zero)
+        self.backgroundColor = PampGramFakeCryptoBotColors.card
 
-        self.cardView.backgroundColor = PampGramFakeCryptoBotColors.card
-        self.cardView.layer.cornerRadius = 28.0
-        self.cardView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        self.cardView.clipsToBounds = true
-        self.addSubview(self.cardView)
-
-        // Wallet and list scrolls sit under the header, so they go in first.
         self.setupWallet()
         self.setupList()
-        self.setupHeader()
         self.setupTabBar()
+        self.setupToast()
 
         self.reload()
         self.applyPage(animated: false)
+
+        self.settingsDisposable.set((PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
+        |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
+            self?.setBalances(settings.fakeCryptoBotBalances)
+        }))
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // MARK: Setup
-
-    private func setupHeader() {
-        self.closeLabel.text = "Закрыть"
-        self.closeControl.addSubview(self.closeLabel)
-        self.closeControl.addTarget(self, action: #selector(self.closePressed), for: .touchUpInside)
-        self.cardView.addSubview(self.closeControl)
-
-        self.backChevron.image = pampGramFakeCryptoBotSymbol("chevron.left", size: 20.0, weight: .semibold)
-        self.backChevron.tintColor = .white
-        self.backChevron.contentMode = .center
-        self.backChevron.isUserInteractionEnabled = false
-        self.backLabel.text = "Назад"
-        self.backControl.addSubview(self.backChevron)
-        self.backControl.addSubview(self.backLabel)
-        self.backControl.addTarget(self, action: #selector(self.backPressed), for: .touchUpInside)
-        self.cardView.addSubview(self.backControl)
-
-        self.titleLabel.text = "Crypto Bot"
-        self.subtitleLabel.text = "мини-приложение"
-        self.cardView.addSubview(self.titleLabel)
-        self.cardView.addSubview(self.subtitleLabel)
-
-        self.moreIcon.image = pampGramFakeCryptoBotSymbol("ellipsis.circle", size: 24.0, weight: .regular)
-        self.moreIcon.tintColor = .white
-        self.moreIcon.contentMode = .center
-        self.moreIcon.isUserInteractionEnabled = false
-        self.moreControl.addSubview(self.moreIcon)
-        self.moreControl.addTarget(self, action: #selector(self.unavailablePressed), for: .touchUpInside)
-        self.cardView.addSubview(self.moreControl)
+    deinit {
+        self.settingsDisposable.dispose()
     }
+
+    // MARK: Setup
 
     private func setupWallet() {
         self.walletScroll.alwaysBounceVertical = true
         self.walletScroll.showsVerticalScrollIndicator = false
         self.walletScroll.backgroundColor = .clear
-        self.cardView.addSubview(self.walletScroll)
+        self.addSubview(self.walletScroll)
 
         for control in [self.scanControl, self.imageControl, self.currencyControl] {
             control.addTarget(self, action: #selector(self.unavailablePressed), for: .touchUpInside)
@@ -505,7 +475,7 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
         self.listScroll.showsVerticalScrollIndicator = false
         self.listScroll.keyboardDismissMode = .onDrag
         self.listScroll.backgroundColor = .clear
-        self.cardView.addSubview(self.listScroll)
+        self.addSubview(self.listScroll)
 
         self.listScroll.addSubview(self.listTitle)
 
@@ -540,10 +510,42 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
         self.tabBar.layer.cornerRadius = 26.5
         self.tabBar.layer.borderWidth = 1.0
         self.tabBar.layer.borderColor = UIColor(white: 1.0, alpha: 0.05).cgColor
-        self.cardView.addSubview(self.tabBar)
+        self.addSubview(self.tabBar)
         for item in self.tabItems {
             item.addTarget(self, action: #selector(self.tabPressed(_:)), for: .touchUpInside)
             self.tabBar.addSubview(item)
+        }
+    }
+
+    private func setupToast() {
+        self.toastView.backgroundColor = UIColor(white: 0.0, alpha: 0.82)
+        self.toastView.layer.cornerRadius = 18.0
+        self.toastView.alpha = 0.0
+        self.toastView.isUserInteractionEnabled = false
+        self.toastLabel.text = "Функция недоступна"
+        self.toastView.addSubview(self.toastLabel)
+        self.addSubview(self.toastView)
+    }
+
+    func showUnavailable() {
+        self.toastGeneration += 1
+        let generation = self.toastGeneration
+        UIView.animate(withDuration: 0.2, animations: {
+            self.toastView.alpha = 1.0
+        })
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            guard let self = self, self.toastGeneration == generation else {
+                return
+            }
+            UIView.animate(withDuration: 0.25, animations: {
+                self.toastView.alpha = 0.0
+            })
+        }
+    }
+
+    func goBack() {
+        if self.page != .wallet {
+            self.setPage(.wallet)
         }
     }
 
@@ -615,8 +617,6 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
 
     private func applyPage(animated: Bool) {
         let isWallet = self.page == .wallet
-        self.closeControl.isHidden = !isWallet
-        self.backControl.isHidden = isWallet
         self.walletScroll.isHidden = !isWallet
         self.tabBar.isHidden = !isWallet
         self.listScroll.isHidden = isWallet
@@ -628,6 +628,7 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
                 target.alpha = 1.0
             })
         }
+        self.onBackStateChanged?(!isWallet)
         self.setNeedsLayout()
     }
 
@@ -645,42 +646,29 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
 
     // MARK: Layout
 
-    func updateInsets(top: CGFloat) {
-        self.topInset = top
-        self.setNeedsLayout()
-    }
-
     override func layoutSubviews() {
         super.layoutSubviews()
         let width = self.bounds.width
-        let cardTop = self.topInset + 6.0
-        self.cardView.frame = CGRect(x: 0.0, y: cardTop, width: width, height: max(0.0, self.bounds.height - cardTop))
-        let cardHeight = self.cardView.bounds.height
+        let height = self.bounds.height
 
-        // Header.
-        self.closeControl.frame = CGRect(x: 0.0, y: 12.0, width: 110.0, height: 52.0)
-        self.closeLabel.frame = CGRect(x: 16.0, y: 0.0, width: 94.0, height: 52.0)
-        self.backControl.frame = CGRect(x: 0.0, y: 12.0, width: 120.0, height: 52.0)
-        self.backChevron.frame = CGRect(x: 7.0, y: 14.0, width: 16.0, height: 24.0)
-        self.backLabel.frame = CGRect(x: 28.0, y: 0.0, width: 90.0, height: 52.0)
-        self.titleLabel.frame = CGRect(x: 70.0, y: 19.0, width: max(0.0, width - 140.0), height: 22.0)
-        self.subtitleLabel.frame = CGRect(x: 70.0, y: 39.0, width: max(0.0, width - 140.0), height: 16.0)
-        self.moreControl.frame = CGRect(x: width - 45.0, y: 18.0, width: 40.0, height: 40.0)
-        self.moreIcon.frame = self.moreControl.bounds
-
-        let scrollFrame = CGRect(x: 0.0, y: 62.0, width: width, height: max(0.0, cardHeight - 62.0))
-        self.walletScroll.frame = scrollFrame
-        self.listScroll.frame = scrollFrame
+        self.walletScroll.frame = self.bounds
+        self.listScroll.frame = self.bounds
         self.layoutWallet(width: width)
         self.layoutList(width: width)
 
         // Tab bar.
         let barWidth: CGFloat = min(291.0, width - 32.0)
-        self.tabBar.frame = CGRect(x: floor((width - barWidth) / 2.0), y: cardHeight - 53.0 - 19.0, width: barWidth, height: 53.0)
+        self.tabBar.frame = CGRect(x: floor((width - barWidth) / 2.0), y: height - 53.0 - 19.0, width: barWidth, height: 53.0)
         let itemWidth = barWidth / CGFloat(self.tabItems.count)
         for (index, item) in self.tabItems.enumerated() {
             item.frame = CGRect(x: CGFloat(index) * itemWidth, y: 0.0, width: itemWidth, height: 53.0)
         }
+
+        // The "unavailable" toast, just above the tab bar.
+        let toastTextSize = self.toastLabel.sizeThatFits(CGSize(width: max(0.0, width - 64.0), height: 40.0))
+        let toastWidth = min(width - 32.0, toastTextSize.width + 32.0)
+        self.toastView.frame = CGRect(x: floor((width - toastWidth) / 2.0), y: height - 53.0 - 19.0 - 16.0 - 36.0, width: toastWidth, height: 36.0)
+        self.toastLabel.frame = self.toastView.bounds
     }
 
     private func layoutWallet(width: CGFloat) {
@@ -752,14 +740,6 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
 
     // MARK: Actions
 
-    @objc private func closePressed() {
-        self.onClose?()
-    }
-
-    @objc private func backPressed() {
-        self.setPage(.wallet)
-    }
-
     @objc private func depositPressed() {
         self.setPage(.deposit)
     }
@@ -769,12 +749,12 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
     }
 
     @objc private func unavailablePressed() {
-        self.onUnavailable?()
+        self.showUnavailable()
     }
 
     @objc private func tabPressed(_ sender: PampGramFakeCryptoBotTabItem) {
         if sender !== self.tabItems[0] {
-            self.onUnavailable?()
+            self.showUnavailable()
         }
     }
 
@@ -794,7 +774,10 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
         }
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
-        self.onEditBalances?()
+        guard let presenter = self.presenter else {
+            return
+        }
+        pampGramFakeCryptoBotPresentBalanceEditor(context: self.context, presenter: presenter)
     }
 
     @objc private func searchChanged() {
@@ -820,12 +803,118 @@ private final class PampGramFakeCryptoBotAppView: UIView, UIScrollViewDelegate, 
     }
 }
 
-// MARK: - Screen
+// MARK: - Standalone screen
+
+/// The settings' "Открыть фейковый криптобот": the same page with a header drawn to look like
+/// Telegram's web-app window, since there is no real window around it.
+private final class PampGramFakeCryptoBotStandaloneView: UIView {
+    var onClose: (() -> Void)?
+
+    private var topInset: CGFloat = 59.0
+    private let content: PampGramFakeCryptoBotContentView
+    private let cardView = UIView()
+    private let closeControl = UIControl()
+    private let closeLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: .white, alignment: .left)
+    private let backControl = UIControl()
+    private let backChevron = UIImageView()
+    private let backLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: .white, alignment: .left)
+    private let titleLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .semibold, color: .white, alignment: .center)
+    private let subtitleLabel = pampGramFakeCryptoBotLabel(size: 13.0, weight: .regular, color: PampGramFakeCryptoBotColors.subtitle, alignment: .center)
+    private let moreControl = UIControl()
+    private let moreIcon = UIImageView()
+
+    init(content: PampGramFakeCryptoBotContentView) {
+        self.content = content
+        super.init(frame: .zero)
+        self.backgroundColor = .black
+
+        self.cardView.backgroundColor = PampGramFakeCryptoBotColors.card
+        self.cardView.layer.cornerRadius = 28.0
+        self.cardView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        self.cardView.clipsToBounds = true
+        self.addSubview(self.cardView)
+        self.cardView.addSubview(content)
+
+        self.closeLabel.text = "Закрыть"
+        self.closeControl.addSubview(self.closeLabel)
+        self.closeControl.addTarget(self, action: #selector(self.closePressed), for: .touchUpInside)
+        self.cardView.addSubview(self.closeControl)
+
+        self.backChevron.image = pampGramFakeCryptoBotSymbol("chevron.left", size: 20.0, weight: .semibold)
+        self.backChevron.tintColor = .white
+        self.backChevron.contentMode = .center
+        self.backChevron.isUserInteractionEnabled = false
+        self.backLabel.text = "Назад"
+        self.backControl.addSubview(self.backChevron)
+        self.backControl.addSubview(self.backLabel)
+        self.backControl.addTarget(self, action: #selector(self.backPressed), for: .touchUpInside)
+        self.backControl.isHidden = true
+        self.cardView.addSubview(self.backControl)
+
+        self.titleLabel.text = "Crypto Bot"
+        self.subtitleLabel.text = "мини-приложение"
+        self.cardView.addSubview(self.titleLabel)
+        self.cardView.addSubview(self.subtitleLabel)
+
+        self.moreIcon.image = pampGramFakeCryptoBotSymbol("ellipsis.circle", size: 24.0, weight: .regular)
+        self.moreIcon.tintColor = .white
+        self.moreIcon.contentMode = .center
+        self.moreIcon.isUserInteractionEnabled = false
+        self.moreControl.addSubview(self.moreIcon)
+        self.moreControl.addTarget(self, action: #selector(self.morePressed), for: .touchUpInside)
+        self.cardView.addSubview(self.moreControl)
+
+        content.onBackStateChanged = { [weak self] hasBack in
+            self?.closeControl.isHidden = hasBack
+            self?.backControl.isHidden = !hasBack
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func updateInsets(top: CGFloat) {
+        self.topInset = top
+        self.setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = self.bounds.width
+        let cardTop = self.topInset + 6.0
+        self.cardView.frame = CGRect(x: 0.0, y: cardTop, width: width, height: max(0.0, self.bounds.height - cardTop))
+        let cardHeight = self.cardView.bounds.height
+
+        self.closeControl.frame = CGRect(x: 0.0, y: 12.0, width: 110.0, height: 52.0)
+        self.closeLabel.frame = CGRect(x: 16.0, y: 0.0, width: 94.0, height: 52.0)
+        self.backControl.frame = CGRect(x: 0.0, y: 12.0, width: 120.0, height: 52.0)
+        self.backChevron.frame = CGRect(x: 7.0, y: 14.0, width: 16.0, height: 24.0)
+        self.backLabel.frame = CGRect(x: 28.0, y: 0.0, width: 90.0, height: 52.0)
+        self.titleLabel.frame = CGRect(x: 70.0, y: 19.0, width: max(0.0, width - 140.0), height: 22.0)
+        self.subtitleLabel.frame = CGRect(x: 70.0, y: 39.0, width: max(0.0, width - 140.0), height: 16.0)
+        self.moreControl.frame = CGRect(x: width - 45.0, y: 18.0, width: 40.0, height: 40.0)
+        self.moreIcon.frame = self.moreControl.bounds
+
+        self.content.frame = CGRect(x: 0.0, y: 62.0, width: width, height: max(0.0, cardHeight - 62.0))
+    }
+
+    @objc private func closePressed() {
+        self.onClose?()
+    }
+
+    @objc private func backPressed() {
+        self.content.goBack()
+    }
+
+    @objc private func morePressed() {
+        self.content.showUnavailable()
+    }
+}
 
 private final class PampGramFakeCryptoBotScreen: ViewController {
     private let context: AccountContext
-    private let settingsDisposable = MetaDisposable()
-    private var appView: PampGramFakeCryptoBotAppView?
+    private var standaloneView: PampGramFakeCryptoBotStandaloneView?
 
     init(context: AccountContext) {
         self.context = context
@@ -837,47 +926,25 @@ private final class PampGramFakeCryptoBotScreen: ViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
-        self.settingsDisposable.dispose()
-    }
-
     override func loadDisplayNode() {
         let node = ASDisplayNode()
         node.backgroundColor = .black
         self.displayNode = node
         self.displayNodeDidLoad()
 
-        let appView = PampGramFakeCryptoBotAppView(frame: .zero)
-        appView.onClose = { [weak self] in
+        let content = PampGramFakeCryptoBotContentView(context: self.context, presenter: self)
+        let standaloneView = PampGramFakeCryptoBotStandaloneView(content: content)
+        standaloneView.onClose = { [weak self] in
             self?.dismiss()
         }
-        appView.onUnavailable = { [weak self] in
-            self?.presentUnavailable()
-        }
-        appView.onEditBalances = { [weak self] in
-            guard let self = self else {
-                return
-            }
-            pampGramFakeCryptoBotPresentBalanceEditor(context: self.context, presenter: self)
-        }
-        node.view.addSubview(appView)
-        self.appView = appView
-
-        self.settingsDisposable.set((PampGramCore.rawSettingsSignal(postbox: self.context.account.postbox)
-        |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
-            self?.appView?.setBalances(settings.fakeCryptoBotBalances)
-        }))
+        node.view.addSubview(standaloneView)
+        self.standaloneView = standaloneView
     }
 
     override func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
         super.containerLayoutUpdated(layout, transition: transition)
-        self.appView?.frame = CGRect(origin: .zero, size: layout.size)
-        self.appView?.updateInsets(top: layout.insets(options: [.statusBar]).top)
-    }
-
-    private func presentUnavailable() {
-        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
-        self.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Функция недоступна", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
+        self.standaloneView?.frame = CGRect(origin: .zero, size: layout.size)
+        self.standaloneView?.updateInsets(top: layout.insets(options: [.statusBar]).top)
     }
 }
 
@@ -960,11 +1027,18 @@ private func pampGramFakeCryptoBotPromptBalance(context: AccountContext, present
     ), in: .window(.root))
 }
 
-// MARK: - Публичный конструктор
+// MARK: - Публичные конструкторы
 
-/// Открывает полноэкранный визуал «CryptoBot мини-апп» на этом устройстве. Балансы
-/// подставляются из `PampGramSettings.fakeCryptoBotBalances`; редактор открывается
-/// удержанием суммы общего баланса (около секунды).
+/// Открывает полноэкранный визуал «CryptoBot мини-апп» на этом устройстве (строка в
+/// «Дополнительно»). Балансы подставляются из `PampGramSettings.fakeCryptoBotBalances`;
+/// редактор открывается удержанием суммы общего баланса (около секунды).
 public func pampGramFakeCryptoBotController(context: AccountContext) -> ViewController {
     return PampGramFakeCryptoBotScreen(context: context)
+}
+
+/// Страница, которая вместо веб-страницы @CryptoBot показывается внутри родного окна
+/// мини-аппа Telegram (шапка, «Закрыть/Назад», «⋯» и нижняя панель остаются родными).
+/// `presenter` — само окно: через него показываются выбор монеты и ввод суммы.
+public func pampGramFakeCryptoBotContentView(context: AccountContext, presenter: ViewController) -> PampGramFakeMiniAppContent {
+    return PampGramFakeCryptoBotContentView(context: context, presenter: presenter)
 }

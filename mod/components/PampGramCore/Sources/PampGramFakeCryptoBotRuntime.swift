@@ -1,9 +1,21 @@
 import Foundation
+import UIKit
 import Postbox
 import SwiftSignalKit
 
-/// Synchronous, in-memory mirror of "Фейковый криптобот", so the web-app presenter can decide
-/// without an async Postbox read whether to swap @CryptoBot's mini app for the local visual.
+/// The page that stands in for @CryptoBot's mini app inside Telegram's own web-app window. It is a
+/// plain view: the window around it (header, close/back button, "⋯" menu, the bottom bar, the
+/// transitions) stays Telegram's, and only the web page is replaced.
+public protocol PampGramFakeMiniAppContent: UIView {
+    /// Called with `true` while the page is showing a sub-screen, so the window can turn its
+    /// "Закрыть" button into "Назад".
+    var onBackStateChanged: ((Bool) -> Void)? { get set }
+    /// The window's back button was pressed.
+    func goBack()
+}
+
+/// Synchronous, in-memory mirror of "Фейковый криптобот", so the web-app window can decide
+/// without an async Postbox read whether to show the local page instead of @CryptoBot's.
 /// Started once per account at `AccountContextImpl` init; follows the (ban-gated)
 /// `PampGramCore.settingsSignal`, so a locally banned account never gets the replacement.
 public final class PampGramFakeCryptoBotRuntime {
@@ -16,17 +28,17 @@ public final class PampGramFakeCryptoBotRuntime {
     private var enabledByAccount: [Int64: Bool] = [:]
     private var startedAccounts: Set<Int64> = []
     private var disposables: [Int64: Disposable] = [:]
-    private var controllerFactory: ((AnyObject) -> AnyObject?)?
+    private var contentFactory: ((AnyObject, AnyObject) -> PampGramFakeMiniAppContent?)?
 
     private init() {
     }
 
     /// Registered once at launch by the app target, which can see both the account context and
-    /// the screen; this module can't (it must not depend on TelegramCore / Display). The argument
-    /// is the `AccountContext`, the result the screen's `ViewController`.
-    public func setControllerFactory(_ factory: @escaping (AnyObject) -> AnyObject?) {
+    /// the page; this module can't (it must not depend on TelegramCore / Display). The arguments
+    /// are the `AccountContext` and the web-app window (a `ViewController`) that will show it.
+    public func setContentFactory(_ factory: @escaping (AnyObject, AnyObject) -> PampGramFakeMiniAppContent?) {
         self.lock.lock()
-        self.controllerFactory = factory
+        self.contentFactory = factory
         self.lock.unlock()
     }
 
@@ -58,12 +70,12 @@ public final class PampGramFakeCryptoBotRuntime {
         self.lock.unlock()
     }
 
-    /// The replacement screen when `botUserId` / `botName` is the official CryptoBot and the
-    /// feature is on for this account; `nil` means "open the real mini app".
-    public func replacementController(accountKey: Int64, context: AnyObject, botUserId: Int64, botName: String) -> AnyObject? {
+    /// The page to show when `botUserId` / `botName` is the official CryptoBot and the feature is
+    /// on for this account; `nil` means "load the real mini app".
+    public func replacementContent(accountKey: Int64, context: AnyObject, presenter: AnyObject, botUserId: Int64, botName: String) -> PampGramFakeMiniAppContent? {
         self.lock.lock()
         let enabled = self.enabledByAccount[accountKey] ?? false
-        let factory = self.controllerFactory
+        let factory = self.contentFactory
         self.lock.unlock()
         guard enabled, let factory else {
             return nil
@@ -72,6 +84,6 @@ public final class PampGramFakeCryptoBotRuntime {
         guard botUserId == PampGramFakeCryptoBotRuntime.officialBotUserId || name == "crypto bot" || name == "cryptobot" else {
             return nil
         }
-        return factory(context)
+        return factory(context, presenter)
     }
 }

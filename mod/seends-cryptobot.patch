@@ -1,5 +1,5 @@
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 0f40cdc9..72735f2f 100644
+index 0f40cdc9..c407e83d 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -10,6 +10,7 @@ import AccountContext
@@ -15,11 +15,11 @@ index 0f40cdc9..72735f2f 100644
              PampGramModerationRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
              PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramFakeCryptoBotRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
-+            PampGramFakeCryptoBotRuntime.shared.setControllerFactory({ contextObject in
-+                guard let context = contextObject as? AccountContext else {
++            PampGramFakeCryptoBotRuntime.shared.setContentFactory({ contextObject, presenterObject in
++                guard let context = contextObject as? AccountContext, let presenter = presenterObject as? ViewController else {
 +                    return nil
 +                }
-+                return pampGramFakeCryptoBotController(context: context)
++                return pampGramFakeCryptoBotContentView(context: context, presenter: presenter)
 +            })
              PampGramGiftBehavior.shared.start(postbox: account.postbox)
              PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -318,7 +318,7 @@ index 23c32514..dd456732 100644
          "//submodules/TelegramPresentationData:TelegramPresentationData",
          "//submodules/PresentationDataUtils:PresentationDataUtils",
 diff --git a/submodules/WebUI/Sources/WebAppController.swift b/submodules/WebUI/Sources/WebAppController.swift
-index ee39fd29..497de9e3 100644
+index ee39fd29..daff23c5 100644
 --- a/submodules/WebUI/Sources/WebAppController.swift
 +++ b/submodules/WebUI/Sources/WebAppController.swift
 @@ -8,6 +8,7 @@ import SwiftSignalKit
@@ -329,17 +329,84 @@ index ee39fd29..497de9e3 100644
  import AttachmentUI
  import ContextUI
  import PresentationDataUtils
-@@ -4292,6 +4293,13 @@ public func standaloneWebAppController(
-     verifyAgeCompletion: ((Int) -> Void)? = nil,
-     onControllerCreated: @escaping (WebAppController) -> Void = { _ in }
- ) -> ViewController {
-+    // PampGram "Фейковый криптобот": every way of opening a bot's mini app (menu button, inline
-+    // button, link, profile) ends up here, so this is the one place to swap @CryptoBot's for
-+    // the local visual.
-+    if let replacement = PampGramFakeCryptoBotRuntime.shared.replacementController(accountKey: context.account.peerId.toInt64(), context: context, botUserId: params.botId.id._internalGetInt64Value(), botName: params.botName) as? ViewController {
-+        return replacement
-+    }
-+
-     let controller = AttachmentController(
-         context: context,
-         updatedPresentationData: updatedPresentationData,
+@@ -237,6 +238,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
+         
+         fileprivate var hasBackButton = false
+         
++        // PampGram "Фейковый криптобот": the page shown instead of @CryptoBot's web page. The window
++        // around it (header, close/back, menu, bottom bar, transitions) stays Telegram's.
++        fileprivate var pampGramFakeContent: PampGramFakeMiniAppContent?
++        
+         private var placeholderDisposable = MetaDisposable()
+         private var keepAliveDisposable: Disposable?
+         private var paymentDisposable: Disposable?
+@@ -471,6 +476,30 @@ public final class WebAppController: ViewController, AttachmentContainable {
+         override func didLoad() {
+             super.didLoad()
+             
++            if let controller = self.controller, let fakeContent = PampGramFakeCryptoBotRuntime.shared.replacementContent(accountKey: self.context.account.peerId.toInt64(), context: self.context, presenter: controller, botUserId: controller.botId.id._internalGetInt64Value(), botName: controller.botName) {
++                self.pampGramFakeContent = fakeContent
++                // The page scrolls on its own; a drag on it must not also pull the window down.
++                controller._isPanGestureEnabled = false
++                fakeContent.onBackStateChanged = { [weak self] hasBack in
++                    guard let self else {
++                        return
++                    }
++                    self.hasBackButton = hasBack
++                    self.controller?.updateNavigationButtons()
++                }
++                Queue.mainQueue().justDispatch { [weak self] in
++                    guard let self else {
++                        return
++                    }
++                    let pageColor = UIColor(rgb: 0x171717)
++                    self.appBackgroundColor = pageColor
++                    self.placeholderBackgroundColor = pageColor
++                    self.updateBackgroundColor(transition: .immediate)
++                    self.headerColor = pageColor
++                    self.updateHeaderBackgroundColor(transition: .immediate)
++                }
++            }
++            
+             self.setupWebView()
+             if let pendingExternalUrl = self.controller?.pendingExternalUrl {
+                 self.controller?.pendingExternalUrl = nil
+@@ -482,9 +511,16 @@ public final class WebAppController: ViewController, AttachmentContainable {
+             }
+             self.view.addSubview(webView)
+             webView.scrollView.insertSubview(self.topOverscrollNode.view, at: 0)
++            if let fakeContent = self.pampGramFakeContent {
++                webView.isHidden = true
++                self.view.addSubview(fakeContent)
++            }
+         }
+         
+         private func load(url: URL) {
++            if self.pampGramFakeContent != nil {
++                return
++            }
+             /*#if DEBUG
+             if "".isEmpty {
+                 if #available(iOS 16.0, *) {
+@@ -911,6 +947,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
+             transition.updateFrame(node: self.backgroundNode, frame: CGRect(origin: .zero, size: layout.size))
+             transition.updateFrame(node: self.headerBackgroundNode, frame: CGRect(origin: .zero, size: CGSize(width: layout.size.width, height: navigationBarHeight)))
+             transition.updateFrame(node: self.topOverscrollNode, frame: CGRect(origin: CGPoint(x: 0.0, y: -1000.0), size: CGSize(width: layout.size.width, height: 1000.0)))
++            if let fakeContent = self.pampGramFakeContent {
++                let fakeTopInset: CGFloat = controller.isFullscreen ? 0.0 : navigationBarHeight
++                transition.updateFrame(view: fakeContent, frame: CGRect(x: 0.0, y: fakeTopInset, width: layout.size.width, height: max(1.0, layout.size.height - fakeTopInset)))
++            }
+             
+             var contentTopInset: CGFloat = 0.0
+             if controller.isFullscreen {
+@@ -2142,6 +2182,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
+         }
+         
+         fileprivate func sendBackButtonEvent() {
++            if let fakeContent = self.pampGramFakeContent {
++                fakeContent.goBack()
++                return
++            }
+             self.webView?.sendEvent(name: "back_button_pressed", data: nil)
+         }
+         
