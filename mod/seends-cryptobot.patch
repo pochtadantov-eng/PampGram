@@ -98,6 +98,28 @@ index 58a50975..52cb036d 100644
          }
      }
  
+diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
+index 5dc7ba49..6e343b6e 100644
+--- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
++++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
+@@ -1991,6 +1991,9 @@ private final class GiftViewSheetContent: CombinedComponent {
+                             controllers.append(chatController)
+                             navigationController.setViewControllers(controllers, animated: true)
+                             
++                            // PampGram: "Подарок мне" — the stock "Gift Sent, X has been notified about your
++                            // gift" toast would be wrong here (nothing is sent, the gift comes *from* X).
++                            if controller.pampGramGiftFlow != .receiveFake {
+                             Queue.mainQueue().after(0.5, {
+                                 let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: recipientPeerId))
+                                 |> deliverOnMainQueue).start(next: { [weak navigationController] peer in
+@@ -2007,6 +2010,7 @@ private final class GiftViewSheetContent: CombinedComponent {
+                                     }
+                                 })
+                             })
++                            }
+                         }
+                     }
+                 }
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
 index 0f40cdc9..c407e83d 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
