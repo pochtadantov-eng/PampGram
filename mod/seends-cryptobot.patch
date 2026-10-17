@@ -1,3 +1,24 @@
+diff --git a/submodules/Postbox/Sources/MessageHistoryView.swift b/submodules/Postbox/Sources/MessageHistoryView.swift
+index f517f5b3..206e918f 100644
+--- a/submodules/Postbox/Sources/MessageHistoryView.swift
++++ b/submodules/Postbox/Sources/MessageHistoryView.swift
+@@ -1395,6 +1395,16 @@ public final class MessageHistoryView: PostboxView {
+                     }
+                 }
+             }
++            // PampGram: outgoing messages that only exist on this device (namespace 1 is
++            // `Namespaces.Message.Local`, which Postbox itself doesn't know) never get a read
++            // state, so a visual message "from me" would sit there with a single tick. Show them as
++            // read — except while they are really being sent.
++            for index in 0 ..< entries.count {
++                let entry = entries[index]
++                if !entry.isRead && entry.message.id.namespace == 1 && entry.message.flags.intersection([.Incoming, .Unsent, .Failed, .Sending]).isEmpty {
++                    entries[index] = MessageHistoryEntry(message: entry.message, isRead: true, location: entry.location, monthLocation: entry.monthLocation, attributes: entry.attributes)
++                }
++            }
+             assert(Set(entries.map({ $0.message.stableId })).count == entries.count)
+             if !entries.isEmpty {
+                 let anchorIndex = binaryIndexOrLower(entries, state.anchor)
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift b/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
 deleted file mode 100644
 index 58a50975..00000000
