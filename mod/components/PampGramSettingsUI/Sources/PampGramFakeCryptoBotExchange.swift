@@ -566,6 +566,7 @@ final class PampGramFakeCryptoBotExchangeView: UIScrollView, UIGestureRecognizer
         self.keyboardDismissMode = .onDrag
         self.setup()
         self.applyPair(resetPrice: true)
+        NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardChanged(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     }
 
     required init?(coder: NSCoder) {
@@ -574,6 +575,22 @@ final class PampGramFakeCryptoBotExchangeView: UIScrollView, UIGestureRecognizer
 
     deinit {
         self.bookTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    /// The keyboard would cover the lower fields: the page makes room for it and brings the field that has the focus into view.
+    @objc private func keyboardChanged(_ notification: Notification) {
+        guard let window = self.window, let frame = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else {
+            return
+        }
+        let pageBottom = self.convert(CGPoint(x: 0.0, y: self.bounds.height), to: window).y
+        let overlap = max(0.0, pageBottom - frame.minY)
+        self.contentInset.bottom = overlap
+        self.verticalScrollIndicatorInsets.bottom = overlap
+        for field in [self.priceField, self.amountField, self.totalField] where field.input.isFirstResponder {
+            let target = field.frame.insetBy(dx: 0.0, dy: -24.0)
+            self.scrollRectToVisible(target, animated: true)
+        }
     }
 
     // MARK: Setup
@@ -1437,7 +1454,7 @@ final class PampGramFakeCryptoBotExchangeView: UIScrollView, UIGestureRecognizer
             self.chipLabels[index].frame = self.chipControls[index].bounds
             chipX += chipWidth + 8.3
         }
-        var contentBottom: CGFloat
+        let contentBottom: CGFloat
         if self.orderRows.isEmpty {
             let imageSize = CGSize(width: 63.0, height: 75.0)
             self.emptyImage.frame = CGRect(x: floor((width - imageSize.width) / 2.0), y: 739.0, width: imageSize.width, height: imageSize.height)
