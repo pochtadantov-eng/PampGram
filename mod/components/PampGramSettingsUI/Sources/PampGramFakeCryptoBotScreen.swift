@@ -147,10 +147,10 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
     let currency: PampGramFakeCryptoBotCurrency
     private let kind: Kind
     private let iconView = UIImageView()
-    private let titleLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: .white, alignment: .left)
-    private let subtitleLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .left)
-    private let rightTopLabel = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: .white, alignment: .right)
-    private let rightBottomLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .right)
+    private let titleLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: .white, alignment: .left)
+    private let subtitleLabel = pampGramFakeCryptoBotLabel(size: 13.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .left)
+    private let rightTopLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: .white, alignment: .right)
+    private let rightBottomLabel = pampGramFakeCryptoBotLabel(size: 13.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .right)
     private let chevronView = UIImageView()
     private let separator = UIView()
 
@@ -182,7 +182,7 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
         case .asset:
             self.titleLabel.text = currency.name
             let subtitle = NSMutableAttributedString(string: currency.priceText + " ", attributes: [
-                .font: UIFont.systemFont(ofSize: 15.0, weight: .regular),
+                .font: UIFont.systemFont(ofSize: 13.0, weight: .regular),
                 .foregroundColor: PampGramFakeCryptoBotColors.secondary
             ])
             var changeText = "0.00%"
@@ -195,7 +195,7 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
                 changeColor = PampGramFakeCryptoBotColors.red
             }
             subtitle.append(NSAttributedString(string: changeText, attributes: [
-                .font: UIFont.systemFont(ofSize: 15.0, weight: .regular),
+                .font: UIFont.systemFont(ofSize: 13.0, weight: .regular),
                 .foregroundColor: changeColor
             ]))
             self.subtitleLabel.attributedText = subtitle
@@ -229,10 +229,12 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
         let rightWidth: CGFloat = 150.0
         let leftWidth = max(0.0, width - textX - (self.kind == .deposit ? 40.0 : rightWidth + 20.0))
         self.iconView.frame = CGRect(x: 16.0, y: floor((height - 40.0) / 2.0), width: 40.0, height: 40.0)
-        self.titleLabel.frame = CGRect(x: textX, y: floor(height / 2.0) - 20.0, width: leftWidth, height: 20.0)
-        self.subtitleLabel.frame = CGRect(x: textX, y: floor(height / 2.0) + 1.0, width: leftWidth, height: 19.0)
-        self.rightTopLabel.frame = CGRect(x: width - 16.0 - rightWidth, y: floor(height / 2.0) - 20.0, width: rightWidth, height: 20.0)
-        self.rightBottomLabel.frame = CGRect(x: width - 16.0 - rightWidth, y: floor(height / 2.0) + 1.0, width: rightWidth, height: 19.0)
+        // The text block sits a hair below the icon's middle: title centre 7.9 above it, subtitle 10.9 below.
+        let middle = height / 2.0
+        self.titleLabel.frame = CGRect(x: textX, y: middle - 17.9, width: leftWidth, height: 20.0)
+        self.subtitleLabel.frame = CGRect(x: textX, y: middle + 1.9, width: leftWidth, height: 18.0)
+        self.rightTopLabel.frame = CGRect(x: width - 16.0 - rightWidth, y: middle - 17.9, width: rightWidth, height: 20.0)
+        self.rightBottomLabel.frame = CGRect(x: width - 16.0 - rightWidth, y: middle + 1.9, width: rightWidth, height: 18.0)
         self.chevronView.frame = CGRect(x: width - 16.0 - 12.0, y: floor((height - 18.0) / 2.0), width: 12.0, height: 18.0)
         self.separator.frame = CGRect(x: textX, y: height - 1.0, width: max(0.0, width - textX - 16.0), height: 1.0)
     }
