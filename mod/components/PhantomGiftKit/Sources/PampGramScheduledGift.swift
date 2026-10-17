@@ -14,6 +14,48 @@ import PampGramCore
 public enum PampGramScheduledGiftPayload: Codable, Equatable {
     case starGift(StarGift, price: CurrencyAmount)
     case premium(months: Int32, currency: String, amount: Int64)
+
+    // Written by hand: the compiler-made Codable for an enum with payloads uses nested and "all
+    // keys" containers, which Postbox's encoder/decoder do not support (they crash).
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case gift
+        case price
+        case months
+        case currency
+        case amount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if try container.decode(Int32.self, forKey: .kind) == 1 {
+            self = .premium(
+                months: try container.decode(Int32.self, forKey: .months),
+                currency: try container.decode(String.self, forKey: .currency),
+                amount: try container.decode(Int64.self, forKey: .amount)
+            )
+        } else {
+            self = .starGift(
+                try container.decode(StarGift.self, forKey: .gift),
+                price: try container.decode(CurrencyAmount.self, forKey: .price)
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .starGift(gift, price):
+            try container.encode(Int32(0), forKey: .kind)
+            try container.encode(gift, forKey: .gift)
+            try container.encode(price, forKey: .price)
+        case let .premium(months, currency, amount):
+            try container.encode(Int32(1), forKey: .kind)
+            try container.encode(months, forKey: .months)
+            try container.encode(currency, forKey: .currency)
+            try container.encode(amount, forKey: .amount)
+        }
+    }
 }
 
 /// "Подарок мне" with a delay: the local, no-server replacement for the old P2P relay (which
