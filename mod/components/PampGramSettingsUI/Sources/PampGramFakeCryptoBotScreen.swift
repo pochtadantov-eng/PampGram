@@ -88,8 +88,8 @@ private enum PampGramFakeCryptoBotColors {
     static let red = UIColor(rgb: 0xff4b52)
     static let green = UIColor(rgb: 0x2e9f4f)
     static let separator = UIColor(rgb: 0x292929)
-    static let tabBar = UIColor(rgb: 0x1d2026)
-    static let tabActive = UIColor(rgb: 0x272a30)
+    static let tabBar = UIColor(rgb: 0x20262c)
+    static let tabActive = UIColor(rgb: 0x2a2f35)
 }
 
 private func pampGramFakeCryptoBotLabel(size: CGFloat, weight: UIFont.Weight, color: UIColor, alignment: NSTextAlignment) -> UILabel {
@@ -234,7 +234,7 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
         self.rightTopLabel.frame = CGRect(x: width - 16.0 - rightWidth, y: floor(height / 2.0) - 20.0, width: rightWidth, height: 20.0)
         self.rightBottomLabel.frame = CGRect(x: width - 16.0 - rightWidth, y: floor(height / 2.0) + 1.0, width: rightWidth, height: 19.0)
         self.chevronView.frame = CGRect(x: width - 16.0 - 12.0, y: floor((height - 18.0) / 2.0), width: 12.0, height: 18.0)
-        self.separator.frame = CGRect(x: textX, y: height - 1.0, width: max(0.0, width - textX), height: 1.0)
+        self.separator.frame = CGRect(x: textX, y: height - 1.0, width: max(0.0, width - textX - 16.0), height: 1.0)
     }
 
     override var isHighlighted: Bool {
@@ -247,7 +247,7 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
 /// A bottom-bar item: glyph over a label, with a lighter capsule behind the active one.
 private final class PampGramFakeCryptoBotTabItem: UIControl {
     private let iconView = UIImageView()
-    private let label = pampGramFakeCryptoBotLabel(size: 11.0, weight: .medium, color: .white, alignment: .center)
+    private let label = pampGramFakeCryptoBotLabel(size: 9.4, weight: .semibold, color: .white, alignment: .center)
 
     init(assetName: String, title: String, active: Bool) {
         super.init(frame: .zero)
@@ -283,8 +283,10 @@ private final class PampGramFakeCryptoBotTabItem: UIControl {
         super.layoutSubviews()
         let width = self.bounds.width
         let height = self.bounds.height
-        self.iconView.frame = CGRect(x: 0.0, y: 8.0, width: width, height: 24.0)
-        self.label.frame = CGRect(x: 0.0, y: height - 22.0, width: width, height: 14.0)
+        // The bar is 66 high: the icon's centre sits 24.8 from the top, the label's 46.8.
+        self.iconView.frame = CGRect(x: 0.0, y: 24.8 - 16.0, width: width, height: 32.0)
+        self.label.frame = CGRect(x: 0.0, y: 46.8 - 7.0, width: width, height: 14.0)
+        _ = height
     }
 }
 
@@ -293,7 +295,7 @@ private final class PampGramFakeCryptoBotTabItem: UIControl {
 /// The total balance, drawn digit by digit: every digit sits on a vertical strip of 0-9 and rolls
 /// to its new value, the way the real mini app counts up when it opens or when the sum changes.
 private final class PampGramFakeCryptoBotOdometerView: UIView {
-    private static let font = UIFont.monospacedDigitSystemFont(ofSize: 36.0, weight: .bold)
+    private static let font = UIFont.monospacedDigitSystemFont(ofSize: 33.0, weight: .semibold)
     private static let lineHeight: CGFloat = 46.0
 
     private final class Cell {
@@ -470,9 +472,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private let depositControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("act_deposit"))
     private let withdrawControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("act_withdraw"))
     private let historyControl = PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("act_history"))
-    private let depositLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: PampGramFakeCryptoBotColors.blue, alignment: .center)
-    private let withdrawLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: PampGramFakeCryptoBotColors.blue, alignment: .center)
-    private let historyLabel = pampGramFakeCryptoBotLabel(size: 15.0, weight: .regular, color: PampGramFakeCryptoBotColors.blue, alignment: .center)
+    private let depositLabel = pampGramFakeCryptoBotLabel(size: 12.2, weight: .regular, color: PampGramFakeCryptoBotColors.blue, alignment: .center)
+    private let withdrawLabel = pampGramFakeCryptoBotLabel(size: 12.2, weight: .regular, color: PampGramFakeCryptoBotColors.blue, alignment: .center)
+    private let historyLabel = pampGramFakeCryptoBotLabel(size: 12.2, weight: .regular, color: PampGramFakeCryptoBotColors.blue, alignment: .center)
     private let bannerScroll = UIScrollView()
     private let bannerControls: [PampGramFakeCryptoBotImageControl] = [
         PampGramFakeCryptoBotImageControl(image: PampGramFakeCryptoBotAssets.image("banner_autumn")),
@@ -489,7 +491,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         PampGramFakeCryptoBotAnimations.animation(banner: "exchange")
     ]
     private let dotViews: [UIView] = [UIView(), UIView(), UIView(), UIView()]
-    private let assetsTitle = pampGramFakeCryptoBotLabel(size: 17.0, weight: .medium, color: PampGramFakeCryptoBotColors.blue, alignment: .left)
+    private let assetsTitle = pampGramFakeCryptoBotLabel(size: 15.0, weight: .medium, color: PampGramFakeCryptoBotColors.blue, alignment: .left)
     private let assetsChevron = UIImageView()
     private let hideSmallButton = UIButton(type: .custom)
     private var assetRows: [PampGramFakeCryptoBotRowView] = []
@@ -503,6 +505,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     private let tabBar = UIView()
     private let tabCapsule = UIView()
+    private let tabBlur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let tabItems: [PampGramFakeCryptoBotTabItem] = [
         PampGramFakeCryptoBotTabItem(assetName: "tab_wallet", title: "Кошелёк", active: true),
         PampGramFakeCryptoBotTabItem(assetName: "tab_exchange", title: "Биржа", active: false),
@@ -646,11 +649,11 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.walletScroll.addSubview(self.eyeControl)
 
         let caption = NSMutableAttributedString(string: "Общий баланс в ", attributes: [
-            .font: UIFont.systemFont(ofSize: 17.0, weight: .regular),
+            .font: UIFont.systemFont(ofSize: 15.0, weight: .regular),
             .foregroundColor: PampGramFakeCryptoBotColors.secondary
         ])
         caption.append(NSAttributedString(string: "USD", attributes: [
-            .font: UIFont.systemFont(ofSize: 17.0, weight: .regular),
+            .font: UIFont.systemFont(ofSize: 15.0, weight: .regular),
             .foregroundColor: PampGramFakeCryptoBotColors.blue
         ]))
         self.balanceCaption.attributedText = caption
@@ -700,7 +703,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.walletScroll.addSubview(self.assetsChevron)
 
         self.hideSmallButton.setTitleColor(PampGramFakeCryptoBotColors.blue, for: .normal)
-        self.hideSmallButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .regular)
+        self.hideSmallButton.titleLabel?.font = UIFont.systemFont(ofSize: 15.0, weight: .regular)
         self.hideSmallButton.contentHorizontalAlignment = .right
         self.hideSmallButton.addTarget(self, action: #selector(self.hideSmallPressed), for: .touchUpInside)
         self.walletScroll.addSubview(self.hideSmallButton)
@@ -749,11 +752,15 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     }
 
     private func setupTabBar() {
-        self.tabBar.backgroundColor = PampGramFakeCryptoBotColors.tabBar
-        self.tabBar.layer.cornerRadius = 26.5
+        // The real bar is frosted glass: a blur with a dark tint over it.
+        self.tabBar.backgroundColor = PampGramFakeCryptoBotColors.tabBar.withAlphaComponent(0.84)
+        self.tabBar.layer.cornerRadius = 33.0
+        self.tabBar.layer.masksToBounds = true
         self.tabBar.layer.borderWidth = 1.0
-        self.tabBar.layer.borderColor = UIColor(white: 1.0, alpha: 0.05).cgColor
+        self.tabBar.layer.borderColor = UIColor(white: 1.0, alpha: 0.07).cgColor
         self.addSubview(self.tabBar)
+        self.tabBlur.isUserInteractionEnabled = false
+        self.tabBar.addSubview(self.tabBlur)
         self.tabCapsule.backgroundColor = PampGramFakeCryptoBotColors.tabActive
         self.tabCapsule.isUserInteractionEnabled = false
         self.tabBar.addSubview(self.tabCapsule)
@@ -818,7 +825,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         }
         let totalText = self.balanceHidden ? "•••••" : pampGramFakeCryptoBotFormatUSD(total)
         self.balanceView.setText(prefix: "$ ", value: totalText, animated: self.alpha > 0.0)
-        self.eyeIcon.image = pampGramFakeCryptoBotSymbol(self.balanceHidden ? "eye.slash.fill" : "eye.fill", size: 20.0, weight: .regular)
+        self.eyeIcon.image = pampGramFakeCryptoBotSymbol(self.balanceHidden ? "eye.slash.fill" : "eye.fill", size: 15.0, weight: .regular)
         self.hideSmallButton.setTitle(self.smallBalancesHidden ? "Показать мелкие балансы" : "Скрыть мелкие балансы", for: .normal)
 
         for row in self.assetRows {
@@ -896,40 +903,41 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.layoutList(width: width)
 
         // Tab bar.
-        let barWidth: CGFloat = min(291.0, width - 32.0)
-        self.tabBar.frame = CGRect(x: floor((width - barWidth) / 2.0), y: height - 53.0 - 19.0, width: barWidth, height: 53.0)
-        let itemWidth = barWidth / CGFloat(self.tabItems.count)
+        let barWidth: CGFloat = width - 60.0
+        self.tabBar.frame = CGRect(x: 30.0, y: height - 66.0 - 19.5, width: barWidth, height: 66.0)
+        self.tabBlur.frame = self.tabBar.bounds
+        let itemWidth = (barWidth - 9.0) / CGFloat(self.tabItems.count)
         for (index, item) in self.tabItems.enumerated() {
-            item.frame = CGRect(x: CGFloat(index) * itemWidth, y: 0.0, width: itemWidth, height: 53.0)
+            item.frame = CGRect(x: 4.5 + CGFloat(index) * itemWidth, y: 0.0, width: itemWidth, height: 66.0)
         }
         self.layoutTabCapsule()
 
         // The "unavailable" toast, just above the tab bar.
         let toastTextSize = self.toastLabel.sizeThatFits(CGSize(width: max(0.0, width - 64.0), height: 40.0))
         let toastWidth = min(width - 32.0, toastTextSize.width + 32.0)
-        self.toastView.frame = CGRect(x: floor((width - toastWidth) / 2.0), y: height - 53.0 - 19.0 - 16.0 - 36.0, width: toastWidth, height: 36.0)
+        self.toastView.frame = CGRect(x: floor((width - toastWidth) / 2.0), y: height - 66.0 - 19.5 - 16.0 - 36.0, width: toastWidth, height: 36.0)
         self.toastLabel.frame = self.toastView.bounds
     }
 
     private func layoutTabCapsule() {
-        let itemWidth = self.tabBar.bounds.width / CGFloat(self.tabItems.count)
-        self.tabCapsule.frame = CGRect(x: CGFloat(self.selectedTab) * itemWidth, y: 0.0, width: itemWidth, height: 53.0).insetBy(dx: 1.0, dy: 5.0)
+        let itemWidth = (self.tabBar.bounds.width - 9.0) / CGFloat(self.tabItems.count)
+        self.tabCapsule.frame = CGRect(x: 4.5 + CGFloat(self.selectedTab) * itemWidth, y: 5.0, width: itemWidth, height: 56.0).insetBy(dx: 0.3, dy: 0.0)
         self.tabCapsule.layer.cornerRadius = self.tabCapsule.bounds.height / 2.0
     }
 
     private func layoutWallet(width: CGFloat) {
-        self.scanControl.frame = CGRect(x: 16.0, y: 13.0, width: 34.0, height: 34.0)
-        self.imageControl.frame = CGRect(x: width - 96.0, y: 13.0, width: 34.0, height: 34.0)
-        self.currencyControl.frame = CGRect(x: width - 50.0, y: 13.0, width: 34.0, height: 34.0)
+        self.scanControl.frame = CGRect(x: 16.0, y: 8.0, width: 34.0, height: 34.0)
+        self.imageControl.frame = CGRect(x: width - 96.0, y: 8.0, width: 34.0, height: 34.0)
+        self.currencyControl.frame = CGRect(x: width - 50.0, y: 8.0, width: 34.0, height: 34.0)
 
         let balanceSize = self.balanceView.contentSize
         let eyeWidth: CGFloat = 26.0
         let groupWidth = balanceSize.width + 12.0 + eyeWidth
         let groupX = floor((width - groupWidth) / 2.0)
-        self.balanceView.frame = CGRect(x: groupX, y: 65.0, width: balanceSize.width, height: 46.0)
-        self.eyeControl.frame = CGRect(x: groupX + balanceSize.width + 4.0, y: 65.0, width: eyeWidth + 8.0, height: 46.0)
+        self.balanceView.frame = CGRect(x: groupX, y: 59.0, width: balanceSize.width, height: 46.0)
+        self.eyeControl.frame = CGRect(x: groupX + balanceSize.width + 4.0, y: 59.0, width: eyeWidth + 8.0, height: 46.0)
         self.eyeIcon.frame = self.eyeControl.bounds
-        self.balanceCaption.frame = CGRect(x: 0.0, y: 114.0, width: width, height: 22.0)
+        self.balanceCaption.frame = CGRect(x: 0.0, y: 108.0, width: width, height: 22.0)
 
         let contentWidth = width - 32.0
         let columnWidth = contentWidth / 3.0
@@ -937,13 +945,13 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         let labels: [UILabel] = [self.depositLabel, self.withdrawLabel, self.historyLabel]
         for index in 0 ..< 3 {
             let centerX = 16.0 + columnWidth * (CGFloat(index) + 0.5)
-            controls[index].frame = CGRect(x: floor(centerX - 20.5), y: 154.0, width: 41.0, height: 41.0)
-            labels[index].frame = CGRect(x: floor(centerX - columnWidth / 2.0), y: 202.0, width: columnWidth, height: 20.0)
+            controls[index].frame = CGRect(x: floor(centerX - 20.5), y: 149.0, width: 41.0, height: 41.0)
+            labels[index].frame = CGRect(x: floor(centerX - columnWidth / 2.0), y: 196.0, width: columnWidth, height: 20.0)
         }
 
         let bannerWidth = contentWidth
         let bannerHeight: CGFloat = 74.0
-        self.bannerScroll.frame = CGRect(x: 16.0, y: 239.0, width: bannerWidth, height: bannerHeight)
+        self.bannerScroll.frame = CGRect(x: 16.0, y: 234.0, width: bannerWidth, height: bannerHeight)
         self.bannerScroll.contentSize = CGSize(width: bannerWidth * CGFloat(self.bannerControls.count), height: bannerHeight)
         for (index, control) in self.bannerControls.enumerated() {
             control.frame = CGRect(x: CGFloat(index) * bannerWidth, y: 0.0, width: bannerWidth, height: bannerHeight)
@@ -969,11 +977,11 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.layoutDots(width: width)
 
         let titleSize = self.assetsTitle.sizeThatFits(CGSize(width: width, height: 22.0))
-        self.assetsTitle.frame = CGRect(x: 16.0, y: 351.0, width: titleSize.width, height: 22.0)
-        self.assetsChevron.frame = CGRect(x: 16.0 + titleSize.width + 4.0, y: 351.0, width: 14.0, height: 22.0)
-        self.hideSmallButton.frame = CGRect(x: width / 2.0 - 20.0, y: 342.0, width: width / 2.0 + 4.0, height: 40.0)
+        self.assetsTitle.frame = CGRect(x: 16.0, y: 346.0, width: titleSize.width, height: 22.0)
+        self.assetsChevron.frame = CGRect(x: 16.0 + titleSize.width + 4.0, y: 346.0, width: 14.0, height: 22.0)
+        self.hideSmallButton.frame = CGRect(x: width / 2.0 - 20.0, y: 337.0, width: width / 2.0 + 4.0, height: 40.0)
 
-        var y: CGFloat = 386.0
+        var y: CGFloat = 379.5
         for row in self.assetRows where !row.isHidden {
             row.frame = CGRect(x: 0.0, y: y, width: width, height: 65.0)
             y += 65.0
@@ -988,7 +996,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         for (index, dot) in self.dotViews.enumerated() {
             let isActive = index == self.bannerPage
             let dotWidth: CGFloat = isActive ? 12.0 : 6.0
-            dot.frame = CGRect(x: dotX, y: 321.0, width: dotWidth, height: 6.0)
+            dot.frame = CGRect(x: dotX, y: 316.0, width: dotWidth, height: 6.0)
             dot.layer.cornerRadius = 3.0
             dot.backgroundColor = isActive ? PampGramFakeCryptoBotColors.blue : PampGramFakeCryptoBotColors.dotInactive
             dotX += dotWidth + 10.0
