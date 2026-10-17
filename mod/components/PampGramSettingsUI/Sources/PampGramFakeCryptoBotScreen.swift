@@ -246,17 +246,11 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
 
 /// A bottom-bar item: glyph over a label, with a lighter capsule behind the active one.
 private final class PampGramFakeCryptoBotTabItem: UIControl {
-    private let capsule = UIView()
     private let iconView = UIImageView()
     private let label = pampGramFakeCryptoBotLabel(size: 11.0, weight: .medium, color: .white, alignment: .center)
 
     init(assetName: String, title: String, active: Bool) {
         super.init(frame: .zero)
-        self.capsule.backgroundColor = PampGramFakeCryptoBotColors.tabActive
-        self.capsule.isHidden = !active
-        self.capsule.isUserInteractionEnabled = false
-        self.addSubview(self.capsule)
-
         self.iconView.image = PampGramFakeCryptoBotAssets.image(assetName)?.withRenderingMode(.alwaysTemplate)
         self.iconView.tintColor = active ? PampGramFakeCryptoBotColors.blue : UIColor.white
         self.iconView.contentMode = .center
@@ -272,12 +266,23 @@ private final class PampGramFakeCryptoBotTabItem: UIControl {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// The blue highlight itself (the capsule) is drawn by the bar and slides between the items.
+    func setActive(_ active: Bool, animated: Bool) {
+        let update = {
+            self.iconView.tintColor = active ? PampGramFakeCryptoBotColors.blue : UIColor.white
+            self.label.textColor = active ? PampGramFakeCryptoBotColors.blue : UIColor.white
+        }
+        if animated {
+            UIView.transition(with: self, duration: 0.25, options: [.transitionCrossDissolve, .allowUserInteraction], animations: update)
+        } else {
+            update()
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         let width = self.bounds.width
         let height = self.bounds.height
-        self.capsule.frame = self.bounds.insetBy(dx: 1.0, dy: 5.0)
-        self.capsule.layer.cornerRadius = self.capsule.bounds.height / 2.0
         self.iconView.frame = CGRect(x: 0.0, y: 8.0, width: width, height: 24.0)
         self.label.frame = CGRect(x: 0.0, y: height - 22.0, width: width, height: 14.0)
     }
@@ -429,6 +434,8 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         case wallet
         case deposit
         case withdraw
+        /// Any tab other than the wallet: not drawn yet, only the bar works.
+        case emptyTab
     }
 
     var onBackStateChanged: ((Bool) -> Void)?
@@ -440,6 +447,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     private var balances: [String: Double] = [:]
     private var page: Page = .wallet
+    private var selectedTab = 0
     private var balanceHidden = false
     private var smallBalancesHidden = false
     private var searchQuery = ""
@@ -494,6 +502,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private var listRows: [PampGramFakeCryptoBotRowView] = []
 
     private let tabBar = UIView()
+    private let tabCapsule = UIView()
     private let tabItems: [PampGramFakeCryptoBotTabItem] = [
         PampGramFakeCryptoBotTabItem(assetName: "tab_wallet", title: "Кошелёк", active: true),
         PampGramFakeCryptoBotTabItem(assetName: "tab_exchange", title: "Биржа", active: false),
@@ -745,6 +754,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.tabBar.layer.borderWidth = 1.0
         self.tabBar.layer.borderColor = UIColor(white: 1.0, alpha: 0.05).cgColor
         self.addSubview(self.tabBar)
+        self.tabCapsule.backgroundColor = PampGramFakeCryptoBotColors.tabActive
+        self.tabCapsule.isUserInteractionEnabled = false
+        self.tabBar.addSubview(self.tabCapsule)
         for item in self.tabItems {
             item.addTarget(self, action: #selector(self.tabPressed(_:)), for: .touchUpInside)
             self.tabBar.addSubview(item)
@@ -778,7 +790,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     }
 
     func goBack() {
-        if self.page != .wallet {
+        if self.page == .deposit || self.page == .withdraw {
             self.setPage(.wallet)
         }
     }
@@ -843,18 +855,19 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     private func applyPage(animated: Bool) {
         let isWallet = self.page == .wallet
+        let isList = self.page == .deposit || self.page == .withdraw
         self.walletScroll.isHidden = !isWallet
-        self.tabBar.isHidden = !isWallet
-        self.listScroll.isHidden = isWallet
+        self.tabBar.isHidden = isList
+        self.listScroll.isHidden = !isList
         self.listTitle.text = self.page == .withdraw ? "Вывод криптовалюты" : "Пополнение криптовалюты"
-        if animated {
+        if animated && (isWallet || isList) {
             let target = isWallet ? self.walletScroll : self.listScroll
             target.alpha = 0.0
             UIView.animate(withDuration: 0.2, animations: {
                 target.alpha = 1.0
             })
         }
-        self.onBackStateChanged?(!isWallet)
+        self.onBackStateChanged?(isList)
         self.setNeedsLayout()
     }
 
@@ -889,12 +902,19 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         for (index, item) in self.tabItems.enumerated() {
             item.frame = CGRect(x: CGFloat(index) * itemWidth, y: 0.0, width: itemWidth, height: 53.0)
         }
+        self.layoutTabCapsule()
 
         // The "unavailable" toast, just above the tab bar.
         let toastTextSize = self.toastLabel.sizeThatFits(CGSize(width: max(0.0, width - 64.0), height: 40.0))
         let toastWidth = min(width - 32.0, toastTextSize.width + 32.0)
         self.toastView.frame = CGRect(x: floor((width - toastWidth) / 2.0), y: height - 53.0 - 19.0 - 16.0 - 36.0, width: toastWidth, height: 36.0)
         self.toastLabel.frame = self.toastView.bounds
+    }
+
+    private func layoutTabCapsule() {
+        let itemWidth = self.tabBar.bounds.width / CGFloat(self.tabItems.count)
+        self.tabCapsule.frame = CGRect(x: CGFloat(self.selectedTab) * itemWidth, y: 0.0, width: itemWidth, height: 53.0).insetBy(dx: 1.0, dy: 5.0)
+        self.tabCapsule.layer.cornerRadius = self.tabCapsule.bounds.height / 2.0
     }
 
     private func layoutWallet(width: CGFloat) {
@@ -1003,9 +1023,19 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     }
 
     @objc private func tabPressed(_ sender: PampGramFakeCryptoBotTabItem) {
-        if sender !== self.tabItems[0] {
-            self.showUnavailable()
+        guard let index = self.tabItems.firstIndex(where: { $0 === sender }), index != self.selectedTab else {
+            return
         }
+        self.selectedTab = index
+        UIView.animate(withDuration: 0.4, delay: 0.0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4, options: [.allowUserInteraction, .beginFromCurrentState], animations: {
+            self.layoutTabCapsule()
+        })
+        for (itemIndex, item) in self.tabItems.enumerated() {
+            item.setActive(itemIndex == index, animated: true)
+        }
+        // The other sections are not copied yet: the page is empty, the bar keeps working.
+        self.page = index == 0 ? .wallet : .emptyTab
+        self.applyPage(animated: true)
     }
 
     @objc private func eyePressed() {

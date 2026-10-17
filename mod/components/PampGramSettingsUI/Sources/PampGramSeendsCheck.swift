@@ -11,9 +11,10 @@ import AccountContext
 /// выполняется; сообщение вставляется только на этом устройстве, так же как остальные
 /// локальные вставки PampGram (см. PampGramFakeContentInsert.swift).
 ///
-/// «чек» — чек от моего имени (исходящее сообщение). «получено» — то же, и сразу под ним
-/// входящая строка «Получено». Под чеком всегда есть серая кнопка «⇄»: по нажатию чек (и строка
-/// «Получено», если она есть) переходит на другую сторону чата.
+/// «чек» — чек от моего имени (исходящее сообщение), кнопка «Получить …». «получено» — чек от
+/// собеседника (входящее), уже получен: под ним серая кнопка «✅ Получено: …», как у настоящего.
+/// Под чеком всегда есть и маленькая серая кнопка «⇄»: по нажатию чек переходит на другую
+/// сторону чата и обратно.
 
 private enum PampGramSeendsMode {
     case issued
@@ -124,11 +125,11 @@ public func pampGramTryHandleSeendsCommand(context: AccountContext, peerId: Engi
     ]
 
     let botPeerId = PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(pampGramSeendsBotUserId))
-    let button = ReplyMarkupButton(title: "Получить " + shortAmount + " " + payload.code, titleWhenForwarded: nil, action: .url(checkUrl), style: nil)
-    // The grey button under the check; its data names the "Получено" line (0 when there is none) so
-    // both can be moved together.
-    let receivedGuid: Int64 = payload.mode == .received ? Int64.random(in: 1 ... Int64.max) : 0
-    let swapData = MemoryBuffer(data: (pampGramSeendsSwapPrefix + String(receivedGuid)).data(using: .utf8) ?? Data())
+    // A claimed check keeps its link button but says "✅ Получено: 19.603115 USDT" (the whole amount).
+    let buttonTitle = payload.mode == .received ? "✅ Получено: " + payload.amountText + " " + payload.code : "Получить " + shortAmount + " " + payload.code
+    let button = ReplyMarkupButton(title: buttonTitle, titleWhenForwarded: nil, action: .url(checkUrl), style: nil)
+    // The small grey button under it that moves the check to the other side of the chat.
+    let swapData = MemoryBuffer(data: pampGramSeendsSwapPrefix.data(using: .utf8) ?? Data())
     let swapButton = ReplyMarkupButton(title: "⇄", titleWhenForwarded: nil, action: .callback(requiresPassword: false, data: swapData), style: nil)
     let attributes: [MessageAttribute] = [
         InlineBotMessageAttribute(peerId: botPeerId, title: "send"),
@@ -137,30 +138,22 @@ public func pampGramTryHandleSeendsCommand(context: AccountContext, peerId: Engi
         ReplyMarkupMessageAttribute(rows: [ReplyMarkupRow(buttons: [button]), ReplyMarkupRow(buttons: [swapButton])], flags: [.inline], placeholder: nil)
     ]
 
-    var items = [PampGramSeendsItem(incoming: false, guid: Int64.random(in: Int64.min ... Int64.max), text: messageText, attributes: attributes, media: [webpage])]
-    if payload.mode == .received {
-        items.append(PampGramSeendsItem(incoming: true, guid: receivedGuid, text: "Получено", attributes: [], media: []))
-    }
-    let _ = pampGramInsertSeendsMessages(context: context, peerId: peerId, items: items).start()
+    let _ = pampGramInsertSeendsMessage(context: context, peerId: peerId, incoming: payload.mode == .received, text: messageText, attributes: attributes, media: [webpage]).start()
     return true
 }
 
-private let pampGramSeendsSwapPrefix = "pgswap:"
+private let pampGramSeendsSwapPrefix = "pgswap"
 
-/// The grey "⇄" button under a local check: moves the check, and the "Получено" line that goes
-/// with it, to the other side of the chat. Returns true when the callback was ours.
+/// The grey "⇄" button under a local check: moves the check to the other side of the chat.
+/// Returns true when the callback was ours.
 public func pampGramHandleSeendsCallback(context: AccountContext, message: EngineRawMessage, data: MemoryBuffer?) -> Bool {
-    guard let data = data?.makeData(), let string = String(data: data, encoding: .utf8), string.hasPrefix(pampGramSeendsSwapPrefix) else {
+    guard let data = data?.makeData(), String(data: data, encoding: .utf8) == pampGramSeendsSwapPrefix else {
         return false
     }
-    let receivedGuid = Int64(string.dropFirst(pampGramSeendsSwapPrefix.count)) ?? 0
     let accountPeerId = context.account.peerId
     let messageId = message.id
     let _ = context.account.postbox.transaction { transaction -> Void in
         pampGramFlipLocalMessageSide(transaction: transaction, id: messageId, accountPeerId: accountPeerId)
-        if receivedGuid != 0, let receivedId = transaction.messageIdForGloballyUniqueMessageId(peerId: messageId.peerId, id: receivedGuid) {
-            pampGramFlipLocalMessageSide(transaction: transaction, id: receivedId, accountPeerId: accountPeerId)
-        }
     }.start()
     return true
 }
@@ -491,39 +484,29 @@ private func pampGramPersistSeendsFile(data: Data, pathExtension: String) -> Str
     }
 }
 
-private struct PampGramSeendsItem {
-    /// On the other side of the chat (from the interlocutor); otherwise this account's own.
-    let incoming: Bool
-    let guid: Int64
-    let text: String
-    let attributes: [MessageAttribute]
-    let media: [Media]
-}
-
-/// All items go in one transaction with the same timestamp, so they stay in the given order.
-private func pampGramInsertSeendsMessages(context: AccountContext, peerId: EnginePeer.Id, items: [PampGramSeendsItem]) -> Signal<Void, NoError> {
-    return context.account.postbox.transaction { transaction -> Void in
-        let timestamp = Int32(Date().timeIntervalSince1970)
-        var storeMessages: [StoreMessage] = []
-        for item in items {
-            storeMessages.append(StoreMessage(
-                id: .Partial(peerId, Namespaces.Message.Local),
-                customStableId: nil,
-                globallyUniqueId: item.guid,
-                groupingKey: nil,
-                threadId: nil,
-                timestamp: timestamp,
-                flags: item.incoming ? StoreMessageFlags.Incoming : StoreMessageFlags(),
-                tags: [],
-                globalTags: [],
-                localTags: [],
-                forwardInfo: nil,
-                authorId: item.incoming ? peerId : context.account.peerId,
-                text: item.text,
-                attributes: item.attributes,
-                media: item.media
-            ))
-        }
-        let _ = transaction.addMessages(storeMessages, location: .Random)
+/// `incoming` puts the check on the other side of the chat (from the interlocutor); otherwise it
+/// is this account's own, outgoing one.
+private func pampGramInsertSeendsMessage(context: AccountContext, peerId: EnginePeer.Id, incoming: Bool, text: String, attributes: [MessageAttribute], media: [Media]) -> Signal<EngineMessage.Id?, NoError> {
+    return context.account.postbox.transaction { transaction -> EngineMessage.Id? in
+        let globallyUniqueId = Int64.random(in: Int64.min ... Int64.max)
+        let storeMessage = StoreMessage(
+            id: .Partial(peerId, Namespaces.Message.Local),
+            customStableId: nil,
+            globallyUniqueId: globallyUniqueId,
+            groupingKey: nil,
+            threadId: nil,
+            timestamp: Int32(Date().timeIntervalSince1970),
+            flags: incoming ? StoreMessageFlags.Incoming : StoreMessageFlags(),
+            tags: [],
+            globalTags: [],
+            localTags: [],
+            forwardInfo: nil,
+            authorId: incoming ? peerId : context.account.peerId,
+            text: text,
+            attributes: attributes,
+            media: media
+        )
+        let insertedIds = transaction.addMessages([storeMessage], location: .Random)
+        return insertedIds[globallyUniqueId]
     }
 }
