@@ -453,7 +453,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private var searchQuery = ""
     private var bannerPage = 0
     private var didReveal = false
-    private var bannerTimer: Timer?
+    private var bannerTimer: Foundation.Timer?
     private var bannerAnimationToken = 0
 
     private let toastView = UIView()
@@ -576,7 +576,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         guard self.window != nil, self.didReveal else {
             return
         }
-        let timer = Timer(timeInterval: 4.0, repeats: true) { [weak self] _ in
+        let timer = Foundation.Timer(timeInterval: 4.0, repeats: true) { [weak self] _ in
             self?.advanceBanner()
         }
         RunLoop.main.add(timer, forMode: .common)
