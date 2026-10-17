@@ -494,6 +494,8 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private var smallBalancesHidden = false
     private var searchQuery = ""
     private var bannerPage = 0
+    /// Fractional banner position (offset / width): the dots follow the finger and the slide.
+    private var bannerProgress: CGFloat = 0.0
     private var didReveal = false
     private var bannerTimer: Foundation.Timer?
     private var priceTimer: Foundation.Timer?
@@ -1197,18 +1199,28 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.walletScroll.contentSize = CGSize(width: width, height: y + 130.0)
     }
 
-    /// The page dots: the current one is a wider pill, the others small circles.
+    /// The page dots: the pill (12pt) and the small circles (6pt) trade width while the banners slide,
+    /// so the blue pill moves together with the banners instead of jumping.
     private func layoutDots(width: CGFloat) {
         let count = CGFloat(self.dotViews.count)
+        let progress = max(0.0, min(count - 1.0, self.bannerProgress))
         var dotX = floor((width - (12.0 + 6.0 * (count - 1.0) + 10.0 * (count - 1.0))) / 2.0)
         for (index, dot) in self.dotViews.enumerated() {
-            let isActive = index == self.bannerPage
-            let dotWidth: CGFloat = isActive ? 12.0 : 6.0
+            let weight = max(0.0, 1.0 - abs(progress - CGFloat(index)))
+            let dotWidth: CGFloat = 6.0 + 6.0 * weight
             dot.frame = CGRect(x: dotX, y: 316.0, width: dotWidth, height: 6.0)
             dot.layer.cornerRadius = 3.0
-            dot.backgroundColor = isActive ? PampGramFakeCryptoBotColors.blue : PampGramFakeCryptoBotColors.dotInactive
+            dot.backgroundColor = Self.blend(PampGramFakeCryptoBotColors.dotInactive, PampGramFakeCryptoBotColors.blue, weight)
             dotX += dotWidth + 10.0
         }
+    }
+
+    private static func blend(_ from: UIColor, _ to: UIColor, _ amount: CGFloat) -> UIColor {
+        var fr: CGFloat = 0.0, fg: CGFloat = 0.0, fb: CGFloat = 0.0, fa: CGFloat = 0.0
+        var tr: CGFloat = 0.0, tg: CGFloat = 0.0, tb: CGFloat = 0.0, ta: CGFloat = 0.0
+        from.getRed(&fr, green: &fg, blue: &fb, alpha: &fa)
+        to.getRed(&tr, green: &tg, blue: &tb, alpha: &ta)
+        return UIColor(red: fr + (tr - fr) * amount, green: fg + (tg - fg) * amount, blue: fb + (tb - fb) * amount, alpha: 1.0)
     }
 
     private func layoutList(width: CGFloat) {
@@ -1458,12 +1470,12 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         guard scrollView === self.bannerScroll, scrollView.bounds.width > 0.0 else {
             return
         }
-        let index = max(0, min(self.dotViews.count - 1, Int(round(scrollView.contentOffset.x / scrollView.bounds.width))))
+        // A scripted slide calls this inside its animation block, so the dots animate along with it.
+        self.bannerProgress = scrollView.contentOffset.x / scrollView.bounds.width
+        self.layoutDots(width: self.bounds.width)
+        let index = max(0, min(self.dotViews.count - 1, Int(round(self.bannerProgress))))
         if index != self.bannerPage {
             self.bannerPage = index
-            UIView.animate(withDuration: 0.3, delay: 0.0, options: [.curveEaseInOut, .beginFromCurrentState], animations: {
-                self.layoutDots(width: self.bounds.width)
-            })
             self.bannerPageChanged(to: index)
         }
     }
