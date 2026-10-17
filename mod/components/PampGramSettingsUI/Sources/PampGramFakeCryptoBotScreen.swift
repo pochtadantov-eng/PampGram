@@ -1945,7 +1945,7 @@ private final class PampGramFakeCryptoBotStandaloneView: UIView {
     private let moreControl = UIControl()
     private let moreIcon = UIImageView()
 
-    init(content: PampGramFakeCryptoBotContentView) {
+    init(content: PampGramFakeCryptoBotContentView, title: String) {
         self.content = content
         super.init(frame: .zero)
         self.overrideUserInterfaceStyle = content.isDarkTheme ? .dark : .light
@@ -1974,7 +1974,7 @@ private final class PampGramFakeCryptoBotStandaloneView: UIView {
         self.backControl.isHidden = true
         self.cardView.addSubview(self.backControl)
 
-        self.titleLabel.text = "Crypto Bot"
+        self.titleLabel.text = title
         self.subtitleLabel.text = "мини-приложение"
         self.cardView.addSubview(self.titleLabel)
         self.cardView.addSubview(self.subtitleLabel)
@@ -2041,9 +2041,11 @@ private final class PampGramFakeCryptoBotStandaloneView: UIView {
 private final class PampGramFakeCryptoBotScreen: ViewController {
     private let context: AccountContext
     private var standaloneView: PampGramFakeCryptoBotStandaloneView?
+    private let title: String
 
-    init(context: AccountContext) {
+    init(context: AccountContext, title: String) {
         self.context = context
+        self.title = title
         super.init(navigationBarPresentationData: nil)
         self.displayNavigationBar = false
     }
@@ -2059,7 +2061,7 @@ private final class PampGramFakeCryptoBotScreen: ViewController {
         self.displayNodeDidLoad()
 
         let content = PampGramFakeCryptoBotContentView(context: self.context, presenter: self)
-        let standaloneView = PampGramFakeCryptoBotStandaloneView(content: content)
+        let standaloneView = PampGramFakeCryptoBotStandaloneView(content: content, title: self.title)
         standaloneView.onClose = { [weak self] in
             self?.dismiss()
         }
@@ -2161,8 +2163,8 @@ private func pampGramFakeCryptoBotPromptBalance(context: AccountContext, present
 /// Открывает полноэкранный визуал «CryptoBot мини-апп» на этом устройстве (строка в
 /// «Дополнительно»). Балансы подставляются из `PampGramSettings.fakeCryptoBotBalances`;
 /// редактор открывается удержанием суммы общего баланса (около секунды).
-public func pampGramFakeCryptoBotController(context: AccountContext) -> ViewController {
-    return PampGramFakeCryptoBotScreen(context: context)
+public func pampGramFakeCryptoBotController(context: AccountContext, title: String = "Crypto Bot") -> ViewController {
+    return PampGramFakeCryptoBotScreen(context: context, title: title)
 }
 
 /// Страница, которая вместо веб-страницы @CryptoBot показывается внутри родного окна

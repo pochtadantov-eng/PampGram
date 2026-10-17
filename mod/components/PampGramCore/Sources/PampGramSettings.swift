@@ -359,6 +359,9 @@ public struct PampGramSettings: Codable, Equatable {
     public var fakeCryptoBotHistoryRaw: String = ""
     /// The fake CryptoBot's exchange orders (open, filled, cancelled) and its swaps ("Обмен"), also
     /// JSON text for the same reason.
+    /// The bots whose mini app is replaced by the fake CryptoBot page ("Фейковые боты"), as JSON
+    /// text of `[PampGramFakeBot]`.
+    public var fakeBotsRaw: String = ""
     public var fakeCryptoBotOrdersRaw: String = ""
     public var fakeCryptoBotSwapsRaw: String = ""
     /// The visual balances of that screen, stored as one "CODE=amount;CODE=amount" string.
@@ -739,6 +742,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.bypassMarkViewedEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassMarkViewedEnabled) ?? defaults.bypassMarkViewedEnabled
         self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
         self.fakeCryptoBotHistoryRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotHistoryRaw) ?? defaults.fakeCryptoBotHistoryRaw
+        self.fakeBotsRaw = try container.decodeIfPresent(String.self, forKey: .fakeBotsRaw) ?? defaults.fakeBotsRaw
         self.fakeCryptoBotOrdersRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotOrdersRaw) ?? defaults.fakeCryptoBotOrdersRaw
         self.fakeCryptoBotSwapsRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotSwapsRaw) ?? defaults.fakeCryptoBotSwapsRaw
         self.fakeCryptoBotBalancesRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotBalancesRaw) ?? defaults.fakeCryptoBotBalancesRaw

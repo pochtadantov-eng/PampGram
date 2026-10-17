@@ -3,6 +3,33 @@ import UIKit
 import Postbox
 import SwiftSignalKit
 
+/// A bot added to "Фейковые боты": its mini app opens the local CryptoBot page.
+public struct PampGramFakeBot: Codable, Equatable {
+    public var id: Int64
+    public var username: String
+    public var title: String
+
+    public init(id: Int64, username: String, title: String) {
+        self.id = id
+        self.username = username
+        self.title = title
+    }
+}
+
+public func pampGramParseFakeBots(_ raw: String) -> [PampGramFakeBot] {
+    guard !raw.isEmpty, let data = raw.data(using: .utf8), let bots = try? JSONDecoder().decode([PampGramFakeBot].self, from: data) else {
+        return []
+    }
+    return bots
+}
+
+public func pampGramSerializeFakeBots(_ bots: [PampGramFakeBot]) -> String {
+    guard let data = try? JSONEncoder().encode(bots), let text = String(data: data, encoding: .utf8) else {
+        return ""
+    }
+    return text
+}
+
 /// The page that stands in for @CryptoBot's mini app inside Telegram's own web-app window. It is a
 /// plain view: the window around it (header, close/back button, "⋯" menu, the bottom bar, the
 /// transitions) stays Telegram's, and only the web page is replaced.
@@ -27,10 +54,13 @@ public final class PampGramFakeCryptoBotRuntime {
     public static let shared = PampGramFakeCryptoBotRuntime()
 
     /// Telegram user id of the official @CryptoBot.
-    private static let officialBotUserId: Int64 = 1559501630
+    public static let officialBotUserId: Int64 = 1559501630
 
     private let lock = NSLock()
-    private var enabledByAccount: [Int64: Bool] = [:]
+    /// Per account: the ids of the bots from "Фейковые боты", and whether the old switch for the
+    /// official @CryptoBot is still on.
+    private var botIdsByAccount: [Int64: Set<Int64>] = [:]
+    private var officialEnabledByAccount: [Int64: Bool] = [:]
     private var startedAccounts: Set<Int64> = []
     private var disposables: [Int64: Disposable] = [:]
     private var contentFactory: ((AnyObject, AnyObject) -> PampGramFakeMiniAppContent?)?
@@ -57,16 +87,17 @@ public final class PampGramFakeCryptoBotRuntime {
         self.lock.unlock()
 
         let disposable = (PampGramCore.settingsSignal(postbox: postbox)
-        |> map { settings -> Bool in
-            return settings.fakeCryptoBotEnabled
+        |> map { settings -> PampGramFakeBotSet in
+            return PampGramFakeBotSet(ids: Set(pampGramParseFakeBots(settings.fakeBotsRaw).map { $0.id }), official: settings.fakeCryptoBotEnabled)
         }
         |> distinctUntilChanged
-        |> deliverOn(Queue.concurrentDefaultQueue())).start(next: { [weak self] enabled in
+        |> deliverOn(Queue.concurrentDefaultQueue())).start(next: { [weak self] set in
             guard let self else {
                 return
             }
             self.lock.lock()
-            self.enabledByAccount[accountKey] = enabled
+            self.botIdsByAccount[accountKey] = set.ids
+            self.officialEnabledByAccount[accountKey] = set.official
             self.lock.unlock()
         })
 
@@ -75,20 +106,28 @@ public final class PampGramFakeCryptoBotRuntime {
         self.lock.unlock()
     }
 
-    /// The page to show when `botUserId` / `botName` is the official CryptoBot and the feature is
-    /// on for this account; `nil` means "load the real mini app".
+    /// The page to show when `botUserId` is one of the bots added to "Фейковые боты" (or, with the
+    /// old switch on, the official CryptoBot); `nil` means "load the real mini app".
     public func replacementContent(accountKey: Int64, context: AnyObject, presenter: AnyObject, botUserId: Int64, botName: String) -> PampGramFakeMiniAppContent? {
         self.lock.lock()
-        let enabled = self.enabledByAccount[accountKey] ?? false
+        let ids = self.botIdsByAccount[accountKey] ?? []
+        let official = self.officialEnabledByAccount[accountKey] ?? false
         let factory = self.contentFactory
         self.lock.unlock()
-        guard enabled, let factory else {
+        guard let factory else {
             return nil
         }
         let name = botName.trimmingCharacters(in: .whitespaces).lowercased()
-        guard botUserId == PampGramFakeCryptoBotRuntime.officialBotUserId || name == "crypto bot" || name == "cryptobot" else {
+        let isOfficial = botUserId == PampGramFakeCryptoBotRuntime.officialBotUserId || name == "crypto bot" || name == "cryptobot"
+        guard ids.contains(botUserId) || (official && isOfficial) else {
             return nil
         }
         return factory(context, presenter)
     }
+}
+
+/// What the runtime needs from the settings, comparable so that unrelated changes do not wake it.
+private struct PampGramFakeBotSet: Equatable {
+    let ids: Set<Int64>
+    let official: Bool
 }
