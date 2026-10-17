@@ -912,6 +912,8 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         }
         self.dotFill.isUserInteractionEnabled = false
         self.dotFill.backgroundColor = PampGramFakeCryptoBotColors.dotFill
+        // The fill is a capsule too: it starts as a dot and its end stays round while it grows.
+        self.dotFill.layer.cornerRadius = 3.0
         self.dotViews[0].addSubview(self.dotFill)
 
         self.assetsTitle.text = "Мои активы"
@@ -1360,7 +1362,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             if self.dotFill.superview !== pill {
                 pill.addSubview(self.dotFill)
             }
-            self.dotFill.frame = CGRect(x: 0.0, y: 0.0, width: 0.0, height: 6.0)
+            self.dotFill.frame = CGRect(x: 0.0, y: 0.0, width: self.bannerTimer == nil ? 0.0 : 6.0, height: 6.0)
         }
         guard self.bannerTimer != nil else {
             return
