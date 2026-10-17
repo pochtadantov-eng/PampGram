@@ -70,7 +70,7 @@ private func pampGramFakeCryptoBotDateParts(_ timestamp: Int32) -> DateComponent
 }
 
 /// "17 окт. 03:09".
-private func pampGramFakeCryptoBotShortDate(_ timestamp: Int32) -> String {
+func pampGramFakeCryptoBotShortDate(_ timestamp: Int32) -> String {
     let parts = pampGramFakeCryptoBotDateParts(timestamp)
     let month = max(1, min(12, parts.month ?? 1))
     let time = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)

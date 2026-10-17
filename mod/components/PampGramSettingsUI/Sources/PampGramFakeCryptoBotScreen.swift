@@ -45,11 +45,6 @@ let pampGramFakeCryptoBotCurrencies: [PampGramFakeCryptoBotCurrency] = [
     PampGramFakeCryptoBotCurrency(code: "XAUT", name: "Tether Gold", assetName: "coin_XAUT", price: 4152.71, priceText: "$4,152.71", change: 0.0, fractionDigits: 4)
 ]
 
-/// Coins pegged to the dollar move by hundredths of a cent only.
-private func pampGramFakeCryptoBotIsStable(_ code: String) -> Bool {
-    return code == "USDT" || code == "USDC"
-}
-
 /// "$80,555.61" for `price`, with as many decimals as `template` ("$80,555.61") has.
 private func pampGramFakeCryptoBotPriceText(_ price: Double, like template: String) -> String {
     var decimals = 2
@@ -140,6 +135,16 @@ extension UIView {
     /// re-apply them through this when the theme or the window changes.
     func pampGramFakeCGColor(_ color: UIColor) -> CGColor {
         return color.resolvedColor(with: self.traitCollection).cgColor
+    }
+}
+
+/// Adds `delta` to the visual balance of `code`; an empty balance is removed.
+private func pampGramFakeCryptoBotAdjust(_ balances: inout [String: Double], _ code: String, by delta: Double) {
+    let updated = max(0.0, (balances[code] ?? 0.0) + delta)
+    if updated < 1e-12 {
+        balances.removeValue(forKey: code)
+    } else {
+        balances[code] = updated
     }
 }
 
@@ -503,7 +508,13 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         case history
         /// The withdrawal form and the steps after it.
         case withdrawForm
-        /// Any tab other than the wallet: not drawn yet, only the bar works.
+        /// The "Биржа" tab.
+        case exchange
+        /// The "Обмен" tab.
+        case swap
+        /// The "Ещё" tab.
+        case more
+        /// The "P2P" tab: not drawn yet, only the bar works.
         case emptyTab
     }
 
@@ -535,10 +546,17 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private let dotFill = UIView()
     private var didReveal = false
     private var bannerTimer: Foundation.Timer?
-    private var priceTimer: Foundation.Timer?
-    /// The coin prices and day changes as they drift, like the real app's refreshing rates.
-    private var livePrices: [String: Double] = [:]
-    private var liveChanges: [String: Double] = [:]
+    /// The live rates: `PampGramFakeCryptoBotMarket` polls the exchange while the page is on screen.
+    private var marketObserver: Int?
+    private var marketRefreshScheduled = false
+    /// The page the sub-screens (deposit, withdrawal, history) go back to: the wallet, or "Ещё".
+    private var returnPage: Page = .wallet
+    private var orders: [PampGramFakeCryptoBotOrder] = []
+    private var swaps: [PampGramFakeCryptoBotSwap] = []
+    private var fillingOrderIds: Set<Int64> = []
+    private let exchangeView = PampGramFakeCryptoBotExchangeView()
+    private let swapView = PampGramFakeCryptoBotSwapView()
+    private let moreView = PampGramFakeCryptoBotMoreView()
     private var bannerAnimationToken = 0
 
     private let toastView = UIView()
@@ -617,9 +635,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
         self.setupWallet()
         self.setupList()
+        self.setupMarketPages()
         self.setupTabBar()
         self.setupToast()
-        self.startPrices()
 
         self.reload()
         self.applyPage(animated: false)
@@ -630,6 +648,13 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             let operations = pampGramFakeCryptoBotParseOperations(settings.fakeCryptoBotHistoryRaw)
             self?.operations = operations
             self?.historyView.setOperations(operations)
+            let orders = pampGramFakeCryptoBotParseOrders(settings.fakeCryptoBotOrdersRaw)
+            self?.orders = orders
+            self?.fillingOrderIds = (self?.fillingOrderIds ?? []).filter { id in orders.contains(where: { $0.id == id && $0.status == 0 }) }
+            self?.exchangeView.setOrders(orders)
+            let swaps = pampGramFakeCryptoBotParseSwaps(settings.fakeCryptoBotSwapsRaw)
+            self?.swaps = swaps
+            self?.swapView.setSwaps(swaps)
         }))
 
         self.themeDisposable.set((context.sharedContext.presentationData
@@ -646,7 +671,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.settingsDisposable.dispose()
         self.themeDisposable.dispose()
         self.bannerTimer?.invalidate()
-        self.priceTimer?.invalidate()
+        if let id = self.marketObserver {
+            PampGramFakeCryptoBotMarket.shared.removeObserver(id)
+        }
     }
 
     // MARK: Appearance
@@ -679,13 +706,12 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         if self.window == nil {
             self.bannerTimer?.invalidate()
             self.bannerTimer = nil
-            self.priceTimer?.invalidate()
-            self.priceTimer = nil
+            self.stopMarket()
             return
         }
         if self.didReveal {
             self.startBannerTimer()
-            self.startPriceTimer()
+            self.startMarket()
             return
         }
         self.didReveal = true
@@ -701,7 +727,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             })
             self.balanceView.rollFromZero()
             self.startBannerTimer()
-            self.startPriceTimer()
+            self.startMarket()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 guard let self = self, self.bannerPage == 0 else {
                     return
@@ -727,50 +753,49 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     // MARK: Rates
 
-    /// Every open starts from slightly different rates, so the numbers are never quite the same twice.
-    private func startPrices() {
-        for currency in pampGramFakeCryptoBotCurrencies {
-            let drift = pampGramFakeCryptoBotIsStable(currency.code) ? 0.0002 : 0.004
-            let step = Double.random(in: -drift ... drift)
-            self.livePrices[currency.code] = currency.price * (1.0 + step)
-            self.liveChanges[currency.code] = currency.change + step * 100.0
-        }
-    }
-
-    private func startPriceTimer() {
-        self.priceTimer?.invalidate()
-        self.priceTimer = nil
-        guard self.window != nil else {
+    private func startMarket() {
+        if self.marketObserver != nil {
             return
         }
-        let timer = Foundation.Timer(timeInterval: 6.0, repeats: true) { [weak self] _ in
-            self?.tickPrices()
+        self.marketObserver = PampGramFakeCryptoBotMarket.shared.addObserver { [weak self] in
+            self?.marketChanged()
         }
-        RunLoop.main.add(timer, forMode: .common)
-        self.priceTimer = timer
     }
 
-    /// A small random step for every coin, within a couple of percent of where it started; the totals
-    /// under the balance follow, so the dollars creep up and down by cents.
-    private func tickPrices() {
-        for currency in pampGramFakeCryptoBotCurrencies {
-            let stable = pampGramFakeCryptoBotIsStable(currency.code)
-            let drift = stable ? 0.00004 : 0.0007
-            var step = Double.random(in: -drift ... drift)
-            let current = self.livePrices[currency.code] ?? currency.price
-            let low = currency.price * (stable ? 0.9995 : 0.985)
-            let high = currency.price * (stable ? 1.0005 : 1.015)
-            if current * (1.0 + step) < low || current * (1.0 + step) > high {
-                step = -step
-            }
-            self.livePrices[currency.code] = current * (1.0 + step)
-            self.liveChanges[currency.code] = (self.liveChanges[currency.code] ?? currency.change) + step * 100.0
+    private func stopMarket() {
+        if let id = self.marketObserver {
+            PampGramFakeCryptoBotMarket.shared.removeObserver(id)
+            self.marketObserver = nil
         }
-        self.reload()
+    }
+
+    /// New rates came in (up to ten answers within a moment): redraw once.
+    private func marketChanged() {
+        if self.marketRefreshScheduled {
+            return
+        }
+        self.marketRefreshScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self = self else {
+                return
+            }
+            self.marketRefreshScheduled = false
+            self.reload()
+            if self.page == .exchange {
+                self.exchangeView.marketUpdated()
+            } else if self.page == .swap {
+                self.swapView.marketUpdated()
+            }
+            self.checkOpenOrders()
+        }
     }
 
     private func price(for currency: PampGramFakeCryptoBotCurrency) -> Double {
-        return self.livePrices[currency.code] ?? currency.price
+        return PampGramFakeCryptoBotMarket.shared.quote(currency.code).price
+    }
+
+    private func change(for currency: PampGramFakeCryptoBotCurrency) -> Double {
+        return PampGramFakeCryptoBotMarket.shared.quote(currency.code).changePercent
     }
 
     private func advanceBanner() {
@@ -1050,7 +1075,10 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         case .network:
             self.setPage(self.isWithdrawFlow ? .withdraw : .deposit)
         case .deposit, .withdraw, .history:
-            self.setPage(.wallet)
+            // Back to where the screen was opened from: the wallet or "Ещё".
+            let target = self.returnPage
+            self.returnPage = .wallet
+            self.setPage(target)
         default:
             break
         }
@@ -1061,6 +1089,8 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     func setBalances(_ balances: [String: Double]) {
         self.balances = balances
         self.reload()
+        self.exchangeView.balancesChanged()
+        self.swapView.balancesChanged()
     }
 
     /// The real app keeps a speck of Tether in a fresh wallet ("0 USDT", "$0.00000001"), so an
@@ -1077,7 +1107,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         for currency in pampGramFakeCryptoBotCurrencies {
             total += self.amount(for: currency) * self.price(for: currency)
         }
-        let totalText = self.balanceHidden ? "•••••" : pampGramFakeCryptoBotFormatUSD(total)
+        let totalText = self.balanceHidden ? "•••" : pampGramFakeCryptoBotFormatUSD(total)
         self.balanceView.setText(prefix: "$ ", value: totalText, animated: self.alpha > 0.0)
         self.eyeIcon.image = pampGramFakeCryptoBotSymbol(self.balanceHidden ? "eye.slash.fill" : "eye.fill", size: 15.0, weight: .regular)
         self.hideSmallButton.setTitle(self.smallBalancesHidden ? "Показать мелкие балансы" : "Скрыть мелкие балансы", for: .normal)
@@ -1086,8 +1116,8 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             let amount = self.amount(for: row.currency)
             let livePrice = self.price(for: row.currency)
             let usd = amount * livePrice
-            row.setQuote(priceText: pampGramFakeCryptoBotPriceText(livePrice, like: row.currency.priceText), change: self.liveChanges[row.currency.code] ?? row.currency.change)
-            row.update(amountText: pampGramFakeCryptoBotFormat(amount, fractionDigits: row.currency.fractionDigits) + " " + row.currency.code, usdText: "$" + pampGramFakeCryptoBotFormatUSD(usd))
+            row.setQuote(priceText: pampGramFakeCryptoBotPriceText(livePrice, like: row.currency.priceText), change: self.change(for: row.currency))
+            row.update(amountText: self.balanceHidden ? "•••" : pampGramFakeCryptoBotFormat(amount, fractionDigits: row.currency.fractionDigits) + " " + row.currency.code, usdText: self.balanceHidden ? "•••" : "$" + pampGramFakeCryptoBotFormatUSD(usd))
             row.isHidden = self.smallBalancesHidden && usd < 1.0
         }
         for row in self.listRows {
@@ -1134,12 +1164,19 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         let isAddress = self.page == .address
         let isHistory = self.page == .history
         let isWithdrawForm = self.page == .withdrawForm
+        let isExchange = self.page == .exchange
+        let isSwap = self.page == .swap
+        let isMore = self.page == .more
         self.walletScroll.isHidden = !isWallet
         self.tabBar.isHidden = isList || isAddress || isHistory || isWithdrawForm
         self.historyView.isHidden = !isHistory
         self.withdrawView.isHidden = !isWithdrawForm
         self.listScroll.isHidden = !isList
         self.addressView.isHidden = !isAddress
+        self.exchangeView.isHidden = !isExchange
+        self.swapView.isHidden = !isSwap
+        self.moreView.isHidden = !isMore
+        self.exchangeView.setActive(isExchange)
         self.searchBox.isHidden = self.page == .network
         switch self.page {
         case .withdraw:
@@ -1149,8 +1186,25 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         default:
             self.listTitle.text = "Пополнение криптовалюты"
         }
-        if animated && (isWallet || isList || isAddress || isHistory || isWithdrawForm) {
-            let target: UIView = isWallet ? self.walletScroll : (isAddress ? self.addressView : (isHistory ? self.historyView : (isWithdrawForm ? self.withdrawView : self.listScroll)))
+        if animated && (isWallet || isList || isAddress || isHistory || isWithdrawForm || isExchange || isSwap || isMore) {
+            let target: UIView
+            if isWallet {
+                target = self.walletScroll
+            } else if isAddress {
+                target = self.addressView
+            } else if isHistory {
+                target = self.historyView
+            } else if isWithdrawForm {
+                target = self.withdrawView
+            } else if isExchange {
+                target = self.exchangeView
+            } else if isSwap {
+                target = self.swapView
+            } else if isMore {
+                target = self.moreView
+            } else {
+                target = self.listScroll
+            }
             target.alpha = 0.0
             UIView.animate(withDuration: 0.2, animations: {
                 target.alpha = 1.0
@@ -1162,6 +1216,10 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     private func setPage(_ page: Page) {
         self.endEditing(true)
+        if page == .wallet {
+            self.returnPage = .wallet
+            self.syncTab(0, animated: false)
+        }
         self.page = page
         self.searchField.text = ""
         self.searchQuery = ""
@@ -1184,6 +1242,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.addressView.frame = self.bounds
         self.historyView.frame = self.bounds
         self.withdrawView.frame = self.bounds
+        self.exchangeView.frame = self.bounds
+        self.swapView.frame = self.bounds
+        self.moreView.frame = self.bounds
         self.layoutWallet(width: width)
         self.layoutList(width: width)
 
@@ -1505,16 +1566,256 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         guard let index = self.tabItems.firstIndex(where: { $0 === sender }), index != self.selectedTab else {
             return
         }
-        self.selectedTab = index
-        UIView.animate(withDuration: 0.4, delay: 0.0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4, options: [.allowUserInteraction, .beginFromCurrentState], animations: {
-            self.layoutTabCapsule()
-        })
-        for (itemIndex, item) in self.tabItems.enumerated() {
-            item.setActive(itemIndex == index, animated: true)
+        self.selectTab(index)
+    }
+
+    private func tabPage(_ index: Int) -> Page {
+        switch index {
+        case 0:
+            return .wallet
+        case 1:
+            return .exchange
+        case 2:
+            return .swap
+        case 4:
+            return .more
+        default:
+            return .emptyTab
         }
-        // The other sections are not copied yet: the page is empty, the bar keeps working.
-        self.page = index == 0 ? .wallet : .emptyTab
+    }
+
+    /// Moves the highlight of the bar to `index` without touching the page.
+    private func syncTab(_ index: Int, animated: Bool) {
+        guard index != self.selectedTab else {
+            return
+        }
+        self.selectedTab = index
+        if animated {
+            UIView.animate(withDuration: 0.4, delay: 0.0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.4, options: [.allowUserInteraction, .beginFromCurrentState], animations: {
+                self.layoutTabCapsule()
+            })
+        } else {
+            self.layoutTabCapsule()
+        }
+        for (itemIndex, item) in self.tabItems.enumerated() {
+            item.setActive(itemIndex == index, animated: animated)
+        }
+    }
+
+    private func selectTab(_ index: Int) {
+        self.endEditing(true)
+        self.returnPage = .wallet
+        self.syncTab(index, animated: true)
+        self.page = self.tabPage(index)
         self.applyPage(animated: true)
+    }
+
+    /// A tile of "Ещё": the screens that exist open, the rest says it is not available.
+    private func moreAction(_ id: String) {
+        switch id {
+        case "deposit":
+            self.returnPage = .more
+            self.setPage(.deposit)
+        case "withdraw":
+            self.returnPage = .more
+            self.setPage(.withdraw)
+        case "history":
+            self.returnPage = .more
+            self.setPage(.history)
+        case "exchange":
+            self.selectTab(1)
+        case "swap":
+            self.selectTab(2)
+        case "p2p":
+            self.selectTab(3)
+        default:
+            self.showUnavailable()
+        }
+    }
+
+    /// A list of choices as a sheet, for the exchange's pair and step and the swap's coins.
+    private func presentChoices(title: String, options: [String], selected: Int?, handler: @escaping (Int) -> Void) {
+        guard let presenter = self.presenter else {
+            return
+        }
+        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+        let sheet = ActionSheetController(presentationData: presentationData)
+        var items: [ActionSheetItem] = [ActionSheetTextItem(title: title)]
+        for (index, option) in options.enumerated() {
+            items.append(ActionSheetButtonItem(title: option, color: .accent, font: index == selected ? .bold : .default, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                handler(index)
+            }))
+        }
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: items),
+            ActionSheetItemGroup(items: [
+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                })
+            ])
+        ])
+        presenter.present(sheet, in: .window(.root))
+    }
+
+    private func balance(of code: String) -> Double {
+        guard let currency = pampGramFakeCryptoBotCurrencies.first(where: { $0.code == code }) else {
+            return 0.0
+        }
+        return self.amount(for: currency)
+    }
+
+    private func setupMarketPages() {
+        let provider: (String) -> Double = { [weak self] code in
+            return self?.balance(of: code) ?? 0.0
+        }
+        let choices: (String, [String], Int?, @escaping (Int) -> Void) -> Void = { [weak self] title, options, selected, handler in
+            self?.presentChoices(title: title, options: options, selected: selected, handler: handler)
+        }
+        self.exchangeView.isHidden = true
+        self.exchangeView.balanceProvider = provider
+        self.exchangeView.presentChoices = choices
+        self.exchangeView.onToast = { [weak self] text in
+            self?.showToast(text)
+        }
+        self.exchangeView.onPlaceOrder = { [weak self] order in
+            self?.placeOrder(order)
+        }
+        self.exchangeView.onCancelOrder = { [weak self] id in
+            self?.cancelOrder(id)
+        }
+        self.addSubview(self.exchangeView)
+
+        self.swapView.isHidden = true
+        self.swapView.balanceProvider = provider
+        self.swapView.presentChoices = choices
+        self.swapView.onToast = { [weak self] text in
+            self?.showToast(text)
+        }
+        self.swapView.onSwap = { [weak self] swap in
+            self?.performSwap(swap)
+        }
+        self.addSubview(self.swapView)
+
+        self.moreView.isHidden = true
+        self.moreView.onAction = { [weak self] id in
+            self?.moreAction(id)
+        }
+        self.addSubview(self.moreView)
+    }
+
+    // MARK: Orders and swaps
+
+    /// Places an order: a market order, or a limit order the price has already reached, fills at once;
+    /// any other limit order waits as open (its money is set aside) and fills when the price gets there.
+    private func placeOrder(_ order: PampGramFakeCryptoBotOrder) {
+        var order = order
+        let market = PampGramFakeCryptoBotMarket.shared.quote(order.code).price
+        var fillPrice = order.price
+        var fills = order.kind == 1
+        if order.kind == 1 {
+            fillPrice = market
+        } else if order.side == 0 && order.price >= market {
+            fills = true
+            fillPrice = market
+        } else if order.side == 1 && order.price <= market {
+            fills = true
+            fillPrice = market
+        }
+        order.price = fillPrice
+        order.status = fills ? 1 : 0
+        let placed = order
+        let _ = PampGramCore.updateSettingsInteractively(postbox: self.context.account.postbox, { settings in
+            var settings = settings
+            var balances = settings.fakeCryptoBotBalances
+            if placed.side == 0 {
+                pampGramFakeCryptoBotAdjust(&balances, "USDT", by: -placed.amount * placed.price)
+                if placed.status == 1 {
+                    pampGramFakeCryptoBotAdjust(&balances, placed.code, by: placed.amount)
+                }
+            } else {
+                pampGramFakeCryptoBotAdjust(&balances, placed.code, by: -placed.amount)
+                if placed.status == 1 {
+                    pampGramFakeCryptoBotAdjust(&balances, "USDT", by: placed.amount * placed.price)
+                }
+            }
+            settings.fakeCryptoBotBalances = balances
+            var orders = pampGramFakeCryptoBotParseOrders(settings.fakeCryptoBotOrdersRaw)
+            orders.append(placed)
+            settings.fakeCryptoBotOrdersRaw = pampGramFakeCryptoBotSerializeOrders(orders)
+            return settings
+        }).start()
+        self.showToast(fills ? "Ордер исполнен" : "Ордер создан")
+    }
+
+    private func cancelOrder(_ id: Int64) {
+        let _ = PampGramCore.updateSettingsInteractively(postbox: self.context.account.postbox, { settings in
+            var settings = settings
+            var orders = pampGramFakeCryptoBotParseOrders(settings.fakeCryptoBotOrdersRaw)
+            guard let index = orders.firstIndex(where: { $0.id == id && $0.status == 0 }) else {
+                return settings
+            }
+            orders[index].status = 2
+            let order = orders[index]
+            var balances = settings.fakeCryptoBotBalances
+            if order.side == 0 {
+                pampGramFakeCryptoBotAdjust(&balances, "USDT", by: order.amount * order.price)
+            } else {
+                pampGramFakeCryptoBotAdjust(&balances, order.code, by: order.amount)
+            }
+            settings.fakeCryptoBotBalances = balances
+            settings.fakeCryptoBotOrdersRaw = pampGramFakeCryptoBotSerializeOrders(orders)
+            return settings
+        }).start()
+        self.showToast("Ордер отменён")
+    }
+
+    /// Fills the open orders the price has reached.
+    private func checkOpenOrders() {
+        for order in self.orders where order.status == 0 && !self.fillingOrderIds.contains(order.id) {
+            let market = PampGramFakeCryptoBotMarket.shared.quote(order.code).price
+            let reached = order.side == 0 ? market <= order.price : market >= order.price
+            if reached {
+                self.fillOrder(order.id)
+            }
+        }
+    }
+
+    private func fillOrder(_ id: Int64) {
+        self.fillingOrderIds.insert(id)
+        let _ = PampGramCore.updateSettingsInteractively(postbox: self.context.account.postbox, { settings in
+            var settings = settings
+            var orders = pampGramFakeCryptoBotParseOrders(settings.fakeCryptoBotOrdersRaw)
+            guard let index = orders.firstIndex(where: { $0.id == id && $0.status == 0 }) else {
+                return settings
+            }
+            orders[index].status = 1
+            let order = orders[index]
+            var balances = settings.fakeCryptoBotBalances
+            if order.side == 0 {
+                pampGramFakeCryptoBotAdjust(&balances, order.code, by: order.amount)
+            } else {
+                pampGramFakeCryptoBotAdjust(&balances, "USDT", by: order.amount * order.price)
+            }
+            settings.fakeCryptoBotBalances = balances
+            settings.fakeCryptoBotOrdersRaw = pampGramFakeCryptoBotSerializeOrders(orders)
+            return settings
+        }).start()
+    }
+
+    private func performSwap(_ swap: PampGramFakeCryptoBotSwap) {
+        let _ = PampGramCore.updateSettingsInteractively(postbox: self.context.account.postbox, { settings in
+            var settings = settings
+            var balances = settings.fakeCryptoBotBalances
+            pampGramFakeCryptoBotAdjust(&balances, swap.from, by: -swap.fromAmount)
+            pampGramFakeCryptoBotAdjust(&balances, swap.to, by: swap.toAmount)
+            settings.fakeCryptoBotBalances = balances
+            var swaps = pampGramFakeCryptoBotParseSwaps(settings.fakeCryptoBotSwapsRaw)
+            swaps.append(swap)
+            settings.fakeCryptoBotSwapsRaw = pampGramFakeCryptoBotSerializeSwaps(swaps)
+            return settings
+        }).start()
+        self.showToast("Обмен выполнен")
     }
 
     @objc private func eyePressed() {

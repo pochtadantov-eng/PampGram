@@ -357,6 +357,10 @@ public struct PampGramSettings: Codable, Equatable {
     /// The fake CryptoBot's operation history ("История"), as JSON text; a Codable array of structs
     /// is not safe inside the Postbox-coded settings, a string is.
     public var fakeCryptoBotHistoryRaw: String = ""
+    /// The fake CryptoBot's exchange orders (open, filled, cancelled) and its swaps ("Обмен"), also
+    /// JSON text for the same reason.
+    public var fakeCryptoBotOrdersRaw: String = ""
+    public var fakeCryptoBotSwapsRaw: String = ""
     /// The visual balances of that screen, stored as one "CODE=amount;CODE=amount" string.
     /// Deliberately not a `[String: Double]`: Postbox's keyed decoder implements `allKeys` as
     /// `preconditionFailure()`, so decoding any Codable dictionary crashes the app.
@@ -735,6 +739,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.bypassMarkViewedEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassMarkViewedEnabled) ?? defaults.bypassMarkViewedEnabled
         self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
         self.fakeCryptoBotHistoryRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotHistoryRaw) ?? defaults.fakeCryptoBotHistoryRaw
+        self.fakeCryptoBotOrdersRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotOrdersRaw) ?? defaults.fakeCryptoBotOrdersRaw
+        self.fakeCryptoBotSwapsRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotSwapsRaw) ?? defaults.fakeCryptoBotSwapsRaw
         self.fakeCryptoBotBalancesRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotBalancesRaw) ?? defaults.fakeCryptoBotBalancesRaw
         self.hidePampGramIconEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePampGramIconEnabled) ?? defaults.hidePampGramIconEnabled
         self.bannedLocally = try container.decodeIfPresent(Bool.self, forKey: .bannedLocally) ?? defaults.bannedLocally
