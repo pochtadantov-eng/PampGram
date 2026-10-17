@@ -140,6 +140,15 @@ extension UIView {
     }
 }
 
+/// The blue fill of the pager pill: a capsule, so its end stays round while it grows.
+private func pampGramFakeCryptoBotMakeDotFill() -> UIView {
+    let fill = UIView()
+    fill.isUserInteractionEnabled = false
+    fill.backgroundColor = PampGramFakeCryptoBotColors.dotFill
+    fill.layer.cornerRadius = 3.0
+    return fill
+}
+
 /// Adds `delta` to the visual balance of `code`; an empty balance is removed.
 private func pampGramFakeCryptoBotAdjust(_ balances: inout [String: Double], _ code: String, by delta: Double) {
     let updated = max(0.0, (balances[code] ?? 0.0) + delta)
@@ -545,7 +554,9 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     private var searchQuery = ""
     private var bannerPage = 0
     /// The blue fill that runs across the current page pill during the 4 s before the next banner.
-    private let dotFill = UIView()
+    private var dotFill = pampGramFakeCryptoBotMakeDotFill()
+    /// False while the four dots are still equal (just after the page appears); the first one then widens into the pill.
+    private var pagerExpanded = false
     private var didReveal = false
     private var bannerTimer: Foundation.Timer?
     /// The live rates: `PampGramFakeCryptoBotMarket` polls the exchange while the page is on screen.
@@ -728,6 +739,11 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
                 self.alpha = 1.0
             })
             self.balanceView.rollFromZero()
+            // The four dots are equal at first; a moment later the first one widens into the pill.
+            self.pagerExpanded = true
+            UIView.animate(withDuration: 0.3, delay: 0.13, options: [.curveEaseInOut], animations: {
+                self.layoutDots(width: self.bounds.width)
+            })
             self.startBannerTimer()
             self.startMarket()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
@@ -910,10 +926,6 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             dot.clipsToBounds = true
             self.walletScroll.addSubview(dot)
         }
-        self.dotFill.isUserInteractionEnabled = false
-        self.dotFill.backgroundColor = PampGramFakeCryptoBotColors.dotFill
-        // The fill is a capsule too: it starts as a dot and its end stays round while it grows.
-        self.dotFill.layer.cornerRadius = 3.0
         self.dotViews[0].addSubview(self.dotFill)
 
         self.assetsTitle.text = "Мои активы"
@@ -1339,36 +1351,58 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.walletScroll.contentSize = CGSize(width: width, height: y + 130.0)
     }
 
-    /// The page dots: the current one is a 24pt pill, the others 6pt circles, 6pt apart.
+    /// The page dots: the current one is a 24pt pill, the others 6pt circles, 6pt apart; the row stays
+    /// centred, so the first pill widens to both sides when it appears.
     private func layoutDots(width: CGFloat) {
-        let count = CGFloat(self.dotViews.count)
-        var dotX = floor((width - (24.0 + 6.0 * (count - 1.0) + 6.0 * (count - 1.0))) / 2.0)
+        let count = self.dotViews.count
+        var widths: [CGFloat] = []
+        for index in 0 ..< count {
+            widths.append(index == self.bannerPage && self.pagerExpanded ? 24.0 : 6.0)
+        }
+        let total = widths.reduce(0.0, +) + 6.0 * CGFloat(count - 1)
+        var dotX = floor((width - total) / 2.0)
         for (index, dot) in self.dotViews.enumerated() {
-            let isActive = index == self.bannerPage
-            let dotWidth: CGFloat = isActive ? 24.0 : 6.0
-            dot.frame = CGRect(x: dotX, y: 316.0, width: dotWidth, height: 6.0)
+            dot.frame = CGRect(x: dotX, y: 316.0, width: widths[index], height: 6.0)
             dot.layer.cornerRadius = 3.0
             dot.backgroundColor = PampGramFakeCryptoBotColors.dotInactive
-            dotX += dotWidth + 6.0
+            dotX += widths[index] + 6.0
         }
     }
 
-    /// Fills the current pill from the left over the 4 s the banner stays; the next banner comes when it is full.
-    private func restartDotFill() {
+    /// Fills the current pill from the left, from nothing to full over the 4 s the banner stays; the
+    /// next banner comes when it is full. When the page changes, the old fill stays in the old pill
+    /// while it shrinks and goes out in the middle of that, as on the real page.
+    private func restartDotFill(retiringOld: Bool = false) {
         let pill = self.dotViews[max(0, min(self.dotViews.count - 1, self.bannerPage))]
         // The scripted slide calls this from inside its own animation block; the reset must not animate.
-        UIView.performWithoutAnimation {
-            self.dotFill.layer.removeAllAnimations()
-            if self.dotFill.superview !== pill {
-                pill.addSubview(self.dotFill)
+        if retiringOld {
+            let old = self.dotFill
+            UIView.performWithoutAnimation {
+                let current = old.layer.presentation()?.frame ?? old.frame
+                old.layer.removeAllAnimations()
+                old.frame = current
             }
-            self.dotFill.frame = CGRect(x: 0.0, y: 0.0, width: self.bannerTimer == nil ? 0.0 : 6.0, height: 6.0)
+            UIView.animate(withDuration: 0.06, delay: 0.14, options: [], animations: {
+                old.alpha = 0.0
+            }, completion: { _ in
+                old.removeFromSuperview()
+            })
+            self.dotFill = pampGramFakeCryptoBotMakeDotFill()
+        }
+        let fill = self.dotFill
+        UIView.performWithoutAnimation {
+            fill.layer.removeAllAnimations()
+            if fill.superview !== pill {
+                pill.addSubview(fill)
+            }
+            fill.alpha = 1.0
+            fill.frame = CGRect(x: 0.0, y: 0.0, width: 0.0, height: 6.0)
         }
         guard self.bannerTimer != nil else {
             return
         }
         UIView.animate(withDuration: 4.0, delay: 0.0, options: [.curveLinear, .allowUserInteraction], animations: {
-            self.dotFill.frame = CGRect(x: 0.0, y: 0.0, width: 24.0, height: 6.0)
+            fill.frame = CGRect(x: 0.0, y: 0.0, width: 24.0, height: 6.0)
         })
     }
 
@@ -1865,7 +1899,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             UIView.animate(withDuration: 0.3, delay: 0.0, options: [.curveEaseInOut, .beginFromCurrentState], animations: {
                 self.layoutDots(width: self.bounds.width)
             })
-            self.restartDotFill()
+            self.restartDotFill(retiringOld: true)
             self.bannerPageChanged(to: index)
         }
     }
