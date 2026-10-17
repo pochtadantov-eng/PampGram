@@ -53,7 +53,7 @@ public func pampGramTryHandleSeendsCommand(context: AccountContext, peerId: Engi
     let usdText = pampGramSeendsFormatUSD(usdValue)
     let shortAmount = pampGramSeendsTruncate(payload.amountValue, fallback: payload.amountText)
 
-    guard let image = pampGramRenderCheckCard(usdText: "$" + usdText, amountText: shortAmount + " " + payload.code, assetName: currency.assetName),
+    guard let image = pampGramRenderCheckCard(usdText: "$" + usdText, amountText: shortAmount + " " + payload.code, logo: currency.logo),
           let data = image.jpegData(compressionQuality: 0.92),
           let path = pampGramPersistSeendsFile(data: data, pathExtension: "jpg") else {
         return false
@@ -153,22 +153,26 @@ private func pampGramParseSeends(_ text: String) -> PampGramSeendsPayload? {
     let parts = rest.split(whereSeparator: { $0.isWhitespace }).map(String.init)
     guard let first = parts.first else { return nil }
 
-    // The first word carries the number and possibly the currency: "100$", "110gram", "0.5btc".
+    // The first word carries the number and possibly the currency, in front of it or after it:
+    // "100$", "$100", "110gram", "0.5btc".
     var amountChars = ""
-    var unitChars = ""
+    var prefixUnit = ""
+    var suffixUnit = ""
     var seenDigit = false
     for ch in first {
         if ch.isNumber {
-            if unitChars.isEmpty {
+            if suffixUnit.isEmpty {
                 amountChars.append(ch)
                 seenDigit = true
             } else {
-                unitChars.append(ch)
+                suffixUnit.append(ch)
             }
-        } else if (ch == "." || ch == ",") && seenDigit && unitChars.isEmpty && !amountChars.contains(".") {
+        } else if (ch == "." || ch == ",") && seenDigit && suffixUnit.isEmpty && !amountChars.contains(".") {
             amountChars.append(".")
+        } else if !seenDigit {
+            prefixUnit.append(ch)
         } else {
-            unitChars.append(ch)
+            suffixUnit.append(ch)
         }
     }
     guard seenDigit else { return nil }
@@ -178,7 +182,7 @@ private func pampGramParseSeends(_ text: String) -> PampGramSeendsPayload? {
     guard let amountValue = Double(amountChars), amountValue > 0.0 else { return nil }
 
     // A currency that wasn't glued to the number is the next word.
-    var currencyRaw = unitChars
+    var currencyRaw = suffixUnit.isEmpty ? prefixUnit : suffixUnit
     var modeTokenIndex = 1
     if currencyRaw.isEmpty, parts.count >= 2 {
         currencyRaw = parts[1]
@@ -227,13 +231,45 @@ private func pampGramNormalizeSeendsCurrency(_ raw: String) -> String {
     }
 }
 
-/// The coin from the fake CryptoBot's table (its logo and dollar price); a currency that isn't
-/// in the table is priced at 1 and drawn with the Tether logo.
-private func pampGramSeendsCurrency(code: String) -> (assetName: String, price: Double) {
+/// The coin from the fake CryptoBot's table (its logo and dollar price). Any other currency works
+/// too: it gets a generated round logo with its first letter and is priced at 1 dollar, apart
+/// from a couple of common ones.
+private func pampGramSeendsCurrency(code: String) -> (logo: UIImage?, price: Double) {
     for currency in pampGramFakeCryptoBotCurrencies where currency.code == code {
-        return (currency.assetName, currency.price)
+        return (PampGramFakeCryptoBotAssets.image(currency.assetName), currency.price)
     }
-    return ("coin_USDT", 1.0)
+    var price = 1.0
+    if code == "RUB" {
+        price = 0.0105
+    } else if code == "EUR" {
+        price = 1.08
+    }
+    return (pampGramSeendsGenericLogo(code: code), price)
+}
+
+/// A flat round badge with the currency's first letter, its colour taken from the code so the
+/// same currency always looks the same.
+private func pampGramSeendsGenericLogo(code: String) -> UIImage {
+    let side: CGFloat = 120.0
+    let format = UIGraphicsImageRendererFormat.default()
+    format.scale = 1.0
+    let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
+    var hash: UInt32 = 5381
+    for scalar in code.unicodeScalars {
+        hash = hash &* 33 &+ scalar.value
+    }
+    let color = UIColor(hue: CGFloat(hash % 360) / 360.0, saturation: 0.62, brightness: 0.82, alpha: 1.0)
+    let letter = String(code.prefix(1)) as NSString
+    return renderer.image { rendererContext in
+        color.setFill()
+        rendererContext.cgContext.fillEllipse(in: CGRect(x: 0.0, y: 0.0, width: side, height: side))
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 66.0, weight: .bold),
+            .foregroundColor: UIColor.white
+        ]
+        let letterSize = letter.size(withAttributes: attributes)
+        letter.draw(at: CGPoint(x: (side - letterSize.width) / 2.0, y: (side - letterSize.height) / 2.0), withAttributes: attributes)
+    }
 }
 
 // MARK: - Formatting
@@ -282,14 +318,13 @@ private func pampGramSeendsRoundedFont(size: CGFloat, weight: UIFont.Weight) -> 
 /// The picture inside the check: a dark navy card with a faint pattern of coin badges, the dollar
 /// value in big rounded silver letters and, under it, the coin logo with the amount. Drawn at
 /// 1350x842 (the real one is a 16:10 image).
-private func pampGramRenderCheckCard(usdText: String, amountText: String, assetName: String) -> UIImage? {
+private func pampGramRenderCheckCard(usdText: String, amountText: String, logo: UIImage?) -> UIImage? {
     let scale: CGFloat = 1.5
     let size = CGSize(width: 900.0 * scale, height: 561.0 * scale)
     let format = UIGraphicsImageRendererFormat.default()
     format.scale = 1.0
     format.opaque = true
     let renderer = UIGraphicsImageRenderer(size: size, format: format)
-    let logo = PampGramFakeCryptoBotAssets.image(assetName)
 
     return renderer.image { rendererContext in
         let ctx = rendererContext.cgContext
