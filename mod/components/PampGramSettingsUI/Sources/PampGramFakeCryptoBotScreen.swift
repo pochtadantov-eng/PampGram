@@ -2041,11 +2041,11 @@ private final class PampGramFakeCryptoBotStandaloneView: UIView {
 private final class PampGramFakeCryptoBotScreen: ViewController {
     private let context: AccountContext
     private var standaloneView: PampGramFakeCryptoBotStandaloneView?
-    private let title: String
+    private let botTitle: String
 
     init(context: AccountContext, title: String) {
         self.context = context
-        self.title = title
+        self.botTitle = title
         super.init(navigationBarPresentationData: nil)
         self.displayNavigationBar = false
     }
@@ -2061,7 +2061,7 @@ private final class PampGramFakeCryptoBotScreen: ViewController {
         self.displayNodeDidLoad()
 
         let content = PampGramFakeCryptoBotContentView(context: self.context, presenter: self)
-        let standaloneView = PampGramFakeCryptoBotStandaloneView(content: content, title: self.title)
+        let standaloneView = PampGramFakeCryptoBotStandaloneView(content: content, title: self.botTitle)
         standaloneView.onClose = { [weak self] in
             self?.dismiss()
         }
