@@ -13,8 +13,9 @@ import AccountContext
 ///
 /// «чек» — чек от моего имени (исходящее сообщение), кнопка «Получить …». «получено» — чек от
 /// собеседника (входящее), уже получен: под ним серая кнопка «✅ Получено: …», как у настоящего.
-/// Под чеком всегда есть и маленькая серая кнопка «⇄»: по нажатию чек переходит на другую
-/// сторону чата и обратно.
+/// Чек — сообщение «визуального чата» (PampGramVisualChatMessageAttribute): пока визуальный чат
+/// для этого диалога включён, слева от чека стоит кнопка «⇄», которая переносит его на другую
+/// сторону; когда визуальный чат выключают, кнопка пропадает, а чек остаётся там, где стоял.
 
 private enum PampGramSeendsMode {
     case issued
@@ -128,63 +129,16 @@ public func pampGramTryHandleSeendsCommand(context: AccountContext, peerId: Engi
     // A claimed check keeps its link button but says "✅ Получено: 19.603115 USDT" (the whole amount).
     let buttonTitle = payload.mode == .received ? "✅ Получено: " + payload.amountText + " " + payload.code : "Получить " + shortAmount + " " + payload.code
     let button = ReplyMarkupButton(title: buttonTitle, titleWhenForwarded: nil, action: .url(checkUrl), style: nil)
-    // The small grey button under it that moves the check to the other side of the chat.
-    let swapData = MemoryBuffer(data: pampGramSeendsSwapPrefix.data(using: .utf8) ?? Data())
-    let swapButton = ReplyMarkupButton(title: "⇄", titleWhenForwarded: nil, action: .callback(requiresPassword: false, data: swapData), style: nil)
     let attributes: [MessageAttribute] = [
         InlineBotMessageAttribute(peerId: botPeerId, title: "send"),
         WebpagePreviewMessageAttribute(leadingPreview: true, forceLargeMedia: true, isManuallyAdded: false, isSafe: true),
         TextEntitiesMessageAttribute(entities: entities),
-        ReplyMarkupMessageAttribute(rows: [ReplyMarkupRow(buttons: [button]), ReplyMarkupRow(buttons: [swapButton])], flags: [.inline], placeholder: nil)
+        ReplyMarkupMessageAttribute(rows: [ReplyMarkupRow(buttons: [button])], flags: [.inline], placeholder: nil),
+        PampGramVisualChatMessageAttribute()
     ]
 
     let _ = pampGramInsertSeendsMessage(context: context, peerId: peerId, incoming: payload.mode == .received, text: messageText, attributes: attributes, media: [webpage]).start()
     return true
-}
-
-private let pampGramSeendsSwapPrefix = "pgswap"
-
-/// The grey "⇄" button under a local check: moves the check to the other side of the chat.
-/// Returns true when the callback was ours.
-public func pampGramHandleSeendsCallback(context: AccountContext, message: EngineRawMessage, data: MemoryBuffer?) -> Bool {
-    guard let data = data?.makeData(), String(data: data, encoding: .utf8) == pampGramSeendsSwapPrefix else {
-        return false
-    }
-    let accountPeerId = context.account.peerId
-    let messageId = message.id
-    let _ = context.account.postbox.transaction { transaction -> Void in
-        pampGramFlipLocalMessageSide(transaction: transaction, id: messageId, accountPeerId: accountPeerId)
-    }.start()
-    return true
-}
-
-private func pampGramFlipLocalMessageSide(transaction: Transaction, id: MessageId, accountPeerId: PeerId) {
-    transaction.updateMessage(id, update: { message -> PostboxUpdateMessage in
-        let wasIncoming = message.flags.contains(.Incoming)
-        var flags = StoreMessageFlags(message.flags)
-        if wasIncoming {
-            flags.remove(.Incoming)
-        } else {
-            flags.insert(.Incoming)
-        }
-        return .update(StoreMessage(
-            id: id,
-            customStableId: nil,
-            globallyUniqueId: message.globallyUniqueId,
-            groupingKey: message.groupingKey,
-            threadId: message.threadId,
-            timestamp: message.timestamp,
-            flags: flags,
-            tags: message.tags,
-            globalTags: message.globalTags,
-            localTags: message.localTags,
-            forwardInfo: message.forwardInfo.map(StoreMessageForwardInfo.init),
-            authorId: wasIncoming ? accountPeerId : id.peerId,
-            text: message.text,
-            attributes: message.attributes,
-            media: message.media
-        ))
-    })
 }
 
 // MARK: - Parsing

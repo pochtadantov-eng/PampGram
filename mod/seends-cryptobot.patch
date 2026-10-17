@@ -147,22 +147,10 @@ index 952db67c..0c805e7c 100644
                  // never reaches ChatControllerImpl.sendMessages(_:) — this closure calls
                  // enqueueMessages directly — so this is its own copy of the same hook that
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
-index 31808802..4887d3b3 100644
+index 31808802..3f27d025 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
-@@ -2669,6 +2669,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
-             
-             let messageId = message.id
-             
-+            // PampGram: the grey "⇄" button under a local @seends check.
-+            if pampGramHandleSeendsCallback(context: strongSelf.context, message: message, data: data) {
-+                return
-+            }
-+            
-             guard strongSelf.presentationInterfaceState.subject != .scheduledMessages else {
-                 strongSelf.present(textAlertController(context: strongSelf.context, updatedPresentationData: strongSelf.updatedPresentationData, title: nil, text: strongSelf.presentationData.strings.ScheduledMessages_BotActionUnavailable, actions: [TextAlertAction(type: .defaultAction, title: strongSelf.presentationData.strings.Common_OK, action: {})]), in: .window(.root))
-                 return
-@@ -9044,6 +9049,16 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -9044,6 +9044,16 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
              return
          }
  
