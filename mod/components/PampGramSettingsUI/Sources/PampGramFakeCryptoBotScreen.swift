@@ -560,16 +560,24 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             return
         }
         self.didReveal = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+        // In the real app the window slides up with Telegram's placeholder in it, the page shows up
+        // about 0.28 s after the slide starts (almost at once, no long fade), its balance starts
+        // counting right away, and the leaf begins to play about 0.7 s later.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self] in
             guard let self = self else {
                 return
             }
-            UIView.animate(withDuration: 0.15, animations: {
+            UIView.animate(withDuration: 0.06, animations: {
                 self.alpha = 1.0
             })
             self.balanceView.rollFromZero()
-            self.playBannerAnimation(index: self.bannerPage)
             self.startBannerTimer()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                guard let self = self, self.bannerPage == 0 else {
+                    return
+                }
+                self.playBannerAnimation(index: 0)
+            }
         }
     }
 
