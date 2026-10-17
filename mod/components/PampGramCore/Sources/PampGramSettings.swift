@@ -354,6 +354,9 @@ public struct PampGramSettings: Codable, Equatable {
     /// burns on their side) while the local copy stays in the chat. Off keeps the bypass fully silent.
     public var bypassMarkViewedEnabled: Bool = true
     public var fakeCryptoBotEnabled: Bool = false
+    /// The fake CryptoBot's operation history ("История"), as JSON text; a Codable array of structs
+    /// is not safe inside the Postbox-coded settings, a string is.
+    public var fakeCryptoBotHistoryRaw: String = ""
     /// The visual balances of that screen, stored as one "CODE=amount;CODE=amount" string.
     /// Deliberately not a `[String: Double]`: Postbox's keyed decoder implements `allKeys` as
     /// `preconditionFailure()`, so decoding any Codable dictionary crashes the app.
@@ -731,6 +734,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
         self.bypassMarkViewedEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassMarkViewedEnabled) ?? defaults.bypassMarkViewedEnabled
         self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
+        self.fakeCryptoBotHistoryRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotHistoryRaw) ?? defaults.fakeCryptoBotHistoryRaw
         self.fakeCryptoBotBalancesRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotBalancesRaw) ?? defaults.fakeCryptoBotBalancesRaw
         self.hidePampGramIconEnabled = try container.decodeIfPresent(Bool.self, forKey: .hidePampGramIconEnabled) ?? defaults.hidePampGramIconEnabled
         self.bannedLocally = try container.decodeIfPresent(Bool.self, forKey: .bannedLocally) ?? defaults.bannedLocally

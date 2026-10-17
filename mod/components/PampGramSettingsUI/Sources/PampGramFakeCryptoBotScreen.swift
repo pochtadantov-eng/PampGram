@@ -45,7 +45,7 @@ let pampGramFakeCryptoBotCurrencies: [PampGramFakeCryptoBotCurrency] = [
     PampGramFakeCryptoBotCurrency(code: "XAUT", name: "Tether Gold", assetName: "coin_XAUT", price: 4152.71, priceText: "$4,152.71", change: 0.0, fractionDigits: 4)
 ]
 
-private func pampGramFakeCryptoBotFormat(_ amount: Double, fractionDigits: Int) -> String {
+func pampGramFakeCryptoBotFormat(_ amount: Double, fractionDigits: Int) -> String {
     let formatter = NumberFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.numberStyle = .decimal
@@ -59,7 +59,7 @@ private func pampGramFakeCryptoBotFormat(_ amount: Double, fractionDigits: Int) 
 
 /// "0" for nothing, two decimals from a cent up, and up to eight decimals for dust — which is
 /// how the real app shows its tiny leftover Tether balance ("$0.00000001").
-private func pampGramFakeCryptoBotFormatUSD(_ value: Double) -> String {
+func pampGramFakeCryptoBotFormatUSD(_ value: Double) -> String {
     if value <= 0.0 {
         return "0"
     }
@@ -440,6 +440,8 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         case network
         /// The address and the QR code.
         case address
+        /// "История": the operations.
+        case history
         /// Any tab other than the wallet: not drawn yet, only the bar works.
         case emptyTab
     }
@@ -505,6 +507,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
 
     private let listScroll = UIScrollView()
     private let addressView = PampGramFakeCryptoBotAddressView()
+    private let historyView = PampGramFakeCryptoBotHistoryView()
     private let listTitle = pampGramFakeCryptoBotLabel(size: 17.0, weight: .regular, color: PampGramFakeCryptoBotColors.secondary, alignment: .left)
     private let searchBox = UIView()
     private let searchIcon = UIImageView()
@@ -542,6 +545,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.settingsDisposable.set((PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
         |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
             self?.setBalances(settings.fakeCryptoBotBalances)
+            self?.historyView.setOperations(pampGramFakeCryptoBotParseOperations(settings.fakeCryptoBotHistoryRaw))
         }))
     }
 
@@ -681,7 +685,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.historyLabel.text = "История"
         self.depositControl.addTarget(self, action: #selector(self.depositPressed), for: .touchUpInside)
         self.withdrawControl.addTarget(self, action: #selector(self.withdrawPressed), for: .touchUpInside)
-        self.historyControl.addTarget(self, action: #selector(self.unavailablePressed), for: .touchUpInside)
+        self.historyControl.addTarget(self, action: #selector(self.historyPressed), for: .touchUpInside)
         for view in [self.depositControl, self.withdrawControl, self.historyControl] as [UIView] {
             self.walletScroll.addSubview(view)
         }
@@ -751,6 +755,12 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             self?.makeNewAddress()
         }
         self.addSubview(self.addressView)
+
+        self.historyView.isHidden = true
+        self.historyView.onFilterPressed = { [weak self] kind in
+            self?.presentHistoryFilter(kind)
+        }
+        self.addSubview(self.historyView)
 
         self.listScroll.addSubview(self.listTitle)
 
@@ -841,7 +851,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
             }
         case .network:
             self.setPage(.deposit)
-        case .deposit, .withdraw:
+        case .deposit, .withdraw, .history:
             self.setPage(.wallet)
         default:
             break
@@ -922,8 +932,10 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         let isWallet = self.page == .wallet
         let isList = self.page == .deposit || self.page == .withdraw || self.page == .network
         let isAddress = self.page == .address
+        let isHistory = self.page == .history
         self.walletScroll.isHidden = !isWallet
-        self.tabBar.isHidden = isList || isAddress
+        self.tabBar.isHidden = isList || isAddress || isHistory
+        self.historyView.isHidden = !isHistory
         self.listScroll.isHidden = !isList
         self.addressView.isHidden = !isAddress
         self.searchBox.isHidden = self.page == .network
@@ -935,14 +947,14 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         default:
             self.listTitle.text = "Пополнение криптовалюты"
         }
-        if animated && (isWallet || isList || isAddress) {
-            let target: UIView = isWallet ? self.walletScroll : (isAddress ? self.addressView : self.listScroll)
+        if animated && (isWallet || isList || isAddress || isHistory) {
+            let target: UIView = isWallet ? self.walletScroll : (isAddress ? self.addressView : (isHistory ? self.historyView : self.listScroll))
             target.alpha = 0.0
             UIView.animate(withDuration: 0.2, animations: {
                 target.alpha = 1.0
             })
         }
-        self.onBackStateChanged?(isList || isAddress)
+        self.onBackStateChanged?(isList || isAddress || isHistory)
         self.setNeedsLayout()
     }
 
@@ -968,6 +980,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.walletScroll.frame = self.bounds
         self.listScroll.frame = self.bounds
         self.addressView.frame = self.bounds
+        self.historyView.frame = self.bounds
         self.layoutWallet(width: width)
         self.layoutList(width: width)
 
@@ -1087,6 +1100,56 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
     }
 
     // MARK: Actions
+
+    @objc private func historyPressed() {
+        self.setPage(.history)
+    }
+
+    /// The three pills over the history: a sheet with the choices for that filter.
+    private func presentHistoryFilter(_ kind: Int) {
+        guard let presenter = self.presenter else {
+            return
+        }
+        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+        let sheet = ActionSheetController(presentationData: presentationData)
+        var items: [ActionSheetItem] = []
+        let history = self.historyView
+        func choice(_ title: String, _ apply: @escaping () -> Void) {
+            items.append(ActionSheetButtonItem(title: title, color: .accent, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                apply()
+            }))
+        }
+        switch kind {
+        case 0:
+            items.append(ActionSheetTextItem(title: "Тип операции"))
+            choice("Все операции", { history.setTypeFilter(0) })
+            choice("Пополнение", { history.setTypeFilter(1) })
+            choice("Вывод", { history.setTypeFilter(2) })
+        case 1:
+            items.append(ActionSheetTextItem(title: "Монета"))
+            choice("Все монеты", { history.setCoinFilter(nil) })
+            for currency in pampGramFakeCryptoBotCurrencies {
+                let code = currency.code
+                choice(code, { history.setCoinFilter(code) })
+            }
+        default:
+            items.append(ActionSheetTextItem(title: "Период"))
+            choice("Всё время", { history.setPeriodFilter(0) })
+            choice("Сегодня", { history.setPeriodFilter(1) })
+            choice("7 дней", { history.setPeriodFilter(2) })
+            choice("30 дней", { history.setPeriodFilter(3) })
+        }
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: items),
+            ActionSheetItemGroup(items: [
+                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                })
+            ])
+        ])
+        presenter.present(sheet, in: .window(.root))
+    }
 
     @objc private func depositPressed() {
         self.setPage(.deposit)
@@ -1454,12 +1517,15 @@ private func pampGramFakeCryptoBotPromptBalance(context: AccountContext, present
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 var balances = settings.fakeCryptoBotBalances
+                let previous = balances[currency.code] ?? 0.0
                 if value <= 0 {
                     balances.removeValue(forKey: currency.code)
                 } else {
                     balances[currency.code] = value
                 }
                 settings.fakeCryptoBotBalances = balances
+                // A balance that went up reads as a deposit, one that went down as a withdrawal.
+                settings.fakeCryptoBotHistoryRaw = pampGramFakeCryptoBotAppendingOperation(raw: settings.fakeCryptoBotHistoryRaw, code: currency.code, old: previous, new: max(value, 0.0), price: currency.price)
                 return settings
             }).start()
         }
