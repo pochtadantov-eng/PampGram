@@ -4,6 +4,7 @@ import Postbox
 import SwiftSignalKit
 import TelegramCore
 import AccountContext
+import PampGramCore
 
 /// "@seends <сумма><валюта> <режим>" в поле ввода чата превращается в локальное сообщение-чек
 /// CryptoBot — такое же, какое приходит через бота @send: «с помощью @send», превью-карточка
