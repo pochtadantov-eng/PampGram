@@ -15,7 +15,7 @@ private let pampGramWithdrawRed = UIColor(rgb: 0xff453a)
 
 private func pampGramWithdrawLabel(_ size: CGFloat, _ weight: UIFont.Weight, _ color: UIColor, _ alignment: NSTextAlignment = .left) -> UILabel {
     let label = UILabel()
-    label.font = UIFont.systemFont(ofSize: size, weight: weight)
+    label.font = PampGramFakeCryptoBotFonts.font(size, weight)
     label.textColor = color
     label.textAlignment = alignment
     return label
@@ -90,7 +90,7 @@ private final class PampGramWithdrawDollarView: UIView {
         super.init(frame: frame)
         self.backgroundColor = UIColor(rgb: 0x8e8e93)
         self.label.text = "$"
-        self.label.font = UIFont.systemFont(ofSize: 10.0, weight: .bold)
+        self.label.font = PampGramFakeCryptoBotFonts.font(10.0, .bold)
         self.label.textColor = UIColor(rgb: 0x2b2b2b)
         self.label.textAlignment = .center
         self.addSubview(self.label)
@@ -144,7 +144,7 @@ private final class PampGramWithdrawField: UIView, UITextViewDelegate {
         self.layer.borderColor = pampGramWithdrawBorder.cgColor
 
         self.textView.backgroundColor = .clear
-        self.textView.font = UIFont.systemFont(ofSize: 17.0, weight: .regular)
+        self.textView.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
         self.textView.textColor = .white
         self.textView.tintColor = pampGramWithdrawBlue
         self.textView.isScrollEnabled = false
@@ -202,13 +202,13 @@ private final class PampGramWithdrawField: UIView, UITextViewDelegate {
         let width = self.bounds.width
         self.textView.frame = CGRect(x: 16.0, y: 0.0, width: max(0.0, width - 32.0 - self.rightInset), height: self.bounds.height)
         if self.isFloating {
-            self.floatingLabel.font = UIFont.systemFont(ofSize: 13.0, weight: .regular)
+            self.floatingLabel.font = PampGramFakeCryptoBotFonts.font(13.0, .regular)
             self.floatingLabel.backgroundColor = pampGramWithdrawCard
             let size = self.floatingLabel.sizeThatFits(CGSize(width: 300.0, height: 20.0))
             self.floatingLabel.frame = CGRect(x: 13.0, y: -9.0, width: ceil(size.width) + 8.0, height: 18.0)
             self.floatingLabel.textAlignment = .center
         } else {
-            self.floatingLabel.font = UIFont.systemFont(ofSize: 17.0, weight: .regular)
+            self.floatingLabel.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
             self.floatingLabel.backgroundColor = .clear
             self.floatingLabel.textAlignment = .left
             self.floatingLabel.frame = CGRect(x: 16.0, y: 0.0, width: max(0.0, width - 32.0 - self.rightInset), height: self.bounds.height)
@@ -443,7 +443,7 @@ private final class PampGramWithdrawCodeSheet: UIView {
             self.boxes.append(box)
             let dot = UILabel()
             dot.text = "•"
-            dot.font = UIFont.systemFont(ofSize: 30.0, weight: .bold)
+            dot.font = PampGramFakeCryptoBotFonts.font(30.0, .bold)
             dot.textColor = .white
             dot.textAlignment = .center
             dot.isHidden = true
@@ -458,7 +458,7 @@ private final class PampGramWithdrawCodeSheet: UIView {
         for digit in [1, 2, 3, 4, 5, 6, 7, 8, 9, 0] {
             let button = UIButton(type: .custom)
             button.setTitle(String(digit), for: .normal)
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 28.0, weight: .semibold)
+            button.titleLabel?.font = PampGramFakeCryptoBotFonts.font(28.0, .semibold)
             button.setTitleColor(.white, for: .normal)
             button.tag = digit
             button.addTarget(self, action: #selector(self.digitPressed(_:)), for: .touchUpInside)
@@ -471,7 +471,7 @@ private final class PampGramWithdrawCodeSheet: UIView {
         self.sheet.addSubview(self.backspace)
 
         self.forgot.setTitle("Я забыл код-пароль", for: .normal)
-        self.forgot.titleLabel?.font = UIFont.systemFont(ofSize: 15.0, weight: .medium)
+        self.forgot.titleLabel?.font = PampGramFakeCryptoBotFonts.font(15.0, .medium)
         self.forgot.setTitleColor(pampGramWithdrawBlue, for: .normal)
         self.forgot.addTarget(self, action: #selector(self.forgotPressed), for: .touchUpInside)
         self.sheet.addSubview(self.forgot)
@@ -693,7 +693,7 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
 
     private func primaryButton(_ title: String, _ button: UIButton) {
         button.setTitle(title, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        button.titleLabel?.font = PampGramFakeCryptoBotFonts.font(17.0, .semibold)
         button.setTitleColor(.white, for: .normal)
         button.backgroundColor = UIColor(rgb: 0x3b9ce0)
         button.layer.cornerRadius = 12.0
@@ -707,7 +707,7 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
             self.formView.addSubview(view)
         }
         self.changeCoinButton.setTitle("Изменить монету ›", for: .normal)
-        self.changeCoinButton.titleLabel?.font = UIFont.systemFont(ofSize: 15.0, weight: .regular)
+        self.changeCoinButton.titleLabel?.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
         self.changeCoinButton.setTitleColor(pampGramWithdrawBlue, for: .normal)
         self.changeCoinButton.contentHorizontalAlignment = .left
         self.changeCoinButton.addTarget(self, action: #selector(self.changeCoinPressed), for: .touchUpInside)
@@ -741,14 +741,14 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
         }
         self.formView.addSubview(self.amountField)
         self.maxButton.setTitle("Макс", for: .normal)
-        self.maxButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .regular)
+        self.maxButton.titleLabel?.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
         self.maxButton.setTitleColor(pampGramWithdrawBlue, for: .normal)
         self.maxButton.addTarget(self, action: #selector(self.maxPressed), for: .touchUpInside)
         self.formView.addSubview(self.maxButton)
         self.formView.addSubview(self.amountNote)
 
         self.commentButton.setTitle("+ Добавить комментарий", for: .normal)
-        self.commentButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .regular)
+        self.commentButton.titleLabel?.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
         self.commentButton.setTitleColor(pampGramWithdrawBlue, for: .normal)
         self.commentButton.contentHorizontalAlignment = .left
         self.commentButton.addTarget(self, action: #selector(self.commentPressed), for: .touchUpInside)
@@ -772,13 +772,13 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 15.0, weight: .regular),
+            .font: PampGramFakeCryptoBotFonts.font(15.0, .regular),
             .foregroundColor: pampGramWithdrawGray,
             .paragraphStyle: paragraph
         ]
         let text = NSMutableAttributedString(string: "Перевод на санкционные и высокорисковые сервисы может быть отменён. ", attributes: attributes)
         text.append(NSAttributedString(string: "Подробнее ›", attributes: [
-            .font: UIFont.systemFont(ofSize: 15.0, weight: .regular),
+            .font: PampGramFakeCryptoBotFonts.font(15.0, .regular),
             .foregroundColor: pampGramWithdrawBlue,
             .paragraphStyle: paragraph
         ]))
@@ -821,7 +821,7 @@ final class PampGramFakeCryptoBotWithdrawView: UIView {
         self.openWalletButton.addTarget(self, action: #selector(self.openWalletPressed), for: .touchUpInside)
         self.addSubview(self.openWalletButton)
         self.cancelWithdrawButton.setTitle("Отменить вывод", for: .normal)
-        self.cancelWithdrawButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        self.cancelWithdrawButton.titleLabel?.font = PampGramFakeCryptoBotFonts.font(17.0, .semibold)
         self.cancelWithdrawButton.setTitleColor(UIColor(rgb: 0xff4b52), for: .normal)
         self.cancelWithdrawButton.isHidden = true
         self.cancelWithdrawButton.addTarget(self, action: #selector(self.unavailablePressed), for: .touchUpInside)

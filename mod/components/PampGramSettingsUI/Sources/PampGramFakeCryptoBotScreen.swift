@@ -94,7 +94,7 @@ private enum PampGramFakeCryptoBotColors {
 
 private func pampGramFakeCryptoBotLabel(size: CGFloat, weight: UIFont.Weight, color: UIColor, alignment: NSTextAlignment) -> UILabel {
     let label = UILabel()
-    label.font = UIFont.systemFont(ofSize: size, weight: weight)
+    label.font = PampGramFakeCryptoBotFonts.font(size, weight)
     label.textColor = color
     label.textAlignment = alignment
     label.isUserInteractionEnabled = false
@@ -182,7 +182,7 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
         case .asset:
             self.titleLabel.text = currency.name
             let subtitle = NSMutableAttributedString(string: currency.priceText + " ", attributes: [
-                .font: UIFont.systemFont(ofSize: 13.0, weight: .regular),
+                .font: PampGramFakeCryptoBotFonts.font(13.0, .regular),
                 .foregroundColor: PampGramFakeCryptoBotColors.secondary
             ])
             var changeText = "0.00%"
@@ -195,7 +195,7 @@ private final class PampGramFakeCryptoBotRowView: UIControl {
                 changeColor = PampGramFakeCryptoBotColors.red
             }
             subtitle.append(NSAttributedString(string: changeText, attributes: [
-                .font: UIFont.systemFont(ofSize: 13.0, weight: .regular),
+                .font: PampGramFakeCryptoBotFonts.font(13.0, .regular),
                 .foregroundColor: changeColor
             ]))
             self.subtitleLabel.attributedText = subtitle
@@ -297,7 +297,7 @@ private final class PampGramFakeCryptoBotTabItem: UIControl {
 /// The total balance, drawn digit by digit: every digit sits on a vertical strip of 0-9 and rolls
 /// to its new value, the way the real mini app counts up when it opens or when the sum changes.
 private final class PampGramFakeCryptoBotOdometerView: UIView {
-    private static let font = UIFont.monospacedDigitSystemFont(ofSize: 33.0, weight: .semibold)
+    private static let font = PampGramFakeCryptoBotFonts.font(32.0, .bold, tabular: true)
     private static let lineHeight: CGFloat = 46.0
 
     private final class Cell {
@@ -679,11 +679,11 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.walletScroll.addSubview(self.eyeControl)
 
         let caption = NSMutableAttributedString(string: "Общий баланс в ", attributes: [
-            .font: UIFont.systemFont(ofSize: 15.0, weight: .regular),
+            .font: PampGramFakeCryptoBotFonts.font(15.0, .regular),
             .foregroundColor: PampGramFakeCryptoBotColors.secondary
         ])
         caption.append(NSAttributedString(string: "USD", attributes: [
-            .font: UIFont.systemFont(ofSize: 15.0, weight: .regular),
+            .font: PampGramFakeCryptoBotFonts.font(15.0, .regular),
             .foregroundColor: PampGramFakeCryptoBotColors.blue
         ]))
         self.balanceCaption.attributedText = caption
@@ -733,7 +733,7 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.walletScroll.addSubview(self.assetsChevron)
 
         self.hideSmallButton.setTitleColor(PampGramFakeCryptoBotColors.blue, for: .normal)
-        self.hideSmallButton.titleLabel?.font = UIFont.systemFont(ofSize: 15.0, weight: .regular)
+        self.hideSmallButton.titleLabel?.font = PampGramFakeCryptoBotFonts.font(15.0, .regular)
         self.hideSmallButton.contentHorizontalAlignment = .right
         self.hideSmallButton.addTarget(self, action: #selector(self.hideSmallPressed), for: .touchUpInside)
         self.walletScroll.addSubview(self.hideSmallButton)
@@ -803,10 +803,10 @@ private final class PampGramFakeCryptoBotContentView: UIView, UIScrollViewDelega
         self.searchBox.addSubview(self.searchIcon)
 
         self.searchField.attributedPlaceholder = NSAttributedString(string: "Поиск монеты", attributes: [
-            .font: UIFont.systemFont(ofSize: 17.0, weight: .regular),
+            .font: PampGramFakeCryptoBotFonts.font(17.0, .regular),
             .foregroundColor: PampGramFakeCryptoBotColors.secondary
         ])
-        self.searchField.font = UIFont.systemFont(ofSize: 17.0, weight: .regular)
+        self.searchField.font = PampGramFakeCryptoBotFonts.font(17.0, .regular)
         self.searchField.textColor = .white
         self.searchField.tintColor = PampGramFakeCryptoBotColors.blue
         self.searchField.autocorrectionType = .no
