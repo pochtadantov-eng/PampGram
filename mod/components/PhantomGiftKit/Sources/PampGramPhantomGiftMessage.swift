@@ -92,6 +92,36 @@ public enum PampGramPhantomGiftMessage {
         ))
     }
 
+    /// "Передать" from the profile: the gift card lands in the recipient's chat as an outgoing
+    /// transfer — "Вы передали уникальный коллекционный подарок" is the caption
+    /// `ServiceMessageStrings.swift` picks for an own, unique, non-resale gift message —
+    /// ownership reassigned to the recipient like a genuine transfer would leave it. Purely
+    /// local, like every other message inserted here.
+    public static func insertLocalTransferGiftMessage(context: AccountContext, peerId: EnginePeer.Id, uniqueGift: StarGift.UniqueGift) -> Signal<EngineMessage.Id?, NoError> {
+        let uniqueGift = self.fakedOwnership(of: uniqueGift, newOwnerPeerId: peerId)
+        return self.insert(context: context, peerId: peerId, authorId: context.account.peerId, incoming: false, actionType: .starGiftUnique(
+            gift: .unique(uniqueGift),
+            isUpgrade: false,
+            isTransferred: true,
+            savedToProfile: true,
+            canExportDate: nil,
+            transferStars: 0,
+            isRefunded: false,
+            isPrepaidUpgrade: false,
+            peerId: nil,
+            senderId: nil,
+            savedId: nil,
+            resaleAmount: nil,
+            canTransferDate: nil,
+            canResaleDate: nil,
+            dropOriginalDetailsStars: nil,
+            assigned: false,
+            fromOffer: false,
+            canCraftAt: nil,
+            isCrafted: false
+        ))
+    }
+
     /// "Подарок мне": same real, un-fabricated `uniqueGift`, but authored by the *other*
     /// side and flagged incoming, so the real rendering pipeline treats it exactly like a
     /// unique gift this account actually received — same card, same reveal/confetti, same

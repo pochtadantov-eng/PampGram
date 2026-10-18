@@ -66,10 +66,17 @@ public extension PampGramPhantomGiftStore {
                     )
                 }
 
-            if relevant.isEmpty && ledgerTransactions.isEmpty {
+            // The fee of "Передать" (25 Stars) shows as what a real paid transfer shows: the
+            // amount taken, the person the gift went to and the gift itself, captioned
+            // "Передача подарка" (a unique gift with a debit and no resale flag).
+            let transferOperations = operations.filter { operation in
+                return operation.currency == ledgerCurrency && operation.kind == .transfer && operation.amount < 0 && operation.giftId != nil && operation.peerId != nil && operation.visibleInRealHistory != false
+            }
+
+            if relevant.isEmpty && ledgerTransactions.isEmpty && transferOperations.isEmpty {
                 return .single([])
             }
-            let peerIds = Array(Set(relevant.map { $0.peerId }))
+            let peerIds = Array(Set(relevant.map { $0.peerId } + transferOperations.compactMap { $0.peerId }))
             return context.engine.data.get(EngineDataMap(peerIds.map(TelegramEngine.EngineData.Item.Peer.Peer.init(id:))))
             |> map { result -> [StarsContext.State.Transaction] in
                 var peers: [EnginePeer.Id: EnginePeer] = [:]
@@ -133,6 +140,22 @@ public extension PampGramPhantomGiftStore {
                             starGift: gift.gift
                         ))
                     }
+                }
+
+                for operation in transferOperations {
+                    guard let peerId = operation.peerId, let peer = peers[peerId], let giftId = operation.giftId, let gift = gifts.first(where: { $0.id == giftId }) else {
+                        continue
+                    }
+                    transactions.append(self.fakeTransaction(
+                        id: "\(operation.id)6",
+                        flags: [.isGift],
+                        amount: StarsAmount(value: operation.amount, nanos: 0),
+                        currency: currency,
+                        date: operation.date,
+                        peer: .peer(peer),
+                        title: nil,
+                        starGift: gift.gift
+                    ))
                 }
 
                 transactions.append(contentsOf: ledgerTransactions)

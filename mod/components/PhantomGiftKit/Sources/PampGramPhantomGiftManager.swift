@@ -843,12 +843,12 @@ public enum PampGramPhantomGiftManager {
     /// doesn't happen at all (no partial charge, no partial transfer) and this returns `false`,
     /// same as "gift not found".
     public static func sendGiftToPeer(context: AccountContext, giftId: Int64, peerId: EnginePeer.Id) -> Signal<Bool, NoError> {
-        return context.account.postbox.transaction { transaction -> Bool in
+        return context.account.postbox.transaction { transaction -> (Bool, StarGift.UniqueGift?) in
             guard let gift = PampGramPhantomGiftStore.allGifts(transaction: transaction).first(where: { $0.id == giftId }) else {
-                return false
+                return (false, nil)
             }
             guard PampGramCore.settings(transaction: transaction).fakeStarsBalance >= transferFeeStars else {
-                return false
+                return (false, nil)
             }
             PampGramLocalLedgerStore.addAndApply(
                 transaction: transaction,
@@ -871,6 +871,24 @@ public enum PampGramPhantomGiftManager {
                 giftId: gift.id,
                 balanceAfter: nil
             ))
+            if case let .unique(uniqueGift) = gift.gift {
+                return (true, uniqueGift)
+            }
+            return (true, nil)
+        }
+        |> mapToSignal { result -> Signal<Bool, NoError> in
+            return self.postTransferMessage(context: context, peerId: peerId, result: result)
+        }
+    }
+
+    /// The chat side of a transfer: the recipient's chat gets the "Вы передали…" gift card, so the
+    /// gift visibly arrives there (the navigation after the transfer opens that chat).
+    private static func postTransferMessage(context: AccountContext, peerId: EnginePeer.Id, result: (Bool, StarGift.UniqueGift?)) -> Signal<Bool, NoError> {
+        guard result.0, let uniqueGift = result.1 else {
+            return .single(result.0)
+        }
+        return PampGramPhantomGiftMessage.insertLocalTransferGiftMessage(context: context, peerId: peerId, uniqueGift: uniqueGift)
+        |> map { _ -> Bool in
             return true
         }
     }
@@ -882,12 +900,12 @@ public enum PampGramPhantomGiftManager {
     /// a real gift-card screen work for one of these instead of hitting the real,
     /// network-backed `transferStarGift` with a reference nothing on the server recognizes.
     public static func sendGiftToPeer(context: AccountContext, matching gift: ProfileGiftsContext.State.StarGift, peerId: EnginePeer.Id) -> Signal<Bool, NoError> {
-        return context.account.postbox.transaction { transaction -> Bool in
+        return context.account.postbox.transaction { transaction -> (Bool, StarGift.UniqueGift?) in
             guard let match = self.findPhantomGift(transaction: transaction, selfPeerId: context.account.peerId, matching: gift) else {
-                return false
+                return (false, nil)
             }
             guard PampGramCore.settings(transaction: transaction).fakeStarsBalance >= transferFeeStars else {
-                return false
+                return (false, nil)
             }
             PampGramLocalLedgerStore.addAndApply(
                 transaction: transaction,
@@ -910,7 +928,13 @@ public enum PampGramPhantomGiftManager {
                 giftId: match.id,
                 balanceAfter: nil
             ))
-            return true
+            if case let .unique(uniqueGift) = match.gift {
+                return (true, uniqueGift)
+            }
+            return (true, nil)
+        }
+        |> mapToSignal { result -> Signal<Bool, NoError> in
+            return self.postTransferMessage(context: context, peerId: peerId, result: result)
         }
     }
 
