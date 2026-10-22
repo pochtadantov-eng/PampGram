@@ -58,7 +58,7 @@ public func pampGramTryHandleSeendsCommand(context: AccountContext, peerId: Engi
     let usdText = pampGramSeendsFormatUSD(usdValue)
     let shortAmount = pampGramSeendsTruncate(payload.amountValue, fallback: payload.amountText)
 
-    guard let image = pampGramRenderCheckCard(usdText: "$" + usdText, amountText: shortAmount + " " + payload.code, logo: currency.logo),
+    guard let image = pampGramRenderCheckCard(usdText: "$" + usdText, amountText: shortAmount + " " + payload.code, logo: currency.logo, brand: pampGramSeendsBrandColors(code: payload.code)),
           let data = image.jpegData(compressionQuality: 0.92),
           let path = pampGramPersistSeendsFile(data: data, pathExtension: "jpg") else {
         return false
@@ -280,6 +280,48 @@ private func pampGramSeendsGenericLogo(code: String) -> UIImage {
     }
 }
 
+/// Brand colours each @send check is drawn in — the token's own palette, the way the real bot
+/// skins the card. The pair is the top-left/bottom-right of a diagonal gradient; the pattern discs
+/// behind the amount use a darker shade of the same brand.
+private func pampGramSeendsBrandColors(code: String) -> (top: UIColor, bottom: UIColor) {
+    switch code {
+    case "USDT":
+        return (UIColor(red: 0.184, green: 0.729, blue: 0.573, alpha: 1.0), UIColor(red: 0.110, green: 0.592, blue: 0.455, alpha: 1.0))
+    case "USDC":
+        return (UIColor(red: 0.153, green: 0.459, blue: 0.792, alpha: 1.0), UIColor(red: 0.102, green: 0.361, blue: 0.655, alpha: 1.0))
+    case "GRAM":
+        return (UIColor(red: 0.012, green: 0.498, blue: 0.749, alpha: 1.0), UIColor(red: 0.008, green: 0.408, blue: 0.627, alpha: 1.0))
+    case "BTC":
+        return (UIColor(red: 0.969, green: 0.576, blue: 0.102, alpha: 1.0), UIColor(red: 0.824, green: 0.486, blue: 0.078, alpha: 1.0))
+    case "ETH":
+        return (UIColor(red: 0.384, green: 0.494, blue: 0.918, alpha: 1.0), UIColor(red: 0.290, green: 0.384, blue: 0.773, alpha: 1.0))
+    case "LTC":
+        return (UIColor(red: 0.204, green: 0.365, blue: 0.616, alpha: 1.0), UIColor(red: 0.161, green: 0.290, blue: 0.502, alpha: 1.0))
+    case "TRX":
+        return (UIColor(red: 0.937, green: 0.000, blue: 0.153, alpha: 1.0), UIColor(red: 0.784, green: 0.000, blue: 0.118, alpha: 1.0))
+    case "BNB":
+        return (UIColor(red: 0.953, green: 0.729, blue: 0.184, alpha: 1.0), UIColor(red: 0.824, green: 0.620, blue: 0.141, alpha: 1.0))
+    case "SOL":
+        return (UIColor(red: 0.600, green: 0.271, blue: 1.000, alpha: 1.0), UIColor(red: 0.494, green: 0.212, blue: 0.847, alpha: 1.0))
+    case "DOGE":
+        return (UIColor(red: 0.796, green: 0.682, blue: 0.302, alpha: 1.0), UIColor(red: 0.663, green: 0.549, blue: 0.200, alpha: 1.0))
+    case "XAUT":
+        return (UIColor(red: 0.725, green: 0.561, blue: 0.259, alpha: 1.0), UIColor(red: 0.592, green: 0.451, blue: 0.196, alpha: 1.0))
+    default:
+        // Unknown token: derive a stable brand colour from the code, so the same currency always
+        // looks the same (matches the generic logo's hue).
+        var hash: UInt32 = 5381
+        for scalar in code.unicodeScalars {
+            hash = hash &* 33 &+ scalar.value
+        }
+        let hue = CGFloat(hash % 360) / 360.0
+        return (
+            UIColor(hue: hue, saturation: 0.62, brightness: 0.78, alpha: 1.0),
+            UIColor(hue: hue, saturation: 0.68, brightness: 0.62, alpha: 1.0)
+        )
+    }
+}
+
 // MARK: - Formatting
 
 /// "$0.02"-style dollar value: cents from a cent up, whole numbers without decimals.
@@ -313,6 +355,18 @@ private func pampGramSeendsTruncate(_ value: Double, fallback: String) -> String
     return formatter.string(from: NSNumber(value: truncated)) ?? fallback
 }
 
+private extension UIColor {
+    /// A shade of this colour darker by `amount` (0…1), keeping the hue. Used for the pattern
+    /// discs on the brand-coloured check background.
+    func pampGramSeendsDarker(by amount: CGFloat) -> UIColor {
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        if self.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) {
+            return UIColor(hue: hue, saturation: saturation, brightness: max(0.0, brightness - amount), alpha: alpha)
+        }
+        return self
+    }
+}
+
 // MARK: - The card
 
 private func pampGramSeendsRoundedFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
@@ -323,10 +377,10 @@ private func pampGramSeendsRoundedFont(size: CGFloat, weight: UIFont.Weight) -> 
     return base
 }
 
-/// The picture inside the check: a dark navy card with a faint pattern of coin badges, the dollar
-/// value in big rounded silver letters and, under it, the coin logo with the amount. Drawn at
-/// 1350x842 (the real one is a 16:10 image).
-private func pampGramRenderCheckCard(usdText: String, amountText: String, logo: UIImage?) -> UIImage? {
+/// The picture inside the check: a brand-coloured card (teal for USDT, orange for BTC, …) with a
+/// faint pattern of coin badges, the dollar value in big rounded silver letters and, under it, the
+/// coin logo with the amount. Drawn at 1350x842 (the real one is a 16:10 image).
+private func pampGramRenderCheckCard(usdText: String, amountText: String, logo: UIImage?, brand: (top: UIColor, bottom: UIColor)) -> UIImage? {
     let scale: CGFloat = 1.5
     let size = CGSize(width: 900.0 * scale, height: 561.0 * scale)
     let format = UIGraphicsImageRendererFormat.default()
@@ -337,16 +391,17 @@ private func pampGramRenderCheckCard(usdText: String, amountText: String, logo: 
     return renderer.image { rendererContext in
         let ctx = rendererContext.cgContext
 
-        // Background: navy, a little lighter toward the bottom right.
-        let colors = [
-            UIColor(red: 36.0 / 255.0, green: 46.0 / 255.0, blue: 61.0 / 255.0, alpha: 1.0).cgColor,
-            UIColor(red: 47.0 / 255.0, green: 57.0 / 255.0, blue: 76.0 / 255.0, alpha: 1.0).cgColor
-        ]
+        // Background: brand gradient, a little lighter toward the top-left and darker toward
+        // bottom-right (the way the real @send card is lit).
+        let colors = [brand.top.cgColor, brand.bottom.cgColor]
         if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0.0, 1.0]) {
             ctx.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
         }
 
-        // Pattern: a diamond lattice of darker discs, each with a faint logo.
+        // Pattern: a diamond lattice of slightly darker discs, each with the coin's own logo —
+        // the darker shade comes from the brand colour itself so the pattern reads as part of
+        // the card instead of a flat black overlay.
+        let patternDisc = brand.bottom.pampGramSeendsDarker(by: 0.18).withAlphaComponent(0.22)
         let radius = 70.0 * scale
         for row in -1 ... 8 {
             let isEven = ((row % 2) + 2) % 2 == 0
@@ -358,9 +413,9 @@ private func pampGramRenderCheckCard(usdText: String, amountText: String, logo: 
                 if rect.maxX < 0.0 || rect.minX > size.width || rect.maxY < 0.0 || rect.minY > size.height {
                     continue
                 }
-                ctx.setFillColor(UIColor(white: 0.0, alpha: 0.10).cgColor)
+                ctx.setFillColor(patternDisc.cgColor)
                 ctx.fillEllipse(in: rect)
-                logo?.draw(in: rect.insetBy(dx: 6.0 * scale, dy: 6.0 * scale), blendMode: .normal, alpha: 0.06)
+                logo?.draw(in: rect.insetBy(dx: 6.0 * scale, dy: 6.0 * scale), blendMode: .normal, alpha: 0.12)
             }
         }
 
