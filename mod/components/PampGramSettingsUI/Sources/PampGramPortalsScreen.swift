@@ -51,6 +51,7 @@ private final class PampGramPortalsControllerImpl: ViewController {
         // Portals is always dark — build a navigation bar theme that reads black and keeps the
         // Portals accent for the back-button chevron so it still contrasts.
         let navTheme = NavigationBarTheme(
+            overallDarkAppearance: true,
             buttonColor: .white,
             disabledButtonColor: UIColor(white: 1.0, alpha: 0.5),
             primaryTextColor: .white,
@@ -59,7 +60,10 @@ private final class PampGramPortalsControllerImpl: ViewController {
             separatorColor: UIColor(white: 1.0, alpha: 0.08),
             badgeBackgroundColor: PortalsPalette.accentPrimary,
             badgeStrokeColor: PortalsPalette.accentPrimary,
-            badgeTextColor: .black
+            badgeTextColor: .black,
+            accentButtonColor: PortalsPalette.accentPrimary,
+            accentDisabledButtonColor: UIColor(white: 1.0, alpha: 0.5),
+            accentForegroundColor: .white
         )
         super.init(navigationBarPresentationData: NavigationBarPresentationData(
             theme: navTheme,
@@ -134,7 +138,9 @@ private final class PampGramPortalsNode: UIView {
     // State
     private var selectedCollection: String?
     private var eventEnd: Date
-    private var countdownTimer: Timer?
+    // Disambiguate: Foundation's Timer, not SwiftSignalKit's. The latter is also in scope via
+    // the `SwiftSignalKit` import and would otherwise clash.
+    private var countdownTimer: Foundation.Timer?
 
     private var fakeTonNanos: Int64 = 0
     private var fakeStars: Int64 = 0
@@ -463,7 +469,7 @@ private final class PampGramPortalsNode: UIView {
 
     func startCountdown() {
         self.countdownTimer?.invalidate()
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+        let timer = Foundation.Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.updateCountdownLabel()
         }
         RunLoop.main.add(timer, forMode: .common)

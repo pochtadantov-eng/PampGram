@@ -48,6 +48,7 @@ private final class PampGramXRocketControllerImpl: ViewController {
         self.presentationData = context.sharedContext.currentPresentationData.with { $0 }
 
         let navTheme = NavigationBarTheme(
+            overallDarkAppearance: true,
             buttonColor: .white,
             disabledButtonColor: UIColor(white: 1.0, alpha: 0.5),
             primaryTextColor: .white,
@@ -56,7 +57,10 @@ private final class PampGramXRocketControllerImpl: ViewController {
             separatorColor: UIColor(white: 1.0, alpha: 0.08),
             badgeBackgroundColor: XRocketPalette.accent,
             badgeStrokeColor: XRocketPalette.accent,
-            badgeTextColor: .black
+            badgeTextColor: .black,
+            accentButtonColor: XRocketPalette.accent,
+            accentDisabledButtonColor: UIColor(white: 1.0, alpha: 0.5),
+            accentForegroundColor: .white
         )
         super.init(navigationBarPresentationData: NavigationBarPresentationData(
             theme: navTheme,

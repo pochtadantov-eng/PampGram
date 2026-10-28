@@ -50,6 +50,7 @@ private final class PampGramPortalsDetailControllerImpl: ViewController {
         self.presentationData = context.sharedContext.currentPresentationData.with { $0 }
 
         let navTheme = NavigationBarTheme(
+            overallDarkAppearance: true,
             buttonColor: .white,
             disabledButtonColor: UIColor(white: 1.0, alpha: 0.5),
             primaryTextColor: .white,
@@ -58,7 +59,10 @@ private final class PampGramPortalsDetailControllerImpl: ViewController {
             separatorColor: UIColor(white: 1.0, alpha: 0.08),
             badgeBackgroundColor: DetailPalette.accentPrimary,
             badgeStrokeColor: DetailPalette.accentPrimary,
-            badgeTextColor: .black
+            badgeTextColor: .black,
+            accentButtonColor: DetailPalette.accentPrimary,
+            accentDisabledButtonColor: UIColor(white: 1.0, alpha: 0.5),
+            accentForegroundColor: .white
         )
         super.init(navigationBarPresentationData: NavigationBarPresentationData(
             theme: navTheme,
