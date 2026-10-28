@@ -258,7 +258,11 @@ private final class PampGramPortalsNode: UIView {
         self.starsPill.action = { [weak self] in self?.editStarsBalance() }
 
         self.gramPill = PortalsPillButton(bg: PortalsPalette.gramPillBg, stroke: PortalsPalette.gramPillStroke)
-        self.gramPill.action = { [weak self] in self?.editGramBalance() }
+        self.gramPill.action = { [weak self] in self?.openXRocket() }
+        // Long-press keeps the raw balance editor for debugging — tap goes to
+        // xRocket, which is how a real user tops up their fake GRAM balance.
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(self.gramPillLongPressed(_:)))
+        self.gramPill.addGestureRecognizer(longPress)
 
         row.addSubview(self.starsPill)
         row.addSubview(self.gramPill)
@@ -506,6 +510,15 @@ private final class PampGramPortalsNode: UIView {
             popover.sourceRect = self.collectionChip.bounds
         }
         self.presentUIKitAlert(alert)
+    }
+
+    private func openXRocket() {
+        self.push(pampGramXRocketController(context: self.context))
+    }
+
+    @objc private func gramPillLongPressed(_ sender: UILongPressGestureRecognizer) {
+        guard sender.state == .began else { return }
+        self.editGramBalance()
     }
 
     private func editStarsBalance() {
