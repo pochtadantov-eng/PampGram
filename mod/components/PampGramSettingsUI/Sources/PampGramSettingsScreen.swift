@@ -28,6 +28,7 @@ private final class PampGramSettingsArguments {
     let openVisualNumberEditor: () -> Void
     let openVisualRatingEditor: () -> Void
     let openCollectionMarket: () -> Void
+    let openPortalsMarket: () -> Void
     let openStarsLedger: () -> Void
     let openTonLedger: () -> Void
 
@@ -46,6 +47,7 @@ private final class PampGramSettingsArguments {
         openVisualNumberEditor: @escaping () -> Void,
         openVisualRatingEditor: @escaping () -> Void,
         openCollectionMarket: @escaping () -> Void,
+        openPortalsMarket: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
         openTonLedger: @escaping () -> Void
     ) {
@@ -63,6 +65,7 @@ private final class PampGramSettingsArguments {
         self.openVisualNumberEditor = openVisualNumberEditor
         self.openVisualRatingEditor = openVisualRatingEditor
         self.openCollectionMarket = openCollectionMarket
+        self.openPortalsMarket = openPortalsMarket
         self.openStarsLedger = openStarsLedger
         self.openTonLedger = openTonLedger
     }
@@ -115,6 +118,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case visualNumberEditor(String, String)
     case visualRating(String, String)
     case collectionHeader(String)
+    case portalsMarket(String, String)
     case collectionMarket(String, String)
     case collectionFooter(String)
 
@@ -149,7 +153,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.fromHimGifts.rawValue
         case .profileVisualsHeader, .visualNumberEditor, .visualRating:
             return PampGramSettingsSection.profileVisuals.rawValue
-        case .collectionHeader, .collectionMarket, .collectionFooter:
+        case .collectionHeader, .portalsMarket, .collectionMarket, .collectionFooter:
             return PampGramSettingsSection.collectionMarket.rawValue
         case .ledgerHeader, .starsLedger, .tonLedger, .ledgerFooter:
             return PampGramSettingsSection.ledger.rawValue
@@ -186,11 +190,12 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .visualNumberEditor: return 20
         case .visualRating: return 21
         case .collectionHeader: return 22
-        case .collectionMarket: return 23
-        case .collectionFooter: return 24
-        case .ledgerHeader: return 25
-        case .starsLedger: return 26
-        case .tonLedger: return 27
+        case .portalsMarket: return 23
+        case .collectionMarket: return 24
+        case .collectionFooter: return 25
+        case .ledgerHeader: return 26
+        case .starsLedger: return 27
+        case .tonLedger: return 28
         case .ledgerFooter: return 29
         case .resetBalances: return 30
         case .resetBalancesFooter: return 31
@@ -256,6 +261,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualNumberEditor)
         case let .visualRating(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualRatingEditor)
+        case let .portalsMarket(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openPortalsMarket)
         case let .collectionMarket(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openCollectionMarket)
         case let .starsLedger(title, label):
@@ -428,8 +435,9 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.visualRating("Визуальный рейтинг", visualRatingLabel))
 
     entries.append(.collectionHeader("КОЛЛЕКЦИЯ И МАРКЕТ"))
+    entries.append(.portalsMarket("Portals Market", "Витрина уникальных в GRAM"))
     entries.append(.collectionMarket("Коллекция и маркет", "\(phantomGiftCount) подарков"))
-    entries.append(.collectionFooter("Ношение, закрепление, скрытие, передача и локальный маркет подарков."))
+    entries.append(.collectionFooter("Portals Market — отдельная визуальная витрина с ценами в GRAM; «Коллекция и маркет» — ношение, закрепление, скрытие, передача и локальный маркет собственных подарков."))
 
     entries.append(.ledgerHeader("ИСТОРИЯ И СТАТИСТИКА"))
     entries.append(.starsLedger("Stars", "История · статистика"))
@@ -613,6 +621,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         openVisualNumberEditor: { presentNumberEditorImpl?() },
         openVisualRatingEditor: { presentRatingEditorImpl?() },
         openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
+        openPortalsMarket: { pushControllerImpl?(pampGramPortalsScreenController(context: context)) },
         openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },
         openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) }
     )

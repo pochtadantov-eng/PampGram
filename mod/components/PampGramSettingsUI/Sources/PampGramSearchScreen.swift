@@ -139,6 +139,7 @@ public func pampGramSearchController(context: AccountContext) -> ViewController 
     let openChatLock: () -> Void = { pushControllerImpl?(pampGramChatLockController(context: context)) }
     let openAppearance: () -> Void = { pushControllerImpl?(pampGramAppearanceController(context: context)) }
     let openGiftMarket: () -> Void = { pushControllerImpl?(pampGramGiftMarketController(context: context)) }
+    let openPortalsMarket: () -> Void = { pushControllerImpl?(pampGramPortalsScreenController(context: context)) }
 
     let index: [PampGramSearchItem] = [
         PampGramSearchItem(title: "Подарок ему", subtitle: "Визуальная отправка подарка, без списания Stars/TON", sectionName: "Подарки", keywords: "gift подарки маркет фантом", open: openGifts),
@@ -148,6 +149,7 @@ public func pampGramSearchController(context: AccountContext) -> ViewController 
         PampGramSearchItem(title: "Локальные рубли", subtitle: "Локальная карта для покупки звёзд за рубли", sectionName: "Подарки", keywords: "рубли карта покупка звёзд", open: openGifts),
         PampGramSearchItem(title: "История и статистика", subtitle: "Локальный журнал Stars/TON/рублей: пополнения, покупки, продажи", sectionName: "Подарки", keywords: "ledger история статистика пополнения покупки продажи журнал", open: openGifts),
         PampGramSearchItem(title: "Маркет подарков", subtitle: "Локальный маркет: выставить и снять подарки", sectionName: "Подарки", keywords: "market маркет продать выставить подарки", open: openGiftMarket),
+        PampGramSearchItem(title: "Portals Market", subtitle: "Визуальная витрина уникальных подарков в GRAM — покупка только локальная", sectionName: "Подарки", keywords: "portals маркет gram подарок уникальный мини аппа", open: openPortalsMarket),
         PampGramSearchItem(title: "Визуальный +888", subtitle: "Локально заменить свой номер в профиле", sectionName: "Подарки", keywords: "888 номер anonymous number профиль", open: openGifts),
         PampGramSearchItem(title: "Визуальный рейтинг", subtitle: "Локальный рейтинг и очки в своём профиле", sectionName: "Подарки", keywords: "rating рейтинг очки уровень профиль", open: openGifts),
         PampGramSearchItem(title: "Удалённые сообщения", subtitle: "Сохранять сообщения, удалённые собеседником", sectionName: "Чаты", keywords: "антиделит recover delete восстановление", open: openMessages),
