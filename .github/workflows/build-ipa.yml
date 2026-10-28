@@ -31,7 +31,11 @@ jobs:
 
       - name: Check out Telegram-iOS
         run: |
+          # Pinned so mod/telegram-ios.patch keeps applying — the main-line patch
+          # was last known to apply cleanly against release-12.9.2 (Jul 2026).
+          # Upstream HEAD drifted enough that 25+ hunks miss without this pin.
           git clone --recursive --shallow-submodules --depth 1 -j8 \
+            --branch release-12.9.2 \
             https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
 
       # mod/components/* are whole new Bazel packages, dropped in as-is under a single
