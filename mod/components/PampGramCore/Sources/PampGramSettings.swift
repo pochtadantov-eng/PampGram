@@ -253,6 +253,13 @@ public struct PampGramSettings: Codable, Equatable {
     /// Telegram never verifies server-side — a locally-shown Premium badge/status, premium
     /// stickers & reactions in the picker, and the relaxed folder/pin client limits.
     public var legalPremiumEnabled: Bool
+    /// "Включить визуалку" of the **Визуальные боты** section — same shape as `masterEnabled`,
+    /// but gates the Visual Bots subsystem (xRocket / CryptoBot UI overlays, visual transfers,
+    /// local checks) rather than Gifts. When off, every bot stored in `PampGramVisualBotStore`
+    /// is effectively inert: the store keeps its records, but UI code should not render or honor
+    /// the overlays and the per-bot `enabled` flag stops taking effect. Stored values survive on
+    /// disk; this is a display gate, not a wipe.
+    public var visualBotsEnabled: Bool
     /// "Локальные рубли" (Подарки): a play-money ruble balance — a local "card" — spent by
     /// PampGram's own fake "Купить звёзды" screen (see `PampGramStarsPurchaseScreen.swift`)
     /// instead of the real Apple In-App Purchase flow when `localRublesPurchaseEnabled` is
@@ -310,11 +317,12 @@ public struct PampGramSettings: Codable, Equatable {
             localRublesPurchaseEnabled: false,
             infinitePinsEnabled: false,
             legalPremiumEnabled: false,
-            masterEnabled: true
+            masterEnabled: true,
+            visualBotsEnabled: true
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, masterEnabled: Bool, visualBotsEnabled: Bool) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -352,6 +360,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = infinitePinsEnabled
         self.legalPremiumEnabled = legalPremiumEnabled
         self.masterEnabled = masterEnabled
+        self.visualBotsEnabled = visualBotsEnabled
     }
 
     /// Decoded field by field with `decodeIfPresent` rather than by the synthesized
@@ -421,6 +430,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.infinitePinsEnabled = try container.decodeIfPresent(Bool.self, forKey: .infinitePinsEnabled) ?? defaults.infinitePinsEnabled
         self.legalPremiumEnabled = try container.decodeIfPresent(Bool.self, forKey: .legalPremiumEnabled) ?? defaults.legalPremiumEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
+        self.visualBotsEnabled = try container.decodeIfPresent(Bool.self, forKey: .visualBotsEnabled) ?? defaults.visualBotsEnabled
     }
 
     /// A copy with just the **Подарки** section's visual features forced off (every stored value
@@ -481,6 +491,9 @@ public enum PampGramPreferencesKeys {
     public static let appearance = key(900_600)
     public static let behavior = key(900_700)
     public static let fakeAdmin = key(900_800)
+    public static let visualBots = key(900_900)
+    public static let visualBotOperations = key(901_000)
+    public static let visualBotChecks = key(901_100)
 }
 
 public enum PampGramCore {
