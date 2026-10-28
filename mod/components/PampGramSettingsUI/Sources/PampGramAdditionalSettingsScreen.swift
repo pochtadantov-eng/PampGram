@@ -18,10 +18,11 @@ private final class PampGramAdditionalArguments {
     let openChatLock: () -> Void
     let openCallOverrides: () -> Void
     let openFakeAdmin: () -> Void
+    let openVisualPortal: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, openVisualPortal: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -30,6 +31,7 @@ private final class PampGramAdditionalArguments {
         self.openChatLock = openChatLock
         self.openCallOverrides = openCallOverrides
         self.openFakeAdmin = openFakeAdmin
+        self.openVisualPortal = openVisualPortal
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
     }
@@ -37,6 +39,7 @@ private final class PampGramAdditionalArguments {
 
 private enum PampGramAdditionalSection: Int32 {
     case about
+    case portal
     case voice
     case speed
     case premium
@@ -45,6 +48,10 @@ private enum PampGramAdditionalSection: Int32 {
 
 private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case aboutText(String)
+
+    case portalHeader(String)
+    case portalRow(String, String)
+    case portalFooter(String)
 
     case voiceHeader(String)
     case voiceToggle(String, Bool)
@@ -72,6 +79,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return PampGramAdditionalSection.about.rawValue
+        case .portalHeader, .portalRow, .portalFooter:
+            return PampGramAdditionalSection.portal.rawValue
         case .voiceHeader, .voiceToggle, .voicePresetRow, .voiceFooter:
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
@@ -87,42 +96,48 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return 0
-        case .voiceHeader:
+        case .portalHeader:
             return 1
-        case .voiceToggle:
+        case .portalRow:
             return 2
-        case .voicePresetRow:
+        case .portalFooter:
             return 3
-        case .voiceFooter:
-            return 4
-        case .speedHeader:
-            return 5
-        case .uploadSpeedRow:
-            return 6
-        case .downloadSpeedRow:
-            return 7
-        case .speedFooter:
-            return 8
-        case .premiumHeader:
-            return 9
-        case .infinitePinsToggle:
+        case .voiceHeader:
             return 10
-        case .legalPremiumToggle:
+        case .voiceToggle:
             return 11
-        case .premiumFooter:
+        case .voicePresetRow:
             return 12
-        case .extrasHeader:
+        case .voiceFooter:
             return 13
+        case .speedHeader:
+            return 20
+        case .uploadSpeedRow:
+            return 21
+        case .downloadSpeedRow:
+            return 22
+        case .speedFooter:
+            return 23
+        case .premiumHeader:
+            return 30
+        case .infinitePinsToggle:
+            return 31
+        case .legalPremiumToggle:
+            return 32
+        case .premiumFooter:
+            return 33
+        case .extrasHeader:
+            return 40
         case .fakeLocationRow:
-            return 14
+            return 41
         case .chatLockRow:
-            return 15
+            return 42
         case .callOverridesRow:
-            return 16
+            return 43
         case .fakeAdminRow:
-            return 17
+            return 44
         case .extrasFooter:
-            return 18
+            return 45
         }
     }
 
@@ -133,10 +148,14 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .portalFooter(text), let .voiceFooter(text), let .speedFooter(text), let .premiumFooter(text), let .extrasFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text):
+        case let .portalHeader(text), let .voiceHeader(text), let .speedHeader(text), let .premiumHeader(text), let .extrasHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .portalRow(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "sparkles", backgroundColor: UIColor(rgb: 0x8e44ec)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openVisualPortal()
+            })
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleInfinitePins(value)
@@ -185,6 +204,10 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     var entries: [PampGramAdditionalEntry] = []
 
     entries.append(.aboutText("Другие возможности PampGram: голос и скорость передачи файлов."))
+
+    entries.append(.portalHeader("ВИЗУАЛЬНЫЙ ПОРТАЛ"))
+    entries.append(.portalRow("Визуальный портал", "xRocket, Wallet, CryptoBot…"))
+    entries.append(.portalFooter("Эффектный экран локального «перевода» из xRocket, Wallet, CryptoBot, Fragment, TON Space и Pay2Ton. Увеличивает только локальные балансы PampGram на этом устройстве и записывает перевод в историю — ни один из сервисов на самом деле не вызывается."))
 
     entries.append(.voiceHeader("ИЗМЕНЕНИЕ ГОЛОСА"))
     entries.append(.voiceToggle("Изменять голос в сообщениях", settings.voiceChangerMessagesEnabled))
@@ -315,6 +338,9 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         },
         openFakeAdmin: {
             pushControllerImpl?(pampGramFakeAdminController(context: context))
+        },
+        openVisualPortal: {
+            pushControllerImpl?(pampGramVisualPortalController(context: context))
         },
         toggleInfinitePins: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
