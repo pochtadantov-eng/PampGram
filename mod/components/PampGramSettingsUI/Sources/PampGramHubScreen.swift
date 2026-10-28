@@ -22,6 +22,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
     case search
     case gifts
     case messages
+    case visualBots
     case privacy
     case appearance
     case advanced
@@ -35,7 +36,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return PampGramHubSection.hero.rawValue
         case .search:
             return PampGramHubSection.search.rawValue
-        case .gifts, .messages, .privacy, .appearance, .advanced, .admin:
+        case .gifts, .messages, .visualBots, .privacy, .appearance, .advanced, .admin:
             return PampGramHubSection.sections.rawValue
         case .status:
             return PampGramHubSection.status.rawValue
@@ -54,18 +55,20 @@ private enum PampGramHubEntry: ItemListNodeEntry {
             return 2
         case .messages:
             return 3
-        case .privacy:
+        case .visualBots:
             return 4
-        case .appearance:
+        case .privacy:
             return 5
-        case .advanced:
+        case .appearance:
             return 6
-        case .admin:
+        case .advanced:
             return 7
-        case .status:
+        case .admin:
             return 8
-        case .team:
+        case .status:
             return 9
+        case .team:
+            return 10
         }
     }
 
@@ -134,6 +137,21 @@ private enum PampGramHubEntry: ItemListNodeEntry {
                 style: .blocks,
                 action: {
                     arguments.openMessages()
+                }
+            )
+        case .visualBots:
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                systemStyle: .glass,
+                icon: generatePampGramSectionIcon(systemName: "bitcoinsign.circle.fill", backgroundColor: UIColor(rgb: 0x16a085)),
+                title: "Визуальные боты",
+                titleFont: .bold,
+                label: "",
+                additionalDetailLabel: "xRocket и Crypto Bot на этом устройстве",
+                sectionId: self.section,
+                style: .blocks,
+                action: {
+                    arguments.openVisualBots()
                 }
             )
         case .privacy:
@@ -234,6 +252,7 @@ private enum PampGramHubEntry: ItemListNodeEntry {
 private final class PampGramHubArguments {
     let openGifts: () -> Void
     let openMessages: () -> Void
+    let openVisualBots: () -> Void
     let openGhost: () -> Void
     let openAppearance: () -> Void
     let openAdditional: () -> Void
@@ -243,9 +262,10 @@ private final class PampGramHubArguments {
     let openSupport: () -> Void
     let openSearch: () -> Void
 
-    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSearch: @escaping () -> Void, openSupport: @escaping () -> Void) {
+    init(openGifts: @escaping () -> Void, openMessages: @escaping () -> Void, openVisualBots: @escaping () -> Void, openGhost: @escaping () -> Void, openAppearance: @escaping () -> Void, openAdditional: @escaping () -> Void, openAdmin: @escaping () -> Void, openStatus: @escaping () -> Void, openAbout: @escaping () -> Void, openSearch: @escaping () -> Void, openSupport: @escaping () -> Void) {
         self.openGifts = openGifts
         self.openMessages = openMessages
+        self.openVisualBots = openVisualBots
         self.openGhost = openGhost
         self.openAppearance = openAppearance
         self.openAdditional = openAdditional
@@ -278,7 +298,8 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
         profileVisuals.ratingEnabled,
         settings.antiDeleteMessagesEnabled,
         settings.visualEditEnabled,
-        settings.ghostModeEnabled
+        settings.ghostModeEnabled,
+        settings.visualBotsEnabled
     ]
     let activeCount = toggles.filter { $0 }.count
     var entries: [PampGramHubEntry] = [
@@ -286,6 +307,7 @@ private func pampGramHubEntries(settings: PampGramSettings, profileVisuals: Pamp
         .search,
         .gifts,
         .messages,
+        .visualBots,
         .privacy,
         .appearance,
         .advanced
@@ -316,6 +338,9 @@ public func pampGramSettingsController(context: AccountContext) -> ViewControlle
             pampGramGateSection(context: context, section: .messages) {
                 pushControllerImpl?(pampGramMessagesSettingsController(context: context))
             }
+        },
+        openVisualBots: {
+            pushControllerImpl?(pampGramVisualBotsController(context: context))
         },
         openGhost: {
             pampGramGateSection(context: context, section: .ghost) {

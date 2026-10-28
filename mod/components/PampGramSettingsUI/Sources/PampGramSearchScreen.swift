@@ -132,6 +132,7 @@ public func pampGramSearchController(context: AccountContext) -> ViewController 
 
     let openGifts: () -> Void = { pushControllerImpl?(pampGramGiftsSettingsController(context: context)) }
     let openMessages: () -> Void = { pushControllerImpl?(pampGramMessagesSettingsController(context: context)) }
+    let openVisualBots: () -> Void = { pushControllerImpl?(pampGramVisualBotsController(context: context)) }
     let openGhost: () -> Void = { pushControllerImpl?(pampGramGhostSettingsController(context: context)) }
     let openAdditional: () -> Void = { pushControllerImpl?(pampGramAdditionalSettingsController(context: context)) }
     let openStatus: () -> Void = { pushControllerImpl?(pampGramStatusController(context: context)) }
@@ -150,6 +151,8 @@ public func pampGramSearchController(context: AccountContext) -> ViewController 
         PampGramSearchItem(title: "Маркет подарков", subtitle: "Локальный маркет: выставить и снять подарки", sectionName: "Подарки", keywords: "market маркет продать выставить подарки", open: openGiftMarket),
         PampGramSearchItem(title: "Визуальный +888", subtitle: "Локально заменить свой номер в профиле", sectionName: "Подарки", keywords: "888 номер anonymous number профиль", open: openGifts),
         PampGramSearchItem(title: "Визуальный рейтинг", subtitle: "Локальный рейтинг и очки в своём профиле", sectionName: "Подарки", keywords: "rating рейтинг очки уровень профиль", open: openGifts),
+        PampGramSearchItem(title: "Визуальные боты", subtitle: "Локальные xRocket и Crypto Bot: балансы, переводы, чеки", sectionName: "Визуальные боты", keywords: "xrocket cryptobot крипто бот кошелёк чек check wallet usdt ton btc", open: openVisualBots),
+        PampGramSearchItem(title: "Чек xRocket / Crypto Bot", subtitle: "Создать или активировать визуальный чек", sectionName: "Визуальные боты", keywords: "check чек cq cr crypto rocket", open: openVisualBots),
         PampGramSearchItem(title: "Удалённые сообщения", subtitle: "Сохранять сообщения, удалённые собеседником", sectionName: "Чаты", keywords: "антиделит recover delete восстановление", open: openMessages),
         PampGramSearchItem(title: "Изменить визуально", subtitle: "Локально править текст и подкладывать фейк-контент", sectionName: "Чаты", keywords: "visual edit фейк текст фото", open: openMessages),
         PampGramSearchItem(title: "Режим призрака", subtitle: "Скрывать прочтение, онлайн, «печатает», истории", sectionName: "Ghost", keywords: "ghost призрак нечиталка онлайн typing", open: openGhost),
