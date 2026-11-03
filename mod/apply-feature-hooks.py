@@ -118,8 +118,8 @@ replace_once(
     video_swift,
     "auto-save video circle on playback",
     "                    if let updatedPlaybackStatus = updatedPlaybackStatus {",
-    "                    if let item = self.item, PampGramVideoMessageSaver.shared.isEnabled(accountKey: item.context.account.peerId.toInt64()) {\n"
-    "                        PampGramVideoMessageSaver.shared.saveIfNeeded(context: item.context, message: item.message)\n"
+    "                    if PampGramVideoMessageSaver.shared.isEnabled(accountKey: item.context.account.peerId.toInt64()) {\n"
+    "                        PampGramVideoMessageSaver.shared.saveIfNeeded(postbox: item.context.account.postbox, message: item.message)\n"
     "                    }\n"
     "                    if let updatedPlaybackStatus = updatedPlaybackStatus {",
 )
