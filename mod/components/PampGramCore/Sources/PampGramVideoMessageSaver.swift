@@ -67,12 +67,23 @@ public final class PampGramVideoMessageSaver {
             guard resourceData.complete else { return }
             let sourcePath = resourceData.path
 
-            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-                guard status == .authorized || status == .limited else { return }
+            let saveBlock: (@escaping () -> Void) -> Void = { completion in
                 let sourceURL = URL(fileURLWithPath: sourcePath)
                 PHPhotoLibrary.shared().performChanges({
                     PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: sourceURL)
-                }, completionHandler: nil)
+                }, completionHandler: { _, _ in completion() })
+            }
+
+            if #available(iOS 14, *) {
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                    guard status == .authorized || status == .limited else { return }
+                    saveBlock({})
+                }
+            } else {
+                PHPhotoLibrary.requestAuthorization { status in
+                    guard status == .authorized else { return }
+                    saveBlock({})
+                }
             }
         })
     }

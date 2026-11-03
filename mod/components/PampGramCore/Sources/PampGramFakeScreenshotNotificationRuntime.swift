@@ -1,6 +1,8 @@
 import Foundation
 import Postbox
 
+private let secretChatNamespace = PeerId.Namespace._internalFromInt32Value(3)
+
 public final class PampGramFakeScreenshotNotificationRuntime {
     public static let shared = PampGramFakeScreenshotNotificationRuntime()
 
@@ -9,13 +11,13 @@ public final class PampGramFakeScreenshotNotificationRuntime {
     private init() {}
 
     public func sendFakeScreenshotNotification(peerId: PeerId) {
-        guard peerId.namespace == Namespaces.Peer.SecretChat else {
+        guard peerId.namespace == secretChatNamespace else {
             return
         }
         sendScreenshotNotificationHandler?(peerId)
     }
 
     public func isSecretChat(peerId: PeerId) -> Bool {
-        return peerId.namespace == Namespaces.Peer.SecretChat
+        return peerId.namespace == secretChatNamespace
     }
 }
