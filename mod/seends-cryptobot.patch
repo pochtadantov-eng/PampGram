@@ -408,7 +408,7 @@ index 50beb232..28538b21 100644
 +            }
 +        }
          items.content = .list(newList)
-@@ -550,110 +590,278 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -550,110 +590,229 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
      }
  }
  
@@ -487,92 +487,77 @@ index 50beb232..28538b21 100644
 +            topController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Напечатайте новый текст и нажмите отправить — сообщение изменится только у вас.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
 +        })
      }
-     if settings.visualEditPhotoItemEnabled {
++    if settings.visualEditCallItemEnabled {
++        items.append(entry("Показать звонок", "phone.arrow.down.left") {
++            pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
++        })
++    }
+-    if settings.visualEditPhotoItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Отправить фото", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
-+        items.append(entry("Отправить фото", "photo") {
-             if #available(iOS 14.0, *) {
-                 pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
-             }
+-            if #available(iOS 14.0, *) {
+-                pampGramPresentInsertPhoto(context: context, peerId: message.id.peerId)
+-            }
 -        }))
-+        })
-     }
-     if settings.visualEditVoiceItemEnabled {
+-    }
+-    if settings.visualEditVoiceItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Отправить голосовое", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
-+        items.append(entry("Отправить голосовое", "waveform") {
-             if #available(iOS 14.0, *) {
-                 pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
-             }
+-            if #available(iOS 14.0, *) {
+-                pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: true)
+-            }
 -        }))
-+        })
-     }
-     if settings.visualEditFileItemEnabled {
+-    }
+-    if settings.visualEditFileItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Отправить файл", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
-+        items.append(entry("Отправить файл", "doc") {
-             if #available(iOS 14.0, *) {
-                 pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
-             }
+-            if #available(iOS 14.0, *) {
+-                pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
+-            }
 -        }))
-+        })
-     }
-     if settings.visualEditCallItemEnabled {
+-    }
+-    if settings.visualEditCallItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Показать звонок", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
-+        items.append(entry("Показать звонок", "phone.arrow.down.left") {
-             pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
+-            pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
 -        }))
-+        })
-     }
-     if settings.visualEditPremiumGiftItemEnabled {
+-    }
+-    if settings.visualEditPremiumGiftItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Подарить Premium", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
-+        items.append(entry("Подарить Premium", "gift") {
-             pampGramPresentInsertPremiumGift(context: context, peerId: message.id.peerId)
+-            pampGramPresentInsertPremiumGift(context: context, peerId: message.id.peerId)
 -        }))
-+        })
-     }
-     if settings.visualEditReactionItemEnabled {
+-    }
+-    if settings.visualEditReactionItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Поставить реакцию", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
-+        items.append(entry("Поставить реакцию", "face.smiling") {
-             pampGramPresentReactionPicker(context: context, messageId: message.id)
+-            pampGramPresentReactionPicker(context: context, messageId: message.id)
 -        }))
-+        })
-     }
-     if settings.visualEditSaveOneTimeItemEnabled {
+-    }
+-    if settings.visualEditSaveOneTimeItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Сохранить одноразовое", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
-+        items.append(entry("Сохранить одноразовое", "lock.open") {
-             pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
+-            pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
 -        }))
-+        })
-     }
-     if settings.visualEditChannelPhotoItemEnabled {
+-    }
+-    if settings.visualEditChannelPhotoItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Визуальное фото в канал", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
-+        items.append(entry("Визуальное фото в канал", "camera") {
-             if #available(iOS 14.0, *) {
-                 pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
-             }
+-            if #available(iOS 14.0, *) {
+-                pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
+-            }
 -        }))
-+        })
-     }
-     if settings.visualEditRealBearsItemEnabled {
+-    }
+-    if settings.visualEditRealBearsItemEnabled {
 -        // The only entry in this sheet that spends real Stars and touches a real gift — colored
 -        // .destructive (red) to read as distinct from the purely-visual/local actions above it,
 -        // same as this menu already colors any other irreversible real action.
 -        buttons.append(ActionSheetButtonItem(title: "Подарить 2 мишек", color: .destructive, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
-+        // The only entry that spends real Stars and touches a real gift — red, to read as
-+        // distinct from the purely-visual/local actions above it.
-+        items.append(entry("Подарить 2 мишек", "gift.fill", destructive: true) {
-             pampGramConfirmSendRealBears(context: context, peerId: message.id.peerId)
+-            pampGramConfirmSendRealBears(context: context, peerId: message.id.peerId)
 -        }))
-+        })
-     }
--
+-    }
+
 -    sheet.setItemGroups([
 -        ActionSheetItemGroup(items: buttons),
 -        ActionSheetItemGroup(items: [
