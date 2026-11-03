@@ -46,6 +46,7 @@ private final class PampGramAdditionalArguments {
     let toggleReactionSpammer: (Bool) -> Void
     let toggleFakeVoiceFromText: (Bool) -> Void
     let toggleStickerPackCloner: (Bool) -> Void
+    let toggleFakePortals: (Bool) -> Void
     let toggleFakeSystemMessages: (Bool) -> Void
     let toggleFakePaymentReceipts: (Bool) -> Void
     let toggleVoiceCloner: (Bool) -> Void
@@ -55,7 +56,7 @@ private final class PampGramAdditionalArguments {
     let toggleFakeDeletedAccount: (Bool) -> Void
     let toggleFakeGroupGenerator: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleAutoSaveVideoMessages: @escaping (Bool) -> Void, toggleFakeTyping: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void, toggleFakeForwardedFrom: @escaping (Bool) -> Void, toggleFakeReactions: @escaping (Bool) -> Void, toggleFakePremiumBadge: @escaping (Bool) -> Void, toggleFakeSubscribers: @escaping (Bool) -> Void, toggleFakeReadReceipts: @escaping (Bool) -> Void, toggleChatEditor: @escaping (Bool) -> Void, toggleConversationGenerator: @escaping (Bool) -> Void, toggleFakeDeletedMessage: @escaping (Bool) -> Void, toggleInvisibleMessages: @escaping (Bool) -> Void, toggleReactionSpammer: @escaping (Bool) -> Void, toggleFakeVoiceFromText: @escaping (Bool) -> Void, toggleStickerPackCloner: @escaping (Bool) -> Void, toggleFakeSystemMessages: @escaping (Bool) -> Void, toggleFakePaymentReceipts: @escaping (Bool) -> Void, toggleVoiceCloner: @escaping (Bool) -> Void, toggleChatTimeMachine: @escaping (Bool) -> Void, toggleFakeIncomingCall: @escaping (Bool) -> Void, toggleFakeScreenshotNotification: @escaping (Bool) -> Void, toggleFakeDeletedAccount: @escaping (Bool) -> Void, toggleFakeGroupGenerator: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleAutoSaveVideoMessages: @escaping (Bool) -> Void, toggleFakeTyping: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void, toggleFakeForwardedFrom: @escaping (Bool) -> Void, toggleFakeReactions: @escaping (Bool) -> Void, toggleFakePremiumBadge: @escaping (Bool) -> Void, toggleFakeSubscribers: @escaping (Bool) -> Void, toggleFakeReadReceipts: @escaping (Bool) -> Void, toggleChatEditor: @escaping (Bool) -> Void, toggleConversationGenerator: @escaping (Bool) -> Void, toggleFakeDeletedMessage: @escaping (Bool) -> Void, toggleInvisibleMessages: @escaping (Bool) -> Void, toggleReactionSpammer: @escaping (Bool) -> Void, toggleFakeVoiceFromText: @escaping (Bool) -> Void, toggleStickerPackCloner: @escaping (Bool) -> Void, toggleFakePortals: @escaping (Bool) -> Void, toggleFakeSystemMessages: @escaping (Bool) -> Void, toggleFakePaymentReceipts: @escaping (Bool) -> Void, toggleVoiceCloner: @escaping (Bool) -> Void, toggleChatTimeMachine: @escaping (Bool) -> Void, toggleFakeIncomingCall: @escaping (Bool) -> Void, toggleFakeScreenshotNotification: @escaping (Bool) -> Void, toggleFakeDeletedAccount: @escaping (Bool) -> Void, toggleFakeGroupGenerator: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -91,6 +92,7 @@ private final class PampGramAdditionalArguments {
         self.toggleReactionSpammer = toggleReactionSpammer
         self.toggleFakeVoiceFromText = toggleFakeVoiceFromText
         self.toggleStickerPackCloner = toggleStickerPackCloner
+        self.toggleFakePortals = toggleFakePortals
         self.toggleFakeSystemMessages = toggleFakeSystemMessages
         self.toggleFakePaymentReceipts = toggleFakePaymentReceipts
         self.toggleVoiceCloner = toggleVoiceCloner
@@ -151,6 +153,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case profileIdsToggle(String, Bool)
     case accountLinkToggle(String, Bool)
     case fakeBotsRow(String, String)
+    case fakePortalsToggle(String, Bool)
     case fakeTypingToggle(String, Bool)
     case extrasFooter(String)
 
@@ -192,7 +195,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.media.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .fakePhoneNumberRow, .profileIdsToggle, .accountLinkToggle, .fakeBotsRow, .fakeTypingToggle, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .fakePhoneNumberRow, .profileIdsToggle, .accountLinkToggle, .fakeBotsRow, .fakePortalsToggle, .fakeTypingToggle, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         case .trickeryHeader, .fakeForwardedFromToggle, .fakeReactionsToggle, .fakePremiumBadgeToggle, .fakeSubscribersToggle, .fakeReadReceiptsToggle, .chatEditorToggle, .conversationGeneratorToggle, .fakeDeletedMessageToggle, .invisibleMessagesToggle, .reactionSpammerToggle, .fakeVoiceFromTextToggle, .stickerPackClonerToggle, .trickeryFooter:
             return PampGramAdditionalSection.trickery.rawValue
@@ -267,6 +270,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 28
         case .fakeBotsRow:
             return 30
+        case .fakePortalsToggle:
+            return 33
         case .fakeTypingToggle:
             return 32
         case .extrasFooter:
@@ -400,6 +405,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         case let .fakeBotsRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bitcoinsign.circle.fill", backgroundColor: UIColor(rgb: 0x1b8ed2)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openFakeBots()
+            })
+        case let .fakePortalsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "gift.fill", backgroundColor: UIColor(rgb: 0x7b61ff)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakePortals(value)
             })
         case let .fakeTypingToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "keyboard.fill", backgroundColor: UIColor(rgb: 0xff2d55)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -551,6 +560,7 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     let fakeBots = pampGramParseFakeBots(settings.fakeBotsRaw)
     let builtInCount = settings.fakeCryptoBotEnabled && !fakeBots.contains(where: { $0.id == PampGramFakeCryptoBotRuntime.officialBotUserId }) ? 1 : 0
     entries.append(.fakeBotsRow("Фейковые боты", "\(fakeBots.count + builtInCount)"))
+    entries.append(.fakePortalsToggle("Фейковый Portals", settings.fakePortalsEnabled))
     entries.append(.fakeTypingToggle("Фейк набор текста", settings.fakeTypingEnabled))
     entries.append(.extrasFooter("Работает только на этом устройстве. «Фейк админ» — визуальные посты в любом канале. «Скрыть/фейковый номер» меняют то, что видно другим в профиле, не настоящий номер. «ID Профилей» и «Ссылка аккаунта» добавляют эти строки в чужие профили. «Фейк набор текста» — включает в контекстном меню чата кнопки «Печатает…» / «Записывает ГС…», которые непрерывно шлют статус активности собеседнику."))
 
@@ -888,6 +898,13 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.stickerPackClonerEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakePortals: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakePortalsEnabled = value
                 return settings
             }).start()
         },

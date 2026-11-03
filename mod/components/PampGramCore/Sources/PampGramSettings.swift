@@ -428,6 +428,18 @@ public struct PampGramSettings: Codable, Equatable {
     /// «Генератор фейк-группы» — создаёт целый фейковый групповой чат с участниками,
     /// аватарками, сотней сообщений и медиа. Визуальная копия, как visual chat, но для группы.
     public var fakeGroupGeneratorEnabled: Bool = false
+    /// «Фейковый Portals» — визуальная копия мини-аппа @portals внутри Telegram.
+    /// Когда включено, при открытии @portals вместо настоящего мини-аппа показывается
+    /// локальная копия с визуальными балансами и фейковой покупкой подарков.
+    public var fakePortalsEnabled: Bool = false
+    /// Визуальный баланс TON внутри фейкового Portals (в наноединицах, 1 TON = 1_000_000_000).
+    public var fakePortalsBalanceTonNanos: Int64 = 0
+    /// Визуальный баланс Stars внутри фейкового Portals.
+    public var fakePortalsBalanceStars: Int64 = 0
+    /// История покупок в фейковом Portals, как JSON-строка (аналогично fakeCryptoBotHistoryRaw).
+    public var fakePortalsPurchaseHistoryRaw: String = ""
+    /// Купленные/полученные подарки в фейковом Portals, как JSON-строка.
+    public var fakePortalsOwnedGiftsRaw: String = ""
     public var fakeCryptoBotEnabled: Bool = false
     /// The fake CryptoBot's operation history ("История"), as JSON text; a Codable array of structs
     /// is not safe inside the Postbox-coded settings, a string is.
@@ -665,11 +677,16 @@ public struct PampGramSettings: Codable, Equatable {
             fakeScreenshotNotificationEnabled: false,
             fakeDeletedAccountEnabled: false,
             fakeGroupGeneratorEnabled: false,
+            fakePortalsEnabled: false,
+            fakePortalsBalanceTonNanos: 0,
+            fakePortalsBalanceStars: 0,
+            fakePortalsPurchaseHistoryRaw: "",
+            fakePortalsOwnedGiftsRaw: "",
             visualChatEnabledPeerIds: []
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool, moderationExcludedPeerIds: [PeerId], callRecordingEnabled: Bool, fakeTransferCooldownEnabled: Bool, fakeTransferCooldownSeconds: Int32, fakeTransferCooldownUntil: Int32, fakeOfferAcceptFailEnabled: Bool, fakeForwardedFromEnabled: Bool = false, fakeReactionsEnabled: Bool = false, fakePremiumBadgeEnabled: Bool = false, fakeSubscribersEnabled: Bool = false, fakeSubscribersCount: Int64 = 0, fakeReadReceiptsEnabled: Bool = false, chatEditorEnabled: Bool = false, conversationGeneratorEnabled: Bool = false, fakeDeletedMessageEnabled: Bool = false, invisibleMessagesEnabled: Bool = false, reactionSpammerEnabled: Bool = false, fakeVoiceFromTextEnabled: Bool = false, stickerPackClonerEnabled: Bool = false, fakeSystemMessagesEnabled: Bool = false, fakePaymentReceiptsEnabled: Bool = false, voiceClonerEnabled: Bool = false, chatTimeMachineEnabled: Bool = false, fakeIncomingCallEnabled: Bool = false, fakeScreenshotNotificationEnabled: Bool = false, fakeDeletedAccountEnabled: Bool = false, fakeGroupGeneratorEnabled: Bool = false, visualChatEnabledPeerIds: [PeerId]) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool, moderationExcludedPeerIds: [PeerId], callRecordingEnabled: Bool, fakeTransferCooldownEnabled: Bool, fakeTransferCooldownSeconds: Int32, fakeTransferCooldownUntil: Int32, fakeOfferAcceptFailEnabled: Bool, fakeForwardedFromEnabled: Bool = false, fakeReactionsEnabled: Bool = false, fakePremiumBadgeEnabled: Bool = false, fakeSubscribersEnabled: Bool = false, fakeSubscribersCount: Int64 = 0, fakeReadReceiptsEnabled: Bool = false, chatEditorEnabled: Bool = false, conversationGeneratorEnabled: Bool = false, fakeDeletedMessageEnabled: Bool = false, invisibleMessagesEnabled: Bool = false, reactionSpammerEnabled: Bool = false, fakeVoiceFromTextEnabled: Bool = false, stickerPackClonerEnabled: Bool = false, fakeSystemMessagesEnabled: Bool = false, fakePaymentReceiptsEnabled: Bool = false, voiceClonerEnabled: Bool = false, chatTimeMachineEnabled: Bool = false, fakeIncomingCallEnabled: Bool = false, fakeScreenshotNotificationEnabled: Bool = false, fakeDeletedAccountEnabled: Bool = false, fakeGroupGeneratorEnabled: Bool = false, fakePortalsEnabled: Bool = false, fakePortalsBalanceTonNanos: Int64 = 0, fakePortalsBalanceStars: Int64 = 0, fakePortalsPurchaseHistoryRaw: String = "", fakePortalsOwnedGiftsRaw: String = "", visualChatEnabledPeerIds: [PeerId]) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -763,6 +780,11 @@ public struct PampGramSettings: Codable, Equatable {
         self.fakeScreenshotNotificationEnabled = fakeScreenshotNotificationEnabled
         self.fakeDeletedAccountEnabled = fakeDeletedAccountEnabled
         self.fakeGroupGeneratorEnabled = fakeGroupGeneratorEnabled
+        self.fakePortalsEnabled = fakePortalsEnabled
+        self.fakePortalsBalanceTonNanos = fakePortalsBalanceTonNanos
+        self.fakePortalsBalanceStars = fakePortalsBalanceStars
+        self.fakePortalsPurchaseHistoryRaw = fakePortalsPurchaseHistoryRaw
+        self.fakePortalsOwnedGiftsRaw = fakePortalsOwnedGiftsRaw
         self.visualChatEnabledPeerIds = visualChatEnabledPeerIds
     }
 
@@ -881,6 +903,11 @@ public struct PampGramSettings: Codable, Equatable {
         self.fakeScreenshotNotificationEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeScreenshotNotificationEnabled) ?? defaults.fakeScreenshotNotificationEnabled
         self.fakeDeletedAccountEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeDeletedAccountEnabled) ?? defaults.fakeDeletedAccountEnabled
         self.fakeGroupGeneratorEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeGroupGeneratorEnabled) ?? defaults.fakeGroupGeneratorEnabled
+        self.fakePortalsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakePortalsEnabled) ?? defaults.fakePortalsEnabled
+        self.fakePortalsBalanceTonNanos = try container.decodeIfPresent(Int64.self, forKey: .fakePortalsBalanceTonNanos) ?? defaults.fakePortalsBalanceTonNanos
+        self.fakePortalsBalanceStars = try container.decodeIfPresent(Int64.self, forKey: .fakePortalsBalanceStars) ?? defaults.fakePortalsBalanceStars
+        self.fakePortalsPurchaseHistoryRaw = try container.decodeIfPresent(String.self, forKey: .fakePortalsPurchaseHistoryRaw) ?? defaults.fakePortalsPurchaseHistoryRaw
+        self.fakePortalsOwnedGiftsRaw = try container.decodeIfPresent(String.self, forKey: .fakePortalsOwnedGiftsRaw) ?? defaults.fakePortalsOwnedGiftsRaw
         self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
         self.fakeCryptoBotHistoryRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotHistoryRaw) ?? defaults.fakeCryptoBotHistoryRaw
         self.fakeBotsRaw = try container.decodeIfPresent(String.self, forKey: .fakeBotsRaw) ?? defaults.fakeBotsRaw
@@ -987,6 +1014,7 @@ public struct PampGramSettings: Codable, Equatable {
         settings.fakeScreenshotNotificationEnabled = false
         settings.fakeDeletedAccountEnabled = false
         settings.fakeGroupGeneratorEnabled = false
+        settings.fakePortalsEnabled = false
         settings.masterEnabled = false
         return settings
     }
