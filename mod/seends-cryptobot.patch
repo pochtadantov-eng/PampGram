@@ -132,7 +132,7 @@ index 0f40cdc9..c407e83d 100644
  import TemporaryCachedPeerDataManager
  import PhoneNumberFormat
  import TelegramUIPreferences
-@@ -515,6 +516,13 @@ public final class AccountContextImpl: AccountContext {
+@@ -515,6 +516,24 @@ public final class AccountContextImpl: AccountContext {
              PampGramLocalPremiumRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
              PampGramModerationRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
              PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -276,7 +276,7 @@ index 50beb232..28538b21 100644
              })
          })), at: 0)
          items.content = .list(newList)
-@@ -550,110 +544,101 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -550,110 +544,264 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
      }
  }
  
