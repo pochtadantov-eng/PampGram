@@ -759,6 +759,20 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
                 return settings
             }).start()
         },
+        toggleAutoSaveVideoMessages: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.autoSaveVideoMessagesEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeTyping: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeTypingEnabled = value
+                return settings
+            }).start()
+        },
         toggleHideOwnPhone: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
@@ -802,20 +816,6 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         },
         openFakeBots: {
             pushControllerImpl?(pampGramFakeBotsController(context: context))
-        },
-        toggleAutoSaveVideoMessages: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.autoSaveVideoMessagesEnabled = value
-                return settings
-            }).start()
-        },
-        toggleFakeTyping: { value in
-            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
-                var settings = settings
-                settings.fakeTypingEnabled = value
-                return settings
-            }).start()
         },
         toggleFakeForwardedFrom: { value in
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
