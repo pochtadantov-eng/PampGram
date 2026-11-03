@@ -1,8 +1,5 @@
 import Foundation
 import Postbox
-import TelegramCore
-import SwiftSignalKit
-import AccountContext
 
 /// «Клон голоса» — захватывает образец голоса из голосового сообщения собеседника,
 /// затем генерирует новые голосовые сообщения этим голосом из текста.

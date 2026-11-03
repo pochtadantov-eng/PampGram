@@ -1,41 +1,8 @@
 import Foundation
 import Photos
 import Postbox
-import TelegramCore
 import SwiftSignalKit
-import AccountContext
 
-/// Автоматическое сохранение видеосообщений (кружков) в галерею.
-///
-/// Telegram не даёт сохранить кружок напрямую — нет кнопки "Сохранить" и нет share-sheet
-/// для видеосообщений. Эта функция копирует уже скачанный ресурс (mp4) из Telegram-кэша
-/// (`mediaBox`) в «Фотопленку» через `PHPhotoLibrary`.
-///
-/// Integration point (в патче):
-///
-/// `ChatMessageInteractiveInstantVideoNode.swift` (или `ChatMessageInstantVideoItemNode`),
-/// метод, который вызывается при начале воспроизведения кружка. После того как Telegram
-/// начал воспроизведение (ресурс уже в кэше):
-///
-/// ```swift
-/// if PampGramVideoMessageSaver.shared.isEnabled(accountKey: context.account.peerId.toInt64()) {
-///     PampGramVideoMessageSaver.shared.saveIfNeeded(context: context, message: message)
-/// }
-/// ```
-///
-/// Или из контекстного меню: добавить «Сохранить в галерею» для любого видеосообщения:
-///
-/// ```swift
-/// items.append(.action(ContextMenuActionItem(
-///     text: "Сохранить кружок",
-///     icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Save"), color: theme.contextMenu.primaryColor) },
-///     action: { c, _ in
-///         c?.dismiss(completion: {
-///             PampGramVideoMessageSaver.shared.saveIfNeeded(context: context, message: message)
-///         })
-///     }
-/// )))
-/// ```
 public final class PampGramVideoMessageSaver {
     public static let shared = PampGramVideoMessageSaver()
 
@@ -44,6 +11,10 @@ public final class PampGramVideoMessageSaver {
     private var startedAccounts: Set<Int64> = []
     private var savedMessageIds: Set<String> = []
     private var disposables: [Int64: Disposable] = [:]
+
+    /// Injected by AccountContext startup (has TelegramCore access).
+    /// Extracts the instant-video MediaResource from a Message, or nil.
+    public var instantVideoResourceExtractor: ((_ message: Message) -> MediaResource?)?
 
     private init() {}
 
@@ -75,9 +46,7 @@ public final class PampGramVideoMessageSaver {
         self.lock.unlock()
     }
 
-    /// Сохраняет кружок в галерею, если он ещё не был сохранён в этой сессии.
-    /// Безопасно вызывать повторно — дубликатов не будет.
-    public func saveIfNeeded(context: AccountContext, message: Message) {
+    public func saveIfNeeded(postbox: Postbox, message: Message) {
         let key = "\(message.id.peerId.toInt64())_\(message.id.id)"
 
         self.lock.lock()
@@ -88,13 +57,11 @@ public final class PampGramVideoMessageSaver {
         self.savedMessageIds.insert(key)
         self.lock.unlock()
 
-        guard let file = message.media.compactMap({ $0 as? TelegramMediaFile }).first,
-              file.isInstantVideo else {
+        guard let resource = instantVideoResourceExtractor?(message) else {
             return
         }
 
-        let postbox = context.account.postbox
-        let _ = (postbox.mediaBox.resourceData(file.resource, option: .complete(waitUntilFetchStatus: false), attemptSynchronously: false)
+        let _ = (postbox.mediaBox.resourceData(resource, option: .complete(waitUntilFetchStatus: false), attemptSynchronously: false)
         |> take(1)
         |> deliverOnMainQueue).startStandalone(next: { resourceData in
             guard resourceData.complete else { return }
