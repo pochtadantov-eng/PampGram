@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Photos
 import Postbox
 import SwiftSignalKit
 
@@ -72,6 +73,25 @@ public final class ModSettings {
         get { defaults.bool(forKey: "mod_blockAds") }
         set {
             defaults.set(newValue, forKey: "mod_blockAds")
+            broadcastChange()
+        }
+    }
+
+    // MARK: Once Media
+    /// Сохранить одноразовое/временное фото или видео в галерею вместо удаления после просмотра.
+    @objc public dynamic var saveOnceMedia: Bool {
+        get { defaults.bool(forKey: "mod_saveOnceMedia") }
+        set {
+            defaults.set(newValue, forKey: "mod_saveOnceMedia")
+            broadcastChange()
+        }
+    }
+
+    /// Разрешить пересылку одноразовых голосовых сообщений.
+    @objc public dynamic var forwardOnceVoice: Bool {
+        get { defaults.bool(forKey: "mod_forwardOnceVoice") }
+        set {
+            defaults.set(newValue, forKey: "mod_forwardOnceVoice")
             broadcastChange()
         }
     }
@@ -188,6 +208,34 @@ public final class ModFeaturesController {
         }
     }
     
+    // MARK: - Once Media: Save to Gallery
+    /// Вызывается из просмотрщика одноразового медиа перед тем как Telegram удалит файл.
+    /// `localPath` — путь к уже скачанному ресурсу (временный файл в кэше Telegram).
+    /// Если `saveOnceMedia` включён — сохраняем в «Фотопленку» и возвращаем true.
+    public func handleOnceMediaViewed(localPath: String, isVideo: Bool) -> Bool {
+        guard ModSettings.shared.saveOnceMedia else { return false }
+        let url = URL(fileURLWithPath: localPath)
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized || status == .limited else { return }
+            PHPhotoLibrary.shared().performChanges({
+                if isVideo {
+                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+                } else {
+                    if let img = UIImage(contentsOfFile: localPath) {
+                        PHAssetChangeRequest.creationRequestForAsset(from: img)
+                    }
+                }
+            }, completionHandler: nil)
+        }
+        return true
+    }
+
+    // MARK: - Once Voice: Forward Guard
+    /// Возвращает true если одноразовое ГС можно пересылать (настройка включена).
+    public func canForwardOnceVoice() -> Bool {
+        return ModSettings.shared.forwardOnceVoice
+    }
+
     // MARK: - Sponsored Messages Filter
     /// Фильтрует спонсорские/рекламные сообщения перед отображением
     /// Используется в: TelegramUI/Views/Chat/ChatMessageItemView

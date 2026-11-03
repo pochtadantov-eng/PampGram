@@ -157,6 +157,89 @@ import Foundation
  ```
  */
 
+// MARK: - 7. SAVE ONCE MEDIA — Сохранение одноразового фото/видео в галерею
+/**
+ ФАЙЛ: submodules/TelegramUI/Components/MediaViewer/Sources/MediaViewerController.swift
+         (или GalleryController.swift / SecretMediaPreviewController.swift — зависит от версии)
+ МЕТОД: func mediaDismissed() / func mediaDidClose() / viewWillDisappear
+
+ Telegram удаляет ресурс одноразового медиа сразу после закрытия просмотрщика.
+ Нам нужно перехватить этот момент ДО удаления.
+
+ Ищем в коде паттерн вида:
+ ```swift
+ // где-то в просмотрщике одноразового контента (view-once / secret)
+ if message.minAutoremoveOrClearTimeout == viewOnceTimeout {
+     // удаляем ресурс / сообщение
+     deleteMessages(...)
+ }
+ ```
+
+ СТАЛО (вставить ПЕРЕД блоком удаления):
+ ```swift
+ if message.minAutoremoveOrClearTimeout == viewOnceTimeout,
+    let resource = (message.media.first(where: { $0 is TelegramMediaImage || $0 is TelegramMediaFile })),
+    let localPath = context.account.postbox.mediaBox.completedResourcePath(resourceId(for: resource)) {
+
+     let isVideo: Bool
+     if let file = resource as? TelegramMediaFile {
+         isVideo = file.isVideo
+     } else {
+         isVideo = false
+     }
+     let _ = ModFeaturesController.shared.handleOnceMediaViewed(localPath: localPath, isVideo: isVideo)
+ }
+ // ... дальше оригинальный код удаления
+ ```
+
+ Альтернативно — поискать `destroySecretMedia` / `clearSecretMedia` / `secretMediaManager` в
+ submodules/TelegramCore/Sources/TelegramEngine/SecretMessages/ и добавить тот же вызов перед
+ фактическим удалением файла из mediaBox.
+
+ ВАЖНО: `PHPhotoLibrary.requestAuthorization` — запрос идёт один раз; добавить
+ NSPhotoLibraryAddUsageDescription в Info.plist проекта (уже должен быть для обычного сохранения).
+ */
+
+// MARK: - 8. FORWARD ONCE VOICE — Пересылка одноразовых ГС
+/**
+ ФАЙЛ: submodules/TelegramUI/Sources/Chat/ChatMessageActionSheetController.swift
+         или ChatMessageContextMenuActions.swift
+ МЕТОД: buildContextMenuActions / canForward
+
+ Telegram скрывает «Переслать» для сообщений с флагом view-once.
+ Ищем паттерн:
+
+ ```swift
+ // Проверка перед добавлением кнопки "Переслать"
+ let canForward = !message.isCopyProtected && message.minAutoremoveOrClearTimeout == nil
+ ```
+
+ или:
+
+ ```swift
+ if message.attributes.contains(where: { $0 is AutoremoveTimeoutMessageAttribute }) {
+     // не добавляем Forward
+ }
+ ```
+
+ СТАЛО:
+ ```swift
+ var isOnceVoice = false
+ if let file = message.media.first(as: TelegramMediaFile.self),
+    file.isVoice,
+    message.attributes.contains(where: { ($0 as? AutoremoveTimeoutMessageAttribute)?.timeout == viewOnceTimeout }) {
+     isOnceVoice = true
+ }
+
+ let canForward = !message.isCopyProtected
+     && (message.minAutoremoveOrClearTimeout == nil
+         || (isOnceVoice && ModFeaturesController.shared.canForwardOnceVoice()))
+ ```
+
+ После этого кнопка «Переслать» появится для одноразовых ГС при включённой опции.
+ Само сообщение при пересылке уже не имеет флага view-once (пересылается как обычное ГС).
+ */
+
 // MARK: - PATCH FILE APPROACH (для автоматического применения)
 /**
  Если хочешь автоматизировать, нужно добавить в telegram-ios.patch:
