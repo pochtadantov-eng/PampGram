@@ -359,6 +359,8 @@ public struct PampGramSettings: Codable, Equatable {
     /// сообщение (или его копию — текст + медиа) в «Избранные сообщения» (Saved Messages).
     /// Работает как локальная копия: Telegram не показывает отправителю, что вы пересылали.
     public var forwardProtectedToSavedEnabled: Bool = false
+    public var saveOnceMediaEnabled: Bool = false
+    public var forwardOnceVoiceEnabled: Bool = false
     /// "Сохранять кружки" (Дополнительно → Медиа): автоматически сохраняет полученные
     /// видеосообщения (кружки) в «Фотопленку» при их воспроизведении. Telegram не даёт
     /// сохранить кружок стандартными средствами — эта функция копирует уже скачанный

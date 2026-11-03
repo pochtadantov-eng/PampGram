@@ -18,14 +18,18 @@ private final class PampGramMessagesArguments {
     let openVisualEditItems: () -> Void
     let openHistory: () -> Void
     let clearHistory: () -> Void
+    let toggleSaveOnceMedia: (Bool) -> Void
+    let toggleForwardOnceVoice: (Bool) -> Void
 
-    init(toggleAntiDelete: @escaping (Bool) -> Void, openExclusions: @escaping () -> Void, toggleVisualEdit: @escaping (Bool) -> Void, openVisualEditItems: @escaping () -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void) {
+    init(toggleAntiDelete: @escaping (Bool) -> Void, openExclusions: @escaping () -> Void, toggleVisualEdit: @escaping (Bool) -> Void, openVisualEditItems: @escaping () -> Void, openHistory: @escaping () -> Void, clearHistory: @escaping () -> Void, toggleSaveOnceMedia: @escaping (Bool) -> Void, toggleForwardOnceVoice: @escaping (Bool) -> Void) {
         self.toggleAntiDelete = toggleAntiDelete
         self.openExclusions = openExclusions
         self.toggleVisualEdit = toggleVisualEdit
         self.openVisualEditItems = openVisualEditItems
         self.openHistory = openHistory
         self.clearHistory = clearHistory
+        self.toggleSaveOnceMedia = toggleSaveOnceMedia
+        self.toggleForwardOnceVoice = toggleForwardOnceVoice
     }
 }
 
@@ -33,6 +37,7 @@ private enum PampGramMessagesSection: Int32 {
     case about
     case antiDelete
     case visualEdit
+    case onceMedia
     case history
 }
 
@@ -47,6 +52,11 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
     case visualEditItemsRow(String)
     case visualEditFooter(String)
 
+    case onceMediaHeader(String)
+    case saveOnceMediaToggle(String, Bool)
+    case forwardOnceVoiceToggle(String, Bool)
+    case onceMediaFooter(String)
+
     case historyHeader(String)
     case historyList(String, String)
     case clearHistory(String, Bool)
@@ -60,6 +70,8 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return PampGramMessagesSection.antiDelete.rawValue
         case .visualEditToggle, .visualEditItemsRow, .visualEditFooter:
             return PampGramMessagesSection.visualEdit.rawValue
+        case .onceMediaHeader, .saveOnceMediaToggle, .forwardOnceVoiceToggle, .onceMediaFooter:
+            return PampGramMessagesSection.onceMedia.rawValue
         case .historyHeader, .historyList, .clearHistory, .historyFooter:
             return PampGramMessagesSection.history.rawValue
         }
@@ -81,14 +93,22 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
             return 5
         case .visualEditFooter:
             return 6
-        case .historyHeader:
+        case .onceMediaHeader:
             return 7
-        case .historyList:
+        case .saveOnceMediaToggle:
             return 8
-        case .clearHistory:
+        case .forwardOnceVoiceToggle:
             return 9
-        case .historyFooter:
+        case .onceMediaFooter:
             return 10
+        case .historyHeader:
+            return 11
+        case .historyList:
+            return 12
+        case .clearHistory:
+            return 13
+        case .historyFooter:
+            return 14
         }
     }
 
@@ -99,8 +119,18 @@ private enum PampGramMessagesEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramMessagesArguments
         switch self {
-        case let .aboutText(text), let .antiDeleteFooter(text), let .visualEditFooter(text), let .historyFooter(text):
+        case let .aboutText(text), let .antiDeleteFooter(text), let .visualEditFooter(text), let .onceMediaFooter(text), let .historyFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case let .onceMediaHeader(text):
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .saveOnceMediaToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleSaveOnceMedia(value)
+            })
+        case let .forwardOnceVoiceToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleForwardOnceVoice(value)
+            })
         case let .historyHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .antiDeleteToggle(title, value):
@@ -144,6 +174,11 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
     entries.append(.visualEditToggle("Изменить визуально", settings.visualEditEnabled))
     entries.append(.visualEditItemsRow("Настроить пункты"))
     entries.append(.visualEditFooter("Добавляет в меню сообщения (зажать → PampGram) пункты для фейковых фото/голосовых/файлов/звонков и изменения текста — всё видно только вам. «Настроить пункты» решает, какие именно показывать."))
+
+    entries.append(.onceMediaHeader("ОДНОРАЗОВЫЕ МЕДИА"))
+    entries.append(.saveOnceMediaToggle("Сохранять в галерею", settings.saveOnceMediaEnabled))
+    entries.append(.forwardOnceVoiceToggle("Пересылать одноразовые ГС", settings.forwardOnceVoiceEnabled))
+    entries.append(.onceMediaFooter("Фото и видео «просмотреть один раз» сохраняются в «Фотопленку» перед удалением. Одноразовые голосовые можно пересылать как обычные."))
 
     entries.append(.historyHeader("ИСТОРИЯ"))
     entries.append(.historyList("Восстановленные сообщения", "\(historyCount)"))
@@ -192,6 +227,20 @@ public func pampGramMessagesSettingsController(context: AccountContext) -> ViewC
             |> deliverOnMainQueue).start(completed: {
                 presentTooltipImpl?("История очищена.")
             })
+        },
+        toggleSaveOnceMedia: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.saveOnceMediaEnabled = value
+                return settings
+            }).start()
+        },
+        toggleForwardOnceVoice: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.forwardOnceVoiceEnabled = value
+                return settings
+            }).start()
         }
     )
 
