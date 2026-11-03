@@ -286,11 +286,12 @@ diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift 
 index 50beb232..28538b21 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-@@ -1,6 +1,7 @@
+@@ -1,6 +1,8 @@
  import Foundation
  import UIKit
  import TelegramCore
 +import TextFormat
++import PromptUI
  import AsyncDisplayKit
  import Display
  import UIKit
@@ -547,7 +548,7 @@ index 50beb232..28538b21 100644
 +    }
 +    if settings.invisibleMessagesEnabled {
 +        items.append(entry("Невидимое сообщение 👻", "eye.slash") {
-+            let invisible = PampGramInvisibleMessageRuntime.generateInvisibleText(length: 1)
++            let invisible = PampGramInvisibleMessageRuntime.shared.generateInvisibleText(length: 1)
 +            let _ = enqueueMessages(account: context.account, peerId: message.id.peerId, messages: [.message(text: invisible, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])]).startStandalone()
 +        })
 +    }
