@@ -39,10 +39,11 @@ def add_dep_if_missing(build_path: Path, label: str, after_dep: str) -> None:
     if pampgram_dep in text:
         print(f"  SKIP: {label} (already present)")
         return
-    if after_dep not in text:
-        print(f"FAIL [{label}]: anchor dep not found in {build_path}", file=sys.stderr)
+    anchor = after_dep + ","
+    if anchor not in text:
+        print(f"FAIL [{label}]: anchor dep (with comma) not found in {build_path}", file=sys.stderr)
         sys.exit(1)
-    idx = text.index(after_dep) + len(after_dep)
+    idx = text.index(anchor) + len(anchor)
     build_path.write_text(
         text[:idx] + "\n        " + pampgram_dep + "," + text[idx:]
     )
