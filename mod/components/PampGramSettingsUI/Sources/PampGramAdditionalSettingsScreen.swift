@@ -27,13 +27,15 @@ private final class PampGramAdditionalArguments {
     let toggleStorySaving: (Bool) -> Void
     let toggleScreenshotBypass: (Bool) -> Void
     let toggleForwardProtectedToSaved: (Bool) -> Void
+    let toggleAutoSaveVideoMessages: (Bool) -> Void
+    let toggleFakeTyping: (Bool) -> Void
     let toggleHideOwnPhone: (Bool) -> Void
     let openFakePhoneNumber: () -> Void
     let toggleProfileIds: (Bool) -> Void
     let toggleAccountLink: (Bool) -> Void
     let openFakeBots: () -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleAutoSaveVideoMessages: @escaping (Bool) -> Void, toggleFakeTyping: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -50,6 +52,8 @@ private final class PampGramAdditionalArguments {
         self.toggleStorySaving = toggleStorySaving
         self.toggleScreenshotBypass = toggleScreenshotBypass
         self.toggleForwardProtectedToSaved = toggleForwardProtectedToSaved
+        self.toggleAutoSaveVideoMessages = toggleAutoSaveVideoMessages
+        self.toggleFakeTyping = toggleFakeTyping
         self.toggleHideOwnPhone = toggleHideOwnPhone
         self.openFakePhoneNumber = openFakePhoneNumber
         self.toggleProfileIds = toggleProfileIds
@@ -87,6 +91,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case screenshotsToggle(String, Bool)
     case chatScreenshotsToggle(String, Bool)
     case forwardProtectedToSavedToggle(String, Bool)
+    case autoSaveVideoMessagesToggle(String, Bool)
     case mediaFooter(String)
 
     case premiumHeader(String)
@@ -104,6 +109,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case profileIdsToggle(String, Bool)
     case accountLinkToggle(String, Bool)
     case fakeBotsRow(String, String)
+    case fakeTypingToggle(String, Bool)
     case extrasFooter(String)
 
     var section: ItemListSectionId {
@@ -114,11 +120,11 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
-        case .mediaHeader, .viewOnceToggle, .timedToggle, .markViewedToggle, .screenshotsToggle, .chatScreenshotsToggle, .forwardProtectedToSavedToggle, .mediaFooter:
+        case .mediaHeader, .viewOnceToggle, .timedToggle, .markViewedToggle, .screenshotsToggle, .chatScreenshotsToggle, .forwardProtectedToSavedToggle, .autoSaveVideoMessagesToggle, .mediaFooter:
             return PampGramAdditionalSection.media.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
-        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .fakePhoneNumberRow, .profileIdsToggle, .accountLinkToggle, .fakeBotsRow, .extrasFooter:
+        case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .fakePhoneNumberRow, .profileIdsToggle, .accountLinkToggle, .fakeBotsRow, .fakeTypingToggle, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
         }
     }
@@ -157,6 +163,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 13
         case .forwardProtectedToSavedToggle:
             return 29
+        case .autoSaveVideoMessagesToggle:
+            return 31
         case .mediaFooter:
             return 15
         case .premiumHeader:
@@ -187,6 +195,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 28
         case .fakeBotsRow:
             return 30
+        case .fakeTypingToggle:
+            return 32
         case .extrasFooter:
             return 40
         }
@@ -227,6 +237,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bookmark.fill", backgroundColor: UIColor(rgb: 0x007aff)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleForwardProtectedToSaved(value)
             })
+        case let .autoSaveVideoMessagesToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "circle.circle.fill", backgroundColor: UIColor(rgb: 0xaf52de)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleAutoSaveVideoMessages(value)
+            })
         case let .infinitePinsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "infinity", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleInfinitePins(value)
@@ -266,6 +280,10 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         case let .fakeBotsRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bitcoinsign.circle.fill", backgroundColor: UIColor(rgb: 0x1b8ed2)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openFakeBots()
+            })
+        case let .fakeTypingToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "keyboard.fill", backgroundColor: UIColor(rgb: 0xff2d55)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeTyping(value)
             })
         case let .fakeAdminRow(title):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "megaphone.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
@@ -313,7 +331,8 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.chatScreenshotsToggle("Обход скриншотов", settings.bypassScreenshotProtectionEnabled))
     entries.append(.markViewedToggle("Отмечать просмотренным", settings.bypassMarkViewedEnabled))
     entries.append(.forwardProtectedToSavedToggle("Пересылка в Избранное", settings.forwardProtectedToSavedEnabled))
-    entries.append(.mediaFooter("Одноразовое и временное медиа становится обычным: без отсчёта, остаётся в чате, его можно сохранить, а отметка «просмотрено» не отправляется. «Отмечать просмотренным»: когда вы открываете такое фото или видео, отправителю приходит отметка «просмотрено» (у него оно сгорает), а у вас оно остаётся. Без неё отправитель не узнаёт, что вы открывали. «Обход скриншотов» снимает защиту скриншотов и записи экрана. Секретных чатов не касается — там всё как в стоке. «Пересылка в Избранное»: в меню любого сообщения из защищённого чата и одноразовых медиа появляется «В Избранное» — копия сохраняется в Saved Messages."))
+    entries.append(.autoSaveVideoMessagesToggle("Сохранять кружки", settings.autoSaveVideoMessagesEnabled))
+    entries.append(.mediaFooter("Одноразовое и временное медиа становится обычным: без отсчёта, остаётся в чате, его можно сохранить. «Отмечать просмотренным» — у отправителя сгорает, у вас остаётся. «Пересылка в Избранное» — копия в Saved Messages. «Сохранять кружки» — видеосообщения автоматически сохраняются в галерею при воспроизведении."))
 
     entries.append(.premiumHeader("ПРЕМИУМ"))
     entries.append(.infinitePinsToggle("Закрепить чаты ∞", settings.infinitePinsEnabled))
@@ -332,7 +351,8 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     let fakeBots = pampGramParseFakeBots(settings.fakeBotsRaw)
     let builtInCount = settings.fakeCryptoBotEnabled && !fakeBots.contains(where: { $0.id == PampGramFakeCryptoBotRuntime.officialBotUserId }) ? 1 : 0
     entries.append(.fakeBotsRow("Фейковые боты", "\(fakeBots.count + builtInCount)"))
-    entries.append(.extrasFooter("Работает только на этом устройстве. «Фейк админ» — визуальные посты в любом канале. «Скрыть/фейковый номер» меняют то, что видно другим в профиле, не настоящий номер. «ID Профилей» и «Ссылка аккаунта» добавляют эти строки в чужие профили."))
+    entries.append(.fakeTypingToggle("Фейк набор текста", settings.fakeTypingEnabled))
+    entries.append(.extrasFooter("Работает только на этом устройстве. «Фейк админ» — визуальные посты в любом канале. «Скрыть/фейковый номер» меняют то, что видно другим в профиле, не настоящий номер. «ID Профилей» и «Ссылка аккаунта» добавляют эти строки в чужие профили. «Фейк набор текста» — включает в контекстном меню чата кнопки «Печатает…» / «Записывает ГС…», которые непрерывно шлют статус активности собеседнику."))
 
     return entries
 }
@@ -546,6 +566,20 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         },
         openFakeBots: {
             pushControllerImpl?(pampGramFakeBotsController(context: context))
+        },
+        toggleAutoSaveVideoMessages: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.autoSaveVideoMessagesEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeTyping: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeTypingEnabled = value
+                return settings
+            }).start()
         }
     )
 

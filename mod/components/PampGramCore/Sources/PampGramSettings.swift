@@ -359,6 +359,15 @@ public struct PampGramSettings: Codable, Equatable {
     /// сообщение (или его копию — текст + медиа) в «Избранные сообщения» (Saved Messages).
     /// Работает как локальная копия: Telegram не показывает отправителю, что вы пересылали.
     public var forwardProtectedToSavedEnabled: Bool = false
+    /// "Сохранять кружки" (Дополнительно → Медиа): автоматически сохраняет полученные
+    /// видеосообщения (кружки) в «Фотопленку» при их воспроизведении. Telegram не даёт
+    /// сохранить кружок стандартными средствами — эта функция копирует уже скачанный
+    /// ресурс из mediaBox в галерею через PHPhotoLibrary.
+    public var autoSaveVideoMessagesEnabled: Bool = false
+    /// "Фейк набор текста" (Дополнительно → Ещё): когда активирован для конкретного чата,
+    /// непрерывно шлёт статус "печатает..." или "записывает голосовое..." собеседнику.
+    /// Работает пока пользователь не выключит или не выйдет из чата.
+    public var fakeTypingEnabled: Bool = false
     public var fakeCryptoBotEnabled: Bool = false
     /// The fake CryptoBot's operation history ("История"), as JSON text; a Codable array of structs
     /// is not safe inside the Postbox-coded settings, a string is.
@@ -747,6 +756,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
         self.bypassMarkViewedEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassMarkViewedEnabled) ?? defaults.bypassMarkViewedEnabled
         self.forwardProtectedToSavedEnabled = try container.decodeIfPresent(Bool.self, forKey: .forwardProtectedToSavedEnabled) ?? defaults.forwardProtectedToSavedEnabled
+        self.autoSaveVideoMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSaveVideoMessagesEnabled) ?? defaults.autoSaveVideoMessagesEnabled
+        self.fakeTypingEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeTypingEnabled) ?? defaults.fakeTypingEnabled
         self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
         self.fakeCryptoBotHistoryRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotHistoryRaw) ?? defaults.fakeCryptoBotHistoryRaw
         self.fakeBotsRaw = try container.decodeIfPresent(String.self, forKey: .fakeBotsRaw) ?? defaults.fakeBotsRaw
