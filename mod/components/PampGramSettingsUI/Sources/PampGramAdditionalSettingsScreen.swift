@@ -34,8 +34,20 @@ private final class PampGramAdditionalArguments {
     let toggleProfileIds: (Bool) -> Void
     let toggleAccountLink: (Bool) -> Void
     let openFakeBots: () -> Void
+    let toggleFakeForwardedFrom: (Bool) -> Void
+    let toggleFakeReactions: (Bool) -> Void
+    let toggleFakePremiumBadge: (Bool) -> Void
+    let toggleFakeSubscribers: (Bool) -> Void
+    let toggleFakeReadReceipts: (Bool) -> Void
+    let toggleChatEditor: (Bool) -> Void
+    let toggleConversationGenerator: (Bool) -> Void
+    let toggleFakeDeletedMessage: (Bool) -> Void
+    let toggleInvisibleMessages: (Bool) -> Void
+    let toggleReactionSpammer: (Bool) -> Void
+    let toggleFakeVoiceFromText: (Bool) -> Void
+    let toggleStickerPackCloner: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleAutoSaveVideoMessages: @escaping (Bool) -> Void, toggleFakeTyping: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleAutoSaveVideoMessages: @escaping (Bool) -> Void, toggleFakeTyping: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void, toggleFakeForwardedFrom: @escaping (Bool) -> Void, toggleFakeReactions: @escaping (Bool) -> Void, toggleFakePremiumBadge: @escaping (Bool) -> Void, toggleFakeSubscribers: @escaping (Bool) -> Void, toggleFakeReadReceipts: @escaping (Bool) -> Void, toggleChatEditor: @escaping (Bool) -> Void, toggleConversationGenerator: @escaping (Bool) -> Void, toggleFakeDeletedMessage: @escaping (Bool) -> Void, toggleInvisibleMessages: @escaping (Bool) -> Void, toggleReactionSpammer: @escaping (Bool) -> Void, toggleFakeVoiceFromText: @escaping (Bool) -> Void, toggleStickerPackCloner: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -59,6 +71,18 @@ private final class PampGramAdditionalArguments {
         self.toggleProfileIds = toggleProfileIds
         self.toggleAccountLink = toggleAccountLink
         self.openFakeBots = openFakeBots
+        self.toggleFakeForwardedFrom = toggleFakeForwardedFrom
+        self.toggleFakeReactions = toggleFakeReactions
+        self.toggleFakePremiumBadge = toggleFakePremiumBadge
+        self.toggleFakeSubscribers = toggleFakeSubscribers
+        self.toggleFakeReadReceipts = toggleFakeReadReceipts
+        self.toggleChatEditor = toggleChatEditor
+        self.toggleConversationGenerator = toggleConversationGenerator
+        self.toggleFakeDeletedMessage = toggleFakeDeletedMessage
+        self.toggleInvisibleMessages = toggleInvisibleMessages
+        self.toggleReactionSpammer = toggleReactionSpammer
+        self.toggleFakeVoiceFromText = toggleFakeVoiceFromText
+        self.toggleStickerPackCloner = toggleStickerPackCloner
     }
 }
 
@@ -69,6 +93,7 @@ private enum PampGramAdditionalSection: Int32 {
     case media
     case premium
     case extras
+    case trickery
 }
 
 private enum PampGramAdditionalEntry: ItemListNodeEntry {
@@ -112,6 +137,21 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case fakeTypingToggle(String, Bool)
     case extrasFooter(String)
 
+    case trickeryHeader(String)
+    case fakeForwardedFromToggle(String, Bool)
+    case fakeReactionsToggle(String, Bool)
+    case fakePremiumBadgeToggle(String, Bool)
+    case fakeSubscribersToggle(String, Bool)
+    case fakeReadReceiptsToggle(String, Bool)
+    case chatEditorToggle(String, Bool)
+    case conversationGeneratorToggle(String, Bool)
+    case fakeDeletedMessageToggle(String, Bool)
+    case invisibleMessagesToggle(String, Bool)
+    case reactionSpammerToggle(String, Bool)
+    case fakeVoiceFromTextToggle(String, Bool)
+    case stickerPackClonerToggle(String, Bool)
+    case trickeryFooter(String)
+
     var section: ItemListSectionId {
         switch self {
         case .aboutText:
@@ -126,6 +166,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.premium.rawValue
         case .extrasHeader, .fakeLocationRow, .chatLockRow, .callOverridesRow, .fakeAdminRow, .hideOwnPhoneToggle, .fakePhoneNumberRow, .profileIdsToggle, .accountLinkToggle, .fakeBotsRow, .fakeTypingToggle, .extrasFooter:
             return PampGramAdditionalSection.extras.rawValue
+        case .trickeryHeader, .fakeForwardedFromToggle, .fakeReactionsToggle, .fakePremiumBadgeToggle, .fakeSubscribersToggle, .fakeReadReceiptsToggle, .chatEditorToggle, .conversationGeneratorToggle, .fakeDeletedMessageToggle, .invisibleMessagesToggle, .reactionSpammerToggle, .fakeVoiceFromTextToggle, .stickerPackClonerToggle, .trickeryFooter:
+            return PampGramAdditionalSection.trickery.rawValue
         }
     }
 
@@ -199,6 +241,34 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return 32
         case .extrasFooter:
             return 40
+        case .trickeryHeader:
+            return 50
+        case .fakeForwardedFromToggle:
+            return 51
+        case .fakeReactionsToggle:
+            return 52
+        case .fakePremiumBadgeToggle:
+            return 53
+        case .fakeSubscribersToggle:
+            return 54
+        case .fakeReadReceiptsToggle:
+            return 55
+        case .chatEditorToggle:
+            return 56
+        case .conversationGeneratorToggle:
+            return 57
+        case .fakeDeletedMessageToggle:
+            return 58
+        case .invisibleMessagesToggle:
+            return 59
+        case .reactionSpammerToggle:
+            return 60
+        case .fakeVoiceFromTextToggle:
+            return 61
+        case .stickerPackClonerToggle:
+            return 62
+        case .trickeryFooter:
+            return 69
         }
     }
 
@@ -209,9 +279,9 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdditionalArguments
         switch self {
-        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .mediaFooter(text), let .premiumFooter(text), let .extrasFooter(text):
+        case let .aboutText(text), let .voiceFooter(text), let .speedFooter(text), let .mediaFooter(text), let .premiumFooter(text), let .extrasFooter(text), let .trickeryFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .voiceHeader(text), let .speedHeader(text), let .mediaHeader(text), let .premiumHeader(text), let .extrasHeader(text):
+        case let .voiceHeader(text), let .speedHeader(text), let .mediaHeader(text), let .premiumHeader(text), let .extrasHeader(text), let .trickeryHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .viewOnceToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
@@ -305,6 +375,54 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "link", backgroundColor: UIColor(rgb: 0x007aff)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleAccountLink(value)
             })
+        case let .fakeForwardedFromToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "arrowshape.turn.up.right.fill", backgroundColor: UIColor(rgb: 0xff6b00)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeForwardedFrom(value)
+            })
+        case let .fakeReactionsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "heart.circle.fill", backgroundColor: UIColor(rgb: 0xff2d55)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeReactions(value)
+            })
+        case let .fakePremiumBadgeToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "star.fill", backgroundColor: UIColor(rgb: 0xf5a623)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakePremiumBadge(value)
+            })
+        case let .fakeSubscribersToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "person.3.fill", backgroundColor: UIColor(rgb: 0x30b0c7)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeSubscribers(value)
+            })
+        case let .fakeReadReceiptsToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "checkmark.message.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeReadReceipts(value)
+            })
+        case let .chatEditorToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "pencil.and.outline", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleChatEditor(value)
+            })
+        case let .conversationGeneratorToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "text.bubble.fill", backgroundColor: UIColor(rgb: 0x8e44ad)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleConversationGenerator(value)
+            })
+        case let .fakeDeletedMessageToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "trash.slash.fill", backgroundColor: UIColor(rgb: 0xff3b30)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeDeletedMessage(value)
+            })
+        case let .invisibleMessagesToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "eye.slash.fill", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleInvisibleMessages(value)
+            })
+        case let .reactionSpammerToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "bolt.heart.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleReactionSpammer(value)
+            })
+        case let .fakeVoiceFromTextToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "waveform.circle.fill", backgroundColor: UIColor(rgb: 0x007aff)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleFakeVoiceFromText(value)
+            })
+        case let .stickerPackClonerToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "doc.on.doc.fill", backgroundColor: UIColor(rgb: 0xaf52de)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleStickerPackCloner(value)
+            })
         }
     }
 }
@@ -353,6 +471,21 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.fakeBotsRow("Фейковые боты", "\(fakeBots.count + builtInCount)"))
     entries.append(.fakeTypingToggle("Фейк набор текста", settings.fakeTypingEnabled))
     entries.append(.extrasFooter("Работает только на этом устройстве. «Фейк админ» — визуальные посты в любом канале. «Скрыть/фейковый номер» меняют то, что видно другим в профиле, не настоящий номер. «ID Профилей» и «Ссылка аккаунта» добавляют эти строки в чужие профили. «Фейк набор текста» — включает в контекстном меню чата кнопки «Печатает…» / «Записывает ГС…», которые непрерывно шлют статус активности собеседнику."))
+
+    entries.append(.trickeryHeader("НАЁБ И ВИЗУАЛ"))
+    entries.append(.fakeForwardedFromToggle("Фейк «Переслано от»", settings.fakeForwardedFromEnabled))
+    entries.append(.fakeReactionsToggle("Фейк реакции", settings.fakeReactionsEnabled))
+    entries.append(.fakePremiumBadgeToggle("Фейк Premium / верификация", settings.fakePremiumBadgeEnabled))
+    entries.append(.fakeSubscribersToggle("Фейк подписчики", settings.fakeSubscribersEnabled))
+    entries.append(.fakeReadReceiptsToggle("Фейк прочитано", settings.fakeReadReceiptsEnabled))
+    entries.append(.chatEditorToggle("Редактор чата", settings.chatEditorEnabled))
+    entries.append(.conversationGeneratorToggle("Генератор переписки", settings.conversationGeneratorEnabled))
+    entries.append(.fakeDeletedMessageToggle("Фейк удаления", settings.fakeDeletedMessageEnabled))
+    entries.append(.invisibleMessagesToggle("Невидимые сообщения", settings.invisibleMessagesEnabled))
+    entries.append(.reactionSpammerToggle("Спам реакциями", settings.reactionSpammerEnabled))
+    entries.append(.fakeVoiceFromTextToggle("Голосовое из текста", settings.fakeVoiceFromTextEnabled))
+    entries.append(.stickerPackClonerToggle("Клон стикерпаков", settings.stickerPackClonerEnabled))
+    entries.append(.trickeryFooter("Всё локально. «Фейк переслано» — любое сообщение выглядит как пересланное от кого угодно. «Фейк реакции» — рисует реакции с нужными цифрами. «Premium/верификация» — звёздочка и галочка в профиле. «Фейк подписчики» — любое число участников канала. «Прочитано» — двойные/одинарные галочки по желанию. «Редактор чата» — правка любого сообщения (чужого тоже): текст, время, реакции. «Генератор» — создание диалога с нуля. «Невидимые» — сообщения из невидимых символов. «Спам реакциями» — ставит/снимает реакцию в цикле. «Голосовое из текста» — TTS в голосовое. «Клон стикерпаков» — копия любого пака включая Premium emoji."))
 
     return entries
 }
@@ -578,6 +711,90 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.fakeTypingEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeForwardedFrom: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeForwardedFromEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeReactions: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeReactionsEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakePremiumBadge: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakePremiumBadgeEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeSubscribers: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeSubscribersEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeReadReceipts: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeReadReceiptsEnabled = value
+                return settings
+            }).start()
+        },
+        toggleChatEditor: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.chatEditorEnabled = value
+                return settings
+            }).start()
+        },
+        toggleConversationGenerator: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.conversationGeneratorEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeDeletedMessage: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeDeletedMessageEnabled = value
+                return settings
+            }).start()
+        },
+        toggleInvisibleMessages: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.invisibleMessagesEnabled = value
+                return settings
+            }).start()
+        },
+        toggleReactionSpammer: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.reactionSpammerEnabled = value
+                return settings
+            }).start()
+        },
+        toggleFakeVoiceFromText: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.fakeVoiceFromTextEnabled = value
+                return settings
+            }).start()
+        },
+        toggleStickerPackCloner: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.stickerPackClonerEnabled = value
                 return settings
             }).start()
         }

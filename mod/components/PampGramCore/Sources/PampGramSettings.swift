@@ -368,6 +368,40 @@ public struct PampGramSettings: Codable, Equatable {
     /// непрерывно шлёт статус "печатает..." или "записывает голосовое..." собеседнику.
     /// Работает пока пользователь не выключит или не выйдет из чата.
     public var fakeTypingEnabled: Bool = false
+    /// «Фейк "Переслано от"» — любое сообщение выглядит как пересланное от выбранного
+    /// канала или пользователя. Локально, на скриншоте не отличить.
+    public var fakeForwardedFromEnabled: Bool = false
+    /// «Фейк реакции» — под любым сообщением рисуются реакции с произвольными цифрами.
+    public var fakeReactionsEnabled: Bool = false
+    /// «Фейк Premium» — звёздочка Premium и галочка верификации рядом с именем
+    /// в профиле и в чатах. Локально.
+    public var fakePremiumBadgeEnabled: Bool = false
+    /// «Фейк подписчики» — в своём канале/группе показывает произвольное число участников.
+    public var fakeSubscribersEnabled: Bool = false
+    public var fakeSubscribersCount: Int64 = 0
+    /// «Фейк прочитано» — двойные галочки на своих сообщениях, даже если собеседник
+    /// не читал; или одна галочка, хотя давно прочитано (для скриншота).
+    public var fakeReadReceiptsEnabled: Bool = false
+    /// «Редактор чата» — полноценное редактирование любого сообщения в чате (чужого тоже):
+    /// текст, время, галочки, реакции. Для скриншотов.
+    public var chatEditorEnabled: Bool = false
+    /// «Генератор переписки» — создаёт целый диалог с нуля: выбираешь контакт, пишешь
+    /// реплики за обоих, ставишь время и статусы.
+    public var conversationGeneratorEnabled: Bool = false
+    /// «Фейк удалённое» — показывает что собеседник якобы удалил сообщение, хотя не удалял.
+    public var fakeDeletedMessageEnabled: Bool = false
+    /// «Невидимые сообщения» — отправка сообщений из невидимых Unicode-символов (zero-width).
+    /// Собеседник получает пуш, открывает чат — а там пусто.
+    public var invisibleMessagesEnabled: Bool = false
+    /// «Спам реакциями» — ставит и снимает реакцию на сообщение в цикле.
+    /// У собеседника телефон непрерывно вибрирует от уведомлений.
+    public var reactionSpammerEnabled: Bool = false
+    /// «Фейк голосовое из текста» — вводишь текст, выбираешь голос, отправляется
+    /// как настоящее голосовое сообщение.
+    public var fakeVoiceFromTextEnabled: Bool = false
+    /// «Клон стикерпака» — копирует любой стикерпак (включая Premium emoji и кастомные)
+    /// в свою коллекцию без подписки.
+    public var stickerPackClonerEnabled: Bool = false
     public var fakeCryptoBotEnabled: Bool = false
     /// The fake CryptoBot's operation history ("История"), as JSON text; a Codable array of structs
     /// is not safe inside the Postbox-coded settings, a string is.
@@ -584,11 +618,24 @@ public struct PampGramSettings: Codable, Equatable {
             fakeTransferCooldownSeconds: 7 * 24 * 60 * 60,
             fakeTransferCooldownUntil: 0,
             fakeOfferAcceptFailEnabled: false,
+            fakeForwardedFromEnabled: false,
+            fakeReactionsEnabled: false,
+            fakePremiumBadgeEnabled: false,
+            fakeSubscribersEnabled: false,
+            fakeSubscribersCount: 0,
+            fakeReadReceiptsEnabled: false,
+            chatEditorEnabled: false,
+            conversationGeneratorEnabled: false,
+            fakeDeletedMessageEnabled: false,
+            invisibleMessagesEnabled: false,
+            reactionSpammerEnabled: false,
+            fakeVoiceFromTextEnabled: false,
+            stickerPackClonerEnabled: false,
             visualChatEnabledPeerIds: []
         )
     }
 
-    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool, moderationExcludedPeerIds: [PeerId], callRecordingEnabled: Bool, fakeTransferCooldownEnabled: Bool, fakeTransferCooldownSeconds: Int32, fakeTransferCooldownUntil: Int32, fakeOfferAcceptFailEnabled: Bool, visualChatEnabledPeerIds: [PeerId]) {
+    public init(phantomGiftsEnabled: Bool, fakeStarsBalance: Int64, fakeTonBalanceNanos: Int64, fakeStarsDisplayEnabled: Bool, fakeTonDisplayEnabled: Bool, antiDeleteMessagesEnabled: Bool, ghostReaderEnabled: Bool, onlineMaskEnabled: Bool, ghostModeEnabled: Bool, ghostHideReadReceipts: Bool, ghostHideStoryViews: Bool, ghostHideOnline: Bool, ghostHideTyping: Bool, ghostAutoOffline: Bool, ghostReadOnAction: Bool, ghostExcludeAllChannels: Bool, ghostExcludeAllGroups: Bool, ghostExcludedFolderIds: [Int32], ghostExcludedPeerIds: [PeerId], antiDeleteExcludedPeerIds: [PeerId], visualEditEnabled: Bool, visualEditTextItemEnabled: Bool, visualEditPhotoItemEnabled: Bool, visualEditVoiceItemEnabled: Bool, visualEditFileItemEnabled: Bool, visualEditCallItemEnabled: Bool, visualEditPremiumGiftItemEnabled: Bool, visualEditReactionItemEnabled: Bool, visualEditSaveOneTimeItemEnabled: Bool, visualEditChannelPhotoItemEnabled: Bool, visualEditRealBearsItemEnabled: Bool, fromHimGiftsEnabled: Bool, voiceChangerMessagesEnabled: Bool, voicePreset: PampGramVoicePreset, uploadSpeedMode: PampGramSpeedMode, downloadSpeedMode: PampGramSpeedMode, fakeLocationEnabled: Bool, fakeLocationLatitude: Double, fakeLocationLongitude: Double, chatLockEnabled: Bool, chatLockPin: String, lockedChatPeerIds: [PeerId], localRublesBalanceKopecks: Int64, localRublesPurchaseEnabled: Bool, infinitePinsEnabled: Bool, legalPremiumEnabled: Bool, showTemporaryMediaEnabled: Bool, bypassViewOnceMediaEnabled: Bool, bypassTimedMediaEnabled: Bool, storySavingEnabled: Bool, bypassScreenshotProtectionEnabled: Bool, masterEnabled: Bool, hidePampGramIconEnabled: Bool, bannedLocally: Bool, channelUnsubscribedLocally: Bool, isOwnerAccount: Bool, hideOwnPhoneNumber: Bool, fakePhoneNumber: String, cachedIsProSubscriber: Bool, profileIdsEnabled: Bool, accountLinkEnabled: Bool, unupgradedGiftEntryEnabled: Bool, moderationEnabled: Bool, moderationApiKey: String, moderationBlockSender: Bool, moderationStrangersOnly: Bool, moderationExcludedPeerIds: [PeerId], callRecordingEnabled: Bool, fakeTransferCooldownEnabled: Bool, fakeTransferCooldownSeconds: Int32, fakeTransferCooldownUntil: Int32, fakeOfferAcceptFailEnabled: Bool, fakeForwardedFromEnabled: Bool = false, fakeReactionsEnabled: Bool = false, fakePremiumBadgeEnabled: Bool = false, fakeSubscribersEnabled: Bool = false, fakeSubscribersCount: Int64 = 0, fakeReadReceiptsEnabled: Bool = false, chatEditorEnabled: Bool = false, conversationGeneratorEnabled: Bool = false, fakeDeletedMessageEnabled: Bool = false, invisibleMessagesEnabled: Bool = false, reactionSpammerEnabled: Bool = false, fakeVoiceFromTextEnabled: Bool = false, stickerPackClonerEnabled: Bool = false, visualChatEnabledPeerIds: [PeerId]) {
         self.phantomGiftsEnabled = phantomGiftsEnabled
         self.fakeStarsBalance = fakeStarsBalance
         self.fakeTonBalanceNanos = fakeTonBalanceNanos
@@ -661,6 +708,19 @@ public struct PampGramSettings: Codable, Equatable {
         self.fakeTransferCooldownSeconds = fakeTransferCooldownSeconds
         self.fakeTransferCooldownUntil = fakeTransferCooldownUntil
         self.fakeOfferAcceptFailEnabled = fakeOfferAcceptFailEnabled
+        self.fakeForwardedFromEnabled = fakeForwardedFromEnabled
+        self.fakeReactionsEnabled = fakeReactionsEnabled
+        self.fakePremiumBadgeEnabled = fakePremiumBadgeEnabled
+        self.fakeSubscribersEnabled = fakeSubscribersEnabled
+        self.fakeSubscribersCount = fakeSubscribersCount
+        self.fakeReadReceiptsEnabled = fakeReadReceiptsEnabled
+        self.chatEditorEnabled = chatEditorEnabled
+        self.conversationGeneratorEnabled = conversationGeneratorEnabled
+        self.fakeDeletedMessageEnabled = fakeDeletedMessageEnabled
+        self.invisibleMessagesEnabled = invisibleMessagesEnabled
+        self.reactionSpammerEnabled = reactionSpammerEnabled
+        self.fakeVoiceFromTextEnabled = fakeVoiceFromTextEnabled
+        self.stickerPackClonerEnabled = stickerPackClonerEnabled
         self.visualChatEnabledPeerIds = visualChatEnabledPeerIds
     }
 
@@ -758,6 +818,19 @@ public struct PampGramSettings: Codable, Equatable {
         self.forwardProtectedToSavedEnabled = try container.decodeIfPresent(Bool.self, forKey: .forwardProtectedToSavedEnabled) ?? defaults.forwardProtectedToSavedEnabled
         self.autoSaveVideoMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSaveVideoMessagesEnabled) ?? defaults.autoSaveVideoMessagesEnabled
         self.fakeTypingEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeTypingEnabled) ?? defaults.fakeTypingEnabled
+        self.fakeForwardedFromEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeForwardedFromEnabled) ?? defaults.fakeForwardedFromEnabled
+        self.fakeReactionsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeReactionsEnabled) ?? defaults.fakeReactionsEnabled
+        self.fakePremiumBadgeEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakePremiumBadgeEnabled) ?? defaults.fakePremiumBadgeEnabled
+        self.fakeSubscribersEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeSubscribersEnabled) ?? defaults.fakeSubscribersEnabled
+        self.fakeSubscribersCount = try container.decodeIfPresent(Int64.self, forKey: .fakeSubscribersCount) ?? defaults.fakeSubscribersCount
+        self.fakeReadReceiptsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeReadReceiptsEnabled) ?? defaults.fakeReadReceiptsEnabled
+        self.chatEditorEnabled = try container.decodeIfPresent(Bool.self, forKey: .chatEditorEnabled) ?? defaults.chatEditorEnabled
+        self.conversationGeneratorEnabled = try container.decodeIfPresent(Bool.self, forKey: .conversationGeneratorEnabled) ?? defaults.conversationGeneratorEnabled
+        self.fakeDeletedMessageEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeDeletedMessageEnabled) ?? defaults.fakeDeletedMessageEnabled
+        self.invisibleMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .invisibleMessagesEnabled) ?? defaults.invisibleMessagesEnabled
+        self.reactionSpammerEnabled = try container.decodeIfPresent(Bool.self, forKey: .reactionSpammerEnabled) ?? defaults.reactionSpammerEnabled
+        self.fakeVoiceFromTextEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeVoiceFromTextEnabled) ?? defaults.fakeVoiceFromTextEnabled
+        self.stickerPackClonerEnabled = try container.decodeIfPresent(Bool.self, forKey: .stickerPackClonerEnabled) ?? defaults.stickerPackClonerEnabled
         self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
         self.fakeCryptoBotHistoryRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotHistoryRaw) ?? defaults.fakeCryptoBotHistoryRaw
         self.fakeBotsRaw = try container.decodeIfPresent(String.self, forKey: .fakeBotsRaw) ?? defaults.fakeBotsRaw
@@ -843,6 +916,19 @@ public struct PampGramSettings: Codable, Equatable {
         settings.storySavingEnabled = false
         settings.bypassScreenshotProtectionEnabled = false
         settings.fakeCryptoBotEnabled = false
+        settings.fakeForwardedFromEnabled = false
+        settings.fakeReactionsEnabled = false
+        settings.fakePremiumBadgeEnabled = false
+        settings.fakeSubscribersEnabled = false
+        settings.fakeSubscribersCount = 0
+        settings.fakeReadReceiptsEnabled = false
+        settings.chatEditorEnabled = false
+        settings.conversationGeneratorEnabled = false
+        settings.fakeDeletedMessageEnabled = false
+        settings.invisibleMessagesEnabled = false
+        settings.reactionSpammerEnabled = false
+        settings.fakeVoiceFromTextEnabled = false
+        settings.stickerPackClonerEnabled = false
         settings.masterEnabled = false
         return settings
     }
