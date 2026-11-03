@@ -132,7 +132,7 @@ index 0f40cdc9..c407e83d 100644
  import TemporaryCachedPeerDataManager
  import PhoneNumberFormat
  import TelegramUIPreferences
-@@ -515,6 +516,81 @@ public final class AccountContextImpl: AccountContext {
+@@ -515,6 +516,109 @@ public final class AccountContextImpl: AccountContext {
              PampGramLocalPremiumRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
              PampGramModerationRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
              PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -224,6 +224,21 @@ index 0f40cdc9..c407e83d 100644
 +                }
 +                return nil
 +            }
++            PampGramVoiceFileSaver.shared.voiceResourceExtractor = { message in
++                for media in message.media {
++                    if let file = media as? TelegramMediaFile, file.isVoice {
++                        return (file.resource, file.fileName ?? "voice.ogg")
++                    }
++                }
++                return nil
++            }
++            PampGramVoiceFileSaver.shared.presentShareSheet = { fileURL in
++                DispatchQueue.main.async {
++                    guard let topVC = (sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController else { return }
++                    let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
++                    topVC.present(activityVC, animated: true)
++                }
++            }
              PampGramGiftBehavior.shared.start(postbox: account.postbox)
              PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
              PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -308,7 +323,7 @@ index 50beb232..28538b21 100644
  import AsyncDisplayKit
  import Display
  import UIKit
-@@ -518,31 +519,24 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -518,31 +519,70 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
          newList.insert(.separator, at: 0)
          newList.insert(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
              return pampGramSettingsIcon(size: 24.0)
@@ -346,8 +361,54 @@ index 50beb232..28538b21 100644
 +                c?.pushItems(items: .single(ContextController.Items(content: .list(subItems))))
              })
          })), at: 0)
++        // PampGram: save buttons for video circles and voice — right after Reply
++        do {
++            let isInstantVideo = message.media.contains(where: { ($0 as? TelegramMediaFile)?.isInstantVideo == true })
++            let isVoice = message.media.contains(where: { ($0 as? TelegramMediaFile)?.isVoice == true })
++            if isInstantVideo || isVoice {
++                let replyText = chatPresentationInterfaceState.strings.Conversation_ContextMenuReply
++                var insertAt = 2
++                for (i, item) in newList.enumerated() {
++                    if case .action(let action) = item, action.text == replyText {
++                        insertAt = i + 1
++                        break
++                    }
++                }
++                var pampItems: [ContextMenuItem] = []
++                if isInstantVideo {
++                    pampItems.append(.action(ContextMenuActionItem(text: "Сохранить видео", textColor: .primary, icon: { theme in
++                        return generateTintedImage(image: UIImage(systemName: "square.and.arrow.down"), color: theme.actionSheet.primaryTextColor)
++                    }, iconSource: nil, action: { _, f in
++                        f(.dismissWithoutContent)
++                        PampGramMediaGallerySaver.shared.saveMessageMedia(postbox: context.account.postbox, messageId: message.id)
++                    })))
++                    pampItems.append(.action(ContextMenuActionItem(text: "Сохранить в избранное", textColor: .primary, icon: { theme in
++                        return generateTintedImage(image: UIImage(systemName: "star"), color: theme.actionSheet.primaryTextColor)
++                    }, iconSource: nil, action: { _, f in
++                        f(.dismissWithoutContent)
++                        PampGramForwardProtectedDisplay.shared.saveToSavedMessages(accountPeerId: context.account.peerId, message: message, postbox: context.account.postbox)
++                    })))
++                } else if isVoice {
++                    pampItems.append(.action(ContextMenuActionItem(text: "Сохранить в избранное", textColor: .primary, icon: { theme in
++                        return generateTintedImage(image: UIImage(systemName: "star"), color: theme.actionSheet.primaryTextColor)
++                    }, iconSource: nil, action: { _, f in
++                        f(.dismissWithoutContent)
++                        PampGramForwardProtectedDisplay.shared.saveToSavedMessages(accountPeerId: context.account.peerId, message: message, postbox: context.account.postbox)
++                    })))
++                    pampItems.append(.action(ContextMenuActionItem(text: "Сохранить файлом", textColor: .primary, icon: { theme in
++                        return generateTintedImage(image: UIImage(systemName: "doc"), color: theme.actionSheet.primaryTextColor)
++                    }, iconSource: nil, action: { _, f in
++                        f(.dismissWithoutContent)
++                        PampGramVoiceFileSaver.shared.saveVoiceAsFile(postbox: context.account.postbox, messageId: message.id)
++                    })))
++                }
++                for (offset, item) in pampItems.enumerated() {
++                    newList.insert(item, at: insertAt + offset)
++                }
++            }
++        }
          items.content = .list(newList)
-@@ -550,110 +544,262 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -550,110 +590,278 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
      }
  }
  
@@ -388,7 +449,7 @@ index 50beb232..28538b21 100644
 +    }
 +
 +    // --- Медиа: сохранение и пересылка ---
-+    let hasMedia = message.media.contains(where: { $0 is TelegramMediaImage || ($0 as? TelegramMediaFile)?.isVideo == true || ($0 as? TelegramMediaFile)?.isAnimated == true })
++    let hasMedia = message.media.contains(where: { $0 is TelegramMediaImage || (($0 as? TelegramMediaFile)?.isVideo == true && ($0 as? TelegramMediaFile)?.isInstantVideo != true) || ($0 as? TelegramMediaFile)?.isAnimated == true })
 +    if hasMedia {
 +        items.append(entry("Сохранить в галерею", "square.and.arrow.down") {
 +            PampGramMediaGallerySaver.shared.saveMessageMedia(postbox: context.account.postbox, messageId: message.id)
