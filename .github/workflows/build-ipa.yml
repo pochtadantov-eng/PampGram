@@ -81,6 +81,49 @@ jobs:
           cp ../pampgram/mod/fake-codesigning-profiles/*.mobileprovision build-system/fake-codesigning/profiles/
           ls -1 build-system/fake-codesigning/profiles/
 
+      # The .mobileprovision files have a fixed ExpirationDate baked in at generation time.
+      # Telegram-iOS last regenerated them at commit 7ed08c0141 (2025-12-26) and never
+      # refreshed since, so every tag ships the same now-expired date. Re-sign each profile
+      # with a fresh ExpirationDate using the same self-signed cert the next step imports.
+      - name: Renew the expired fake provisioning profiles
+        working-directory: telegram-ios
+        run: |
+          set -euo pipefail
+          P12=build-system/fake-codesigning/certs/SelfSigned.p12
+          openssl pkcs12 -legacy -in "$P12" -nodes -passin pass: -out /tmp/fake-signer.pem 2>/dev/null \
+            || openssl pkcs12 -in "$P12" -nodes -passin pass: -out /tmp/fake-signer.pem
+          test -s /tmp/fake-signer.pem
+
+          python3 - <<'PY'
+          import datetime
+          import glob
+          import plistlib
+          import subprocess
+
+          cert = "/tmp/fake-signer.pem"
+          new_expiry = datetime.datetime(2030, 10, 29, 17, 33, 19, tzinfo=datetime.timezone.utc)
+
+          for path in sorted(glob.glob("build-system/fake-codesigning/profiles/*.mobileprovision")):
+              decoded = subprocess.run(
+                  ["openssl", "smime", "-verify", "-noverify", "-in", path, "-inform", "DER"],
+                  check=True, capture_output=True,
+              ).stdout
+              plist = plistlib.loads(decoded)
+              old_expiry = plist.get("ExpirationDate")
+              plist["ExpirationDate"] = new_expiry
+              new_plist = plistlib.dumps(plist, fmt=plistlib.FMT_XML)
+              signed = subprocess.run(
+                  ["openssl", "smime", "-sign", "-signer", cert, "-inkey", cert,
+                   "-nodetach", "-outform", "DER", "-binary"],
+                  input=new_plist, check=True, capture_output=True,
+              ).stdout
+              with open(path, "wb") as f:
+                  f.write(signed)
+              print("%s: %s -> %s" % (path, old_expiry, new_expiry))
+          PY
+
+          rm -f /tmp/fake-signer.pem
+
       # Signing, the whole story in one place.
       #
       # Two separate problems had to be solved here, and the first one masked the second.
