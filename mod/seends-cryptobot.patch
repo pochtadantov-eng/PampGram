@@ -334,7 +334,7 @@ index 50beb232..28538b21 100644
              })
          })), at: 0)
          items.content = .list(newList)
-@@ -550,110 +544,264 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -550,110 +544,262 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
      }
  }
  
@@ -521,7 +521,6 @@ index 50beb232..28538b21 100644
 +    }
 +    if settings.fakeReactionsEnabled {
 +        items.append(entry("Фейк реакции", "hand.thumbsup") {
-+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
 +            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
 +            topController?.present(promptController(context: context, text: "Фейк реакция", subtitle: "Эмодзи и количество через пробел, напр: 🔥 999", value: "", placeholder: "🔥 999", characterLimit: 32, apply: { input in
 +                guard let input = input, !input.isEmpty else { return }
@@ -534,7 +533,6 @@ index 50beb232..28538b21 100644
 +    }
 +    if settings.chatEditorEnabled {
 +        items.append(entry("Изменить время", "clock.arrow.circlepath") {
-+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
 +            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
 +            topController?.present(promptController(context: context, text: "Новое время", subtitle: "Формат: дд.мм.гггг чч:мм", value: "", placeholder: "01.01.2025 12:00", characterLimit: 20, apply: { input in
 +                guard let input = input, !input.isEmpty else { return }
