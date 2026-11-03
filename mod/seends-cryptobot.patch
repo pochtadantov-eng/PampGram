@@ -205,11 +205,24 @@ index 0f40cdc9..c407e83d 100644
 +                }
 +                let _ = enqueueMessages(account: pampGramAccount, peerId: accountPeerId, messages: [.message(text: message.text, attributes: [], inlineStickers: [:], mediaReference: mediaReference, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])]).start()
 +            }
++            PampGramForwardProtectedDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramVideoMessageSaver.shared.instantVideoResourceExtractor = { message in
 +                guard let file = message.media.compactMap({ $0 as? TelegramMediaFile }).first, file.isInstantVideo else {
 +                    return nil
 +                }
 +                return file.resource
++            }
++            PampGramMediaGallerySaver.shared.mediaResourceExtractor = { message in
++                for media in message.media {
++                    if let image = media as? TelegramMediaImage, let resource = image.representations.last?.resource {
++                        return (resource, false)
++                    } else if let file = media as? TelegramMediaFile {
++                        if file.isVideo || file.isAnimated {
++                            return (file.resource, true)
++                        }
++                    }
++                }
++                return nil
 +            }
              PampGramGiftBehavior.shared.start(postbox: account.postbox)
              PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -372,6 +385,22 @@ index 50beb232..28538b21 100644
 +            f(.dismissWithoutContent)
 +            handler()
 +        }))
++    }
++
++    // --- Медиа: сохранение и пересылка ---
++    let hasMedia = message.media.contains(where: { $0 is TelegramMediaImage || ($0 as? TelegramMediaFile)?.isVideo == true || ($0 as? TelegramMediaFile)?.isAnimated == true })
++    if hasMedia {
++        items.append(entry("Сохранить в галерею", "square.and.arrow.down") {
++            PampGramMediaGallerySaver.shared.saveMessageMedia(postbox: context.account.postbox, messageId: message.id)
++        })
++    }
++    if settings.forwardProtectedToSavedEnabled && hasMedia {
++        items.append(entry("В Избранное", "star") {
++            PampGramForwardProtectedDisplay.shared.saveToSavedMessages(accountPeerId: context.account.peerId, message: message, postbox: context.account.postbox)
++        })
++    }
++    if hasMedia {
++        items.append(.separator)
 +    }
 +
      if settings.visualEditTextItemEnabled {

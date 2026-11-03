@@ -178,7 +178,7 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
     entries.append(.onceMediaHeader("ОДНОРАЗОВЫЕ МЕДИА"))
     entries.append(.saveOnceMediaToggle("Сохранять в галерею", settings.saveOnceMediaEnabled))
     entries.append(.forwardOnceVoiceToggle("Пересылать одноразовые ГС", settings.forwardOnceVoiceEnabled))
-    entries.append(.onceMediaFooter("Фото и видео «просмотреть один раз» сохраняются в «Фотопленку» перед удалением. Одноразовые голосовые можно пересылать как обычные."))
+    entries.append(.onceMediaFooter("Перенесено в Дополнительно → Медиа и защита. Включите «Обход одноразовых» / «Обход с таймером», затем: зажмите сообщение → PampGram → «Сохранить в галерею» или «В Избранное»."))
 
     entries.append(.historyHeader("ИСТОРИЯ"))
     entries.append(.historyList("Восстановленные сообщения", "\(historyCount)"))
