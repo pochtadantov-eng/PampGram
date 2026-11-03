@@ -143,6 +143,14 @@ index 0f40cdc9..c407e83d 100644
 +                }
 +                return pampGramFakeCryptoBotContentView(context: context, presenter: presenter)
 +            })
++            PampGramFakePortalsRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
++            PampGramFakePortalsRuntime.shared.setContentFactory({ contextObject, presenterObject in
++                guard let context = contextObject as? AccountContext, let presenter = presenterObject as? ViewController else {
++                    return nil
++                }
++                return pampGramFakePortalsContentView(context: context, presenter: presenter)
++            })
++            PampGramVideoMessageSaver.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
              PampGramGiftBehavior.shared.start(postbox: account.postbox)
              PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
              PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -466,7 +474,7 @@ index ee39fd29..227ceaef 100644
          override func didLoad() {
              super.didLoad()
              
-+            if let controller = self.controller, let fakeContent = PampGramFakeCryptoBotRuntime.shared.replacementContent(accountKey: self.context.account.peerId.toInt64(), context: self.context, presenter: controller, botUserId: controller.botId.id._internalGetInt64Value(), botName: controller.botName) {
++            if let controller = self.controller, let fakeContent = PampGramFakeCryptoBotRuntime.shared.replacementContent(accountKey: self.context.account.peerId.toInt64(), context: self.context, presenter: controller, botUserId: controller.botId.id._internalGetInt64Value(), botName: controller.botName) ?? PampGramFakePortalsRuntime.shared.replacementContent(accountKey: self.context.account.peerId.toInt64(), context: self.context, presenter: controller, botUserId: controller.botId.id._internalGetInt64Value(), botName: controller.botName) {
 +                self.pampGramFakeContent = fakeContent
 +                // The page scrolls on its own; a drag on it must not also pull the window down.
 +                controller._isPanGestureEnabled = false
