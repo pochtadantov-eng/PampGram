@@ -75,6 +75,62 @@ jobs:
           PY
           ls -1 submodules/TelegramUI/Components/PampGram
 
+      # The .mobileprovision files shipped in build-system/fake-codesigning/profiles/ are
+      # static binaries with a fixed ExpirationDate baked in at generation time (currently
+      # 2026-10-30, set when Telegram-iOS last regenerated them — see their git history:
+      # commit 7ed08c0141, 2025-12-26). They are not regenerated per-release, so every tag
+      # since then ships the same, now-expired, date — including the release-12.9.2 pin
+      # above. Run #218 failed here: "provisioning profile ExpirationDate (...) is in the
+      # past."
+      #
+      # Fix: re-sign each profile's plist with a fresh ExpirationDate, using the exact same
+      # self-signed cert+key the next step imports for codesigning (certs/SelfSigned.p12,
+      # valid to 2030-10-29). plisttool only reads the plist fields — it never validates the
+      # CMS signature against Apple's trust chain (it can't; the cert is self-signed) — so a
+      # profile re-signed with that same certificate stays exactly as valid to the build as
+      # the original, just with a usable date. DeveloperCertificates/entitlements/team id are
+      # untouched; only ExpirationDate changes.
+      - name: Renew the expired fake provisioning profiles
+        working-directory: telegram-ios
+        run: |
+          set -euo pipefail
+          P12=build-system/fake-codesigning/certs/SelfSigned.p12
+          openssl pkcs12 -legacy -in "$P12" -nodes -passin pass: -out /tmp/fake-signer.pem 2>/dev/null \
+            || openssl pkcs12 -in "$P12" -nodes -passin pass: -out /tmp/fake-signer.pem
+          test -s /tmp/fake-signer.pem
+
+          python3 - <<'PY'
+          import datetime
+          import glob
+          import plistlib
+          import subprocess
+
+          cert = "/tmp/fake-signer.pem"
+          # Matches the self-signed cert's own notAfter, so the profile never outlives the
+          # certificate that signs it.
+          new_expiry = datetime.datetime(2030, 10, 29, 17, 33, 19, tzinfo=datetime.timezone.utc)
+
+          for path in sorted(glob.glob("build-system/fake-codesigning/profiles/*.mobileprovision")):
+              decoded = subprocess.run(
+                  ["openssl", "smime", "-verify", "-noverify", "-in", path, "-inform", "DER"],
+                  check=True, capture_output=True,
+              ).stdout
+              plist = plistlib.loads(decoded)
+              old_expiry = plist.get("ExpirationDate")
+              plist["ExpirationDate"] = new_expiry
+              new_plist = plistlib.dumps(plist, fmt=plistlib.FMT_XML)
+              signed = subprocess.run(
+                  ["openssl", "smime", "-sign", "-signer", cert, "-inkey", cert,
+                   "-nodetach", "-outform", "DER", "-binary"],
+                  input=new_plist, check=True, capture_output=True,
+              ).stdout
+              with open(path, "wb") as f:
+                  f.write(signed)
+              print("%s: %s -> %s" % (path, old_expiry, new_expiry))
+          PY
+
+          rm -f /tmp/fake-signer.pem
+
       # Signing, the whole story in one place.
       #
       # Two separate problems had to be solved here, and the first one masked the second.
