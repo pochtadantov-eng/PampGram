@@ -353,6 +353,12 @@ public struct PampGramSettings: Codable, Equatable {
     /// bypass turned into an ordinary one is opened, the "viewed" mark is sent to the sender (so it
     /// burns on their side) while the local copy stays in the chat. Off keeps the bypass fully silent.
     public var bypassMarkViewedEnabled: Bool = true
+    /// "Пересылка в Избранное" (Дополнительно → Медиа и скриншоты): когда включено, в меню
+    /// любого сообщения из защищённого чата (noForwards / копирование запрещено) и для
+    /// одноразовых/временных медиа появляется кнопка «В Избранное», которая пересылает
+    /// сообщение (или его копию — текст + медиа) в «Избранные сообщения» (Saved Messages).
+    /// Работает как локальная копия: Telegram не показывает отправителю, что вы пересылали.
+    public var forwardProtectedToSavedEnabled: Bool = false
     public var fakeCryptoBotEnabled: Bool = false
     /// The fake CryptoBot's operation history ("История"), as JSON text; a Codable array of structs
     /// is not safe inside the Postbox-coded settings, a string is.
@@ -740,6 +746,7 @@ public struct PampGramSettings: Codable, Equatable {
         self.bypassScreenshotProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassScreenshotProtectionEnabled) ?? defaults.bypassScreenshotProtectionEnabled
         self.masterEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterEnabled) ?? defaults.masterEnabled
         self.bypassMarkViewedEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassMarkViewedEnabled) ?? defaults.bypassMarkViewedEnabled
+        self.forwardProtectedToSavedEnabled = try container.decodeIfPresent(Bool.self, forKey: .forwardProtectedToSavedEnabled) ?? defaults.forwardProtectedToSavedEnabled
         self.fakeCryptoBotEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeCryptoBotEnabled) ?? defaults.fakeCryptoBotEnabled
         self.fakeCryptoBotHistoryRaw = try container.decodeIfPresent(String.self, forKey: .fakeCryptoBotHistoryRaw) ?? defaults.fakeCryptoBotHistoryRaw
         self.fakeBotsRaw = try container.decodeIfPresent(String.self, forKey: .fakeBotsRaw) ?? defaults.fakeBotsRaw
