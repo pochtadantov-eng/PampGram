@@ -1,5 +1,6 @@
 import Foundation
 import Photos
+import UIKit
 import Postbox
 import SwiftSignalKit
 
@@ -31,27 +32,65 @@ public final class PampGramMediaGallerySaver {
         })
     }
 
+    public func saveFile(path: String, isVideo: Bool) {
+        self.saveFileToPhotos(path: path, isVideo: isVideo)
+    }
+
     private func saveFileToPhotos(path: String, isVideo: Bool) {
-        let url = URL(fileURLWithPath: path)
-        let saveBlock: (@escaping () -> Void) -> Void = { completion in
+        // Resource files in the media box have no extension, which Photos needs for video; images
+        // are decoded and handed over as UIImage for the same reason.
+        var videoURL: URL?
+        var image: UIImage?
+        if isVideo {
+            let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pampgram_\(UUID().uuidString).mp4")
+            do {
+                try FileManager.default.copyItem(atPath: path, toPath: url.path)
+            } catch {
+                return
+            }
+            videoURL = url
+        } else {
+            guard let decoded = UIImage(contentsOfFile: path) else {
+                return
+            }
+            image = decoded
+        }
+
+        let saveBlock: () -> Void = {
             PHPhotoLibrary.shared().performChanges({
-                if isVideo {
-                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
-                } else {
-                    PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: url)
+                if let videoURL {
+                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
+                } else if let image {
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
                 }
-            }, completionHandler: { _, _ in completion() })
+            }, completionHandler: { _, _ in
+                if let videoURL {
+                    try? FileManager.default.removeItem(at: videoURL)
+                }
+            })
+        }
+
+        let cleanup: () -> Void = {
+            if let videoURL {
+                try? FileManager.default.removeItem(at: videoURL)
+            }
         }
 
         if #available(iOS 14, *) {
             PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-                guard status == .authorized || status == .limited else { return }
-                saveBlock({})
+                guard status == .authorized || status == .limited else {
+                    cleanup()
+                    return
+                }
+                saveBlock()
             }
         } else {
             PHPhotoLibrary.requestAuthorization { status in
-                guard status == .authorized else { return }
-                saveBlock({})
+                guard status == .authorized else {
+                    cleanup()
+                    return
+                }
+                saveBlock()
             }
         }
     }

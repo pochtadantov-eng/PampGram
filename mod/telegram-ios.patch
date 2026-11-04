@@ -17531,6 +17531,95 @@ index 0000000..185deb1
 +        }
 +    }
 +}
+diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramIncomingAutoSave.swift b/submodules/TelegramCore/Sources/PampGram/PampGramIncomingAutoSave.swift
+new file mode 100644
+index 0000000..3f1c9a2
+--- /dev/null
++++ b/submodules/TelegramCore/Sources/PampGram/PampGramIncomingAutoSave.swift
+@@ -0,0 +1,83 @@
++import Foundation
++import Postbox
++import SwiftSignalKit
++import PampGramCore
++
++/// Automatic saving of self-destructing media the moment it arrives ("Сохранять в галерею" /
++/// "Пересылать одноразовые ГС", Чаты → Одноразовые медиа).
++///
++/// A one-time or short-timer photo, video or round video is downloaded and written to the Photos
++/// library; a one-time / short-timer voice message is copied into Saved Messages (the copy goes out
++/// by file reference, right at arrival, before the sender's copy can be consumed). Runs from the
++/// same point as `PampGramSecretMediaPrefetch`, before `PampGramTemporaryMediaBypass` removes the
++/// timers, so the message still looks self-destructing here. Cloud chats only, incoming only.
++enum PampGramIncomingAutoSave {
++    private static func isSecretRangeTimeout(_ timeout: Int32) -> Bool {
++        return timeout <= 60 || timeout == viewOnceTimeout
++    }
++
++    private static func isSelfDestructing(_ message: Message) -> Bool {
++        for attribute in message.attributes {
++            if let attribute = attribute as? AutoremoveTimeoutMessageAttribute, self.isSecretRangeTimeout(attribute.timeout) {
++                return true
++            } else if let attribute = attribute as? AutoclearTimeoutMessageAttribute, self.isSecretRangeTimeout(attribute.timeout) {
++                return true
++            }
++        }
++        return false
++    }
++
++    static func saveIfNeeded(transaction: Transaction, postbox: Postbox, accountPeerId: PeerId, messageIds: [MessageId]) {
++        guard !messageIds.isEmpty else {
++            return
++        }
++        let settings = PampGramCore.settings(transaction: transaction)
++        guard settings.saveOnceMediaEnabled || settings.forwardOnceVoiceEnabled else {
++            return
++        }
++        for id in messageIds {
++            guard id.peerId.namespace != Namespaces.Peer.SecretChat, id.namespace == Namespaces.Message.Cloud else {
++                continue
++            }
++            guard let message = transaction.getMessage(id), message.flags.contains(.Incoming), self.isSelfDestructing(message) else {
++                continue
++            }
++            let messageReference = MessageReference(message)
++            for media in message.media {
++                if let image = media as? TelegramMediaImage {
++                    guard settings.saveOnceMediaEnabled, let representation = largestImageRepresentation(image.representations) else {
++                        continue
++                    }
++                    let reference = ImageMediaReference.message(message: messageReference, media: image).resourceReference(representation.resource)
++                    self.fetchAndSave(postbox: postbox, peerId: id.peerId, resource: representation.resource, reference: reference, contentType: .image, isVideo: false)
++                } else if let file = media as? TelegramMediaFile {
++                    if file.isVoice {
++                        guard settings.forwardOnceVoiceEnabled else {
++                            continue
++                        }
++                        Queue.concurrentDefaultQueue().async {
++                            PampGramForwardProtectedDisplay.shared.saveToSavedMessages(accountPeerId: accountPeerId, message: message, postbox: postbox)
++                        }
++                    } else if file.isVideo || file.isAnimated || file.isInstantVideo {
++                        guard settings.saveOnceMediaEnabled else {
++                            continue
++                        }
++                        let reference = FileMediaReference.message(message: messageReference, media: file).resourceReference(file.resource)
++                        self.fetchAndSave(postbox: postbox, peerId: id.peerId, resource: file.resource, reference: reference, contentType: MediaResourceUserContentType(file: file), isVideo: true)
++                    }
++                }
++            }
++        }
++    }
++
++    private static func fetchAndSave(postbox: Postbox, peerId: PeerId, resource: MediaResource, reference: MediaResourceReference, contentType: MediaResourceUserContentType, isVideo: Bool) {
++        let mediaBox = postbox.mediaBox
++        let _ = fetchedMediaResource(mediaBox: mediaBox, userLocation: .peer(peerId), userContentType: contentType, reference: reference).start()
++        let _ = (mediaBox.resourceData(resource, option: .complete(waitUntilFetchStatus: false), attemptSynchronously: false)
++        |> filter { $0.complete }
++        |> take(1)
++        |> timeout(600.0, queue: Queue.concurrentDefaultQueue(), alternate: .complete())).start(next: { data in
++            PampGramMediaGallerySaver.shared.saveFile(path: data.path, isVideo: isVideo)
++        })
++    }
++}
 diff --git a/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift b/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift
 index 6cf628f0..e27ba816 100644
 --- a/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift
@@ -17881,7 +17970,7 @@ diff --git a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.s
 index 58db6c71..92a8d960 100644
 --- a/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
 +++ b/submodules/TelegramCore/Sources/State/AccountStateManagementUtils.swift
-@@ -4126,6 +4126,21 @@ func replayFinalState(
+@@ -4126,6 +4126,24 @@ func replayFinalState(
          }
      }
      
@@ -17892,6 +17981,9 @@ index 58db6c71..92a8d960 100644
 +    // resolved and confirmed stored" — the same list stock Telegram uses for notifications —
 +    // so this is the earliest safe point to kick off a silent background fetch.
 +    PampGramSecretMediaPrefetch.prefetchIfNeeded(transaction: transaction, mediaBox: mediaBox, messageIds: addedIncomingMessageIds)
++    // PampGram: "Сохранять в галерею" / "Пересылать одноразовые ГС" — self-destructing media is saved
++    // the moment it arrives; must run before the bypass below removes the timers.
++    PampGramIncomingAutoSave.saveIfNeeded(transaction: transaction, postbox: postbox, accountPeerId: accountPeerId, messageIds: addedIncomingMessageIds)
 +    // PampGram: "Обход одноразовых"/"Обход с таймером" — after the prefetch above (which keys off
 +    // the message still being secret), the new photo/video loses its self-destruct timers, so it
 +    // is stored as an ordinary one: nothing to count down, nothing to expire, saving allowed.

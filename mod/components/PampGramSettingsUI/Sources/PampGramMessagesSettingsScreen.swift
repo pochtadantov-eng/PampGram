@@ -178,7 +178,7 @@ private func pampGramMessagesEntries(settings: PampGramSettings, historyCount: I
     entries.append(.onceMediaHeader("ОДНОРАЗОВЫЕ МЕДИА"))
     entries.append(.saveOnceMediaToggle("Сохранять в галерею", settings.saveOnceMediaEnabled))
     entries.append(.forwardOnceVoiceToggle("Пересылать одноразовые ГС", settings.forwardOnceVoiceEnabled))
-    entries.append(.onceMediaFooter("Перенесено в Дополнительно → Медиа и защита. Включите «Обход одноразовых» / «Обход с таймером». При зажатии кружочка или голосового кнопки сохранения появляются прямо в основном меню, сразу после «Ответить»."))
+    entries.append(.onceMediaFooter("Срабатывает само, когда вам присылают одноразовое или с таймером (до 60 сек) медиа: фото, видео и кружок сохраняются в Фотоплёнку, голосовое копируется в Избранное. Секретные чаты не затрагиваются."))
 
     entries.append(.historyHeader("ИСТОРИЯ"))
     entries.append(.historyList("Восстановленные сообщения", "\(historyCount)"))
