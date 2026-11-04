@@ -23007,7 +23007,7 @@ index 23695c21..31808802 100644
          controllerInteraction.enableFullTranslucency = context.sharedContext.energyUsageSettings.fullTranslucency
          
          self.controllerInteraction = controllerInteraction
-@@ -5982,7 +6004,31 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -5982,7 +6004,40 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                              f(.dismissWithoutContent)
                              self?.navigationButtonAction(.openChatInfo(expandAvatar: true, section: nil))
                          })))
@@ -23035,6 +23035,15 @@ index 23695c21..31808802 100644
 +                                return settings
 +                            }).start()
 +                            strongSelf.present(UndoOverlayController(presentationData: strongSelf.presentationData, content: .info(title: nil, text: pampGramVisualChatEnabled ? "Визуальный чат выключен." : "Визуальный чат включён: обычная отправка (без удержания кнопки) теперь идёт в чат локально. У каждого такого сообщения слева кнопка ⇄ — меняет, от кого оно.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
++                        })))
++
++                        items.append(.action(ContextMenuActionItem(text: "Меню", icon: { theme in
++                            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/More"), color: theme.actionSheet.primaryTextColor)
++                        }, action: { _, f in
++                            f(.dismissWithoutContent)
++                            guard let strongSelf = self else { return }
++                            let peerName = EnginePeer(peer).displayTitle(strings: strongSelf.presentationData.strings, displayOrder: strongSelf.presentationData.nameDisplayOrder)
++                            pampGramPresentMainMenu(context: strongSelf.context, peerId: peer.id, peerName: peerName)
 +                        })))
 +
                          if canViewStats {

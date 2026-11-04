@@ -408,7 +408,7 @@ index 50beb232..28538b21 100644
 +            }
 +        }
          items.content = .list(newList)
-@@ -550,110 +590,229 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -550,110 +590,125 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
      }
  }
  
@@ -487,11 +487,6 @@ index 50beb232..28538b21 100644
 +            topController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Напечатайте новый текст и нажмите отправить — сообщение изменится только у вас.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
 +        })
      }
-+    if settings.visualEditCallItemEnabled {
-+        items.append(entry("Показать звонок", "phone.arrow.down.left") {
-+            pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
-+        })
-+    }
 -    if settings.visualEditPhotoItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Отправить фото", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
@@ -619,12 +614,6 @@ index 50beb232..28538b21 100644
 +            }), in: .window(.root))
 +        })
 +    }
-+    if settings.invisibleMessagesEnabled {
-+        items.append(entry("Невидимое сообщение 👻", "eye.slash") {
-+            let invisible = PampGramInvisibleMessageRuntime.shared.generateInvisibleText(length: 1)
-+            let _ = enqueueMessages(account: context.account, peerId: message.id.peerId, messages: [.message(text: invisible, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])]).startStandalone()
-+        })
-+    }
 +    if settings.reactionSpammerEnabled {
 +        let isActive = PampGramReactionSpammerRuntime.shared.isActive(messageId: message.id)
 +        items.append(entry(isActive ? "Стоп спам реакциями" : "Спам реакциями 💣", isActive ? "stop.circle" : "bolt.circle") {
@@ -632,99 +621,6 @@ index 50beb232..28538b21 100644
 +                PampGramReactionSpammerRuntime.shared.stop(messageId: message.id)
 +            } else {
 +                PampGramReactionSpammerRuntime.shared.start(messageId: message.id, peerId: message.id.peerId, reaction: "🔥", interval: 0.5)
-+            }
-+        })
-+    }
-+
-+    // --- Тёмные штуки ---
-+    if settings.fakeSystemMessagesEnabled {
-+        items.append(entry("Фейк системное", "exclamationmark.bubble") {
-+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-+            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
-+            let sheet = ActionSheetController(presentationData: presentationData)
-+            var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: "Тип системного сообщения")]
-+            for msgType in PampGramFakeSystemMessagesRuntime.SystemMessageType.allCases {
-+                buttons.append(ActionSheetButtonItem(title: msgType.displayText, color: .accent, action: { [weak sheet] in
-+                    sheet?.dismissAnimated()
-+                    PampGramFakeSystemMessagesRuntime.shared.insertSystemMessage(peerId: message.id.peerId, type: msgType)
-+                }))
-+            }
-+            buttons.append(ActionSheetButtonItem(title: "Свой текст…", color: .accent, action: { [weak sheet] in
-+                sheet?.dismissAnimated()
-+                topController?.present(promptController(context: context, text: "Системное сообщение", subtitle: "Текст, который увидит собеседник в сером поле", value: "", placeholder: "Аккаунт верифицирован", characterLimit: 256, apply: { text in
-+                    guard let text = text, !text.isEmpty else { return }
-+                    PampGramFakeSystemMessagesRuntime.shared.insertCustomSystemMessage(peerId: message.id.peerId, text: text)
-+                }), in: .window(.root))
-+            }))
-+            sheet.setItemGroups([
-+                ActionSheetItemGroup(items: buttons),
-+                ActionSheetItemGroup(items: [
-+                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-+                        sheet?.dismissAnimated()
-+                    })
-+                ])
-+            ])
-+            topController?.present(sheet, in: .window(.root))
-+        })
-+    }
-+    if settings.fakePaymentReceiptsEnabled {
-+        items.append(entry("Фейк чек", "creditcard") {
-+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-+            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
-+            let sheet = ActionSheetController(presentationData: presentationData)
-+            var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: "Тип чека")]
-+            buttons.append(ActionSheetButtonItem(title: "Stars перевод", color: .accent, action: { [weak sheet] in
-+                sheet?.dismissAnimated()
-+                topController?.present(promptController(context: context, text: "Сумма Stars", subtitle: "", value: "1000", placeholder: "1000", characterLimit: 12, apply: { val in
-+                    guard let val = val, let amount = Int64(val) else { return }
-+                    PampGramFakePaymentReceiptRuntime.shared.generateReceipt(peerId: message.id.peerId, type: .starsTransfer(amount: amount))
-+                }), in: .window(.root))
-+            }))
-+            buttons.append(ActionSheetButtonItem(title: "TON перевод", color: .accent, action: { [weak sheet] in
-+                sheet?.dismissAnimated()
-+                topController?.present(promptController(context: context, text: "Сумма TON", subtitle: "", value: "10", placeholder: "10", characterLimit: 12, apply: { val in
-+                    guard let val = val, let amount = Double(val) else { return }
-+                    PampGramFakePaymentReceiptRuntime.shared.generateReceipt(peerId: message.id.peerId, type: .tonTransfer(amount: amount))
-+                }), in: .window(.root))
-+            }))
-+            buttons.append(ActionSheetButtonItem(title: "Premium подарок", color: .accent, action: { [weak sheet] in
-+                sheet?.dismissAnimated()
-+                PampGramFakePaymentReceiptRuntime.shared.generateReceipt(peerId: message.id.peerId, type: .premiumGift(months: 12))
-+            }))
-+            sheet.setItemGroups([
-+                ActionSheetItemGroup(items: buttons),
-+                ActionSheetItemGroup(items: [
-+                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
-+                        sheet?.dismissAnimated()
-+                    })
-+                ])
-+            ])
-+            topController?.present(sheet, in: .window(.root))
-+        })
-+    }
-+    if settings.fakeIncomingCallEnabled {
-+        items.append(entry("Фейк звонок", "phone.arrow.down.left.fill") {
-+            let peerName: String
-+            if let author = message.author {
-+                peerName = EnginePeer(author).displayTitle(strings: strings, displayOrder: .firstLast)
-+            } else {
-+                peerName = "Unknown"
-+            }
-+            PampGramFakeIncomingCallRuntime.shared.triggerFakeCall(peerName: peerName, avatarImage: nil)
-+        })
-+    }
-+    if settings.fakeScreenshotNotificationEnabled && PampGramFakeScreenshotNotificationRuntime.shared.isSecretChat(peerId: message.id.peerId) {
-+        items.append(entry("Фейк скриншот", "camera.viewfinder") {
-+            PampGramFakeScreenshotNotificationRuntime.shared.sendFakeScreenshotNotification(peerId: message.id.peerId)
-+        })
-+    }
-+    if settings.fakeTypingEnabled {
-+        let isActive = PampGramFakeActivityRuntime.shared.isActive(peerId: message.id.peerId)
-+        items.append(entry(isActive ? "Стоп набор текста" : "Фейк печатает…", isActive ? "stop.circle" : "keyboard") {
-+            if isActive {
-+                PampGramFakeActivityRuntime.shared.stop(peerId: message.id.peerId)
-+            } else {
-+                PampGramFakeActivityRuntime.shared.start(peerId: message.id.peerId, mode: .typing)
 +            }
 +        })
 +    }
