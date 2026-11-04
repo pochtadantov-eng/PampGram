@@ -563,28 +563,24 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.messagesHeader("СООБЩЕНИЯ И ЧАТ"))
     entries.append(.fakeForwardedFromToggle("Фейк «Переслано от»", settings.fakeForwardedFromEnabled))
     entries.append(.fakeReactionsToggle("Фейк реакции", settings.fakeReactionsEnabled))
-    entries.append(.fakeReadReceiptsToggle("Фейк прочитано", settings.fakeReadReceiptsEnabled))
     entries.append(.chatEditorToggle("Редактор чата", settings.chatEditorEnabled))
     entries.append(.chatTimeMachineToggle("Машина времени", settings.chatTimeMachineEnabled))
     entries.append(.invisibleMessagesToggle("Невидимые сообщения", settings.invisibleMessagesEnabled))
     entries.append(.fakeDeletedMessageToggle("Фейк удаления", settings.fakeDeletedMessageEnabled))
     entries.append(.fakeSystemMessagesToggle("Фейк системные сообщения", settings.fakeSystemMessagesEnabled))
-    entries.append(.messagesFooter("Действия через контекстное меню сообщения (долгое нажатие).\n• Фейк пересылка — «Переслано от…» → выбор контакта или канала.\n• Фейк реакции — произвольные реакции с нужными цифрами под сообщением.\n• Фейк прочитано — двойные или одинарные галочки по желанию.\n• Редактор чата — правка текста, времени и реакций любого сообщения, включая чужие.\n• Машина времени — «Изменить время» → выбор новой даты и времени отправки.\n• Невидимые — сообщения из невидимых Unicode-символов. Пуш приходит, а в чате пусто.\n• Фейк удаления — показывает что собеседник «удалил» сообщение.\n• Системные сообщения — «Аккаунт верифицирован», «Номер изменён» и т.д. от имени Telegram."))
+    entries.append(.messagesFooter("Зажмите сообщение → PampGram. Невидимые и системные сообщения — в «Меню» (зажмите аватарку в чате).\n• Фейк пересылка — «Переслано от…» с введённым именем.\n• Фейк реакции — реакция с нужным числом под сообщением.\n• Редактор чата и Машина времени — пункт «Изменить время».\n• Фейк удаления — сообщение выглядит удалённым собеседником (затемнено, значок корзины).\n• Невидимые — сообщение из невидимых символов: приходит, а в чате пусто.\n• Системные сообщения — «Аккаунт верифицирован», «Номер изменён» и т.д.\nВсё видно только на этом устройстве."))
 
     // ── ГЕНЕРАТОРЫ ──
     entries.append(.generatorsHeader("ГЕНЕРАТОРЫ"))
     entries.append(.conversationGeneratorToggle("Генератор переписки", settings.conversationGeneratorEnabled))
-    entries.append(.fakeGroupGeneratorToggle("Генератор группы", settings.fakeGroupGeneratorEnabled))
     entries.append(.fakePaymentReceiptsToggle("Генератор чеков", settings.fakePaymentReceiptsEnabled))
-    entries.append(.generatorsFooter("• Генератор переписки — создаёт диалог с нуля: выбор контакта, реплики за обоих, время и статусы.\n• Генератор группы — фейковый групповой чат с участниками, аватарками и сообщениями.\n• Генератор чеков — реалистичные чеки Stars/TON/Premium с хешем и деталями транзакции."))
+    entries.append(.generatorsFooter("• Генератор переписки — «Меню» на аватарке в чате: реплики через «;», «я: …» и «он: …», появляются локально.\n• Генератор чеков — реалистичные чеки Stars/TON/Premium с хешем и деталями транзакции."))
 
     // ── ГОЛОС И ЗВОНКИ ──
     entries.append(.voiceCallsHeader("ГОЛОС И ЗВОНКИ"))
-    entries.append(.fakeVoiceFromTextToggle("Голосовое из текста", settings.fakeVoiceFromTextEnabled))
-    entries.append(.voiceClonerToggle("Клон голоса", settings.voiceClonerEnabled))
     entries.append(.fakeIncomingCallToggle("Фейк входящий звонок", settings.fakeIncomingCallEnabled))
     entries.append(.callOverridesRow("Настройки звонков"))
-    entries.append(.voiceCallsFooter("• Голосовое из текста — вводишь текст, отправляется как голосовое. Мужской или женский голос.\n• Клон голоса — запиши 10 сек образца голоса, потом генерируй голосовые этим голосом.\n• Фейк звонок — полноэкранный входящий звонок от любого контакта с вибрацией и звуком.\n• Настройки звонков — косметическое редактирование отображения звонков."))
+    entries.append(.voiceCallsFooter("• Фейк звонок — полноэкранный входящий звонок от любого контакта с вибрацией и звуком.\n• Настройки звонков — косметическое редактирование отображения звонков."))
 
     // ── ИНСТРУМЕНТЫ ──
     entries.append(.toolsHeader("ИНСТРУМЕНТЫ"))
@@ -598,9 +594,8 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.fakePortalsToggle("Фейковый Portals", settings.fakePortalsEnabled))
     entries.append(.fakeTypingToggle("Фейк набор текста", settings.fakeTypingEnabled))
     entries.append(.reactionSpammerToggle("Спам реакциями", settings.reactionSpammerEnabled))
-    entries.append(.stickerPackClonerToggle("Клон стикерпаков", settings.stickerPackClonerEnabled))
     entries.append(.fakeScreenshotNotificationToggle("Фейк скриншот", settings.fakeScreenshotNotificationEnabled))
-    entries.append(.toolsFooter("• Геолокация — отправка поддельного местоположения. Выбор точки на карте.\n• Блокировка чатов — локальный пароль на выбранные чаты.\n• Фейк админ — визуальные посты от имени админа в любом канале.\n• Фейк подписчики — любое число участников в своём канале или группе.\n• Фейковые боты — список ботов с локальным CryptoBot-кошельком внутри.\n• Фейковый Portals — локальная копия мини-аппа @portals с балансами и витриной.\n• Фейк набор текста — в меню чата: «Печатает…» / «Записывает ГС…» без остановки.\n• Спам реакциями — ставит/снимает реакцию в цикле. Непрерывные уведомления.\n• Клон стикерпаков — копия любого пака, включая Premium emoji.\n• Фейк скриншот — отправляет «Сделан снимок экрана» в секретный чат без реального скриншота."))
+    entries.append(.toolsFooter("• Геолокация — отправка поддельного местоположения. Выбор точки на карте.\n• Блокировка чатов — локальный пароль на выбранные чаты.\n• Фейк админ — визуальные посты от имени админа в любом канале.\n• Фейк подписчики — любое число участников в своём канале или группе.\n• Фейковые боты — список ботов с локальным CryptoBot-кошельком внутри.\n• Фейковый Portals — локальная копия мини-аппа @portals с балансами и витриной.\n• Фейк набор текста — в меню чата: «Печатает…» / «Записывает ГС…» без остановки.\n• Спам реакциями — ставит/снимает реакцию в цикле. Непрерывные уведомления.\n• Фейк скриншот — отправляет «Сделан снимок экрана» в секретный чат без реального скриншота."))
 
     // ── ПРЕМИУМ ──
     entries.append(.premiumHeader("ПРЕМИУМ"))

@@ -27,6 +27,13 @@ public func pampGramPresentMainMenu(context: AccountContext, peerId: EnginePeer.
             }))
         }
 
+        if settings.conversationGeneratorEnabled {
+            buttons.append(ActionSheetButtonItem(title: "Генератор переписки", color: .accent, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                pampGramPresentConversationGenerator(context: context, peerId: peerId)
+            }))
+        }
+
         if settings.invisibleMessagesEnabled {
             buttons.append(ActionSheetButtonItem(title: "Невидимое сообщение 👻", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
@@ -38,7 +45,7 @@ public func pampGramPresentMainMenu(context: AccountContext, peerId: EnginePeer.
         if settings.fakeIncomingCallEnabled {
             buttons.append(ActionSheetButtonItem(title: "Фейк звонок", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
-                PampGramFakeIncomingCallRuntime.shared.triggerFakeCall(peerName: peerName, avatarImage: nil)
+                pampGramPresentFakeCall(peerName: peerName, from: topVC)
             }))
         }
 

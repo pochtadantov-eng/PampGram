@@ -347,7 +347,7 @@ index 50beb232..28538b21 100644
              })
          })), at: 0)
          items.content = .list(newList)
-@@ -550,110 +544,125 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -550,110 +544,130 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
      }
  }
  
@@ -515,7 +515,7 @@ index 50beb232..28538b21 100644
 +                        sheet?.dismissAnimated()
 +                        topController?.present(promptController(context: context, text: "Переслано от", subtitle: "Имя или @username", value: "", placeholder: "@durov", characterLimit: 64, apply: { name in
 +                            guard let name = name, !name.isEmpty else { return }
-+                            PampGramFakeForwardRuntime.shared.setFakeForward(messageId: message.id, fromPeerId: nil, fromName: name)
++                            pampGramApplyFakeForward(context: context, messageId: message.id, name: name)
 +                        }), in: .window(.root))
 +                    })
 +                ]),
@@ -536,11 +536,11 @@ index 50beb232..28538b21 100644
 +                let parts = input.split(separator: " ", maxSplits: 1)
 +                let emoji = String(parts[0])
 +                let count = parts.count > 1 ? (Int(parts[1]) ?? 1) : 1
-+                PampGramFakeReactionsRuntime.shared.addReaction(messageId: message.id, reaction: emoji, count: count)
++                pampGramApplyFakeReaction(context: context, messageId: message.id, emoji: emoji, count: Int32(clamping: count))
 +            }), in: .window(.root))
 +        })
 +    }
-+    if settings.chatEditorEnabled {
++    if settings.chatEditorEnabled || settings.chatTimeMachineEnabled {
 +        items.append(entry("Изменить время", "clock.arrow.circlepath") {
 +            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
 +            topController?.present(promptController(context: context, text: "Новое время", subtitle: "Формат: дд.мм.гггг чч:мм", value: "", placeholder: "01.01.2025 12:00", characterLimit: 20, apply: { input in
@@ -551,6 +551,11 @@ index 50beb232..28538b21 100644
 +                    PampGramChatTimeMachineRuntime.shared.setOverrideTimestamp(messageId: message.id, timestamp: Int32(date.timeIntervalSince1970))
 +                }
 +            }), in: .window(.root))
++        })
++    }
++    if settings.fakeDeletedMessageEnabled {
++        items.append(entry("Фейк удаление", "trash") {
++            pampGramApplyFakeDeleted(context: context, messageId: message.id)
 +        })
 +    }
 +    if settings.reactionSpammerEnabled {
