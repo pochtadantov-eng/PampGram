@@ -1,8 +1,8 @@
 diff --git a/submodules/Postbox/Sources/MessageHistoryView.swift b/submodules/Postbox/Sources/MessageHistoryView.swift
-index f517f5b3..206e918f 100644
+index 37945abd086a6364fe9f177660450e09bc60c0b0..4b360b1bf3c44f6817fddeedb8e5900c42cbd9fd 100644
 --- a/submodules/Postbox/Sources/MessageHistoryView.swift
 +++ b/submodules/Postbox/Sources/MessageHistoryView.swift
-@@ -1395,6 +1395,16 @@ public final class MessageHistoryView: PostboxView {
+@@ -1399,6 +1399,16 @@ public final class MessageHistoryView: PostboxView {
                      }
                  }
              }
@@ -20,7 +20,7 @@ index f517f5b3..206e918f 100644
              if !entries.isEmpty {
                  let anchorIndex = binaryIndexOrLower(entries, state.anchor)
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift b/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
-index 58a50975..52cb036d 100644
+index 58a50975aad3b349a0c61fe7eabf2ba9130a587a..52cb036d2d22e34395a9a24d21fbf9ae80009a0c 100644
 --- a/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
 @@ -124,7 +124,13 @@ public enum PampGramTemporaryMediaBypass {
@@ -99,32 +99,32 @@ index 58a50975..52cb036d 100644
      }
  
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
-index 5dc7ba49..6e343b6e 100644
+index 39e0252ec49f4d6eade15ebd39d68bd4e93724b3..0c46c5c1d979a4a259a2518eee6c255ab45ca593 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
-@@ -1991,6 +1991,9 @@ private final class GiftViewSheetContent: CombinedComponent {
-                             controllers.append(chatController)
-                             navigationController.setViewControllers(controllers, animated: true)
-                             
-+                            // PampGram: "Подарок мне" — the stock "Gift Sent, X has been notified about your
-+                            // gift" toast would be wrong here (nothing is sent, the gift comes *from* X).
-+                            if controller.pampGramGiftFlow != .receiveFake {
-                             Queue.mainQueue().after(0.5, {
-                                 let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: recipientPeerId))
-                                 |> deliverOnMainQueue).start(next: { [weak navigationController] peer in
-@@ -2007,6 +2010,7 @@ private final class GiftViewSheetContent: CombinedComponent {
-                                     }
+@@ -2631,6 +2631,9 @@ private final class GiftViewSheetContent: CombinedComponent {
+                                 controllers.append(chatController)
+                                 navigationController.setViewControllers(controllers, animated: true)
+                                 
++                                // PampGram: "Подарок мне" — the stock "Gift Sent, X has been notified about your
++                                // gift" toast would be wrong here (nothing is sent, the gift comes *from* X).
++                                if controller.pampGramGiftFlow != .receiveFake {
+                                 Queue.mainQueue().after(0.5, { [navigationController] in
+                                     let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: recipientPeerId))
+                                     |> deliverOnMainQueue).start(next: { [weak navigationController] peer in
+@@ -2647,6 +2650,7 @@ private final class GiftViewSheetContent: CombinedComponent {
+                                         }
+                                     })
                                  })
-                             })
-+                            }
-                         }
-                     }
-                 }
++                                }
+                             }
+                             if recipientPeerId.namespace == Namespaces.Peer.CloudUser {
+                                 let _ = (ApplicationSpecificNotice.incrementDismissedBirthdayPremiumGiftTip(accountManager: context.sharedContext.accountManager, peerId: recipientPeerId, timestamp: Int32(Date().timeIntervalSince1970))
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 0f40cdc9..c407e83d 100644
+index b23780ef0dd76d6c4483fcc6dc401745966c19f7..f83109d8545147a16f63cefa5f26e3e7f59619ca 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
-@@ -10,6 +10,7 @@ import AccountContext
+@@ -12,6 +12,7 @@ import AccountContext
  import LiveLocationManager
  import PhantomGiftKit
  import PampGramCore
@@ -132,7 +132,7 @@ index 0f40cdc9..c407e83d 100644
  import TemporaryCachedPeerDataManager
  import PhoneNumberFormat
  import TelegramUIPreferences
-@@ -515,6 +516,94 @@ public final class AccountContextImpl: AccountContext {
+@@ -700,6 +701,94 @@ public final class AccountContextImpl: AccountContext {
              PampGramLocalPremiumRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
              PampGramModerationRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
              PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -228,10 +228,10 @@ index 0f40cdc9..c407e83d 100644
              PampGramTemporaryMediaDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
              PampGramStorySavingDisplay.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
-index 952db67c..0c805e7c 100644
+index d097182c4fc6ecb8b7db3d07b8f086480c1c6b28..4283ca9ba914aebc13df110b89f30064d9aa97fa 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
-@@ -1004,6 +1004,17 @@ extension ChatControllerImpl {
+@@ -1015,6 +1015,17 @@ extension ChatControllerImpl {
              strongSelf.commitPurposefulAction()
              
              if let peerId = strongSelf.chatLocation.peerId {
@@ -250,10 +250,10 @@ index 952db67c..0c805e7c 100644
                  // never reaches ChatControllerImpl.sendMessages(_:) — this closure calls
                  // enqueueMessages directly — so this is its own copy of the same hook that
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
-index 31808802..3f27d025 100644
+index 150a16b3efce2252155356f5ef8e1e15a3251f06..bf676111bbee423be2403e3cfa179fde16c1cda7 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
-@@ -9044,6 +9044,16 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
+@@ -9264,6 +9264,16 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
              return
          }
  
@@ -271,10 +271,10 @@ index 31808802..3f27d025 100644
          // локальную копию чата — на сервер ничего не уходит. Текст добавляется как пост канала,
          // всё остальное молча проглатывается, чтобы не было реальных неудачных отправок.
 diff --git a/submodules/TelegramUI/Sources/ChatControllerNode.swift b/submodules/TelegramUI/Sources/ChatControllerNode.swift
-index b094f8c8..fc3b216c 100644
+index ec880608dd53488c1c1ae1439dfa9288d475674f..e0c56b43b26ffb2894cded3d0df8dfcdb5e18849 100644
 --- a/submodules/TelegramUI/Sources/ChatControllerNode.swift
 +++ b/submodules/TelegramUI/Sources/ChatControllerNode.swift
-@@ -4868,8 +4868,18 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+@@ -5079,8 +5079,18 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
          // pampGramApplyVisualEditDirect, but the pending edit and input are still cleared so a
          // later unrelated send in this chat doesn't surprise-edit it.
          if let peerId = self.chatLocation.peerId, let pendingMessageId = PampGramVisualEditRuntime.shared.pending(peerId: peerId.toInt64()) {
@@ -296,7 +296,7 @@ index b094f8c8..fc3b216c 100644
              self.interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
                  return (ChatTextInputState(inputText: NSAttributedString(string: "")), inputMode)
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 50beb232..28538b21 100644
+index 7495f1db3eafd178b85a44d8460f4e30337d15dd..f9888ff2315c997be056d24d71e7a574869ac5a9 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -1,6 +1,8 @@
@@ -308,7 +308,7 @@ index 50beb232..28538b21 100644
  import AsyncDisplayKit
  import Display
  import UIKit
-@@ -518,31 +519,24 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -517,31 +519,24 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
          newList.insert(.separator, at: 0)
          newList.insert(.action(ContextMenuActionItem(text: "PampGram", textColor: .primary, icon: { _ in
              return pampGramSettingsIcon(size: 24.0)
@@ -347,7 +347,7 @@ index 50beb232..28538b21 100644
              })
          })), at: 0)
          items.content = .list(newList)
-@@ -550,110 +544,130 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -549,110 +544,130 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
      }
  }
  
@@ -359,13 +359,6 @@ index 50beb232..28538b21 100644
 -private func pampGramPresentMessageActionsSheet(context: AccountContext, message: EngineRawMessage, interfaceInteraction: ChatPanelInterfaceInteraction?, settings: PampGramSettings, strings: PresentationStrings) {
 -    guard let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController else {
 -        return
--    }
--    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
--    let sheet = ActionSheetController(presentationData: presentationData)
--
--    var buttons: [ActionSheetItem] = [
--        ActionSheetTextItem(title: "PampGram")
--    ]
 +/// The "PampGram" entry's action list as a second level of the same context menu: a "Назад" row,
 +/// a separator, then one row per enabled action. Each row is gated by the same
 +/// `visualEditXxxItemEnabled` flag the settings screen toggles.
@@ -401,8 +394,13 @@ index 50beb232..28538b21 100644
 +    }
 +    if hasMedia {
 +        items.append(.separator)
-+    }
-+
+     }
+-    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+-    let sheet = ActionSheetController(presentationData: presentationData)
+ 
+-    var buttons: [ActionSheetItem] = [
+-        ActionSheetTextItem(title: "PampGram")
+-    ]
      if settings.visualEditTextItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Изменить текст", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
@@ -417,15 +415,10 @@ index 50beb232..28538b21 100644
 +            let entities = message.textEntitiesAttribute?.entities ?? []
              interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
 -                return (ChatTextInputState(inputText: NSAttributedString(string: message.text)), inputMode)
-+                return (ChatTextInputState(inputText: chatInputStateStringWithAppliedEntities(message.text, entities: entities)), inputMode)
-             }
+-            }
 -            topController.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Напечатайте новый текст и нажмите отправить — сообщение изменится только у вас.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
 -        }))
-+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-+            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
-+            topController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Напечатайте новый текст и нажмите отправить — сообщение изменится только у вас.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
-+        })
-     }
+-    }
 -    if settings.visualEditPhotoItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Отправить фото", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
@@ -447,60 +440,20 @@ index 50beb232..28538b21 100644
 -            sheet?.dismissAnimated()
 -            if #available(iOS 14.0, *) {
 -                pampGramPresentInsertFile(context: context, peerId: message.id.peerId, asVoice: false)
--            }
++                return (ChatTextInputState(inputText: chatInputStateStringWithAppliedEntities(message.text, entities: entities)), inputMode)
+             }
 -        }))
--    }
++            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
++            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
++            topController?.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: "Напечатайте новый текст и нажмите отправить — сообщение изменится только у вас.", timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
++        })
+     }
 -    if settings.visualEditCallItemEnabled {
 -        buttons.append(ActionSheetButtonItem(title: "Показать звонок", color: .accent, action: { [weak sheet] in
 -            sheet?.dismissAnimated()
 -            pampGramPresentInsertCall(context: context, peerId: message.id.peerId)
 -        }))
--    }
--    if settings.visualEditPremiumGiftItemEnabled {
--        buttons.append(ActionSheetButtonItem(title: "Подарить Premium", color: .accent, action: { [weak sheet] in
--            sheet?.dismissAnimated()
--            pampGramPresentInsertPremiumGift(context: context, peerId: message.id.peerId)
--        }))
--    }
--    if settings.visualEditReactionItemEnabled {
--        buttons.append(ActionSheetButtonItem(title: "Поставить реакцию", color: .accent, action: { [weak sheet] in
--            sheet?.dismissAnimated()
--            pampGramPresentReactionPicker(context: context, messageId: message.id)
--        }))
--    }
--    if settings.visualEditSaveOneTimeItemEnabled {
--        buttons.append(ActionSheetButtonItem(title: "Сохранить одноразовое", color: .accent, action: { [weak sheet] in
--            sheet?.dismissAnimated()
--            pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
--        }))
--    }
--    if settings.visualEditChannelPhotoItemEnabled {
--        buttons.append(ActionSheetButtonItem(title: "Визуальное фото в канал", color: .accent, action: { [weak sheet] in
--            sheet?.dismissAnimated()
--            if #available(iOS 14.0, *) {
--                pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
--            }
--        }))
--    }
--    if settings.visualEditRealBearsItemEnabled {
--        // The only entry in this sheet that spends real Stars and touches a real gift — colored
--        // .destructive (red) to read as distinct from the purely-visual/local actions above it,
--        // same as this menu already colors any other irreversible real action.
--        buttons.append(ActionSheetButtonItem(title: "Подарить 2 мишек", color: .destructive, action: { [weak sheet] in
--            sheet?.dismissAnimated()
--            pampGramConfirmSendRealBears(context: context, peerId: message.id.peerId)
--        }))
--    }
-
--    sheet.setItemGroups([
--        ActionSheetItemGroup(items: buttons),
--        ActionSheetItemGroup(items: [
--            ActionSheetButtonItem(title: strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
--                sheet?.dismissAnimated()
--            })
--        ])
--    ])
--    topController.present(sheet, in: .window(.root))
++
 +
 +    // --- Наёб и визуал ---
 +    if settings.fakeForwardedFromEnabled {
@@ -527,7 +480,12 @@ index 50beb232..28538b21 100644
 +            ])
 +            topController?.present(sheet, in: .window(.root))
 +        })
-+    }
+     }
+-    if settings.visualEditPremiumGiftItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Подарить Premium", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
+-            pampGramPresentInsertPremiumGift(context: context, peerId: message.id.peerId)
+-        }))
 +    if settings.fakeReactionsEnabled {
 +        items.append(entry("Фейк реакции", "hand.thumbsup") {
 +            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
@@ -539,7 +497,12 @@ index 50beb232..28538b21 100644
 +                pampGramApplyFakeReaction(context: context, messageId: message.id, emoji: emoji, count: Int32(clamping: count))
 +            }), in: .window(.root))
 +        })
-+    }
+     }
+-    if settings.visualEditReactionItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Поставить реакцию", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
+-            pampGramPresentReactionPicker(context: context, messageId: message.id)
+-        }))
 +    if settings.chatEditorEnabled || settings.chatTimeMachineEnabled {
 +        items.append(entry("Изменить время", "clock.arrow.circlepath") {
 +            let topController = (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
@@ -552,12 +515,22 @@ index 50beb232..28538b21 100644
 +                }
 +            }), in: .window(.root))
 +        })
-+    }
+     }
+-    if settings.visualEditSaveOneTimeItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Сохранить одноразовое", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
+-            pampGramSaveOneTimeMessage(context: context, messageId: message.id, isPersistent: true)
+-        }))
 +    if settings.fakeDeletedMessageEnabled {
 +        items.append(entry("Фейк удаление", "trash") {
 +            pampGramApplyFakeDeleted(context: context, messageId: message.id)
 +        })
-+    }
+     }
+-    if settings.visualEditChannelPhotoItemEnabled {
+-        buttons.append(ActionSheetButtonItem(title: "Визуальное фото в канал", color: .accent, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
+-            if #available(iOS 14.0, *) {
+-                pampGramPresentChannelVisualPhotoMenu(context: context, channelId: message.id.peerId)
 +    if settings.reactionSpammerEnabled {
 +        let isActive = PampGramReactionSpammerRuntime.shared.isActive(messageId: message.id)
 +        items.append(entry(isActive ? "Стоп спам реакциями" : "Спам реакциями 💣", isActive ? "stop.circle" : "bolt.circle") {
@@ -565,19 +538,39 @@ index 50beb232..28538b21 100644
 +                PampGramReactionSpammerRuntime.shared.stop(messageId: message.id)
 +            } else {
 +                PampGramReactionSpammerRuntime.shared.start(messageId: message.id, peerId: message.id.peerId, reaction: "🔥", interval: 0.5)
-+            }
+             }
+-        }))
+-    }
+-    if settings.visualEditRealBearsItemEnabled {
+-        // The only entry in this sheet that spends real Stars and touches a real gift — colored
+-        // .destructive (red) to read as distinct from the purely-visual/local actions above it,
+-        // same as this menu already colors any other irreversible real action.
+-        buttons.append(ActionSheetButtonItem(title: "Подарить 2 мишек", color: .destructive, action: { [weak sheet] in
+-            sheet?.dismissAnimated()
+-            pampGramConfirmSendRealBears(context: context, peerId: message.id.peerId)
+-        }))
 +        })
-+    }
+     }
+-
+-    sheet.setItemGroups([
+-        ActionSheetItemGroup(items: buttons),
+-        ActionSheetItemGroup(items: [
+-            ActionSheetButtonItem(title: strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+-                sheet?.dismissAnimated()
+-            })
+-        ])
+-    ])
+-    topController.present(sheet, in: .window(.root))
 +    return items
  }
  
  private func contextMenuForChatPresentationInterfaceStateReal(chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, messages: [EngineRawMessage], controllerInteraction: ChatControllerInteraction?, selectAll: Bool, interfaceInteraction: ChatPanelInterfaceInteraction?, readStats: MessageReadStats? = nil, messageNode: ChatMessageItemView? = nil) -> Signal<ContextController.Items, NoError> {
 diff --git a/submodules/WebUI/BUILD b/submodules/WebUI/BUILD
-index 23c32514..dd456732 100644
+index 05531e6570c50fbfcfc596d0041544043db5c3ad..9d50f90db6735d734fe10d8d62aaa39e030b0678 100644
 --- a/submodules/WebUI/BUILD
 +++ b/submodules/WebUI/BUILD
-@@ -13,6 +13,7 @@ swift_library(
-         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+@@ -14,6 +14,7 @@ swift_library(
+         "//submodules/LottieSettings:LottieSettings",
      	"//submodules/AsyncDisplayKit:AsyncDisplayKit",
          "//submodules/Display:Display",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
@@ -585,10 +578,10 @@ index 23c32514..dd456732 100644
          "//submodules/TelegramPresentationData:TelegramPresentationData",
          "//submodules/PresentationDataUtils:PresentationDataUtils",
 diff --git a/submodules/WebUI/Sources/WebAppController.swift b/submodules/WebUI/Sources/WebAppController.swift
-index ee39fd29..227ceaef 100644
+index c25ca9b81ea03e690fea514ce619173aaf687520..a9c4027ab7e2417a1d4382184a2d89b76d6f4bc2 100644
 --- a/submodules/WebUI/Sources/WebAppController.swift
 +++ b/submodules/WebUI/Sources/WebAppController.swift
-@@ -8,6 +8,7 @@ import SwiftSignalKit
+@@ -9,6 +9,7 @@ import SwiftSignalKit
  import ComponentFlow
  import TelegramPresentationData
  import AccountContext
@@ -596,7 +589,7 @@ index ee39fd29..227ceaef 100644
  import AttachmentUI
  import ContextUI
  import PresentationDataUtils
-@@ -237,6 +238,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
+@@ -248,6 +249,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
          
          fileprivate var hasBackButton = false
          
@@ -607,7 +600,7 @@ index ee39fd29..227ceaef 100644
          private var placeholderDisposable = MetaDisposable()
          private var keepAliveDisposable: Disposable?
          private var paymentDisposable: Disposable?
-@@ -471,6 +476,34 @@ public final class WebAppController: ViewController, AttachmentContainable {
+@@ -482,6 +487,34 @@ public final class WebAppController: ViewController, AttachmentContainable {
          override func didLoad() {
              super.didLoad()
              
@@ -642,7 +635,7 @@ index ee39fd29..227ceaef 100644
              self.setupWebView()
              if let pendingExternalUrl = self.controller?.pendingExternalUrl {
                  self.controller?.pendingExternalUrl = nil
-@@ -482,9 +515,16 @@ public final class WebAppController: ViewController, AttachmentContainable {
+@@ -493,9 +526,16 @@ public final class WebAppController: ViewController, AttachmentContainable {
              }
              self.view.addSubview(webView)
              webView.scrollView.insertSubview(self.topOverscrollNode.view, at: 0)
@@ -659,7 +652,7 @@ index ee39fd29..227ceaef 100644
              /*#if DEBUG
              if "".isEmpty {
                  if #available(iOS 16.0, *) {
-@@ -911,6 +951,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
+@@ -922,6 +962,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
              transition.updateFrame(node: self.backgroundNode, frame: CGRect(origin: .zero, size: layout.size))
              transition.updateFrame(node: self.headerBackgroundNode, frame: CGRect(origin: .zero, size: CGSize(width: layout.size.width, height: navigationBarHeight)))
              transition.updateFrame(node: self.topOverscrollNode, frame: CGRect(origin: CGPoint(x: 0.0, y: -1000.0), size: CGSize(width: layout.size.width, height: 1000.0)))
@@ -670,7 +663,7 @@ index ee39fd29..227ceaef 100644
              
              var contentTopInset: CGFloat = 0.0
              if controller.isFullscreen {
-@@ -2142,6 +2186,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
+@@ -2209,6 +2253,10 @@ public final class WebAppController: ViewController, AttachmentContainable {
          }
          
          fileprivate func sendBackButtonEvent() {

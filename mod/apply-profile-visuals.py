@@ -161,7 +161,7 @@ replace_once(
     header_path,
     "prefer visual rating over the server rating badge",
     """        #endif
-        
+
         if let starRating = self.currentStarRating {
 """,
     """        #endif
