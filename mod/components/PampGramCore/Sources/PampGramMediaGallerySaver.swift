@@ -37,6 +37,7 @@ public final class PampGramMediaGallerySaver {
     }
 
     private func saveFileToPhotos(path: String, isVideo: Bool) {
+        PampGramDiagnostics.shared.log("Фотоплёнка", "сохраняю \(isVideo ? "видео" : "фото"), файл: \((path as NSString).lastPathComponent)")
         // Resource files in the media box have no extension, which Photos needs for video; images
         // are decoded and handed over as UIImage for the same reason.
         var videoURL: URL?
@@ -46,11 +47,13 @@ public final class PampGramMediaGallerySaver {
             do {
                 try FileManager.default.copyItem(atPath: path, toPath: url.path)
             } catch {
+                PampGramDiagnostics.shared.log("Фотоплёнка", "не удалось скопировать файл: \(error.localizedDescription)")
                 return
             }
             videoURL = url
         } else {
             guard let decoded = UIImage(contentsOfFile: path) else {
+                PampGramDiagnostics.shared.log("Фотоплёнка", "не удалось прочитать изображение")
                 return
             }
             image = decoded
@@ -63,7 +66,8 @@ public final class PampGramMediaGallerySaver {
                 } else if let image {
                     PHAssetChangeRequest.creationRequestForAsset(from: image)
                 }
-            }, completionHandler: { _, _ in
+            }, completionHandler: { success, error in
+                PampGramDiagnostics.shared.log("Фотоплёнка", success ? "сохранено" : "не сохранено: \(error?.localizedDescription ?? "неизвестная ошибка")")
                 if let videoURL {
                     try? FileManager.default.removeItem(at: videoURL)
                 }
@@ -79,6 +83,7 @@ public final class PampGramMediaGallerySaver {
         if #available(iOS 14, *) {
             PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
                 guard status == .authorized || status == .limited else {
+                    PampGramDiagnostics.shared.log("Фотоплёнка", "нет доступа к Фото (статус \(status.rawValue)): разрешите добавление в Настройках iOS")
                     cleanup()
                     return
                 }
@@ -87,6 +92,7 @@ public final class PampGramMediaGallerySaver {
         } else {
             PHPhotoLibrary.requestAuthorization { status in
                 guard status == .authorized else {
+                    PampGramDiagnostics.shared.log("Фотоплёнка", "нет доступа к Фото (статус \(status.rawValue))")
                     cleanup()
                     return
                 }

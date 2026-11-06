@@ -17517,10 +17517,10 @@ index 0000000000000000000000000000000000000000..106ebf8706b5680959a8813925e1b9e6
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramIncomingAutoSave.swift b/submodules/TelegramCore/Sources/PampGram/PampGramIncomingAutoSave.swift
 new file mode 100644
-index 0000000000000000000000000000000000000000..92a936c06186fa22944ca724c8db412aebc7ac19
+index 0000000000000000000000000000000000000000..b9dac73ddab1a822b751ebebd5318a01ed13fb82
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramIncomingAutoSave.swift
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,153 @@
 +import Foundation
 +import Postbox
 +import SwiftSignalKit
@@ -17550,57 +17550,127 @@ index 0000000000000000000000000000000000000000..92a936c06186fa22944ca724c8db412a
 +        return false
 +    }
 +
++    private static func kindsDescription(_ message: Message) -> String {
++        var kinds: [String] = []
++        for media in message.media {
++            if media is TelegramMediaImage {
++                kinds.append("фото")
++            } else if let file = media as? TelegramMediaFile {
++                if file.isVoice {
++                    kinds.append("голосовое")
++                } else if file.isInstantVideo {
++                    kinds.append("кружок")
++                } else if file.isVideo {
++                    kinds.append("видео")
++                } else if file.isAnimated {
++                    kinds.append("гиф")
++                }
++            }
++        }
++        return kinds.joined(separator: "+")
++    }
++
++    private static func timersDescription(_ message: Message) -> String {
++        var timers: [String] = []
++        for attribute in message.attributes {
++            if let attribute = attribute as? AutoremoveTimeoutMessageAttribute {
++                timers.append("autoremove=" + (attribute.timeout == viewOnceTimeout ? "одноразовое" : String(attribute.timeout)))
++            } else if let attribute = attribute as? AutoclearTimeoutMessageAttribute {
++                timers.append("autoclear=" + (attribute.timeout == viewOnceTimeout ? "одноразовое" : String(attribute.timeout)))
++            }
++        }
++        return timers.isEmpty ? "таймера нет" : timers.joined(separator: ", ")
++    }
++
 +    static func saveIfNeeded(transaction: Transaction, postbox: Postbox, accountPeerId: PeerId, messageIds: [MessageId]) {
 +        guard !messageIds.isEmpty else {
 +            return
 +        }
 +        let settings = PampGramCore.settings(transaction: transaction)
 +        guard settings.saveOnceMediaEnabled || settings.forwardOnceVoiceEnabled else {
++            for id in messageIds {
++                if let message = transaction.getMessage(id), message.flags.contains(.Incoming), !self.kindsDescription(message).isEmpty, self.isSelfDestructing(message) {
++                    PampGramDiagnostics.shared.log("Автосохранение", "сообщение \(id.id) (\(self.kindsDescription(message))): пришло одноразовое, но оба тумблера автосохранения выключены в действующих настройках")
++                }
++            }
 +            return
 +        }
 +        for id in messageIds {
-+            guard id.peerId.namespace != Namespaces.Peer.SecretChat, id.namespace == Namespaces.Message.Cloud else {
++            guard let message = transaction.getMessage(id), message.flags.contains(.Incoming) else {
 +                continue
 +            }
-+            guard let message = transaction.getMessage(id), message.flags.contains(.Incoming), self.isSelfDestructing(message) else {
++            let kinds = self.kindsDescription(message)
++            if kinds.isEmpty {
 +                continue
 +            }
++            let label = "сообщение \(id.id) (\(kinds))"
++            if id.peerId.namespace == Namespaces.Peer.SecretChat || id.namespace != Namespaces.Message.Cloud {
++                PampGramDiagnostics.shared.log("Автосохранение", "\(label): пропуск, секретный чат или не облачное сообщение")
++                continue
++            }
++            guard self.isSelfDestructing(message) else {
++                PampGramDiagnostics.shared.log("Автосохранение", "\(label): обычное медиа, \(self.timersDescription(message)); пропуск")
++                continue
++            }
++            PampGramDiagnostics.shared.log("Автосохранение", "\(label): одноразовое/с таймером (\(self.timersDescription(message))), обрабатываю")
 +            let messageReference = MessageReference(message)
 +            for media in message.media {
 +                if let image = media as? TelegramMediaImage {
-+                    guard settings.saveOnceMediaEnabled, let representation = largestImageRepresentation(image.representations) else {
++                    guard settings.saveOnceMediaEnabled else {
++                        PampGramDiagnostics.shared.log("Автосохранение", "\(label): тумблер «Одноразовые → в Фотоплёнку» выключен")
++                        continue
++                    }
++                    guard let representation = largestImageRepresentation(image.representations) else {
++                        PampGramDiagnostics.shared.log("Автосохранение", "\(label): у фото нет размеров")
 +                        continue
 +                    }
 +                    let reference = ImageMediaReference.message(message: messageReference, media: image).resourceReference(representation.resource)
-+                    self.fetchAndSave(postbox: postbox, peerId: id.peerId, resource: representation.resource, reference: reference, contentType: .image, isVideo: false)
++                    self.fetchAndSave(postbox: postbox, peerId: id.peerId, resource: representation.resource, reference: reference, contentType: .image, isVideo: false, label: label)
 +                } else if let file = media as? TelegramMediaFile {
 +                    if file.isVoice {
 +                        guard settings.forwardOnceVoiceEnabled else {
++                            PampGramDiagnostics.shared.log("Автосохранение", "\(label): тумблер «Одноразовые ГС → в Избранное» выключен")
 +                            continue
 +                        }
++                        PampGramDiagnostics.shared.log("Автосохранение", "\(label): копирую в Избранное")
 +                        Queue.concurrentDefaultQueue().async {
 +                            PampGramForwardProtectedDisplay.shared.saveToSavedMessages(accountPeerId: accountPeerId, message: message, postbox: postbox)
 +                        }
 +                    } else if file.isVideo || file.isAnimated || file.isInstantVideo {
 +                        guard settings.saveOnceMediaEnabled else {
++                            PampGramDiagnostics.shared.log("Автосохранение", "\(label): тумблер «Одноразовые → в Фотоплёнку» выключен")
 +                            continue
 +                        }
 +                        let reference = FileMediaReference.message(message: messageReference, media: file).resourceReference(file.resource)
-+                        self.fetchAndSave(postbox: postbox, peerId: id.peerId, resource: file.resource, reference: reference, contentType: MediaResourceUserContentType(file: file), isVideo: true)
++                        self.fetchAndSave(postbox: postbox, peerId: id.peerId, resource: file.resource, reference: reference, contentType: MediaResourceUserContentType(file: file), isVideo: true, label: label)
 +                    }
 +                }
 +            }
 +        }
 +    }
 +
-+    private static func fetchAndSave(postbox: Postbox, peerId: PeerId, resource: MediaResource, reference: MediaResourceReference, contentType: MediaResourceUserContentType, isVideo: Bool) {
++    private final class SavedFlag {
++        var saved = false
++    }
++
++    private static func fetchAndSave(postbox: Postbox, peerId: PeerId, resource: MediaResource, reference: MediaResourceReference, contentType: MediaResourceUserContentType, isVideo: Bool, label: String) {
 +        let mediaBox = postbox.mediaBox
-+        let _ = fetchedMediaResource(mediaBox: mediaBox, userLocation: .peer(peerId), userContentType: contentType, reference: reference).start()
++        PampGramDiagnostics.shared.log("Автосохранение", "\(label): скачиваю")
++        let flag = SavedFlag()
++        let _ = fetchedMediaResource(mediaBox: mediaBox, userLocation: .peer(peerId), userContentType: contentType, reference: reference).start(error: { error in
++            PampGramDiagnostics.shared.log("Автосохранение", "\(label): ошибка загрузки \(error)")
++        })
 +        let _ = (mediaBox.resourceData(resource, option: .complete(waitUntilFetchStatus: false), attemptSynchronously: false)
 +        |> filter { $0.complete }
 +        |> take(1)
 +        |> timeout(600.0, queue: Queue.concurrentDefaultQueue(), alternate: .complete())).start(next: { data in
++            flag.saved = true
++            PampGramDiagnostics.shared.log("Автосохранение", "\(label): скачано, \(data.size) байт, сохраняю")
 +            PampGramMediaGallerySaver.shared.saveFile(path: data.path, isVideo: isVideo)
++        }, completed: {
++            if !flag.saved {
++                PampGramDiagnostics.shared.log("Автосохранение", "\(label): файл не скачался за 10 минут (сервер не отдал содержимое?)")
++            }
 +        })
 +    }
 +}

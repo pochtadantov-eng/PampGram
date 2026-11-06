@@ -18,6 +18,7 @@ private final class PampGramAdditionalArguments {
     let openFakeLocation: () -> Void
     let openChatLock: () -> Void
     let openCallOverrides: () -> Void
+    let openDiagnostics: () -> Void
     let openFakeAdmin: () -> Void
     let toggleInfinitePins: (Bool) -> Void
     let toggleLegalPremium: (Bool) -> Void
@@ -58,7 +59,7 @@ private final class PampGramAdditionalArguments {
     let toggleFakeDeletedAccount: (Bool) -> Void
     let toggleFakeGroupGenerator: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleAutoSaveVideoMessages: @escaping (Bool) -> Void, toggleSaveOnceMedia: @escaping (Bool) -> Void, toggleForwardOnceVoice: @escaping (Bool) -> Void, toggleFakeTyping: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void, toggleFakeForwardedFrom: @escaping (Bool) -> Void, toggleFakeReactions: @escaping (Bool) -> Void, toggleFakePremiumBadge: @escaping (Bool) -> Void, toggleFakeSubscribers: @escaping (Bool) -> Void, toggleFakeReadReceipts: @escaping (Bool) -> Void, toggleChatEditor: @escaping (Bool) -> Void, toggleConversationGenerator: @escaping (Bool) -> Void, toggleFakeDeletedMessage: @escaping (Bool) -> Void, toggleInvisibleMessages: @escaping (Bool) -> Void, toggleReactionSpammer: @escaping (Bool) -> Void, toggleFakeVoiceFromText: @escaping (Bool) -> Void, toggleStickerPackCloner: @escaping (Bool) -> Void, toggleFakePortals: @escaping (Bool) -> Void, toggleFakeSystemMessages: @escaping (Bool) -> Void, toggleFakePaymentReceipts: @escaping (Bool) -> Void, toggleVoiceCloner: @escaping (Bool) -> Void, toggleChatTimeMachine: @escaping (Bool) -> Void, toggleFakeIncomingCall: @escaping (Bool) -> Void, toggleFakeScreenshotNotification: @escaping (Bool) -> Void, toggleFakeDeletedAccount: @escaping (Bool) -> Void, toggleFakeGroupGenerator: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openDiagnostics: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleAutoSaveVideoMessages: @escaping (Bool) -> Void, toggleSaveOnceMedia: @escaping (Bool) -> Void, toggleForwardOnceVoice: @escaping (Bool) -> Void, toggleFakeTyping: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void, toggleFakeForwardedFrom: @escaping (Bool) -> Void, toggleFakeReactions: @escaping (Bool) -> Void, toggleFakePremiumBadge: @escaping (Bool) -> Void, toggleFakeSubscribers: @escaping (Bool) -> Void, toggleFakeReadReceipts: @escaping (Bool) -> Void, toggleChatEditor: @escaping (Bool) -> Void, toggleConversationGenerator: @escaping (Bool) -> Void, toggleFakeDeletedMessage: @escaping (Bool) -> Void, toggleInvisibleMessages: @escaping (Bool) -> Void, toggleReactionSpammer: @escaping (Bool) -> Void, toggleFakeVoiceFromText: @escaping (Bool) -> Void, toggleStickerPackCloner: @escaping (Bool) -> Void, toggleFakePortals: @escaping (Bool) -> Void, toggleFakeSystemMessages: @escaping (Bool) -> Void, toggleFakePaymentReceipts: @escaping (Bool) -> Void, toggleVoiceCloner: @escaping (Bool) -> Void, toggleChatTimeMachine: @escaping (Bool) -> Void, toggleFakeIncomingCall: @escaping (Bool) -> Void, toggleFakeScreenshotNotification: @escaping (Bool) -> Void, toggleFakeDeletedAccount: @escaping (Bool) -> Void, toggleFakeGroupGenerator: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -66,6 +67,7 @@ private final class PampGramAdditionalArguments {
         self.openFakeLocation = openFakeLocation
         self.openChatLock = openChatLock
         self.openCallOverrides = openCallOverrides
+        self.openDiagnostics = openDiagnostics
         self.openFakeAdmin = openFakeAdmin
         self.toggleInfinitePins = toggleInfinitePins
         self.toggleLegalPremium = toggleLegalPremium
@@ -203,6 +205,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case stickerPackClonerToggle(String, Bool)
     case fakeScreenshotNotificationToggle(String, Bool)
     case toolsFooter(String)
+    case diagnosticsRow(String)
 
     // ПРЕМИУМ
     case premiumHeader(String)
@@ -228,7 +231,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.generators.rawValue
         case .voiceCallsHeader, .fakeVoiceFromTextToggle, .voiceClonerToggle, .fakeIncomingCallToggle, .callOverridesRow, .voiceCallsFooter:
             return PampGramAdditionalSection.voiceCalls.rawValue
-        case .toolsHeader, .fakeLocationRow, .chatLockRow, .fakeAdminRow, .fakeSubscribersToggle, .fakeBotsRow, .fakePortalsToggle, .fakeTypingToggle, .reactionSpammerToggle, .stickerPackClonerToggle, .fakeScreenshotNotificationToggle, .toolsFooter:
+        case .toolsHeader, .diagnosticsRow, .fakeLocationRow, .chatLockRow, .fakeAdminRow, .fakeSubscribersToggle, .fakeBotsRow, .fakePortalsToggle, .fakeTypingToggle, .reactionSpammerToggle, .stickerPackClonerToggle, .fakeScreenshotNotificationToggle, .toolsFooter:
             return PampGramAdditionalSection.tools.rawValue
         case .premiumHeader, .infinitePinsToggle, .legalPremiumToggle, .premiumFooter:
             return PampGramAdditionalSection.premium.rawValue
@@ -306,6 +309,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         case .stickerPackClonerToggle: return 609
         case .fakeScreenshotNotificationToggle: return 610
         case .toolsFooter: return 619
+        case .diagnosticsRow: return 611
 
         case .premiumHeader: return 700
         case .infinitePinsToggle: return 701
@@ -480,6 +484,11 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
                 arguments.openCallOverrides()
             })
 
+        case let .diagnosticsRow(title):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "stethoscope", backgroundColor: UIColor(rgb: 0x8e8e93)), title: title, label: "", sectionId: self.section, style: .blocks, action: {
+                arguments.openDiagnostics()
+            })
+
         // MARK: Tools
         case let .fakeLocationRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "location.fill", backgroundColor: UIColor(rgb: 0x007aff)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
@@ -613,7 +622,8 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.fakeTypingToggle("Фейк набор текста", settings.fakeTypingEnabled))
     entries.append(.reactionSpammerToggle("Спам реакциями", settings.reactionSpammerEnabled))
     entries.append(.fakeScreenshotNotificationToggle("Фейк скриншот", settings.fakeScreenshotNotificationEnabled))
-    entries.append(.toolsFooter("• Геолокация — отправка поддельного местоположения. Выбор точки на карте.\n• Блокировка чатов — локальный пароль на выбранные чаты.\n• Фейк админ — визуальные посты от имени админа в любом канале.\n• Фейк подписчики — любое число участников в своём канале или группе.\n• Фейковые боты — список ботов с локальным CryptoBot-кошельком внутри.\n• Фейковый Portals — локальная копия мини-аппа @portals с балансами и витриной.\n• Фейк набор текста — в меню чата: «Печатает…» / «Записывает ГС…» без остановки.\n• Спам реакциями — ставит/снимает реакцию в цикле. Непрерывные уведомления.\n• Фейк скриншот — отправляет «Сделан снимок экрана» в секретный чат без реального скриншота."))
+    entries.append(.diagnosticsRow("Диагностика"))
+    entries.append(.toolsFooter("• Геолокация — отправка поддельного местоположения. Выбор точки на карте.\n• Блокировка чатов — локальный пароль на выбранные чаты.\n• Фейк админ — визуальные посты от имени админа в любом канале.\n• Фейк подписчики — любое число участников в своём канале или группе.\n• Фейковые боты — список ботов с локальным CryptoBot-кошельком внутри.\n• Фейковый Portals — локальная копия мини-аппа @portals с балансами и витриной.\n• Фейк набор текста — в меню чата: «Печатает…» / «Записывает ГС…» без остановки.\n• Спам реакциями — ставит/снимает реакцию в цикле. Непрерывные уведомления.\n• Фейк скриншот — отправляет «Сделан снимок экрана» в секретный чат без реального скриншота.\n• Диагностика — журнал того, что мод делал на этом устройстве (автосохранение, правки сообщений). Можно скопировать и прислать."))
 
     // ── ПРЕМИУМ ──
     entries.append(.premiumHeader("ПРЕМИУМ"))
@@ -725,6 +735,9 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
         },
         openCallOverrides: {
             pushControllerImpl?(pampGramCallOverridesController(context: context))
+        },
+        openDiagnostics: {
+            pampGramPresentDiagnostics(context: context)
         },
         openFakeAdmin: {
             pushControllerImpl?(pampGramFakeAdminController(context: context))
