@@ -64,20 +64,12 @@ private enum PampGramVisualEditItemsEntry: ItemListNodeEntry {
 /// `pampGramVisualEditItemsController` share a single source of truth for "which items exist".
 private let pampGramVisualEditItems: [(title: String, keyPath: WritableKeyPath<PampGramSettings, Bool>)] = [
     ("Изменить текст", \.visualEditTextItemEnabled),
-    ("Отправить фото", \.visualEditPhotoItemEnabled),
-    ("Отправить голосовое", \.visualEditVoiceItemEnabled),
-    ("Отправить файл", \.visualEditFileItemEnabled),
     ("Показать звонок", \.visualEditCallItemEnabled),
-    ("Подарить Premium", \.visualEditPremiumGiftItemEnabled),
-    ("Поставить реакцию", \.visualEditReactionItemEnabled),
-    ("Сохранить одноразовое", \.visualEditSaveOneTimeItemEnabled),
-    ("Визуальное фото в канал", \.visualEditChannelPhotoItemEnabled),
-    ("Подарить 2 мишек", \.visualEditRealBearsItemEnabled),
 ]
 
 private func pampGramVisualEditItemsEntries(settings: PampGramSettings) -> [PampGramVisualEditItemsEntry] {
     var entries: [PampGramVisualEditItemsEntry] = []
-    entries.append(.aboutText("Выключенные пункты просто не показываются в меню «PampGram» при зажатии сообщения — остальные работают как раньше."))
+    entries.append(.aboutText("Выключенные пункты просто не показываются: «Изменить текст» — в меню «PampGram» при зажатии сообщения, «Показать звонок» — в «Меню» при зажатии аватарки в чате."))
     for (index, entry) in pampGramVisualEditItems.enumerated() {
         entries.append(.item(Int32(index), entry.title, settings[keyPath: entry.keyPath], entry.keyPath))
     }

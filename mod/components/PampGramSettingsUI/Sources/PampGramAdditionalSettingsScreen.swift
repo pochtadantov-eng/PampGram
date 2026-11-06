@@ -28,6 +28,8 @@ private final class PampGramAdditionalArguments {
     let toggleScreenshotBypass: (Bool) -> Void
     let toggleForwardProtectedToSaved: (Bool) -> Void
     let toggleAutoSaveVideoMessages: (Bool) -> Void
+    let toggleSaveOnceMedia: (Bool) -> Void
+    let toggleForwardOnceVoice: (Bool) -> Void
     let toggleFakeTyping: (Bool) -> Void
     let toggleHideOwnPhone: (Bool) -> Void
     let openFakePhoneNumber: () -> Void
@@ -56,7 +58,7 @@ private final class PampGramAdditionalArguments {
     let toggleFakeDeletedAccount: (Bool) -> Void
     let toggleFakeGroupGenerator: (Bool) -> Void
 
-    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleAutoSaveVideoMessages: @escaping (Bool) -> Void, toggleFakeTyping: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void, toggleFakeForwardedFrom: @escaping (Bool) -> Void, toggleFakeReactions: @escaping (Bool) -> Void, toggleFakePremiumBadge: @escaping (Bool) -> Void, toggleFakeSubscribers: @escaping (Bool) -> Void, toggleFakeReadReceipts: @escaping (Bool) -> Void, toggleChatEditor: @escaping (Bool) -> Void, toggleConversationGenerator: @escaping (Bool) -> Void, toggleFakeDeletedMessage: @escaping (Bool) -> Void, toggleInvisibleMessages: @escaping (Bool) -> Void, toggleReactionSpammer: @escaping (Bool) -> Void, toggleFakeVoiceFromText: @escaping (Bool) -> Void, toggleStickerPackCloner: @escaping (Bool) -> Void, toggleFakePortals: @escaping (Bool) -> Void, toggleFakeSystemMessages: @escaping (Bool) -> Void, toggleFakePaymentReceipts: @escaping (Bool) -> Void, toggleVoiceCloner: @escaping (Bool) -> Void, toggleChatTimeMachine: @escaping (Bool) -> Void, toggleFakeIncomingCall: @escaping (Bool) -> Void, toggleFakeScreenshotNotification: @escaping (Bool) -> Void, toggleFakeDeletedAccount: @escaping (Bool) -> Void, toggleFakeGroupGenerator: @escaping (Bool) -> Void) {
+    init(toggleVoiceChanger: @escaping (Bool) -> Void, openVoicePreset: @escaping () -> Void, openUploadSpeed: @escaping () -> Void, openDownloadSpeed: @escaping () -> Void, openFakeLocation: @escaping () -> Void, openChatLock: @escaping () -> Void, openCallOverrides: @escaping () -> Void, openFakeAdmin: @escaping () -> Void, toggleInfinitePins: @escaping (Bool) -> Void, toggleLegalPremium: @escaping (Bool) -> Void, toggleBypassViewOnceMedia: @escaping (Bool) -> Void, toggleBypassTimedMedia: @escaping (Bool) -> Void, toggleBypassMarkViewed: @escaping (Bool) -> Void, toggleStorySaving: @escaping (Bool) -> Void, toggleScreenshotBypass: @escaping (Bool) -> Void, toggleForwardProtectedToSaved: @escaping (Bool) -> Void, toggleAutoSaveVideoMessages: @escaping (Bool) -> Void, toggleSaveOnceMedia: @escaping (Bool) -> Void, toggleForwardOnceVoice: @escaping (Bool) -> Void, toggleFakeTyping: @escaping (Bool) -> Void, toggleHideOwnPhone: @escaping (Bool) -> Void, openFakePhoneNumber: @escaping () -> Void, toggleProfileIds: @escaping (Bool) -> Void, toggleAccountLink: @escaping (Bool) -> Void, openFakeBots: @escaping () -> Void, toggleFakeForwardedFrom: @escaping (Bool) -> Void, toggleFakeReactions: @escaping (Bool) -> Void, toggleFakePremiumBadge: @escaping (Bool) -> Void, toggleFakeSubscribers: @escaping (Bool) -> Void, toggleFakeReadReceipts: @escaping (Bool) -> Void, toggleChatEditor: @escaping (Bool) -> Void, toggleConversationGenerator: @escaping (Bool) -> Void, toggleFakeDeletedMessage: @escaping (Bool) -> Void, toggleInvisibleMessages: @escaping (Bool) -> Void, toggleReactionSpammer: @escaping (Bool) -> Void, toggleFakeVoiceFromText: @escaping (Bool) -> Void, toggleStickerPackCloner: @escaping (Bool) -> Void, toggleFakePortals: @escaping (Bool) -> Void, toggleFakeSystemMessages: @escaping (Bool) -> Void, toggleFakePaymentReceipts: @escaping (Bool) -> Void, toggleVoiceCloner: @escaping (Bool) -> Void, toggleChatTimeMachine: @escaping (Bool) -> Void, toggleFakeIncomingCall: @escaping (Bool) -> Void, toggleFakeScreenshotNotification: @escaping (Bool) -> Void, toggleFakeDeletedAccount: @escaping (Bool) -> Void, toggleFakeGroupGenerator: @escaping (Bool) -> Void) {
         self.toggleVoiceChanger = toggleVoiceChanger
         self.openVoicePreset = openVoicePreset
         self.openUploadSpeed = openUploadSpeed
@@ -74,6 +76,8 @@ private final class PampGramAdditionalArguments {
         self.toggleScreenshotBypass = toggleScreenshotBypass
         self.toggleForwardProtectedToSaved = toggleForwardProtectedToSaved
         self.toggleAutoSaveVideoMessages = toggleAutoSaveVideoMessages
+        self.toggleSaveOnceMedia = toggleSaveOnceMedia
+        self.toggleForwardOnceVoice = toggleForwardOnceVoice
         self.toggleFakeTyping = toggleFakeTyping
         self.toggleHideOwnPhone = toggleHideOwnPhone
         self.openFakePhoneNumber = openFakePhoneNumber
@@ -145,6 +149,8 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
     case chatScreenshotsToggle(String, Bool)
     case forwardProtectedToSavedToggle(String, Bool)
     case autoSaveVideoMessagesToggle(String, Bool)
+    case saveOnceMediaToggle(String, Bool)
+    case forwardOnceVoiceToggle(String, Bool)
     case mediaFooter(String)
 
     // ПРОФИЛЬ
@@ -212,7 +218,7 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
             return PampGramAdditionalSection.voice.rawValue
         case .speedHeader, .uploadSpeedRow, .downloadSpeedRow, .speedFooter:
             return PampGramAdditionalSection.speed.rawValue
-        case .mediaHeader, .viewOnceToggle, .timedToggle, .markViewedToggle, .screenshotsToggle, .chatScreenshotsToggle, .forwardProtectedToSavedToggle, .autoSaveVideoMessagesToggle, .mediaFooter:
+        case .mediaHeader, .viewOnceToggle, .timedToggle, .markViewedToggle, .screenshotsToggle, .chatScreenshotsToggle, .forwardProtectedToSavedToggle, .autoSaveVideoMessagesToggle, .saveOnceMediaToggle, .forwardOnceVoiceToggle, .mediaFooter:
             return PampGramAdditionalSection.media.rawValue
         case .profileHeader, .hideOwnPhoneToggle, .fakePhoneNumberRow, .profileIdsToggle, .accountLinkToggle, .fakePremiumBadgeToggle, .fakeDeletedAccountToggle, .profileFooter:
             return PampGramAdditionalSection.profile.rawValue
@@ -251,7 +257,9 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         case .chatScreenshotsToggle: return 105
         case .forwardProtectedToSavedToggle: return 106
         case .autoSaveVideoMessagesToggle: return 107
-        case .mediaFooter: return 109
+        case .saveOnceMediaToggle: return 108
+        case .forwardOnceVoiceToggle: return 109
+        case .mediaFooter: return 110
 
         case .profileHeader: return 200
         case .hideOwnPhoneToggle: return 201
@@ -370,6 +378,14 @@ private enum PampGramAdditionalEntry: ItemListNodeEntry {
         case let .autoSaveVideoMessagesToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "circle.circle.fill", backgroundColor: UIColor(rgb: 0xaf52de)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleAutoSaveVideoMessages(value)
+            })
+        case let .saveOnceMediaToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "square.and.arrow.down.fill", backgroundColor: UIColor(rgb: 0x34c759)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleSaveOnceMedia(value)
+            })
+        case let .forwardOnceVoiceToggle(title, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "waveform.circle.fill", backgroundColor: UIColor(rgb: 0x5856d6)), title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleForwardOnceVoice(value)
             })
 
         // MARK: Profile
@@ -547,7 +563,9 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.chatScreenshotsToggle("Обход скриншотов", settings.bypassScreenshotProtectionEnabled))
     entries.append(.forwardProtectedToSavedToggle("Пересылка в Избранное", settings.forwardProtectedToSavedEnabled))
     entries.append(.autoSaveVideoMessagesToggle("Сохранять кружки", settings.autoSaveVideoMessagesEnabled))
-    entries.append(.mediaFooter("• Обход одноразовых — фото/видео «один раз» становится обычным. Открывается в галерее, без размытия, без таймера.\n• Обход с таймером — медиа с таймером (до 60 сек) остаётся в чате навсегда. Работает аналогично.\n• Отмечать просмотренным — при открытии обойдённого фото у отправителя оно «сгорает» как обычно, а у вас остаётся. Выключите, чтобы отправитель НЕ видел, что вы открывали.\n• Сохранение историй — «Сохранить» для защищённых историй, скриншот/запись экрана работает.\n• Обход скриншотов — скриншот и запись экрана в защищённых чатах и каналах. Секретные чаты не затрагиваются.\n• Пересылка в Избранное — в меню PampGram появляется «В Избранное» для отправки копии медиа в Saved Messages.\n• Сохранять кружки — видеокружки сохраняются в Фотоплёнку при просмотре.\n\nАвтосохранение одноразовых и таймерных фото, видео, кружков и голосовых — Чаты → Одноразовые медиа."))
+    entries.append(.saveOnceMediaToggle("Одноразовые → в Фотоплёнку", settings.saveOnceMediaEnabled))
+    entries.append(.forwardOnceVoiceToggle("Одноразовые ГС → в Избранное", settings.forwardOnceVoiceEnabled))
+    entries.append(.mediaFooter("• Обход одноразовых — фото/видео «один раз» становится обычным. Открывается в галерее, без размытия, без таймера.\n• Обход с таймером — медиа с таймером (до 60 сек) остаётся в чате навсегда. Работает аналогично.\n• Отмечать просмотренным — при открытии обойдённого фото у отправителя оно «сгорает» как обычно, а у вас остаётся. Выключите, чтобы отправитель НЕ видел, что вы открывали.\n• Сохранение историй — «Сохранить» для защищённых историй, скриншот/запись экрана работает.\n• Обход скриншотов — скриншот и запись экрана в защищённых чатах и каналах. Секретные чаты не затрагиваются.\n• Пересылка в Избранное — в меню PampGram появляется «В Избранное» для отправки копии медиа в Saved Messages.\n• Сохранять кружки — любой видеокружок сохраняется в Фотоплёнку, когда вы его смотрите.\n• Одноразовые → в Фотоплёнку — когда вам присылают одноразовое или с таймером (до 60 сек) фото, видео или кружок, оно само сохраняется в Фотоплёнку в момент получения, до открытия.\n• Одноразовые ГС → в Избранное — такое голосовое само копируется в Избранное.\nРаботает для сообщений, пришедших после включения. Секретные чаты не затрагиваются."))
 
     // ── ПРОФИЛЬ ──
     entries.append(.profileHeader("ПРОФИЛЬ"))
@@ -771,6 +789,20 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.autoSaveVideoMessagesEnabled = value
+                return settings
+            }).start()
+        },
+        toggleSaveOnceMedia: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.saveOnceMediaEnabled = value
+                return settings
+            }).start()
+        },
+        toggleForwardOnceVoice: { value in
+            let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
+                var settings = settings
+                settings.forwardOnceVoiceEnabled = value
                 return settings
             }).start()
         },

@@ -883,6 +883,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.bypassMarkViewedEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassMarkViewedEnabled) ?? defaults.bypassMarkViewedEnabled
         self.forwardProtectedToSavedEnabled = try container.decodeIfPresent(Bool.self, forKey: .forwardProtectedToSavedEnabled) ?? defaults.forwardProtectedToSavedEnabled
         self.autoSaveVideoMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSaveVideoMessagesEnabled) ?? defaults.autoSaveVideoMessagesEnabled
+        self.saveOnceMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .saveOnceMediaEnabled) ?? defaults.saveOnceMediaEnabled
+        self.forwardOnceVoiceEnabled = try container.decodeIfPresent(Bool.self, forKey: .forwardOnceVoiceEnabled) ?? defaults.forwardOnceVoiceEnabled
         self.fakeTypingEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeTypingEnabled) ?? defaults.fakeTypingEnabled
         self.fakeForwardedFromEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeForwardedFromEnabled) ?? defaults.fakeForwardedFromEnabled
         self.fakeReactionsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeReactionsEnabled) ?? defaults.fakeReactionsEnabled

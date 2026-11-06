@@ -296,7 +296,7 @@ index ec880608dd53488c1c1ae1439dfa9288d475674f..e0c56b43b26ffb2894cded3d0df8dfcd
              self.interfaceInteraction?.updateTextInputStateAndMode { _, inputMode in
                  return (ChatTextInputState(inputText: NSAttributedString(string: "")), inputMode)
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index 7495f1db3eafd178b85a44d8460f4e30337d15dd..f9888ff2315c997be056d24d71e7a574869ac5a9 100644
+index 7495f1db3eafd178b85a44d8460f4e30337d15dd..f17f697be01965630c0952a85bbc1bc00ffb3e8c 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -1,6 +1,8 @@
@@ -347,7 +347,7 @@ index 7495f1db3eafd178b85a44d8460f4e30337d15dd..f9888ff2315c997be056d24d71e7a574
              })
          })), at: 0)
          items.content = .list(newList)
-@@ -549,110 +544,130 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
+@@ -549,110 +544,131 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
      }
  }
  
@@ -512,6 +512,7 @@ index 7495f1db3eafd178b85a44d8460f4e30337d15dd..f9888ff2315c997be056d24d71e7a574
 +                formatter.dateFormat = "dd.MM.yyyy HH:mm"
 +                if let date = formatter.date(from: input) {
 +                    PampGramChatTimeMachineRuntime.shared.setOverrideTimestamp(messageId: message.id, timestamp: Int32(date.timeIntervalSince1970))
++                    pampGramRefreshMessage(context: context, messageId: message.id)
 +                }
 +            }), in: .window(.root))
 +        })

@@ -63,3 +63,9 @@ public func pampGramApplyFakeDeleted(context: AccountContext, messageId: Message
         }
     }
 }
+
+/// Re-stores the message unchanged so the chat re-renders it (used after an in-memory display
+/// override such as "Изменить время", which changes nothing in Postbox on its own).
+public func pampGramRefreshMessage(context: AccountContext, messageId: MessageId) {
+    pampGramUpdateLocalMessage(context: context, messageId: messageId) { _, _, _ in }
+}
