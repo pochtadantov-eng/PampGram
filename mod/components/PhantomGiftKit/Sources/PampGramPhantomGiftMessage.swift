@@ -88,7 +88,10 @@ public enum PampGramPhantomGiftMessage {
             assigned: true,
             fromOffer: false,
             canCraftAt: nil,
-            isCrafted: false
+            isCrafted: false,
+            text: nil,
+            entities: nil,
+            nameHidden: false
         ))
     }
 
@@ -118,7 +121,10 @@ public enum PampGramPhantomGiftMessage {
             assigned: false,
             fromOffer: false,
             canCraftAt: nil,
-            isCrafted: false
+            isCrafted: false,
+            text: nil,
+            entities: nil,
+            nameHidden: false
         ))
     }
 
@@ -150,7 +156,10 @@ public enum PampGramPhantomGiftMessage {
             assigned: true,
             fromOffer: false,
             canCraftAt: nil,
-            isCrafted: false
+            isCrafted: false,
+            text: nil,
+            entities: nil,
+            nameHidden: false
         ))
     }
 

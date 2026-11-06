@@ -147,16 +147,10 @@ public enum PampGramStarsHook {
     }
 
     private static func keyWindow() -> UIWindow? {
-        if #available(iOS 13.0, *) {
-            for scene in UIApplication.shared.connectedScenes {
-                if let windowScene = scene as? UIWindowScene {
-                    if let key = windowScene.windows.first(where: { $0.isKeyWindow }) {
-                        return key
-                    }
-                }
-            }
-        }
-        return UIApplication.shared.windows.first(where: { $0.isKeyWindow }) ?? UIApplication.shared.windows.first
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+        return windows.first(where: { $0.isKeyWindow }) ?? windows.first
     }
 
     private static func topViewController() -> UIViewController? {
@@ -604,7 +598,10 @@ private final class PampGramStarsPaymentSheetController: UIViewController {
         }, completion: nil)
 
         // Processing state (starts after the little bounce so the sequence reads naturally).
-        Queue.mainQueue().after(0.34, {
+        Queue.mainQueue().after(0.34, { [weak self] in
+            guard let self else {
+                return
+            }
             self.footerGlyph.isHidden = true
             self.spinner.startAnimating()
             self.footerLabel.text = "Оплата…"

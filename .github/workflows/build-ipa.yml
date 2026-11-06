@@ -343,6 +343,7 @@ jobs:
             --configurationPath=build-system/pampgram-configuration.json \
             --codesigningInformationPath=build-system/fake-codesigning \
             --buildNumber=1 \
+            --continueOnError \
             --configuration=release_arm64 \
             --outputBuildArtifactsPath="$GITHUB_WORKSPACE/output"
 
