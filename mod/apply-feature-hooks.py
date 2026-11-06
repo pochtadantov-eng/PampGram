@@ -68,7 +68,7 @@ print("PampGram: applying feature integration hooks...")
 # ---------------------------------------------------------------------------
 # 1. ChatTimeMachine — timestamp override
 # ---------------------------------------------------------------------------
-print("\n[1/5] ChatTimeMachine timestamp override")
+print("\n[1/6] ChatTimeMachine timestamp override")
 
 ts_swift = Path(
     "submodules/TelegramUI/Components/Chat/ChatMessageDateAndStatusNode/"
@@ -106,7 +106,7 @@ replace_once(
 # ---------------------------------------------------------------------------
 # 2. VideoMessageSaver — auto-save on playback
 # ---------------------------------------------------------------------------
-print("\n[2/5] VideoMessageSaver auto-save")
+print("\n[2/6] VideoMessageSaver auto-save")
 
 video_swift = Path(
     "submodules/TelegramUI/Components/Chat/"
@@ -127,7 +127,7 @@ replace_once(
 # ---------------------------------------------------------------------------
 # 3. FakeBadge — Premium star in own profile
 # ---------------------------------------------------------------------------
-print("\n[3/5] FakeBadge premium star override")
+print("\n[3/6] FakeBadge premium star override")
 
 header_swift = Path(
     "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/"
@@ -149,7 +149,7 @@ replace_once(
 # ---------------------------------------------------------------------------
 # 4. FakeSubscribers — member count override
 # ---------------------------------------------------------------------------
-print("\n[4/5] FakeSubscribers member count override")
+print("\n[4/6] FakeSubscribers member count override")
 
 profile_items_swift = Path(
     "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/"
@@ -170,7 +170,7 @@ replace_once(
 # ---------------------------------------------------------------------------
 # 5. FakeDeletedAccount — name override in profile header
 # ---------------------------------------------------------------------------
-print("\n[5/5] FakeDeletedAccount profile name override")
+print("\n[5/6] FakeDeletedAccount profile name override")
 
 replace_once(
     header_swift,
@@ -180,6 +180,22 @@ replace_once(
     "                if PampGramFakeDeletedAccountRuntime.shared.isEnabled(accountKey: self.context.account.peerId.toInt64()) && peer.id == self.context.account.peerId {\n"
     "                    title = PampGramFakeDeletedAccountRuntime.deletedAccountName\n"
     "                }",
+)
+
+# ---------------------------------------------------------------------------
+# 6. Wallet collectibles -> gift store (new in 13.x): the gift store controller takes the
+#    mod's visual-gift flow, which a plain Wallet call leaves at the real behaviour.
+# ---------------------------------------------------------------------------
+print("\n[6/6] WalletCollectibleScreen gift store flow")
+
+replace_once(
+    Path(
+        "submodules/TelegramUI/Components/Wallet/WalletCollectibleScreen/"
+        "Sources/WalletCollectibleScreen.swift"
+    ),
+    "wallet gift store flow",
+    "makeGiftStoreController(context: context, peerId: context.account.peerId, gift: gift)",
+    "makeGiftStoreController(context: context, peerId: context.account.peerId, gift: gift, pampGramGiftFlow: .real)",
 )
 
 # ---------------------------------------------------------------------------

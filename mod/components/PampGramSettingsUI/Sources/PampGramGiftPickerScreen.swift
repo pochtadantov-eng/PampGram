@@ -85,7 +85,7 @@ private final class PampGramGiftPickerController: ViewController, UIScrollViewDe
 
         super.init(navigationBarPresentationData: NavigationBarPresentationData(
             theme: NavigationBarTheme(rootControllerTheme: self.presentationData.theme),
-            strings: NavigationBarStrings(back: self.presentationData.strings.Common_Back, close: self.presentationData.strings.Common_Close)
+            strings: NavigationBarStrings(presentationStrings: self.presentationData.strings)
         ))
     }
 
