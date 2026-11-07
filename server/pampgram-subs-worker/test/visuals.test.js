@@ -4,6 +4,7 @@ import { handleUpdate } from "../src/bot/main.js";
 import { applyEmoji, customEmojiIds, EMOJI_SLOTS } from "../src/bot/emoji.js";
 import { fixTitle } from "../src/bot/ui.js";
 import { createEnv, createTelegram } from "./helpers.js";
+import { setPassword } from "../src/bot/security.js";
 
 const ADMIN = { id: 1000, first_name: "Owner", username: "owner" };
 const ALICE = { id: 2001, first_name: "Alice", username: "alice" };
@@ -95,10 +96,14 @@ test("if Telegram refuses custom emoji the message is re-sent plain and the refu
 test("admin can reset and remove emoji", async () => {
 	const env = createEnv();
 	const tg = createTelegram();
+	await setPassword(env, "test-pass-7");
 	await env.SUBS.put("emoji", JSON.stringify({ "⭐": "1", "🛒": "2" }));
+	await setPassword(env, "test-pass-7");
 	await handleUpdate(env, tg, press(ADMIN, "a:emd:0"));
+	await handleUpdate(env, tg, msg(ADMIN, "test-pass-7"));
 	assert.deepEqual(JSON.parse(await env.SUBS.get("emoji")), { "🛒": "2" });
 	await handleUpdate(env, tg, press(ADMIN, "a:emr"));
+	await handleUpdate(env, tg, msg(ADMIN, "test-pass-7"));
 	assert.deepEqual(JSON.parse(await env.SUBS.get("emoji")), {});
 });
 
@@ -153,10 +158,12 @@ test("a banner Telegram refuses falls back to the plain text screen; a long text
 test("banner can be removed; non-photo files are refused", async () => {
 	const env = createEnv();
 	const tg = createTelegram();
+	await setPassword(env, "test-pass-7");
 	await env.SUBS.put("banners", JSON.stringify({ shop: { type: "photo", fileId: "X" } }));
 	await handleUpdate(env, tg, press(ADMIN, "a:ims:menu"));
 	await handleUpdate(env, tg, msg(ADMIN, "привет"));
 	assert.match(tg.last("sendMessage").text, /Это не картинка/);
 	await handleUpdate(env, tg, press(ADMIN, "a:imd:shop"));
+	await handleUpdate(env, tg, msg(ADMIN, "test-pass-7"));
 	assert.deepEqual(JSON.parse(await env.SUBS.get("banners")), {});
 });

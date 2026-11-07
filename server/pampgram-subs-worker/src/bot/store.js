@@ -118,6 +118,16 @@ export async function setEmojiError(env, value) {
 	}
 }
 
+/** Button customisation: { overrides: { menu: { shop: { text, emoji, icon, hidden } } }, custom: [ { id, section, type, text, emoji, icon, url | page, hidden } ] }. */
+export async function getButtons(env) {
+	const stored = await readJson(env, "buttons");
+	return { overrides: stored?.overrides ?? {}, custom: Array.isArray(stored?.custom) ? stored.custom : [] };
+}
+
+export async function saveButtons(env, cfg) {
+	await env.SUBS.put("buttons", JSON.stringify(cfg));
+}
+
 /** Banners: { menu: { type: "photo"|"animation"|"video", fileId }, shop: {...} }. */
 export async function getBanners(env) {
 	const stored = await readJson(env, "banners");

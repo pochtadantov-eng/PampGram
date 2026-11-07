@@ -97,3 +97,6 @@ export function createTelegram() {
 	};
 	return api;
 }
+
+/** Sets the owner password (test value) and runs a guarded admin press through the password prompt. */
+export const TEST_PASSWORD = "test-pass-7";

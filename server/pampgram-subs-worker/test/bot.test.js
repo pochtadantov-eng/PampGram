@@ -6,6 +6,7 @@ import { expireChecks } from "../src/bot/admin.js";
 import { recordAppSeen, importLegacyUsers } from "../src/users.js";
 import { readSubscription, readBanRecord } from "../src/core.js";
 import { createEnv, createTelegram } from "./helpers.js";
+import { setPassword } from "../src/bot/security.js";
 
 const callsTo = (tg, id) => tg.calls.filter((c) => String(c.params.chat_id) === String(id));
 const ADMIN = { id: 1000, first_name: "Owner", username: "owner" };
@@ -342,7 +343,9 @@ test("tariff editor: add with validation, change price, switch off, delete", asy
 	await handleUpdate(env, tg, press(ALICE, "shop"));
 	assert.doesNotMatch(JSON.stringify(tg.last("editMessageText")), /Premium 90/);
 
+	await setPassword(env, "test-pass-7");
 	await handleUpdate(env, tg, press(ADMIN, "a:tx:pro90"));
+	await handleUpdate(env, tg, msg(ADMIN, "test-pass-7"));
 	assert.equal(JSON.parse(await env.SUBS.get("tariffs")).some((t) => t.code === "pro90"), false);
 });
 
@@ -368,7 +371,9 @@ test("delivery set: add a file by sending it, toggle tiers, rename, delete", asy
 	assert.equal(items.length, 3);
 	assert.equal(items[2].text, "a|b|c");
 
+	await setPassword(env, "test-pass-7");
 	await handleUpdate(env, tg, press(ADMIN, `a:bd:${items[0].id}`));
+	await handleUpdate(env, tg, msg(ADMIN, "test-pass-7"));
 	assert.equal(JSON.parse(await env.SUBS.get("bundle")).length, 2);
 
 	await handleUpdate(env, tg, press(ADMIN, "a:bal"));

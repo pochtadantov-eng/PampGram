@@ -5,6 +5,7 @@ import { say } from "./context.js";
 import { trySend } from "./telegram.js";
 import { isAdmin } from "./store.js";
 import { withEmoji } from "./emoji.js";
+import { showCustomPage } from "./buttons.js";
 import { adminHome, adminCallback, adminInput, answerCheck } from "./admin.js";
 import {
 	showMenu, showTariffs, showTariff, startPurchase, handlePreCheckout, handleSuccessfulPayment,
@@ -51,6 +52,8 @@ async function handleCallback(ctx, data) {
 			return claimPaid(ctx, arg);
 		case "px":
 			return cancelOrder(ctx, arg);
+		case "cb":
+			return showCustomPage(ctx, arg);
 		case "bind":
 			return bindKey(ctx, arg);
 		case "my":

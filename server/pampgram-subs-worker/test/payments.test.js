@@ -5,6 +5,7 @@ import { readSubscription } from "../src/core.js";
 import { renderDetails, manualAmount, formatAmount, totalsText } from "../src/bot/pay.js";
 import { parseRate } from "../src/bot/payadmin.js";
 import { createEnv, createTelegram } from "./helpers.js";
+import { setPassword } from "../src/bot/security.js";
 
 const ADMIN = { id: 1000, first_name: "Owner", username: "owner" };
 const ALICE = { id: 2001, first_name: "Alice", username: "alice" };
@@ -168,7 +169,9 @@ test("buyer can cancel an unpaid order; disabled or deleted methods are refused"
 	await handleUpdate(env, tg, press(ALICE, "t:std"));
 	assert.ok(!labels(tg).some((b) => String(b.callback_data).startsWith("pay:")));
 
+	await setPassword(env, "test-pass-7");
 	await handleUpdate(env, tg, press(ADMIN, `a:pdel:${method.id}`));
+	await handleUpdate(env, tg, msg(ADMIN, "test-pass-7"));
 	const methods = JSON.parse(await env.SUBS.get("pay"));
 	assert.ok(!methods.some((m) => m.id === method.id));
 });

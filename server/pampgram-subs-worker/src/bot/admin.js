@@ -11,6 +11,9 @@ import {
 } from "./store.js";
 import { payCallback, payInput, pendingClaims } from "./payadmin.js";
 import { visualsCallback, visualsInput } from "./visuals.js";
+import { buttonsCallback, buttonsInput } from "./buttonsadmin.js";
+import { GUARDED, askPassword, showPasswordMenu, securityInput } from "./security.js";
+import { backupCallback, makeBackup } from "./backup.js";
 import { totalsText } from "./pay.js";
 
 const PAGE_SIZE = 8;
@@ -32,6 +35,8 @@ export async function adminHome(ctx) {
 			[btn("📦 Выдача", "a:b"), btn("💳 Оплата", "a:p")],
 			[btn(claims ? `🧾 Заявки на оплату (${claims})` : "🧾 Заявки на оплату", "a:pq"), btn("⚙️ Настройки", "a:c")],
 			[btn("🖼 Баннеры", "a:im"), btn("✨ Эмодзи", "a:em")],
+			[btn("🔘 Кнопки", "a:bt"), btn("💾 Копии", "a:bk")],
+			[btn("🔐 Пароль", "a:pw")],
 			[btn("🔄 Импорт старых пользователей", "a:import")],
 			[btn("← В меню", "menu")],
 		])
@@ -429,6 +434,10 @@ export async function adminCallback(ctx, data) {
 	const parts = data.split(":");
 	const action = parts[0];
 	const arg = parts[1];
+	if (GUARDED.has(action) && !ctx.pwOk) {
+		await toast(ctx);
+		return askPassword(ctx, data);
+	}
 	switch (action) {
 		case "home":
 			await toast(ctx);
@@ -572,7 +581,11 @@ export async function adminCallback(ctx, data) {
 			return show(ctx, prompt, CANCEL);
 		}
 		default:
-			if ((await payCallback(ctx, parts)) || (await visualsCallback(ctx, parts))) {
+			if (action === "pw") {
+				await toast(ctx);
+				return showPasswordMenu(ctx);
+			}
+			if ((await payCallback(ctx, parts)) || (await visualsCallback(ctx, parts)) || (await buttonsCallback(ctx, parts)) || (await backupCallback(ctx, parts))) {
 				return;
 			}
 			return toast(ctx, "Неизвестное действие");
@@ -592,7 +605,13 @@ export async function adminInput(ctx, message) {
 	const done = async () => {
 		await clearState(ctx.env, ctx.from.id);
 	};
+	if (await securityInput(ctx, state, message, text, adminCallback, (c, data) => makeBackup(c.env, `перед удалением (${String(data).split(":")[0]})`, c.now))) {
+		return true;
+	}
 	if (await payInput(ctx, state, text)) {
+		return true;
+	}
+	if (await buttonsInput(ctx, state, message, text)) {
 		return true;
 	}
 	if (await visualsInput(ctx, state, message)) {

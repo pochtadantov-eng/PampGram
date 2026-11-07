@@ -8,6 +8,7 @@ import { trySend } from "./telegram.js";
 import { btn, urlBtn, kb, esc, fmtTime, fmtHours, tierLabel, fixTitle } from "./ui.js";
 import { getBanners, getConfig, getTariffs, getBundle, getOrder, saveOrder, listUserOrders, newId, markCharge, chargeOrder, adminIds, isAdmin, getPayMethods } from "./store.js";
 import { manualAmount, formatAmount, orderPrice } from "./pay.js";
+import { BUILTIN, customizeRows } from "./buttons.js";
 
 export async function notifyAdmins(ctx, text, extra = {}) {
 	for (const id of adminIds(ctx.env)) {
@@ -50,17 +51,17 @@ export async function showWithBanner(ctx, key, text, extra = {}) {
 export async function showMenu(ctx) {
 	const config = await getConfig(ctx.env);
 	const rows = [
-		[btn("🛒 Купить доступ", "shop")],
-		[btn("🔑 Мои покупки", "my"), btn("📥 Скачать файлы", "dl")],
-		[btn("🔒 Приватность", "privacy")],
+		[btn(BUILTIN.menu.shop, "shop")],
+		[btn(BUILTIN.menu.my, "my"), btn(BUILTIN.menu.dl, "dl")],
+		[btn(BUILTIN.menu.privacy, "privacy")],
 	];
 	if (config.support) {
-		rows.push([urlBtn("💬 Поддержка", `https://t.me/${config.support.replace(/^@/, "")}`)]);
+		rows.push([{ ...urlBtn(BUILTIN.menu.support, `https://t.me/${config.support.replace(/^@/, "")}`), _key: "support" }]);
 	}
 	if (isAdmin(ctx.env, ctx.from.id)) {
 		rows.push([btn("🛠 Админ-панель", "a:home")]);
 	}
-	return showWithBanner(ctx, "menu", config.welcome, kb(rows));
+	return showWithBanner(ctx, "menu", config.welcome, kb(await customizeRows(ctx.env, "menu", rows, isAdmin(ctx.env, ctx.from.id) ? 1 : 0)));
 }
 
 async function ownsTier(env, userId, tier) {
@@ -90,7 +91,7 @@ export async function showTariffs(ctx) {
 	}
 	const rows = tariffs.map((tariff) => [btn(`${tariff.title} — ${tariff.stars} ⭐`, `t:${tariff.code}`)]);
 	rows.push([btn("← Назад", "menu")]);
-	return showWithBanner(ctx, "shop", "<b>Тарифы</b>\nВыберите тариф, затем способ оплаты. Ключ и файлы приходят после оплаты.", kb(rows));
+	return showWithBanner(ctx, "shop", "<b>Тарифы</b>\nВыберите тариф, затем способ оплаты. Ключ и файлы приходят после оплаты.", kb(await customizeRows(ctx.env, "shop", rows, 1)));
 }
 
 export async function showTariff(ctx, code) {

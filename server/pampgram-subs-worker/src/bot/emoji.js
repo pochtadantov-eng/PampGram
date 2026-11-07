@@ -51,7 +51,16 @@ function wrapMarkup(markup, map, matchers) {
 		...markup,
 		inline_keyboard: rows.map((row) =>
 			row.map((button) => {
-				const found = typeof button.text === "string" ? matchers.leading.exec(button.text) : null;
+				if (typeof button.text !== "string") {
+					return button;
+				}
+				// a per-button animated emoji chosen by the owner ("_icon") wins over the global mapping
+				if (button._icon) {
+					const { _icon, ...rest } = button;
+					const head = /^(\p{Extended_Pictographic}\uFE0F?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*)\s*/u.exec(button.text);
+					return head && head[0].length < button.text.length ? { ...rest, text: button.text.slice(head[0].length), icon_custom_emoji_id: _icon } : rest;
+				}
+				const found = matchers ? matchers.leading.exec(button.text) : null;
 				if (!found || found[0].length >= button.text.length) {
 					return button;
 				}
@@ -59,6 +68,15 @@ function wrapMarkup(markup, map, matchers) {
 			})
 		),
 	};
+}
+
+/** Removes the private "_icon" marker so a plain retry never sends it to Telegram. */
+export function stripPrivate(params) {
+	const rows = params.reply_markup?.inline_keyboard;
+	if (!Array.isArray(rows) || !rows.some((row) => row.some((button) => button._icon))) {
+		return params;
+	}
+	return { ...params, reply_markup: { ...params.reply_markup, inline_keyboard: rows.map((row) => row.map(({ _icon, ...button }) => button)) } };
 }
 
 const TEXT_FIELD = {
@@ -74,12 +92,9 @@ const TEXT_FIELD = {
 /** Returns params with animated emoji applied, or the very same object when nothing changes. */
 export function applyEmoji(method, params, map) {
 	const matchers = buildMatchers(map);
-	if (!matchers) {
-		return params;
-	}
 	let next = params;
 	const field = TEXT_FIELD[method];
-	if (field && typeof params[field] === "string" && params.parse_mode === "HTML") {
+	if (matchers && field && typeof params[field] === "string" && params.parse_mode === "HTML") {
 		const text = wrapText(params[field], map, matchers);
 		if (text !== params[field]) {
 			next = { ...next, [field]: text };
@@ -107,6 +122,7 @@ export function withEmoji(env, tg) {
 			if (next === params) {
 				return tg.call(method, params);
 			}
+			const plain = stripPrivate(params);
 			try {
 				return await tg.call(method, next);
 			} catch (error) {
@@ -114,7 +130,7 @@ export function withEmoji(env, tg) {
 					throw error;
 				}
 				await setEmojiError(env, { at: Date.now(), message: String(error.description ?? error.message).slice(0, 200) }).catch(() => {});
-				return tg.call(method, params);
+				return tg.call(method, plain);
 			}
 		},
 	};
