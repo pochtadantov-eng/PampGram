@@ -410,3 +410,73 @@ test("a tariff's own emoji replaces the star in front mode", async () => {
 	await handleUpdate(env, tg, press(ALICE, "shop"));
 	assert.ok(flat(tg.last("editMessageText")).some((b) => b.callback_data === "t:std" && b.text === "🔥 Standard — 200"));
 });
+
+const dataOf = (params) => flat(params).map((b) => b.callback_data);
+
+test("every custom button gets the same full card, whatever its type", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	const link = await addButton(env, tg, "menu", "Ссылка", "link", "https://example.com");
+	const page = await addButton(env, tg, "menu", "Страница", "page", "текст");
+	const shop = await addButton(env, tg, "menu", "Раздел", "shop", "описание");
+	for (const [item, textButton] of [[link, "btc"], [page, "btc"], [shop, "btc"]]) {
+		await handleUpdate(env, tg, press(ADMIN, `a:bte:menu:${item.id}`));
+		const data = dataOf(tg.last("editMessageText"));
+		for (const action of ["btn", "btm", "btv", "btu", "btd", "btj", "btk", textButton, "btx"]) {
+			assert.ok(data.includes(`a:${action}:menu:${item.id}`), `${item.text}: ${action}`);
+		}
+		assert.ok(data.includes(`a:sxl:${item.id}`), `${item.text}: products entry`);
+	}
+});
+
+test("a link or page button can be switched to a shop section in one tap, and back", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	const link = await addButton(env, tg, "menu", "Ссылка", "link", "https://example.com");
+	await handleUpdate(env, tg, press(ADMIN, `a:sxl:${link.id}`));
+	assert.match(tg.last("editMessageText").text, /не раздел с товарами/);
+	await handleUpdate(env, tg, press(ADMIN, `a:btk:menu:${link.id}:shop`));
+	let stored = JSON.parse(await env.SUBS.get("buttons")).custom.find((x) => x.id === link.id);
+	assert.equal(stored.type, "shop");
+	assert.equal(stored.url, "https://example.com", "the old link is kept");
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, `cb:${link.id}`));
+	assert.match(tg.last("editMessageText").text, /Товаров пока нет/);
+
+	await handleUpdate(env, tg, press(ADMIN, `a:btk:menu:${link.id}:link`));
+	stored = JSON.parse(await env.SUBS.get("buttons")).custom.find((x) => x.id === link.id);
+	assert.equal(stored.type, "link");
+	tg.reset();
+	await handleUpdate(env, tg, msg(ALICE, "/start"));
+	assert.ok(flat(tg.last("sendMessage")).some((b) => b.url === "https://example.com"));
+});
+
+test("switching to a type that needs content asks for it first", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	const link = await addButton(env, tg, "menu", "Ссылка", "link", "https://example.com");
+	await handleUpdate(env, tg, press(ADMIN, `a:btk:menu:${link.id}:page`));
+	assert.match(tg.last("editMessageText").text, /Пришлите текст страницы/);
+	assert.equal(JSON.parse(await env.SUBS.get("buttons")).custom[0].type, "link", "not switched yet");
+	await handleUpdate(env, tg, msg(ADMIN, "Новый текст страницы"));
+	const stored = JSON.parse(await env.SUBS.get("buttons")).custom[0];
+	assert.equal(stored.type, "page");
+	assert.equal(stored.page, "Новый текст страницы");
+	assert.equal(stored.url, "https://example.com");
+});
+
+test("built-in buttons get shortcuts to where their content is edited", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	const shortcuts = { shop: ["a:t", "a:tk:shop_intro", "a:im:shop"], my: ["a:tk:my_title"], dl: ["a:b"], privacy: ["a:tk:privacy"], support: ["a:cf:support"] };
+	for (const [key, expected] of Object.entries(shortcuts)) {
+		await handleUpdate(env, tg, press(ADMIN, `a:bte:menu:${key}`));
+		const data = dataOf(tg.last("editMessageText"));
+		for (const target of expected) {
+			assert.ok(data.includes(target), `${key}: ${target}`);
+		}
+		for (const action of ["btn", "btm", "btv", "btu", "btd", "btj"]) {
+			assert.ok(data.includes(`a:${action}:menu:${key}`), `${key}: ${action}`);
+		}
+	}
+});

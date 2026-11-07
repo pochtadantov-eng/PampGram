@@ -7,6 +7,16 @@ import { SECTIONS, BUILTIN, MAX_PER_ROW, splitLabel, labelOf, normalizeUrl, effe
 import { customEmojiIds } from "./emoji.js";
 
 const CANCEL = kb([[btn("✖️ Отмена", "a:bt")]]);
+const TYPE_SHORT = { link: "ссылка", page: "страница", shop: "раздел с товарами" };
+
+/** Where the content behind each built-in button is edited. */
+const BUILTIN_SHORTCUTS = {
+	shop: [["💰 Тарифы и цены", "a:t"], ["📝 Текст экрана тарифов", "a:tk:shop_intro"], ["🖼 Баннер тарифов", "a:im:shop"]],
+	my: [["📝 Заголовок «Мои покупки»", "a:tk:my_title"], ["📝 Текст «Покупок нет»", "a:tk:my_empty"]],
+	dl: [["📦 Что выдаётся (файлы, ссылки)", "a:b"], ["📝 Текст «Файлов нет»", "a:tk:no_files"]],
+	privacy: [["📝 Текст «Приватность»", "a:tk:privacy"]],
+	support: [["🔗 Ник поддержки", "a:cf:support"]],
+};
 const TYPE_NAME = { link: "ссылка", page: "страница с текстом", shop: "раздел с товарами и оплатой" };
 
 const itemOf = (cfg, section, key) => cfg.custom.find((entry) => entry.id === key && entry.section === section);
@@ -82,14 +92,17 @@ export async function showButton(ctx, section, key) {
 		[btn(joined ? "⬍ Отдельной строкой" : "↔ В строку с предыдущей", `a:btj:${section}:${key}`)],
 	];
 	if (item) {
-		if (item.type === "shop") {
-			rows.push([btn("🛍 Товары и оплата", `a:sxl:${key}`)]);
-		} else if (item.type === "page") {
-			rows.push([btn("🛍 Сделать разделом с оплатой", `a:btk:${section}:${key}`)]);
+		rows.push([btn(`🔁 Тип кнопки: ${TYPE_SHORT[item.type]}`, `a:btk:${section}:${key}`)]);
+		rows.push([btn(item.type === "link" ? "🔗 Ссылка" : item.type === "shop" ? "📄 Описание раздела" : "📄 Текст страницы", `a:btc:${section}:${key}`)]);
+		rows.push([btn("🛍 Товары и оплата", `a:sxl:${key}`)]);
+		rows.push([btn("🗑 Удалить", `a:btx:${section}:${key}`)]);
+	} else {
+		for (const [label, data] of BUILTIN_SHORTCUTS[key] ?? []) {
+			rows.push([btn(label, data)]);
 		}
-		rows.push([btn(item.type === "link" ? "🔗 Ссылка" : "📄 Текст", `a:btc:${section}:${key}`), btn("🗑 Удалить", `a:btx:${section}:${key}`)]);
-	} else if (override) {
-		rows.push([btn("↩️ Вернуть стандартную", `a:btr:${section}:${key}`)]);
+		if (override) {
+			rows.push([btn("↩️ Вернуть стандартную", `a:btr:${section}:${key}`)]);
+		}
 	}
 	rows.push([btn("← К разделу", `a:bt:${section}`)]);
 	return show(ctx, lines.join("\n"), kb(rows));
@@ -205,14 +218,44 @@ export async function buttonsCallback(ctx, parts) {
 		}
 		case "btk": {
 			const cfg = await getButtons(ctx.env);
-			const entry = cfg.custom.find((item) => item.id === key && item.type === "page");
-			if (entry) {
-				entry.type = "shop";
-				entry.methods = [];
-				entry.customMethods = false;
-				await saveButtons(ctx.env, cfg);
+			const entry = itemOf(cfg, section, key);
+			if (!entry) {
+				return true;
 			}
-			await toast(ctx, "Теперь это раздел с товарами");
+			const target = parts[3];
+			if (!target) {
+				await toast(ctx);
+				await show(
+					ctx,
+					`🔁 <b>Тип кнопки «${esc(entry.text)}»</b>\nСейчас: ${TYPE_NAME[entry.type]}.\nВыберите, что она будет делать. Ваш текст и товары сохраняются, их можно вернуть, переключив тип обратно.`,
+					kb([
+						[btn(`${entry.type === "link" ? "✅" : "🔗"} Открывает ссылку`, `a:btk:${section}:${key}:link`)],
+						[btn(`${entry.type === "page" ? "✅" : "📄"} Показывает текст`, `a:btk:${section}:${key}:page`)],
+						[btn(`${entry.type === "shop" ? "✅" : "🛍"} Раздел с товарами и оплатой`, `a:btk:${section}:${key}:shop`)],
+						[btn("← К кнопке", `a:bte:${section}:${key}`)],
+					])
+				);
+				return true;
+			}
+			if (!["link", "page", "shop"].includes(target) || target === entry.type) {
+				await toast(ctx);
+				await showButton(ctx, section, key);
+				return true;
+			}
+			const needsContent = target === "link" ? !entry.url : target === "page" ? !entry.page : false;
+			if (needsContent) {
+				await toast(ctx);
+				await setState(ctx.env, ctx.from.id, { a: "btn_convert", section, key, type: target });
+				await show(ctx, target === "link" ? "Пришлите ссылку: https://…, @ник или t.me/…" : "Пришлите текст страницы, который откроется по нажатию.", kb([[btn("✖️ Отмена", `a:bte:${section}:${key}`)]]));
+				return true;
+			}
+			entry.type = target;
+			if (target === "shop") {
+				entry.methods ??= [];
+				entry.customMethods ??= false;
+			}
+			await saveButtons(ctx.env, cfg);
+			await toast(ctx, `Теперь: ${TYPE_SHORT[target]}`);
 			await showButton(ctx, section, key);
 			return true;
 		}
@@ -351,6 +394,33 @@ export async function buttonsInput(ctx, state, message, text) {
 				}
 			});
 		}
+		await clearState(ctx.env, ctx.from.id);
+		await showButton(plain, state.section, state.key);
+		return true;
+	}
+	if (state.a === "btn_convert") {
+		const cfg = await getButtons(ctx.env);
+		const item = itemOf(cfg, state.section, state.key);
+		if (!item) {
+			await clearState(ctx.env, ctx.from.id);
+			return true;
+		}
+		if (state.type === "link") {
+			const url = normalizeUrl(text);
+			if (!url) {
+				await say(ctx, "Это не ссылка. Пример: https://example.com, @ник или t.me/ник.", CANCEL);
+				return true;
+			}
+			item.url = url;
+		} else {
+			if (!text || text.length > 3000) {
+				await say(ctx, "Текст: от 1 до 3000 символов.", CANCEL);
+				return true;
+			}
+			item.page = text;
+		}
+		item.type = state.type;
+		await saveButtons(ctx.env, cfg);
 		await clearState(ctx.env, ctx.from.id);
 		await showButton(plain, state.section, state.key);
 		return true;

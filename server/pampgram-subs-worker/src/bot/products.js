@@ -101,6 +101,14 @@ const productOf = async (env, pid) => (await getProducts(env)).find((entry) => e
 export async function showProductList(ctx, buttonId) {
 	const section = await sectionOf(ctx.env, buttonId);
 	if (!section) {
+		const other = (await getButtons(ctx.env)).custom.find((entry) => entry.id === buttonId);
+		if (other) {
+			return show(
+				ctx,
+				`🛍 Кнопка «${esc(other.text)}» сейчас не раздел с товарами. Включить для неё товары и оплату? Её текущий ${other.type === "link" ? "адрес ссылки" : "текст"} сохранится.`,
+				kb([[btn("🛍 Включить товары и оплату", `a:btk:${other.section}:${other.id}:shop`)], [btn("← К кнопке", `a:bte:${other.section}:${other.id}`)]])
+			);
+		}
 		return show(ctx, "Раздел не найден.", kb([[btn("← Кнопки", "a:bt")]]));
 	}
 	const products = (await getProducts(ctx.env)).filter((entry) => entry.section === buttonId);

@@ -257,8 +257,10 @@ test("an existing text page can be turned into a shop section, keeping its descr
 	const page = JSON.parse(await env.SUBS.get("buttons")).custom.at(-1);
 	assert.equal(page.type, "page");
 	await handleUpdate(env, tg, press(ADMIN, `a:bte:menu:${page.id}`));
-	assert.ok(flat(tg.last("editMessageText")).some((b) => b.callback_data === `a:btk:menu:${page.id}`));
+	assert.ok(flat(tg.last("editMessageText")).some((b) => b.callback_data === `a:btk:menu:${page.id}`), "type button on the card");
 	await handleUpdate(env, tg, press(ADMIN, `a:btk:menu:${page.id}`));
+	assert.ok(flat(tg.last("editMessageText")).some((b) => b.callback_data === `a:btk:menu:${page.id}:shop`), "type chooser");
+	await handleUpdate(env, tg, press(ADMIN, `a:btk:menu:${page.id}:shop`));
 	const shop = JSON.parse(await env.SUBS.get("buttons")).custom.at(-1);
 	assert.equal(shop.type, "shop");
 	assert.equal(shop.page, "Сертификат обычный 700зв");
