@@ -9,6 +9,7 @@ import {
 	clearUserState, listOrderSummaries,
 } from "./store.js";
 import { fulfillOrder } from "./shop.js";
+import { getText } from "./texts.js";
 import { renderDetails, manualAmount, formatAmount, orderPrice, reviewButtons } from "./pay.js";
 
 const CANCEL = kb([[btn("✖️ Отмена", "a:cancel")]]);
@@ -142,7 +143,7 @@ async function rejectOrder(ctx, id) {
 	order.rejectedAt = ctx.now;
 	await saveOrder(ctx.env, order);
 	await clearUserState(ctx.env, order.userId);
-	await trySend(ctx.tg, order.userId, `❌ Оплата заказа «${esc(order.title)}» не подтверждена. Если вы платили — напишите в поддержку и приложите чек.`);
+	await trySend(ctx.tg, order.userId, await getText(ctx.env, "pay_rejected", { title: order.title }));
 	await toast(ctx, "Отклонено");
 	return show(ctx, `${await orderCardText(ctx, order)}\n\n❌ Отклонено, покупатель уведомлён.`, kb([[btn("← Заявки", "a:pq")]]));
 }

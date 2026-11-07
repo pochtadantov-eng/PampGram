@@ -14,6 +14,7 @@ import { getButtons, saveButtons, getProducts, saveProducts, getConfig, getPayMe
 import { readEmoji } from "./buttonsadmin.js";
 import { manualAmount, formatAmount, orderPrice } from "./pay.js";
 import { banReason, notifyAdmins } from "./shop.js";
+import { getText } from "./texts.js";
 
 const CANCEL = kb([[btn("✖️ Отмена", "a:bt")]]);
 
@@ -52,7 +53,7 @@ export async function showShopSection(ctx, button) {
 		{ ...btn(`${entry.emoji ? `${entry.emoji} ` : ""}${entry.title} — ${entry.stars}${starFront ? "" : " ⭐"}`, `sp:${entry.id}`), ...(entry.icon && entry.emoji ? { _icon: entry.icon } : {}) },
 	]);
 	rows.push([btn("← Назад", button.section === "shop" ? "shop" : "menu")]);
-	const text = `<b>${esc(button.text)}</b>\n${esc(button.page ?? "")}${products.length ? "" : "\n\nТоваров пока нет."}`;
+	const text = `<b>${esc(button.text)}</b>\n${esc(button.page ?? "")}${products.length ? "" : `\n\n${await getText(ctx.env, "no_products")}`}`;
 	return show(ctx, text, kb(rows));
 }
 
@@ -73,18 +74,18 @@ export async function showProduct(ctx, pid) {
 			: [btn(`💳 ${method.title} — ${formatAmount(manualAmount(method, sellable), method.currency)}`.slice(0, 60), `pay:${sellable.code}:${method.id}`)]
 	);
 	rows.push([btn("← Назад", `cb:${sellable.sectionId}`)]);
-	const hint = methods.length === 0 ? "\n\nСпособы оплаты для этого раздела не настроены. Напишите в поддержку." : "\n\nВыберите способ оплаты:";
+	const hint = `\n\n${await getText(ctx.env, methods.length === 0 ? "no_methods_section" : "choose_method")}`;
 	return show(ctx, `<b>${esc(sellable.title)}</b>\n${esc(sellable.desc ?? "")}\n\nЦена: ${sellable.stars} ⭐${hint}`, kb(rows));
 }
 
 /** After payment: the owner's delivery text, or a note that the admin will hand the product over. */
 export async function deliverProduct(ctx, order) {
-	const head = `✅ <b>Оплата получена</b>\n${esc(order.title)} — ${esc(orderPrice(order))}`;
+	const head = `${await getText(ctx.env, "paid_title")}\n${esc(order.title)} — ${esc(orderPrice(order))}`;
 	if (order.give) {
 		await say(ctx, `${head}\n\n${esc(order.give)}`);
 		return "delivered";
 	}
-	await say(ctx, `${head}\n\nАдминистратор выдаст вам товар и напишет сюда в ближайшее время.`);
+	await say(ctx, `${head}\n\n${await getText(ctx.env, "item_hand")}`);
 	await notifyAdmins(
 		ctx,
 		`📦 <b>Нужно выдать вручную</b>\n${esc(order.title)} — ${esc(orderPrice(order))}\nПокупатель: <code>${esc(order.userId)}</code>`,

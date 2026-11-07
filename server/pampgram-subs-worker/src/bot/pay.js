@@ -15,6 +15,7 @@ import { trySend } from "./telegram.js";
 import { getPayMethods, saveOrder, getOrder, newId, adminIds, getUserState, setUserState, clearUserState } from "./store.js";
 import { banReason, availableTariffs, notifyAdmins } from "./shop.js";
 import { findSellable } from "./products.js";
+import { getText } from "./texts.js";
 
 const MAX_PROOFS = 5;
 
@@ -120,7 +121,7 @@ export async function startManualPurchase(ctx, code, methodId) {
 			"",
 			renderDetails(method.details),
 			"",
-			tariff.kind === "item" ? "Переведите точную сумму, затем нажмите «Я оплатил(а)». После проверки вы получите товар." : "Переведите точную сумму, затем нажмите «Я оплатил(а)». После проверки придут ключ и файлы.",
+			await getText(ctx.env, tariff.kind === "item" ? "pay_manual_item" : "pay_manual_tariff"),
 		].join("\n"),
 		kb([[btn("✅ Я оплатил(а)", `pd:${order.id}`)], [btn("✖️ Отмена", `px:${order.id}`)]])
 	);
@@ -155,7 +156,7 @@ export async function claimPaid(ctx, orderId) {
 	);
 	return show(
 		ctx,
-		"✅ Заявка отправлена. Можете прислать сюда скриншот или чек перевода — это ускорит проверку. Ключ и файлы придут сюда сразу после подтверждения.",
+		await getText(ctx.env, "claim_sent"),
 		kb([[btn("← В меню", "menu")]])
 	);
 }
@@ -168,7 +169,7 @@ export async function cancelOrder(ctx, orderId) {
 	order.status = "cancelled";
 	await saveOrder(ctx.env, order);
 	await toast(ctx, "Отменено");
-	return show(ctx, "Заказ отменён.", kb([[btn("🛒 К тарифам", "shop")], [btn("← В меню", "menu")]]));
+	return show(ctx, await getText(ctx.env, "order_cancelled"), kb([[btn("🛒 К тарифам", "shop")], [btn("← В меню", "menu")]]));
 }
 
 /** A buyer's message while their payment is under review: copy it to the admins. */
@@ -201,6 +202,6 @@ export async function forwardProof(ctx, message) {
 			// an admin who blocked the bot just does not get the copy
 		}
 	}
-	await say(ctx, "📨 Получено, передали на проверку.");
+	await say(ctx, await getText(ctx.env, "proof_ok"));
 	return true;
 }

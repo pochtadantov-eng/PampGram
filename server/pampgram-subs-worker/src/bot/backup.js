@@ -8,7 +8,7 @@ import { show, toast } from "./context.js";
 import { btn, kb, esc, fmtTime } from "./ui.js";
 import { listAllKeys } from "../core.js";
 
-export const BACKUP_KEYS = ["cfg", "tariffs", "bundle", "pay", "emoji", "banners", "buttons", "products"];
+export const BACKUP_KEYS = ["cfg", "tariffs", "bundle", "pay", "emoji", "banners", "buttons", "products", "texts"];
 const KEEP = 12;
 
 export async function makeBackup(env, reason, now = Date.now()) {

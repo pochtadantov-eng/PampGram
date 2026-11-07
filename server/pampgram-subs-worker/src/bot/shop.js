@@ -10,6 +10,7 @@ import { getBanners, getConfig, getTariffs, getBundle, getOrder, saveOrder, list
 import { manualAmount, formatAmount, orderPrice } from "./pay.js";
 import { BUILTIN, customizeRows } from "./buttons.js";
 import { findSellable, deliverProduct } from "./products.js";
+import { getText } from "./texts.js";
 
 export async function notifyAdmins(ctx, text, extra = {}) {
 	for (const id of adminIds(ctx.env)) {
@@ -84,16 +85,16 @@ export async function availableTariffs(env, userId) {
 export async function showTariffs(ctx) {
 	const ban = await banReason(ctx.env, ctx.from.id);
 	if (ban) {
-		return show(ctx, `⛔ Доступ ограничен.\nПричина: ${esc(ban)}`, kb([[btn("← Назад", "menu")]]));
+		return show(ctx, await getText(ctx.env, "banned", { reason: ban }), kb([[btn("← Назад", "menu")]]));
 	}
 	const tariffs = await availableTariffs(ctx.env, ctx.from.id);
 	if (tariffs.length === 0) {
-		return show(ctx, "Сейчас нет доступных тарифов.", kb([[btn("← Назад", "menu")]]));
+		return show(ctx, await getText(ctx.env, "no_tariffs"), kb([[btn("← Назад", "menu")]]));
 	}
 	const front = Boolean((await getConfig(ctx.env)).starFront);
 	const rows = tariffs.map((tariff) => [{ ...btn(front ? `${tariff.emoji || "⭐"} ${tariff.title} — ${tariff.stars}` : `${tariff.emoji ? `${tariff.emoji} ` : ""}${tariff.title} — ${tariff.stars} ⭐`, `t:${tariff.code}`), ...(tariff.icon && tariff.emoji ? { _icon: tariff.icon } : {}) }]);
 	rows.push([btn("← Назад", "menu")]);
-	return showWithBanner(ctx, "shop", "<b>Тарифы</b>\nВыберите тариф, затем способ оплаты. Ключ и файлы приходят после оплаты.", kb(await customizeRows(ctx.env, "shop", rows, 1)));
+	return showWithBanner(ctx, "shop", await getText(ctx.env, "shop_intro"), kb(await customizeRows(ctx.env, "shop", rows, 1)));
 }
 
 export async function showTariff(ctx, code) {
@@ -112,7 +113,7 @@ export async function showTariff(ctx, code) {
 			: [btn(`💳 ${method.title} — ${formatAmount(manualAmount(method, tariff), method.currency)}`.slice(0, 60), `pay:${tariff.code}:${method.id}`)]
 	);
 	rows.push([btn("← К тарифам", "shop")]);
-	const hint = methods.length === 0 ? "\n\nСпособы оплаты пока не настроены. Напишите в поддержку." : "\n\nВыберите способ оплаты:";
+	const hint = `\n\n${await getText(ctx.env, methods.length === 0 ? "no_methods" : "choose_method")}`;
 	return show(ctx, text + hint, kb(rows));
 }
 
@@ -275,12 +276,12 @@ export async function deliver(ctx, order) {
 	const expiry = order.hours > 0 ? `, действует ${fmtHours(order.hours)} с момента активации` : "";
 	await say(
 		ctx,
-		`✅ <b>Оплата получена</b>\n${esc(fixTitle(order.title, order.hours))} — ${esc(orderPrice(order))}\n\nВаш ключ активации (${tierLabel(order.tier)}${expiry}):\n<code>${esc(order.key)}</code>\n\nКлюч одноразовый: он привяжется к тому аккаунту Telegram, который введёт его первым.`,
+		`${await getText(ctx.env, "paid_title")}\n${esc(fixTitle(order.title, order.hours))} — ${esc(orderPrice(order))}\n\nВаш ключ активации (${tierLabel(order.tier)}${expiry}):\n<code>${esc(order.key)}</code>\n\n${await getText(ctx.env, "key_note")}`,
 		kb([[btn("🔗 Привязать к этому аккаунту", `bind:${order.id}`)]])
 	);
 	const sent = await sendBundle(ctx, order.tier);
 	if (sent.total === 0) {
-		await say(ctx, "Файлы для установки пока не добавлены — администратор пришлёт их вручную.");
+		await say(ctx, await getText(ctx.env, "bundle_empty"));
 		await notifyAdmins(ctx, "⚠️ Покупатель получил ключ, но комплект выдачи пуст. Добавьте файлы: /admin → Выдача.");
 	}
 	await say(ctx, esc(config.howto));
@@ -310,7 +311,7 @@ export async function bindKey(ctx, orderId) {
 export async function showPurchases(ctx) {
 	const orders = (await listUserOrders(ctx.env, ctx.from.id)).filter((order) => order.status === "paid" || order.status === "delivered");
 	if (orders.length === 0) {
-		return show(ctx, "Покупок пока нет.", kb([[btn("🛒 Купить доступ", "shop")], [btn("← Назад", "menu")]]));
+		return show(ctx, await getText(ctx.env, "my_empty"), kb([[btn("🛒 Купить доступ", "shop")], [btn("← Назад", "menu")]]));
 	}
 	const lines = orders.slice(0, 10).map((order) => {
 		if (order.kind === "item") {
@@ -319,7 +320,7 @@ export async function showPurchases(ctx) {
 		const state = order.boundAt ? "привязан к вашему аккаунту" : "не активирован";
 		return `• <b>${esc(fixTitle(order.title, order.hours))}</b> — ${esc(orderPrice(order))}, ${esc(fmtTime(order.paidAt))}\n  <code>${esc(order.key ?? "—")}</code> (${state})`;
 	});
-	return show(ctx, `<b>Мои покупки</b>\n\n${lines.join("\n\n")}`, kb([[btn("📥 Скачать файлы", "dl")], [btn("← Назад", "menu")]]));
+	return show(ctx, `${await getText(ctx.env, "my_title")}\n\n${lines.join("\n\n")}`, kb([[btn("📥 Скачать файлы", "dl")], [btn("← Назад", "menu")]]));
 }
 
 export async function resendFiles(ctx) {
@@ -336,16 +337,12 @@ export async function resendFiles(ctx) {
 	const tier = orders.some((order) => order.tier === "pro") ? "pro" : "standard";
 	const sent = await sendBundle(ctx, tier);
 	if (sent.total === 0) {
-		await say(ctx, "Файлы пока не добавлены. Напишите в поддержку.");
+		await say(ctx, await getText(ctx.env, "no_files"));
 	}
 }
 
 export async function showPrivacy(ctx) {
-	return show(
-		ctx,
-		"<b>Какие данные собираются</b>\nПри запуске мод обращается к серверу лицензий и передаёт служебные данные: id вашего аккаунта Telegram, версию приложения, ник и имя профиля, время обращений. Они нужны для проверки подписки и блокировок. Сообщения и содержимое чатов не передаются.\n\nБот хранит ваш id, ник, имя и историю покупок.",
-		kb([[btn("← Назад", "menu")]])
-	);
+	return show(ctx, await getText(ctx.env, "privacy"), kb([[btn("← Назад", "menu")]]));
 }
 
 export async function subscriptionLine(env, userId) {
