@@ -3,7 +3,7 @@
 import { show, say, toast } from "./context.js";
 import { btn, kb, esc } from "./ui.js";
 import { getButtons, saveButtons, newId, setState, clearState, getState } from "./store.js";
-import { SECTIONS, BUILTIN, splitLabel, labelOf, normalizeUrl } from "./buttons.js";
+import { SECTIONS, BUILTIN, MAX_PER_ROW, splitLabel, labelOf, normalizeUrl, effectiveLayout, rowsFromLayout } from "./buttons.js";
 import { customEmojiIds } from "./emoji.js";
 
 const CANCEL = kb([[btn("✖️ Отмена", "a:bt")]]);
@@ -20,23 +20,37 @@ export async function showSections(ctx) {
 	return show(ctx, "🔘 <b>Кнопки</b>\nВыберите раздел: можно добавить свои кнопки, переименовать, сменить эмодзи, скрыть или переставить.", kb(rows));
 }
 
+function labelFor(cfg, section, key) {
+	const item = itemOf(cfg, section, key);
+	if (item) {
+		return { label: labelOf(`${item.emoji ?? ""} ${item.text}`), hidden: item.hidden };
+	}
+	const override = cfg.overrides?.[section]?.[key];
+	return { label: labelOf(builtinLabel(section, key), override), hidden: override?.hidden };
+}
+
 export async function showSection(ctx, section) {
 	if (!SECTIONS[section]) {
 		return showSections(ctx);
 	}
 	const cfg = await getButtons(ctx.env);
-	const rows = [];
-	for (const [key, label] of Object.entries(BUILTIN[section] ?? {})) {
-		const override = cfg.overrides?.[section]?.[key];
-		rows.push([btn(`${override?.hidden ? "🙈" : "▪️"} ${labelOf(label, override)}`.slice(0, 60), `a:bte:${section}:${key}`)]);
-	}
-	for (const item of cfg.custom.filter((entry) => entry.section === section)) {
-		rows.push([btn(`${item.hidden ? "🙈" : "🔹"} ${labelOf(`${item.emoji ?? ""} ${item.text}`)}`.slice(0, 60), `a:bte:${section}:${item.id}`)]);
-	}
+	const layout = effectiveLayout(cfg, section);
+	const rows = layout.map(({ k }) => {
+		const { label, hidden } = labelFor(cfg, section, k);
+		return [btn(`${hidden ? "🙈" : itemOf(cfg, section, k) ? "🔹" : "▪️"} ${label}`.slice(0, 60), `a:bte:${section}:${k}`)];
+	});
 	rows.push([btn("➕ Новая кнопка", `a:bta:${section}`)]);
 	rows.push([btn("← К разделам", "a:bt")]);
-	const note = section === "shop" ? "\nКнопки тарифов создаются в «Тарифы». Здесь можно добавить свои кнопки под ними." : "";
-	return show(ctx, `🔘 <b>${SECTIONS[section]}</b>${note}\n▪️ встроенная · 🔹 ваша · 🙈 скрыта`, kb(rows));
+	const preview = rowsFromLayout(layout, (k) => {
+		const { label, hidden } = labelFor(cfg, section, k);
+		return hidden ? null : label;
+	}).map((row) => `│ ${row.map(esc).join("  ┃  ")}`);
+	const note = section === "shop" ? "\nКнопки тарифов создаются в «Тарифы» и стоят выше; здесь расставляются ваши кнопки под ними." : "";
+	return show(
+		ctx,
+		`🔘 <b>${SECTIONS[section]}</b>${note}\n\n<b>Как видят покупатели</b> (┃ — кнопки в одной строке):\n${preview.join("\n") || "—"}\n\n▪️ встроенная · 🔹 ваша · 🙈 скрыта\nНажмите кнопку, чтобы переименовать, сменить эмодзи, переставить или поставить в одну строку с соседней.`,
+		kb(rows)
+	);
 }
 
 export async function showButton(ctx, section, key) {
@@ -57,13 +71,18 @@ export async function showButton(ctx, section, key) {
 		(item ? item.icon : override?.icon) ? "Эмодзи: анимированный" : "",
 		`Показывается: ${hidden ? "нет" : "да"}`,
 	].filter(Boolean);
+	const layout = effectiveLayout(cfg, section);
+	const place = layout.findIndex((entry) => entry.k === key);
+	const joined = place > 0 && layout[place].j;
+	lines.push(`Расположение: ${place + 1} из ${layout.length}, ${joined ? "в одной строке с предыдущей" : "отдельной строкой"}`);
 	const rows = [
 		[btn("✏️ Название", `a:btn:${section}:${key}`), btn("🙂 Эмодзи", `a:btm:${section}:${key}`)],
 		[btn(hidden ? "👁 Показать" : "🙈 Скрыть", `a:btv:${section}:${key}`)],
+		[btn("⬆️ Выше", `a:btu:${section}:${key}`), btn("⬇️ Ниже", `a:btd:${section}:${key}`)],
+		[btn(joined ? "⬍ Отдельной строкой" : "↔ В строку с предыдущей", `a:btj:${section}:${key}`)],
 	];
 	if (item) {
-		rows.push([btn(item.type === "link" ? "🔗 Ссылка" : "📄 Текст", `a:btc:${section}:${key}`)]);
-		rows.push([btn("⬆️", `a:btu:${section}:${key}`), btn("⬇️", `a:btd:${section}:${key}`), btn("🗑 Удалить", `a:btx:${section}:${key}`)]);
+		rows.push([btn(item.type === "link" ? "🔗 Ссылка" : "📄 Текст", `a:btc:${section}:${key}`), btn("🗑 Удалить", `a:btx:${section}:${key}`)]);
 	} else if (override) {
 		rows.push([btn("↩️ Вернуть стандартную", `a:btr:${section}:${key}`)]);
 	}
@@ -89,18 +108,46 @@ async function update(ctx, section, key, mutate) {
 	return true;
 }
 
+async function saveLayoutList(ctx, cfg, section, list) {
+	cfg.layout = { ...cfg.layout, [section]: list };
+	await saveButtons(ctx.env, cfg);
+}
+
+/** Moves a button one place up / down the section's list. */
 async function move(ctx, section, key, delta) {
 	const cfg = await getButtons(ctx.env);
-	const same = cfg.custom.filter((entry) => entry.section === section);
-	const index = same.findIndex((entry) => entry.id === key);
+	const list = effectiveLayout(cfg, section);
+	const index = list.findIndex((entry) => entry.k === key);
 	const target = index + delta;
-	if (index < 0 || target < 0 || target >= same.length) {
-		return;
+	if (index < 0 || target < 0 || target >= list.length) {
+		return false;
 	}
-	const a = cfg.custom.indexOf(same[index]);
-	const b = cfg.custom.indexOf(same[target]);
-	[cfg.custom[a], cfg.custom[b]] = [cfg.custom[b], cfg.custom[a]];
-	await saveButtons(ctx.env, cfg);
+	[list[index], list[target]] = [list[target], list[index]];
+	await saveLayoutList(ctx, cfg, section, list);
+	return true;
+}
+
+/** Puts a button in the same row as the previous one, or back on its own row. */
+async function toggleJoin(ctx, section, key) {
+	const cfg = await getButtons(ctx.env);
+	const list = effectiveLayout(cfg, section);
+	const index = list.findIndex((entry) => entry.k === key);
+	if (index <= 0) {
+		return "Первую кнопку нельзя поставить в строку с предыдущей";
+	}
+	if (!list[index].j) {
+		// count how many already stand in the row of the previous button
+		let size = 1;
+		for (let i = index - 1; i > 0 && list[i].j; i--) {
+			size++;
+		}
+		if (size >= MAX_PER_ROW) {
+			return `В одной строке не больше ${MAX_PER_ROW} кнопок`;
+		}
+	}
+	list[index].j = !list[index].j;
+	await saveLayoutList(ctx, cfg, section, list);
+	return null;
 }
 
 /** Returns true when the callback belongs to this module. `parts` is the callback data without "a:". */
@@ -162,8 +209,14 @@ export async function buttonsCallback(ctx, parts) {
 		case "btd":
 			await move(ctx, section, key, action === "btu" ? -1 : 1);
 			await toast(ctx);
-			await showSection(ctx, section);
+			await showButton(ctx, section, key);
 			return true;
+		case "btj": {
+			const problem = await toggleJoin(ctx, section, key);
+			await toast(ctx, problem ?? "", Boolean(problem));
+			await showButton(ctx, section, key);
+			return true;
+		}
 		case "btx": {
 			const cfg = await getButtons(ctx.env);
 			cfg.custom = cfg.custom.filter((entry) => !(entry.id === key && entry.section === section));

@@ -121,7 +121,7 @@ export async function setEmojiError(env, value) {
 /** Button customisation: { overrides: { menu: { shop: { text, emoji, icon, hidden } } }, custom: [ { id, section, type, text, emoji, icon, url | page, hidden } ] }. */
 export async function getButtons(env) {
 	const stored = await readJson(env, "buttons");
-	return { overrides: stored?.overrides ?? {}, custom: Array.isArray(stored?.custom) ? stored.custom : [] };
+	return { overrides: stored?.overrides ?? {}, custom: Array.isArray(stored?.custom) ? stored.custom : [], layout: stored?.layout ?? {} };
 }
 
 export async function saveButtons(env, cfg) {

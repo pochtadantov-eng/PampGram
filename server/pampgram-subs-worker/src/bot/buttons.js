@@ -58,42 +58,94 @@ function strip(button) {
 	return rest;
 }
 
+/** Longest row the owner can build (Telegram itself allows 8, but long names stop fitting). */
+export const MAX_PER_ROW = 3;
+
+/** Which built-in buttons stand next to the previous one by default. */
+const DEFAULT_JOIN = { menu: { dl: true } };
+
 /**
- * Applies the owner's overrides to `rows` of a customer screen and inserts the custom buttons of `section`
- * before the last `tail` rows (back / admin button).
+ * The order and row grouping of a section as a list of { k: key, j: stands in the same row as the previous one }.
+ * Built from what the owner saved, plus anything new (new buttons are appended as their own row).
+ */
+export function effectiveLayout(cfg, section) {
+	const keys = [...Object.keys(BUILTIN[section] ?? {}), ...cfg.custom.filter((entry) => entry.section === section).map((entry) => entry.id)];
+	const saved = (cfg.layout?.[section] ?? []).filter((entry, index, all) => keys.includes(entry.k) && all.findIndex((other) => other.k === entry.k) === index);
+	const seen = new Set(saved.map((entry) => entry.k));
+	const out = saved.map((entry) => ({ k: entry.k, j: Boolean(entry.j) }));
+	for (const key of keys) {
+		if (!seen.has(key)) {
+			out.push({ k: key, j: Boolean(DEFAULT_JOIN[section]?.[key]) });
+		}
+	}
+	return out;
+}
+
+/** Cuts a flat list into rows following the "j" flags, never longer than MAX_PER_ROW. */
+export function rowsFromLayout(entries, itemOf) {
+	const rows = [];
+	for (const entry of entries) {
+		const item = itemOf(entry.k);
+		if (!item) {
+			continue;
+		}
+		const last = rows[rows.length - 1];
+		if (entry.j && last && last.length < MAX_PER_ROW) {
+			last.push(item);
+		} else {
+			rows.push([item]);
+		}
+	}
+	return rows;
+}
+
+/**
+ * Applies the owner's overrides and layout to the rows of a customer screen. `tail` rows at the end (back /
+ * admin button) stay last. In "menu" the built-in and custom buttons are one freely arranged list; in "shop"
+ * the tariff rows stay on top and only the custom buttons are arranged below them.
  */
 export async function customizeRows(env, section, rows, tail = 0) {
 	const cfg = await getButtons(env);
 	const overrides = cfg.overrides?.[section] ?? {};
-	const out = [];
-	for (const row of rows) {
-		const next = [];
+	const tailRows = tail ? rows.slice(-tail) : [];
+	const body = tail ? rows.slice(0, -tail) : rows;
+	const fixed = section === "shop" ? body : [];
+	const movable = section === "shop" ? [] : body;
+	const items = new Map();
+	const defaults = [];
+	for (const row of movable) {
 		for (const button of row) {
 			const key = button._key ?? button.callback_data;
 			const override = overrides[key];
-			if (!override) {
-				next.push(strip(button));
-			} else if (!override.hidden) {
-				const styled = { ...strip(button), text: labelOf(button.text, override) };
-				if (override.icon && splitLabel(styled.text).emoji) {
-					styled._icon = override.icon;
-				}
-				next.push(styled);
+			defaults.push(key);
+			if (override?.hidden) {
+				continue;
 			}
-		}
-		if (next.length) {
-			out.push(next);
+			if (!override) {
+				items.set(key, strip(button));
+				continue;
+			}
+			const styled = { ...strip(button), text: labelOf(button.text, override) };
+			if (override.icon && splitLabel(styled.text).emoji) {
+				styled._icon = override.icon;
+			}
+			items.set(key, styled);
 		}
 	}
-	const extra = cfg.custom
-		.filter((item) => item.section === section && !item.hidden)
-		.map((item) => {
-			const label = labelOf(`${item.emoji ?? ""} ${item.text}`, undefined);
-			const button = item.type === "link" ? urlBtn(label, item.url) : btn(label, `cb:${item.id}`);
-			return item.icon && item.emoji ? [{ ...button, _icon: item.icon }] : [button];
-		});
-	const at = Math.max(0, out.length - tail);
-	return [...out.slice(0, at), ...extra, ...out.slice(at)];
+	for (const entry of cfg.custom.filter((item) => item.section === section && !item.hidden)) {
+		const label = labelOf(`${entry.emoji ?? ""} ${entry.text}`, undefined);
+		const button = entry.type === "link" ? urlBtn(label, entry.url) : btn(label, `cb:${entry.id}`);
+		items.set(entry.id, entry.icon && entry.emoji ? { ...button, _icon: entry.icon } : button);
+	}
+	const order = effectiveLayout(cfg, section);
+	// anything the layout does not know (unexpected buttons) goes last, one per row
+	for (const key of items.keys()) {
+		if (!order.some((entry) => entry.k === key)) {
+			order.push({ k: key, j: false });
+		}
+	}
+	const arranged = rowsFromLayout(order, (key) => items.get(key));
+	return [...fixed.map((row) => row.map(strip)), ...arranged, ...tailRows.map((row) => row.map(strip))];
 }
 
 /** A custom "page" button was pressed. */

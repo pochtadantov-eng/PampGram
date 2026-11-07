@@ -116,7 +116,8 @@ test("moving and editing a custom button; invalid link is refused", async () => 
 	const a = await addButton(env, tg, "menu", "A", "page", "a");
 	const b = await addButton(env, tg, "menu", "B", "page", "b");
 	await handleUpdate(env, tg, press(ADMIN, `a:btu:menu:${b.id}`));
-	assert.deepEqual(JSON.parse(await env.SUBS.get("buttons")).custom.map((x) => x.text), ["B", "A"]);
+	const order = JSON.parse(await env.SUBS.get("buttons")).layout.menu.map((x) => x.k);
+	assert.ok(order.indexOf(b.id) < order.indexOf(a.id), "B is now above A");
 	await handleUpdate(env, tg, press(ADMIN, `a:btc:menu:${a.id}`));
 	await handleUpdate(env, tg, msg(ADMIN, "новый текст"));
 	assert.equal(JSON.parse(await env.SUBS.get("buttons")).custom.find((x) => x.id === a.id).page, "новый текст");
@@ -245,4 +246,98 @@ test("admin home lists the new sections", async () => {
 	for (const expected of ["a:bt", "a:bk", "a:pw", "a:em", "a:im", "a:p"]) {
 		assert.ok(data.includes(expected), expected);
 	}
+});
+
+const menuRows = async (env, tg, user = ALICE) => {
+	tg.reset();
+	await handleUpdate(env, tg, msg(user, "/start"));
+	return (tg.last("sendMessage") ?? tg.last("sendPhoto")).reply_markup.inline_keyboard.map((row) => row.map((b) => b.callback_data ?? b.url ?? b.text));
+};
+
+test("default menu layout is unchanged: shop alone, purchases + files together, privacy alone", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	assert.deepEqual(await menuRows(env, tg), [["shop"], ["my", "dl"], ["privacy"]]);
+});
+
+test("privacy and support can be put side by side (left / right)", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await env.SUBS.put("cfg", JSON.stringify({ support: "@helper" }));
+	assert.deepEqual(await menuRows(env, tg), [["shop"], ["my", "dl"], ["privacy"], ["https://t.me/helper"]]);
+	await handleUpdate(env, tg, press(ADMIN, "a:btj:menu:support"));
+	assert.deepEqual(await menuRows(env, tg), [["shop"], ["my", "dl"], ["privacy", "https://t.me/helper"]]);
+	// back to its own row
+	await handleUpdate(env, tg, press(ADMIN, "a:btj:menu:support"));
+	assert.deepEqual(await menuRows(env, tg), [["shop"], ["my", "dl"], ["privacy"], ["https://t.me/helper"]]);
+});
+
+test("the first button cannot join a previous row, and a row holds at most three", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await handleUpdate(env, tg, press(ADMIN, "a:btj:menu:shop"));
+	assert.match(tg.last("answerCallbackQuery").text, /Первую кнопку/);
+	// shop + my + dl = three in a row, the fourth (privacy) is refused
+	await handleUpdate(env, tg, press(ADMIN, "a:btj:menu:my"));
+	assert.deepEqual(await menuRows(env, tg), [["shop", "my", "dl"], ["privacy"]]);
+	await handleUpdate(env, tg, press(ADMIN, "a:btj:menu:privacy"));
+	assert.match(tg.last("answerCallbackQuery").text, /не больше 3/);
+	assert.deepEqual(await menuRows(env, tg), [["shop", "my", "dl"], ["privacy"]]);
+});
+
+test("moving buttons up and down reorders the menu, hidden ones are skipped but keep their place", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await handleUpdate(env, tg, press(ADMIN, "a:btd:menu:shop"));
+	assert.deepEqual(await menuRows(env, tg), [["my"], ["shop", "dl"], ["privacy"]].map((r) => r), "shop swapped with my; dl keeps its join");
+	await handleUpdate(env, tg, press(ADMIN, "a:btu:menu:privacy"));
+	await handleUpdate(env, tg, press(ADMIN, "a:btv:menu:dl"));
+	const rows = await menuRows(env, tg);
+	assert.ok(!rows.flat().includes("dl"));
+	// moving past the ends does nothing
+	await handleUpdate(env, tg, press(ADMIN, "a:btu:menu:my"));
+	await handleUpdate(env, tg, press(ADMIN, "a:btu:menu:my"));
+	assert.equal((await menuRows(env, tg)).flat()[0], "my");
+});
+
+test("custom buttons take part in the same ordering and can be placed beside built-in ones", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	const reviews = await addButton(env, tg, "menu", "Отзывы", "link", "@rev");
+	const faq = await addButton(env, tg, "menu", "FAQ", "page", "текст");
+	await handleUpdate(env, tg, press(ADMIN, `a:btj:menu:${faq.id}`));
+	assert.deepEqual((await menuRows(env, tg)).slice(-2), [["privacy"], ["https://t.me/rev", `cb:${faq.id}`]]);
+	// move reviews to the very top
+	for (let i = 0; i < 5; i++) {
+		await handleUpdate(env, tg, press(ADMIN, `a:btu:menu:${reviews.id}`));
+	}
+	assert.equal((await menuRows(env, tg))[0][0], "https://t.me/rev");
+});
+
+test("admin and back rows stay last; tariff rows stay on top in the shop section", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	const own = await addButton(env, tg, "shop", "Помощь", "link", "https://example.com");
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, "shop"));
+	const rows = tg.last("editMessageText").reply_markup.inline_keyboard;
+	assert.match(rows[0][0].callback_data, /^t:/);
+	assert.equal(rows.at(-1)[0].callback_data, "menu");
+	assert.equal(rows.at(-2)[0].url, "https://example.com");
+	const admin = await menuRows(env, tg, ADMIN);
+	assert.equal(admin.at(-1)[0], "a:home");
+	assert.ok(own.id);
+});
+
+test("the section screen shows a preview of the rows and the button card shows its place", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await handleUpdate(env, tg, press(ADMIN, "a:bt:menu"));
+	const text = tg.last("editMessageText").text;
+	assert.match(text, /Как видят покупатели/);
+	assert.match(text, /Мои покупки\s+┃\s+📥 Скачать файлы|Мои покупки\s+┃\s+Скачать файлы/);
+	await handleUpdate(env, tg, press(ADMIN, "a:bte:menu:dl"));
+	assert.match(tg.last("editMessageText").text, /в одной строке с предыдущей/);
+	const data = tg.last("editMessageText").reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
+	assert.ok(data.includes("a:btu:menu:dl") && data.includes("a:btd:menu:dl") && data.includes("a:btj:menu:dl"));
 });
