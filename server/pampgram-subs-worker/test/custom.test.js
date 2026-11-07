@@ -480,3 +480,90 @@ test("built-in buttons get shortcuts to where their content is edited", async ()
 		}
 	}
 });
+
+const preCheckout = (from, payload, amount) => ({ pre_checkout_query: { id: `pc${++seq}`, from, invoice_payload: payload, total_amount: amount, currency: "XTR" } });
+
+test("the Stars invoice has a pay button first and a cancel button under it", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await handleUpdate(env, tg, press(ALICE, "buy:std"));
+	const invoice = tg.last("sendInvoice");
+	const rows = invoice.reply_markup.inline_keyboard;
+	assert.equal(rows[0][0].pay, true, "first button is the pay button");
+	assert.match(rows[0][0].text, /Заплатить ⭐200/);
+	assert.match(rows[1][0].callback_data, /^ix:/);
+	assert.match(rows[1][0].text, /Отменить/);
+});
+
+test("cancelling an invoice cancels the order, removes the invoice and blocks late payment", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await handleUpdate(env, tg, press(ALICE, "buy:std"));
+	const invoice = tg.last("sendInvoice");
+	const cancel = invoice.reply_markup.inline_keyboard[1][0].callback_data;
+	const orderId = cancel.slice(3);
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, cancel));
+	assert.equal(tg.last("deleteMessage").message_id, 50);
+	assert.match(tg.last("sendMessage").text, /Оплата отменена/);
+	assert.ok(flat(tg.last("sendMessage")).some((b) => b.callback_data === "shop"));
+	assert.equal(JSON.parse(env.SUBS.map.get(`order:${orderId}`).value).status, "cancelled");
+
+	// a stale pay tap is refused with a clear reason
+	tg.reset();
+	await handleUpdate(env, tg, preCheckout(ALICE, invoice.payload, 200));
+	assert.equal(tg.last("answerPreCheckoutQuery").ok, false);
+	assert.match(tg.last("answerPreCheckoutQuery").error_message, /отменён/);
+
+	// pressing cancel twice is harmless
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, cancel));
+	assert.match(tg.last("answerCallbackQuery").text, /уже отменена/);
+});
+
+test("only the buyer can cancel, and a paid order cannot be cancelled", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await handleUpdate(env, tg, press(ALICE, "buy:std"));
+	const invoice = tg.last("sendInvoice");
+	const cancel = invoice.reply_markup.inline_keyboard[1][0].callback_data;
+	const orderId = cancel.slice(3);
+	tg.reset();
+	await handleUpdate(env, tg, press({ id: 2002, first_name: "Bob" }, cancel));
+	assert.match(tg.last("answerCallbackQuery").text, /не найден/);
+	assert.equal(JSON.parse(env.SUBS.map.get(`order:${orderId}`).value).status, "pending");
+
+	await handleUpdate(env, tg, preCheckout(ALICE, invoice.payload, 200));
+	await handleUpdate(env, tg, { message: { message_id: ++seq, from: ALICE, chat: { id: ALICE.id, type: "private" }, successful_payment: { currency: "XTR", total_amount: 200, invoice_payload: invoice.payload, telegram_payment_charge_id: "paid-1" } } });
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, cancel));
+	assert.match(tg.last("answerCallbackQuery").text, /уже оплачен/);
+	assert.notEqual(JSON.parse(env.SUBS.map.get(`order:${orderId}`).value).status, "cancelled");
+});
+
+test("products get the same cancel button under their invoice", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	const section = await addButton(env, tg, "menu", "Раздел", "shop", "описание");
+	await handleUpdate(env, tg, press(ADMIN, `a:sxa:${section.id}`));
+	await handleUpdate(env, tg, msg(ADMIN, "Сертификат | 700 | ок"));
+	const product = JSON.parse(await env.SUBS.get("products"))[0];
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, `buy:p_${product.id}`));
+	const rows = tg.last("sendInvoice").reply_markup.inline_keyboard;
+	assert.equal(rows[0][0].pay, true);
+	assert.match(rows[0][0].text, /Заплатить ⭐700/);
+	assert.match(rows[1][0].callback_data, /^ix:/);
+});
+
+test("if Telegram refuses the invoice with the cancel button, a plain invoice is sent instead", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	tg.failNext("sendInvoice", "Bad Request: invalid reply markup", 400);
+	await handleUpdate(env, tg, press(ALICE, "buy:std"));
+	const sent = tg.sent("sendInvoice");
+	assert.equal(sent.length, 2);
+	assert.ok(sent[0].reply_markup);
+	assert.equal(sent[1].reply_markup, undefined);
+	assert.equal(tg.sent("sendMessage").length, 0, "no error shown to the buyer");
+});

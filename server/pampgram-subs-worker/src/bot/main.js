@@ -10,7 +10,7 @@ import { showProduct } from "./products.js";
 import { adminHome, adminCallback, adminInput, answerCheck } from "./admin.js";
 import {
 	showMenu, showTariffs, showTariff, startPurchase, handlePreCheckout, handleSuccessfulPayment,
-	bindKey, showPurchases, resendFiles, showPrivacy,
+	bindKey, showPurchases, resendFiles, showPrivacy, cancelInvoice,
 } from "./shop.js";
 import { startManualPurchase, claimPaid, cancelOrder, forwardProof } from "./pay.js";
 
@@ -57,6 +57,8 @@ async function handleCallback(ctx, data) {
 			return showCustomPage(ctx, arg);
 		case "sp":
 			return showProduct(ctx, arg);
+		case "ix":
+			return cancelInvoice(ctx, arg);
 		case "bind":
 			return bindKey(ctx, arg);
 		case "my":

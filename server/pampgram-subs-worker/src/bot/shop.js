@@ -149,15 +149,30 @@ export async function startPurchase(ctx, code) {
 	};
 	await saveOrder(ctx.env, order);
 	await toast(ctx);
+	const invoice = {
+		chat_id: ctx.chatId,
+		title: tariff.title.slice(0, 32),
+		description: (tariff.desc || tariff.title).slice(0, 255),
+		payload: `o:${order.id}`,
+		currency: "XTR",
+		prices: [{ label: tariff.title.slice(0, 32), amount: tariff.stars }],
+	};
 	try {
-		await ctx.tg.call("sendInvoice", {
-			chat_id: ctx.chatId,
-			title: tariff.title.slice(0, 32),
-			description: (tariff.desc || tariff.title).slice(0, 255),
-			payload: `o:${order.id}`,
-			currency: "XTR",
-			prices: [{ label: tariff.title.slice(0, 32), amount: tariff.stars }],
-		});
+		try {
+			// the first button of an invoice must be the pay button; the cancel button goes under it
+			await ctx.tg.call("sendInvoice", {
+				...invoice,
+				reply_markup: {
+					inline_keyboard: [
+						[{ text: `Заплатить ⭐${tariff.stars}`, pay: true }],
+						[{ text: "✖️ Отменить оплату", callback_data: `ix:${order.id}` }],
+					],
+				},
+			});
+		} catch {
+			// if Telegram refuses the extra button the buyer still gets an ordinary invoice
+			await ctx.tg.call("sendInvoice", invoice);
+		}
 	} catch (error) {
 		await say(ctx, "Не получилось создать счёт. Попробуйте ещё раз чуть позже.");
 		await notifyAdmins(ctx, `⚠️ Не удалось создать счёт для ${esc(ctx.from.id)}: ${esc(error.description || error.message)}`);
@@ -173,7 +188,7 @@ export async function handlePreCheckout(ctx, query) {
 		return fail("Заказ не найден. Откройте тариф заново.");
 	}
 	if (order.status !== "pending") {
-		return fail("Этот заказ уже оплачен.");
+		return fail(order.status === "cancelled" ? "Заказ отменён. Откройте тариф заново." : "Этот заказ уже оплачен.");
 	}
 	if (query.currency !== "XTR" || query.total_amount !== order.stars) {
 		return fail("Сумма не совпадает с заказом. Откройте тариф заново.");
@@ -182,6 +197,24 @@ export async function handlePreCheckout(ctx, query) {
 		return fail("Доступ ограничен.");
 	}
 	return ctx.tg.call("answerPreCheckoutQuery", { pre_checkout_query_id: query.id, ok: true });
+}
+
+/** "Отменить оплату" under a Stars invoice: the unpaid order is cancelled and the invoice message removed. */
+export async function cancelInvoice(ctx, orderId) {
+	const order = await getOrder(ctx.env, orderId);
+	if (!order || order.userId !== String(ctx.from.id)) {
+		return toast(ctx, "Заказ не найден", true);
+	}
+	if (order.status !== "pending") {
+		return toast(ctx, order.status === "cancelled" ? "Оплата уже отменена" : "Этот заказ уже оплачен", true);
+	}
+	order.status = "cancelled";
+	await saveOrder(ctx.env, order);
+	await toast(ctx, "Оплата отменена");
+	if (ctx.callback?.message_id) {
+		await ctx.tg.call("deleteMessage", { chat_id: ctx.chatId, message_id: ctx.callback.message_id }).catch(() => {});
+	}
+	return say(ctx, await getText(ctx.env, "invoice_cancelled"), kb([[btn("🛒 К тарифам", "shop")], [btn("← В меню", "menu")]]));
 }
 
 export async function handleSuccessfulPayment(ctx, payment) {
