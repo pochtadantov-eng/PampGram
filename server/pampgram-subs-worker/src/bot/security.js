@@ -75,7 +75,7 @@ export async function verifyPassword(env, input, now = Date.now()) {
 const CANCEL = kb([[btn("✖️ Отмена", "a:cancel")]]);
 
 /** Actions that remove what the owner built. They run only after the password. */
-export const GUARDED = new Set(["tx", "bd", "pdel", "imd", "emd", "emr", "btx", "btr", "bkr"]);
+export const GUARDED = new Set(["tx", "bd", "pdel", "imd", "emd", "emr", "btx", "btr", "bkr", "sxx"]);
 
 export async function askPassword(ctx, data) {
 	if (!(await hasPassword(ctx.env))) {

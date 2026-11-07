@@ -9,6 +9,7 @@ import { btn, urlBtn, kb, esc, fmtTime, fmtHours, tierLabel, fixTitle } from "./
 import { getBanners, getConfig, getTariffs, getBundle, getOrder, saveOrder, listUserOrders, newId, markCharge, chargeOrder, adminIds, isAdmin, getPayMethods } from "./store.js";
 import { manualAmount, formatAmount, orderPrice } from "./pay.js";
 import { BUILTIN, customizeRows } from "./buttons.js";
+import { findSellable, deliverProduct } from "./products.js";
 
 export async function notifyAdmins(ctx, text, extra = {}) {
 	for (const id of adminIds(ctx.env)) {
@@ -121,7 +122,7 @@ export async function startPurchase(ctx, code) {
 		await toast(ctx, "Доступ ограничен", true);
 		return;
 	}
-	const tariff = (await availableTariffs(ctx.env, ctx.from.id)).find((item) => item.code === code);
+	const tariff = (await findSellable(ctx.env, code)) ?? (await availableTariffs(ctx.env, ctx.from.id)).find((item) => item.code === code);
 	if (!tariff) {
 		await toast(ctx, "Этот тариф недоступен", true);
 		return;
@@ -138,6 +139,7 @@ export async function startPurchase(ctx, code) {
 		tier: tariff.tier,
 		hours: tariff.hours || 0,
 		stars: tariff.stars,
+		...(tariff.kind === "item" ? { kind: "item", pid: tariff.pid, give: tariff.give } : {}),
 		status: "pending",
 		createdAt: ctx.now,
 		paidAt: null,
@@ -212,6 +214,19 @@ export async function handleSuccessfulPayment(ctx, payment) {
 export async function fulfillOrder(ctx, order, buyer, notify) {
 	order.status = "paid";
 	order.paidAt = ctx.now;
+	if (order.kind === "item") {
+		await updateUser(ctx.env, order.userId, (user) => {
+			user.purchases = (user.purchases ?? 0) + 1;
+			user.lastPurchaseAt = ctx.now;
+		}, ctx.now);
+		order.status = await deliverProduct(ctx, order);
+		await saveOrder(ctx.env, order);
+		if (notify) {
+			const who = buyer.username ? `@${esc(buyer.username)}` : `id ${esc(buyer.id)}`;
+			await notifyAdmins(ctx, `💰 <b>Новая оплата</b>\n${esc(order.title)} — ${esc(orderPrice(order))}\nПокупатель: ${who} (<code>${esc(order.userId)}</code>)`, kb([[btn("👤 Профиль", `a:u:${order.userId}`)]]));
+		}
+		return true;
+	}
 	order.key = await issueKey(ctx.env, order.tier, order.hours > 0 ? order.hours : undefined);
 	await saveOrder(ctx.env, order);
 	await updateUser(ctx.env, order.userId, (user) => {
@@ -298,6 +313,9 @@ export async function showPurchases(ctx) {
 		return show(ctx, "Покупок пока нет.", kb([[btn("🛒 Купить доступ", "shop")], [btn("← Назад", "menu")]]));
 	}
 	const lines = orders.slice(0, 10).map((order) => {
+		if (order.kind === "item") {
+			return `• <b>${esc(order.title)}</b> — ${esc(orderPrice(order))}, ${esc(fmtTime(order.paidAt))}\n  ${order.status === "paid" ? "ждёт выдачи администратором" : "выдано"}`;
+		}
 		const state = order.boundAt ? "привязан к вашему аккаунту" : "не активирован";
 		return `• <b>${esc(fixTitle(order.title, order.hours))}</b> — ${esc(orderPrice(order))}, ${esc(fmtTime(order.paidAt))}\n  <code>${esc(order.key ?? "—")}</code> (${state})`;
 	});

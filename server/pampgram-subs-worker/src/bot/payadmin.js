@@ -84,7 +84,7 @@ async function orderCardText(ctx, order) {
 	return [
 		`🧾 <b>Заказ</b> <code>${esc(order.id)}</code> — ${state}`,
 		`Покупатель: ${buyer} (<code>${esc(order.userId)}</code>)`,
-		`${esc(order.title)} · ${tierLabel(order.tier)}`,
+		order.kind === "item" ? `${esc(order.title)} · товар` : `${esc(order.title)} · ${tierLabel(order.tier)}`,
 		`Сумма: <b>${esc(orderPrice(order))}</b>${order.methodTitle ? ` · ${esc(order.methodTitle)}` : ""}`,
 		`Создан: ${esc(fmtTime(order.createdAt))}${order.claimedAt ? `, «оплатил»: ${esc(fmtTime(order.claimedAt))}` : ""}`,
 		order.proofs ? `Присланных чеков: ${order.proofs}` : "",

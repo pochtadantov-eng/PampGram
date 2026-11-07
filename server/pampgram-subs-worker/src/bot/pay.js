@@ -14,6 +14,7 @@ import { btn, kb, esc, tierLabel, fmtHours } from "./ui.js";
 import { trySend } from "./telegram.js";
 import { getPayMethods, saveOrder, getOrder, newId, adminIds, getUserState, setUserState, clearUserState } from "./store.js";
 import { banReason, availableTariffs, notifyAdmins } from "./shop.js";
+import { findSellable } from "./products.js";
 
 const MAX_PROOFS = 5;
 
@@ -82,7 +83,7 @@ export async function startManualPurchase(ctx, code, methodId) {
 		return;
 	}
 	const method = (await getPayMethods(ctx.env)).find((item) => item.id === methodId && item.kind === "manual" && item.active);
-	const tariff = (await availableTariffs(ctx.env, ctx.from.id)).find((item) => item.code === code);
+	const tariff = (await findSellable(ctx.env, code)) ?? (await availableTariffs(ctx.env, ctx.from.id)).find((item) => item.code === code);
 	if (!method || !tariff) {
 		await toast(ctx, "Этот способ или тариф недоступен", true);
 		return;
@@ -96,6 +97,7 @@ export async function startManualPurchase(ctx, code, methodId) {
 		tier: tariff.tier,
 		hours: tariff.hours || 0,
 		stars: tariff.stars,
+		...(tariff.kind === "item" ? { kind: "item", pid: tariff.pid, give: tariff.give } : {}),
 		method: method.id,
 		methodTitle: method.title,
 		currency: method.currency,
@@ -113,12 +115,12 @@ export async function startManualPurchase(ctx, code, methodId) {
 		ctx,
 		[
 			`<b>Оплата: ${esc(method.title)}</b>`,
-			`${esc(tariff.title)} · ${tierLabel(tariff.tier)} · ${fmtHours(tariff.hours)}`,
+			tariff.kind === "item" ? `${esc(tariff.title)}` : `${esc(tariff.title)} · ${tierLabel(tariff.tier)} · ${fmtHours(tariff.hours)}`,
 			`К оплате: <b>${esc(order.priceText)}</b>`,
 			"",
 			renderDetails(method.details),
 			"",
-			"Переведите точную сумму, затем нажмите «Я оплатил(а)». После проверки придут ключ и файлы.",
+			tariff.kind === "item" ? "Переведите точную сумму, затем нажмите «Я оплатил(а)». После проверки вы получите товар." : "Переведите точную сумму, затем нажмите «Я оплатил(а)». После проверки придут ключ и файлы.",
 		].join("\n"),
 		kb([[btn("✅ Я оплатил(а)", `pd:${order.id}`)], [btn("✖️ Отмена", `px:${order.id}`)]])
 	);

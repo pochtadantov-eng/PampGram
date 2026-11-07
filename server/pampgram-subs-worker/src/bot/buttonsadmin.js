@@ -7,7 +7,7 @@ import { SECTIONS, BUILTIN, MAX_PER_ROW, splitLabel, labelOf, normalizeUrl, effe
 import { customEmojiIds } from "./emoji.js";
 
 const CANCEL = kb([[btn("✖️ Отмена", "a:bt")]]);
-const TYPE_NAME = { link: "ссылка", page: "страница с текстом" };
+const TYPE_NAME = { link: "ссылка", page: "страница с текстом", shop: "раздел с товарами и оплатой" };
 
 const itemOf = (cfg, section, key) => cfg.custom.find((entry) => entry.id === key && entry.section === section);
 const builtinLabel = (section, key) => BUILTIN[section]?.[key];
@@ -67,7 +67,7 @@ export async function showButton(ctx, section, key) {
 		`🔘 <b>${esc(label)}</b>`,
 		item ? `Тип: ${TYPE_NAME[item.type]}` : "Встроенная кнопка",
 		item?.type === "link" ? `Ссылка: ${esc(item.url)}` : "",
-		item?.type === "page" ? `Текст страницы: ${esc((item.page ?? "").slice(0, 200))}` : "",
+		item?.type === "page" || item?.type === "shop" ? `${item.type === "shop" ? "Описание раздела" : "Текст страницы"}: ${esc((item.page ?? "").slice(0, 200))}` : "",
 		(item ? item.icon : override?.icon) ? "Эмодзи: анимированный" : "",
 		`Показывается: ${hidden ? "нет" : "да"}`,
 	].filter(Boolean);
@@ -82,6 +82,11 @@ export async function showButton(ctx, section, key) {
 		[btn(joined ? "⬍ Отдельной строкой" : "↔ В строку с предыдущей", `a:btj:${section}:${key}`)],
 	];
 	if (item) {
+		if (item.type === "shop") {
+			rows.push([btn("🛍 Товары и оплата", `a:sxl:${key}`)]);
+		} else if (item.type === "page") {
+			rows.push([btn("🛍 Сделать разделом с оплатой", `a:btk:${section}:${key}`)]);
+		}
 		rows.push([btn(item.type === "link" ? "🔗 Ссылка" : "📄 Текст", `a:btc:${section}:${key}`), btn("🗑 Удалить", `a:btx:${section}:${key}`)]);
 	} else if (override) {
 		rows.push([btn("↩️ Вернуть стандартную", `a:btr:${section}:${key}`)]);
@@ -173,7 +178,7 @@ export async function buttonsCallback(ctx, parts) {
 		case "btt": {
 			// a:btt:<section>:<link|page> -> type chosen while adding
 			const type = key;
-			if (!["link", "page"].includes(type)) {
+			if (!["link", "page", "shop"].includes(type)) {
 				return true;
 			}
 			await toast(ctx);
@@ -182,7 +187,7 @@ export async function buttonsCallback(ctx, parts) {
 				return true;
 			}
 			await setState(ctx.env, ctx.from.id, { ...state, step: "content", type });
-			await show(ctx, type === "link" ? "Пришлите ссылку: https://…, @ник или t.me/…" : "Пришлите текст страницы, который откроется по нажатию.", CANCEL);
+			await show(ctx, type === "link" ? "Пришлите ссылку: https://…, @ник или t.me/…" : type === "shop" ? "Пришлите описание раздела (оно покажется над списком товаров)." : "Пришлите текст страницы, который откроется по нажатию.", CANCEL);
 			return true;
 		}
 		case "btn":
@@ -196,6 +201,19 @@ export async function buttonsCallback(ctx, parts) {
 				btc: "Пришлите новую ссылку или текст страницы.",
 			}[action];
 			await show(ctx, prompt, kb([[btn("✖️ Отмена", `a:bte:${section}:${key}`)]]));
+			return true;
+		}
+		case "btk": {
+			const cfg = await getButtons(ctx.env);
+			const entry = cfg.custom.find((item) => item.id === key && item.type === "page");
+			if (entry) {
+				entry.type = "shop";
+				entry.methods = [];
+				entry.customMethods = false;
+				await saveButtons(ctx.env, cfg);
+			}
+			await toast(ctx, "Теперь это раздел с товарами");
+			await showButton(ctx, section, key);
 			return true;
 		}
 		case "btv":
@@ -263,7 +281,7 @@ export async function buttonsInput(ctx, state, message, text) {
 			}
 			const head = splitLabel(text);
 			await setState(ctx.env, ctx.from.id, { ...state, step: "type", text: head.rest || text, emoji: head.rest ? head.emoji : "" });
-			await say(ctx, "Что должна делать кнопка?", kb([[btn("🔗 Открывать ссылку", `a:btt:${state.section}:link`)], [btn("📄 Показывать текст", `a:btt:${state.section}:page`)], [btn("✖️ Отмена", "a:bt")]]));
+			await say(ctx, "Что должна делать кнопка?", kb([[btn("🔗 Открывать ссылку", `a:btt:${state.section}:link`)], [btn("📄 Показывать текст", `a:btt:${state.section}:page`)], [btn("🛍 Раздел с товарами и оплатой", `a:btt:${state.section}:shop`)], [btn("✖️ Отмена", "a:bt")]]));
 			return true;
 		}
 		if (state.step === "content") {
@@ -282,6 +300,10 @@ export async function buttonsInput(ctx, state, message, text) {
 					return true;
 				}
 				item.page = text;
+				if (state.type === "shop") {
+					item.methods = [];
+					item.customMethods = false;
+				}
 			}
 			cfg.custom.push(item);
 			await saveButtons(ctx.env, cfg);

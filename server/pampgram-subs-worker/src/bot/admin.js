@@ -12,6 +12,7 @@ import {
 import { payCallback, payInput, pendingClaims } from "./payadmin.js";
 import { visualsCallback, visualsInput } from "./visuals.js";
 import { buttonsCallback, buttonsInput, readEmoji } from "./buttonsadmin.js";
+import { productsCallback, productsInput } from "./products.js";
 import { GUARDED, askPassword, showPasswordMenu, securityInput } from "./security.js";
 import { backupCallback, makeBackup } from "./backup.js";
 import { totalsText } from "./pay.js";
@@ -598,7 +599,7 @@ export async function adminCallback(ctx, data) {
 				await toast(ctx);
 				return showPasswordMenu(ctx);
 			}
-			if ((await payCallback(ctx, parts)) || (await visualsCallback(ctx, parts)) || (await buttonsCallback(ctx, parts)) || (await backupCallback(ctx, parts))) {
+			if ((await payCallback(ctx, parts)) || (await visualsCallback(ctx, parts)) || (await buttonsCallback(ctx, parts)) || (await productsCallback(ctx, parts)) || (await backupCallback(ctx, parts))) {
 				return;
 			}
 			return toast(ctx, "Неизвестное действие");
@@ -625,6 +626,9 @@ export async function adminInput(ctx, message) {
 		return true;
 	}
 	if (await buttonsInput(ctx, state, message, text)) {
+		return true;
+	}
+	if (await productsInput(ctx, state, message, text)) {
 		return true;
 	}
 	if (await visualsInput(ctx, state, message)) {

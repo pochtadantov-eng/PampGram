@@ -8,6 +8,7 @@
 import { show, toast } from "./context.js";
 import { btn, urlBtn, kb, esc } from "./ui.js";
 import { getButtons } from "./store.js";
+import { showShopSection } from "./products.js";
 
 export const SECTIONS = { menu: "Главное меню", shop: "Тарифы" };
 
@@ -151,10 +152,13 @@ export async function customizeRows(env, section, rows, tail = 0) {
 /** A custom "page" button was pressed. */
 export async function showCustomPage(ctx, id) {
 	const cfg = await getButtons(ctx.env);
-	const item = cfg.custom.find((entry) => entry.id === id && entry.type === "page" && !entry.hidden);
+	const item = cfg.custom.find((entry) => entry.id === id && (entry.type === "page" || entry.type === "shop") && !entry.hidden);
 	if (!item) {
 		return toast(ctx, "Раздел недоступен", true);
 	}
 	await toast(ctx);
+	if (item.type === "shop") {
+		return showShopSection(ctx, item);
+	}
 	return show(ctx, `<b>${esc(item.text)}</b>\n\n${esc(item.page ?? "")}`, kb([[btn("← Назад", item.section === "shop" ? "shop" : "menu")]]));
 }

@@ -128,6 +128,16 @@ export async function saveButtons(env, cfg) {
 	await env.SUBS.put("buttons", JSON.stringify(cfg));
 }
 
+/** Products of the owner's shop-type sections: [ { id, section (button id), title, desc, stars, give, emoji, icon, active } ]. */
+export async function getProducts(env) {
+	const stored = await readJson(env, "products");
+	return Array.isArray(stored) ? stored : [];
+}
+
+export async function saveProducts(env, products) {
+	await env.SUBS.put("products", JSON.stringify(products));
+}
+
 /** Banners: { menu: { type: "photo"|"animation"|"video", fileId }, shop: {...} }. */
 export async function getBanners(env) {
 	const stored = await readJson(env, "banners");
