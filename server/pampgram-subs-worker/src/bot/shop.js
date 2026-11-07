@@ -89,7 +89,8 @@ export async function showTariffs(ctx) {
 	if (tariffs.length === 0) {
 		return show(ctx, "Сейчас нет доступных тарифов.", kb([[btn("← Назад", "menu")]]));
 	}
-	const rows = tariffs.map((tariff) => [{ ...btn(`${tariff.emoji ? `${tariff.emoji} ` : ""}${tariff.title} — ${tariff.stars} ⭐`, `t:${tariff.code}`), ...(tariff.icon && tariff.emoji ? { _icon: tariff.icon } : {}) }]);
+	const front = Boolean((await getConfig(ctx.env)).starFront);
+	const rows = tariffs.map((tariff) => [{ ...btn(front ? `${tariff.emoji || "⭐"} ${tariff.title} — ${tariff.stars}` : `${tariff.emoji ? `${tariff.emoji} ` : ""}${tariff.title} — ${tariff.stars} ⭐`, `t:${tariff.code}`), ...(tariff.icon && tariff.emoji ? { _icon: tariff.icon } : {}) }]);
 	rows.push([btn("← Назад", "menu")]);
 	return showWithBanner(ctx, "shop", "<b>Тарифы</b>\nВыберите тариф, затем способ оплаты. Ключ и файлы приходят после оплаты.", kb(await customizeRows(ctx.env, "shop", rows, 1)));
 }
@@ -103,9 +104,10 @@ export async function showTariff(ctx, code) {
 	}
 	const text = `<b>${tariff.emoji ? `${esc(tariff.emoji)} ` : ""}${esc(tariff.title)}</b>\n${esc(tariff.desc ?? "")}\n\nУровень: ${tierLabel(tariff.tier)}\nСрок: ${fmtHours(tariff.hours)}\nЦена: ${tariff.stars} ⭐`;
 	const methods = (await getPayMethods(ctx.env)).filter((method) => method.active);
+	const starFront = Boolean((await getConfig(ctx.env)).starFront);
 	const rows = methods.map((method) =>
 		method.kind === "stars"
-			? [btn(`⭐ ${method.title} — ${tariff.stars} ⭐`, `buy:${tariff.code}`)]
+			? [btn(`⭐ ${method.title} — ${tariff.stars}${starFront ? "" : " ⭐"}`, `buy:${tariff.code}`)]
 			: [btn(`💳 ${method.title} — ${formatAmount(manualAmount(method, tariff), method.currency)}`.slice(0, 60), `pay:${tariff.code}:${method.id}`)]
 	);
 	rows.push([btn("← К тарифам", "shop")]);

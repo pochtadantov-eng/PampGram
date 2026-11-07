@@ -424,6 +424,7 @@ async function showSettings(ctx) {
 		kb([
 			[btn("✏️ Приветствие", "a:cf:welcome"), btn("✏️ Инструкция", "a:cf:howto")],
 			[btn("💬 Поддержка", "a:cf:support"), btn("🕒 Часовой пояс", "a:cf:tz")],
+			[btn(`⭐ Звезда на кнопках тарифов: ${config.starFront ? "спереди (анимируется)" : "в конце"}`, "a:cs")],
 			[btn("← Админка", "a:home")],
 		])
 	);
@@ -572,6 +573,12 @@ export async function adminCallback(ctx, data) {
 		case "c":
 			await toast(ctx);
 			return showSettings(ctx);
+		case "cs": {
+			const config = await getConfig(ctx.env);
+			await setConfig(ctx.env, { starFront: !config.starFront });
+			await toast(ctx, !config.starFront ? "Звезда теперь спереди" : "Звезда в конце");
+			return showSettings(ctx);
+		}
 		case "cf": {
 			await toast(ctx);
 			if (!["welcome", "howto", "support", "tz"].includes(arg)) {

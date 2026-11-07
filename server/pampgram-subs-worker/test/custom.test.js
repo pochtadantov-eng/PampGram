@@ -371,3 +371,41 @@ test("a tariff can get its own emoji (plain or animated) shown on its button and
 	await handleUpdate(env, tg, press(ALICE, "shop"));
 	assert.ok(flat(tg.last("editMessageText")).some((b) => b.callback_data === "t:std" && b.text.startsWith("Standard")));
 });
+
+test("star position: at the end by default, at the front (so it can be animated) when switched", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await env.SUBS.put("emoji", JSON.stringify({ "⭐": "888" }));
+	const shopLabels = async () => {
+		tg.reset();
+		await handleUpdate(env, tg, press(ALICE, "shop"));
+		return flat(tg.last("editMessageText")).filter((b) => b.callback_data?.startsWith("t:"));
+	};
+	assert.ok((await shopLabels()).every((b) => b.text.endsWith(" ⭐")), "default: star at the end");
+
+	await handleUpdate(env, tg, press(ADMIN, "a:cs"));
+	assert.equal(JSON.parse(await env.SUBS.get("cfg")).starFront, true);
+	const front = await shopLabels();
+	assert.ok(front.every((b) => !b.text.includes("⭐") && b.icon_custom_emoji_id === "888"), JSON.stringify(front));
+	assert.match(front[0].text, /^Standard — 200$/);
+
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, "t:std"));
+	const pay = flat(tg.last("editMessageText")).find((b) => b.callback_data === "buy:std");
+	assert.equal(pay.icon_custom_emoji_id, "888");
+	assert.ok(!pay.text.includes("⭐"));
+
+	await handleUpdate(env, tg, press(ADMIN, "a:cs"));
+	assert.equal(JSON.parse(await env.SUBS.get("cfg")).starFront, false);
+});
+
+test("a tariff's own emoji replaces the star in front mode", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await env.SUBS.put("cfg", JSON.stringify({ starFront: true }));
+	await handleUpdate(env, tg, press(ADMIN, "a:te:std"));
+	await handleUpdate(env, tg, msg(ADMIN, "🔥"));
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, "shop"));
+	assert.ok(flat(tg.last("editMessageText")).some((b) => b.callback_data === "t:std" && b.text === "🔥 Standard — 200"));
+});
