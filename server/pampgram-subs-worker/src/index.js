@@ -75,6 +75,12 @@
  *     `sig` covers `id|full|sortedSections` — same forged-JSON defense as /status, here against
  *     spoofing "not banned".
  *
+ *   GET  /access?id=<id>&nonce=<16-64 alphanumerics>
+ *     -> { "state": "active"|"none"|"expired"|"banned", "expiresAt", "now", "ttl", "nonce",
+ *          "reason", "tamper", "sig" }
+ *     The licence gate the app locks itself behind — see access.js (Ed25519-signed, replay-
+ *     proof via the nonce). POST /report-tamper { id, kind } feeds the tamper log there.
+ *
  *   GET  /min-version
  *     -> { "minVersion": <integer>, "sig": "<hex>" }
  *     Public, same reasoning as /status. Every install compares this against its own
@@ -211,6 +217,7 @@ import {
 	listAllKeys,
 } from "./core.js";
 import { issueKey, redeemKeyForAccount } from "./keys.js";
+import { handleAccess, handleReportTamper, clearTamper, recordTamper } from "./access.js";
 import { recordAppSeen, noteTier } from "./users.js";
 import { handleWebhook, runScheduled } from "./bot/webhook.js";
 
@@ -372,12 +379,14 @@ async function handleUnban(request, env) {
 
 	if (scope === "all") {
 		await env.SUBS.delete(`ban:${idString}`);
+		await clearTamper(env, idString);
 		return jsonResponse({ ok: true });
 	}
 
 	const record = await readBanRecord(env, idString);
 	if (scope === "full") {
 		record.full = null;
+		await clearTamper(env, idString);
 	} else {
 		delete record.sections[section];
 	}
@@ -520,6 +529,9 @@ async function handleRedeemKey(request, env) {
 
 	const redeemed = await redeemKeyForAccount(env, idString, key);
 	if (!redeemed.ok) {
+		if (redeemed.banned) {
+			return jsonResponse({ error: "banned" }, 403);
+		}
 		return jsonResponse({ error: "key not found or already used" }, 404);
 	}
 	return jsonResponse({ ok: true, tier: redeemed.tier, expiresAt: redeemed.expiresAt });
@@ -618,6 +630,13 @@ async function handleSyncLedger(request, env) {
 		return jsonResponse({ error: "invalid payload" }, 400);
 	}
 
+	// A fully banned account's balance is frozen at zero: nothing is stored for it, and the
+	// attempt is logged as tamper activity (a compliant, locked app never pushes a ledger).
+	if ((await readBanRecord(env, idString)).full) {
+		await recordTamper(env, idString, "ledger_sync_while_banned");
+		return jsonResponse({ error: "banned" }, 403);
+	}
+
 	// Full-state overwrite, not a diff/merge — the client always pushes its complete current
 	// balance+history, so the stored copy is simply "whatever this device last pushed",
 	// exactly like `/set-min-version` replaces the whole value rather than patching it.
@@ -633,6 +652,10 @@ async function handleFetchLedgerSync(request, env) {
 		return jsonResponse({ error: "invalid id" }, 400);
 	}
 
+	// Nothing to restore for a banned account (its stored balance is wiped on escalation too).
+	if ((await readBanRecord(env, id)).full) {
+		return jsonResponse({ payload: null });
+	}
 	const stored = await env.SUBS.get(`ledgersync:${id}`);
 	return jsonResponse({ payload: stored ?? null });
 }
@@ -646,6 +669,12 @@ export default {
 		}
 		if (request.method === "GET" && url.pathname === "/status") {
 			return handleStatus(request, env, ctx);
+		}
+		if (request.method === "GET" && url.pathname === "/access") {
+			return handleAccess(request, env, ctx);
+		}
+		if (request.method === "POST" && url.pathname === "/report-tamper") {
+			return handleReportTamper(request, env);
 		}
 		if (request.method === "GET" && url.pathname === "/ban-status") {
 			return handleBanStatus(request, env);

@@ -179,7 +179,7 @@ public enum PampGramSubscriptionAPI {
     /// `min_version` (see `fetchMinVersion`/`setMinVersion`) — a build below that number shows
     /// "update required" instead of opening PampGram. Nothing reads this from the server; it's
     /// baked into the binary at compile time, same as `adminAccountId`.
-    public static let currentBuildVersion: Int = 3
+    public static let currentBuildVersion: Int = 4
 
     private struct StatusResponse: Decodable {
         let tier: String
@@ -604,6 +604,58 @@ public enum PampGramSubscriptionAPI {
             DispatchQueue.main.async {
                 completion(status)
             }
+        }.resume()
+    }
+
+    /// `/access`'s raw, UNVERIFIED answer — `PampGramAccessGate` checks the Ed25519 signature
+    /// (and that `nonce` is the one it sent) before believing any of it. `reason` is display
+    /// text only and is not covered by the signature.
+    public struct PampGramAccessResponse: Decodable {
+        public let state: String
+        public let expiresAt: Int64?
+        public let now: Int64
+        public let ttl: Int64
+        public let nonce: String
+        public let reason: String?
+        public let sig: String
+    }
+
+    /// One `/access` round trip for `userId`. `nonce` is a fresh random string the server signs
+    /// into its answer, so a recorded answer can't be replayed later. Any network/HTTP/decode
+    /// problem completes with `nil` — the caller treats that as "no answer", never as "allowed".
+    public static func fetchAccess(userId: Int64, nonce: String, completion: @escaping (PampGramAccessResponse?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/access?id=\(userId)&nonce=\(nonce)\(telemetryQuery(userId: userId))") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.timeoutInterval = 15.0
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            var decoded: PampGramAccessResponse?
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data {
+                decoded = try? JSONDecoder().decode(PampGramAccessResponse.self, from: data)
+            }
+            completion(decoded)
+        }.resume()
+    }
+
+    private struct ReportTamperRequestBody: Encodable {
+        let id: Int64
+        let kind: String
+    }
+
+    /// Fire-and-forget: tells the server this device saw activity on a locked account (see
+    /// `PampGramAccessGate`). The server only ever escalates an account that is already banned.
+    public static func reportTamper(userId: Int64, kind: String) {
+        guard let url = URL(string: "\(baseURL)/report-tamper") else {
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(ReportTamperRequestBody(id: userId, kind: kind))
+        URLSession.shared.dataTask(with: request) { _, _, _ in
         }.resume()
     }
 

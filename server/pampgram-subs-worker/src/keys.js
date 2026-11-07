@@ -5,7 +5,8 @@
  * a key is "key:<KEY>" -> tier | JSON { tier, durationHours }, and it is gone once redeemed.
  */
 
-import { ALLOWED_TIERS, generateActivationKey, writeSubscription } from "./core.js";
+import { ALLOWED_TIERS, generateActivationKey, readBanRecord, writeSubscription } from "./core.js";
+import { recordTamper } from "./access.js";
 import { updateUser } from "./users.js";
 
 /** Mints a key for `tier`. Returns the key string, or null if no unused key could be found. */
@@ -33,9 +34,16 @@ export async function issueKey(env, tier, durationHours) {
 
 /**
  * Redeems `key` for the account `idString`. Returns { ok: true, tier, expiresAt } or
- * { ok: false } for an unknown or already used key.
+ * { ok: false } for an unknown or already used key. A fully banned account can never redeem:
+ * the key is left untouched ({ ok: false, banned: true }) and the attempt counts as tamper
+ * activity (see access.js), so a ban can't be undone by buying or being handed a fresh key.
  */
 export async function redeemKeyForAccount(env, idString, key) {
+	const ban = await readBanRecord(env, idString);
+	if (ban.full) {
+		await recordTamper(env, idString, "redeem_while_banned");
+		return { ok: false, banned: true };
+	}
 	const normalizedKey = String(key).trim().toUpperCase();
 	const stored = await env.SUBS.get(`key:${normalizedKey}`);
 	let tier = null;

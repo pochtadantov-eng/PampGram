@@ -215,6 +215,11 @@ private final class PampGramStatusBadgeView: UIView {
 /// one-size formula wasn't tuned for. Call once, right after `window.makeKeyAndVisible()` in
 /// AppDelegate.swift, same spot as `pampGramPresentOnboardingIfNeeded`.
 public func pampGramInstallStatusBadgeOverlay(on window: UIWindow) {
+    // The licence lock rides on this launch-time call too (it is already wired into
+    // AppDelegate.swift, so no extra patch hunk is needed): installs the full-screen lock that
+    // shows whenever PampGramAccessGate says the app isn't allowed (no key, expired, banned).
+    PampGramAccessLockOverlay.shared.install()
+
     let badge = PampGramStatusBadgeView(frame: .zero)
     window.addSubview(badge)
 
