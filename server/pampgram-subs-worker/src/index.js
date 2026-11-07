@@ -198,35 +198,27 @@
  *     with existing local history never overwrites it from this.
  */
 
-const ALLOWED_TIERS = new Set(["standard", "pro"]);
-const ALLOWED_SECTIONS = new Set(["gifts", "messages", "ghost"]);
-// No 0/O/1/I/L — the whole point of a key is that a human reads it off a chat message and
-// (occasionally) types it by hand, so ambiguous-looking characters aren't worth the entropy.
-const KEY_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-
-function generateActivationKey() {
-	const groups = [];
-	for (let g = 0; g < 4; g++) {
-		const random = new Uint8Array(5);
-		crypto.getRandomValues(random);
-		let group = "";
-		for (let i = 0; i < 5; i++) {
-			group += KEY_ALPHABET[random[i] % KEY_ALPHABET.length];
-		}
-		groups.push(group);
-	}
-	return `PMP-${groups.join("-")}`;
-}
+import {
+	ALLOWED_TIERS,
+	ALLOWED_SECTIONS,
+	generateActivationKey,
+	isValidAccountId,
+	readSubscription,
+	writeSubscription,
+	normalizeBanEntry,
+	readBanRecord,
+	writeBanRecord,
+	listAllKeys,
+} from "./core.js";
+import { issueKey, redeemKeyForAccount } from "./keys.js";
+import { recordAppSeen, noteTier } from "./users.js";
+import { handleWebhook, runScheduled } from "./bot/webhook.js";
 
 function jsonResponse(body, status = 200) {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: { "content-type": "application/json; charset=utf-8" },
 	});
-}
-
-function isValidAccountId(value) {
-	return typeof value === "string" && /^-?\d{1,20}$/.test(value);
 }
 
 // HMAC-SHA256 over a canonical pipe-joined string, hex-encoded — signs the three public,
@@ -243,57 +235,6 @@ async function hmacSign(env, message) {
 	return [...new Uint8Array(signature)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Reads "sub:<id>", resolving the legacy bare-string form and the JSON
-// { tier, expiresAt } form alike, and treating a past expiresAt as "standard, no expiry" —
-// nothing needs to actively sweep an expired entry for correctness, `/status` already reports
-// it right. `durationHours` may be fractional (an admin who mixes days and hours contributes a
-// float number of hours); `expiresAt` is always the exact resulting millisecond, never rounded.
-async function readSubscription(env, idString) {
-	const stored = await env.SUBS.get(`sub:${idString}`);
-	if (!stored) {
-		return { tier: "standard", expiresAt: null };
-	}
-	if (ALLOWED_TIERS.has(stored)) {
-		return { tier: stored, expiresAt: null };
-	}
-	try {
-		const parsed = JSON.parse(stored);
-		if (ALLOWED_TIERS.has(parsed.tier)) {
-			const expiresAt = typeof parsed.expiresAt === "number" ? parsed.expiresAt : null;
-			if (expiresAt !== null && expiresAt <= Date.now()) {
-				return { tier: "standard", expiresAt: null };
-			}
-			return { tier: parsed.tier, expiresAt };
-		}
-	} catch {
-		// Falls through to the "standard" default below — an unparseable value is treated the
-		// same as no value at all, never as an error surfaced to the caller.
-	}
-	return { tier: "standard", expiresAt: null };
-}
-
-// Writes "sub:<id>" for a grant starting now. `durationHours` of `null`/`0` is a permanent
-// grant (stored as the plain legacy string, so an old client reading it directly still works);
-// anything positive is stored with its own resolved `expiresAt`.
-async function writeSubscription(env, idString, tier, durationHours) {
-	if (tier === "standard") {
-		// Standard is the default for anything not in KV — deleting keeps the store from
-		// growing with entries that carry no information beyond "not overridden".
-		await env.SUBS.delete(`sub:${idString}`);
-		return null;
-	}
-	if (!durationHours || durationHours <= 0) {
-		await env.SUBS.put(`sub:${idString}`, tier);
-		return null;
-	}
-	// Rounded to a whole millisecond: durationHours can be fractional, and the client signs
-	// /status's response as a plain integer string — a fractional value here would make the
-	// two sides' canonical strings disagree and every legitimate response fail verification.
-	const expiresAt = Math.round(Date.now() + durationHours * 60 * 60 * 1000);
-	await env.SUBS.put(`sub:${idString}`, JSON.stringify({ tier, expiresAt }));
-	return expiresAt;
-}
-
 async function handleStatus(request, env, ctx) {
 	const url = new URL(request.url);
 	const id = url.searchParams.get("id");
@@ -302,7 +243,13 @@ async function handleStatus(request, env, ctx) {
 	}
 	const { tier, expiresAt } = await readSubscription(env, id);
 	// Fire-and-forget: never awaited, so a KV write here can't slow down or fail this response.
-	ctx.waitUntil(env.SUBS.put(`seen:${id}`, String(Date.now())));
+	const now = Date.now();
+	ctx.waitUntil(env.SUBS.put(`seen:${id}`, String(now)));
+	// Optional self-reported details (version, build, own username/name) for the admin's user
+	// list; unauthenticated like the rest of this route, so informational only.
+	ctx.waitUntil(
+		recordAppSeen(env, id, { version: url.searchParams.get("v"), build: url.searchParams.get("b"), username: url.searchParams.get("u"), name: url.searchParams.get("n") }, now).catch(() => {})
+	);
 	const sig = await hmacSign(env, `${id}|${tier}|${expiresAt ?? "null"}`);
 	return jsonResponse({ tier, expiresAt, sig });
 }
@@ -334,56 +281,13 @@ async function handleGrant(request, env) {
 	await env.SUBS.put(`tier_changed:${idString}`, String(Date.now()));
 
 	const expiresAt = await writeSubscription(env, idString, tier, durationHours);
+	await noteTier(env, idString, tier).catch(() => {});
 
 	return jsonResponse({ ok: true, expiresAt });
 }
 
 function isAuthorized(token, env) {
 	return typeof token === "string" && token.length > 0 && token === env.ADMIN_TOKEN;
-}
-
-// A stored entry is either an old plain reason string or a {reason, at} object — see the
-// storage doc at the top of this file. Reading always normalizes to the latter so every caller
-// only ever deals with one shape; nothing ever rewrites an old row just for having read it.
-function normalizeBanEntry(value) {
-	if (typeof value === "string") {
-		return { reason: value, at: null };
-	}
-	if (value && typeof value === "object" && typeof value.reason === "string") {
-		return { reason: value.reason, at: Number.isInteger(value.at) ? value.at : null };
-	}
-	return null;
-}
-
-async function readBanRecord(env, idString) {
-	const stored = await env.SUBS.get(`ban:${idString}`);
-	if (!stored) {
-		return { full: null, sections: {} };
-	}
-	try {
-		const parsed = JSON.parse(stored);
-		const full = normalizeBanEntry(parsed.full);
-		const sections = {};
-		if (parsed.sections && typeof parsed.sections === "object") {
-			for (const [section, value] of Object.entries(parsed.sections)) {
-				const entry = normalizeBanEntry(value);
-				if (entry) {
-					sections[section] = entry;
-				}
-			}
-		}
-		return { full, sections };
-	} catch {
-		return { full: null, sections: {} };
-	}
-}
-
-async function writeBanRecord(env, idString, record) {
-	if (!record.full && Object.keys(record.sections).length === 0) {
-		await env.SUBS.delete(`ban:${idString}`);
-	} else {
-		await env.SUBS.put(`ban:${idString}`, JSON.stringify(record));
-	}
 }
 
 async function handleBanStatus(request, env) {
@@ -516,22 +420,6 @@ async function handleSetMinVersion(request, env) {
 	return jsonResponse({ ok: true });
 }
 
-// KV's list() caps at 1000 keys per call — silently truncating a prefix scan would understate
-// exactly the count /users-list exists to report, so every full-prefix scan in this file loops
-// on the cursor instead of trusting a single call.
-async function listAllKeys(env, prefix) {
-	const keys = [];
-	let cursor;
-	for (;;) {
-		const page = await env.SUBS.list({ prefix, cursor });
-		keys.push(...page.keys);
-		if (page.list_complete) {
-			return keys;
-		}
-		cursor = page.cursor;
-	}
-}
-
 async function handleUsersList(request, env) {
 	let payload;
 	try {
@@ -605,22 +493,11 @@ async function handleGenerateKey(request, env) {
 		return jsonResponse({ error: "invalid durationHours" }, 400);
 	}
 
-	let key = null;
-	// Practically never collides (32^16 possibilities), but a fresh KV lookup is cheap enough
-	// to just check rather than trust the math.
-	for (let attempt = 0; attempt < 5 && !key; attempt++) {
-		const candidate = generateActivationKey();
-		const existing = await env.SUBS.get(`key:${candidate}`);
-		if (!existing) {
-			key = candidate;
-		}
-	}
+	const key = await issueKey(env, tier, durationHours);
 	if (!key) {
 		return jsonResponse({ error: "could not generate key" }, 500);
 	}
-
 	const hasDuration = typeof durationHours === "number" && durationHours > 0;
-	await env.SUBS.put(`key:${key}`, hasDuration ? JSON.stringify({ tier, durationHours }) : tier);
 	return jsonResponse({ ok: true, key, tier, durationHours: hasDuration ? durationHours : null });
 }
 
@@ -641,37 +518,11 @@ async function handleRedeemKey(request, env) {
 		return jsonResponse({ error: "invalid key" }, 400);
 	}
 
-	const normalizedKey = key.trim().toUpperCase();
-	const stored = await env.SUBS.get(`key:${normalizedKey}`);
-	let tier = null;
-	let durationHours = null;
-	if (ALLOWED_TIERS.has(stored)) {
-		tier = stored;
-	} else if (stored) {
-		try {
-			const parsed = JSON.parse(stored);
-			if (ALLOWED_TIERS.has(parsed.tier)) {
-				tier = parsed.tier;
-				durationHours = typeof parsed.durationHours === "number" ? parsed.durationHours : null;
-			}
-		} catch {
-			// tier stays null, falls through to the 404 below
-		}
-	}
-	if (!tier) {
+	const redeemed = await redeemKeyForAccount(env, idString, key);
+	if (!redeemed.ok) {
 		return jsonResponse({ error: "key not found or already used" }, 404);
 	}
-
-	// One-time: gone the moment it's redeemed, so a second attempt with the same string —
-	// whether it's the same buyer trying again or someone else who saw it — fails the same
-	// way an unknown key would.
-	await env.SUBS.delete(`key:${normalizedKey}`);
-	if (tier === "pro") {
-		await env.SUBS.put(`tier_changed:${idString}`, String(Date.now()));
-	}
-	const expiresAt = await writeSubscription(env, idString, tier, durationHours);
-
-	return jsonResponse({ ok: true, tier, expiresAt });
+	return jsonResponse({ ok: true, tier: redeemed.tier, expiresAt: redeemed.expiresAt });
 }
 
 // A gift transfer body is opaque to this server — a base64 string the client produced by
@@ -790,6 +641,9 @@ export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
 
+		if (request.method === "POST" && url.pathname === "/tg") {
+			return handleWebhook(request, env);
+		}
 		if (request.method === "GET" && url.pathname === "/status") {
 			return handleStatus(request, env, ctx);
 		}
@@ -833,5 +687,10 @@ export default {
 			return handleFetchLedgerSync(request, env);
 		}
 		return jsonResponse({ error: "not found" }, 404);
+	},
+
+	// Cron (see wrangler.toml): expires verification requests nobody answered.
+	async scheduled(event, env, ctx) {
+		ctx.waitUntil(runScheduled(env));
 	},
 };

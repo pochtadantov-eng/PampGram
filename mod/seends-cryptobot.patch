@@ -121,7 +121,7 @@ index 39e0252ec49f4d6eade15ebd39d68bd4e93724b3..0c46c5c1d979a4a259a2518eee6c255a
                              if recipientPeerId.namespace == Namespaces.Peer.CloudUser {
                                  let _ = (ApplicationSpecificNotice.incrementDismissedBirthdayPremiumGiftTip(accountManager: context.sharedContext.accountManager, peerId: recipientPeerId, timestamp: Int32(Date().timeIntervalSince1970))
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index b23780ef0dd76d6c4483fcc6dc401745966c19f7..3da59dd69c4f54912fa864664f3970c2aab1d06d 100644
+index b23780ef0dd76d6c4483fcc6dc401745966c19f7..b39775ddb50ab31d58efd860bf95d955a04974c2 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -12,6 +12,7 @@ import AccountContext
@@ -132,7 +132,7 @@ index b23780ef0dd76d6c4483fcc6dc401745966c19f7..3da59dd69c4f54912fa864664f3970c2
  import TemporaryCachedPeerDataManager
  import PhoneNumberFormat
  import TelegramUIPreferences
-@@ -700,6 +701,94 @@ public final class AccountContextImpl: AccountContext {
+@@ -700,6 +701,106 @@ public final class AccountContextImpl: AccountContext {
              PampGramLocalPremiumRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
              PampGramModerationRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
              PampGramFakeAdminRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
@@ -156,6 +156,18 @@ index b23780ef0dd76d6c4483fcc6dc401745966c19f7..3da59dd69c4f54912fa864664f3970c2
 +            PampGramFakeDeletedAccountRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            let pampGramAccount = account
 +            let pampGramEngine = TelegramEngine(account: account)
++            // Version and own username/name travel with every /status call (see
++            // PampGramSubscriptionAPI.setTelemetry) so the admin bot can list who runs what.
++            let pampGramAccountId = account.peerId.id._internalGetInt64Value()
++            PampGramSubscriptionAPI.setTelemetry(version: pampGramVersionString, userId: pampGramAccountId, username: nil, name: nil)
++            let _ = (pampGramEngine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: account.peerId))
++            |> deliverOnMainQueue).start(next: { peer in
++                guard let peer, case let .user(user) = peer else {
++                    return
++                }
++                let name = [user.firstName, user.lastName].compactMap { $0 }.joined(separator: " ")
++                PampGramSubscriptionAPI.setTelemetry(version: pampGramVersionString, userId: pampGramAccountId, username: user.username, name: name)
++            })
 +            let pampGramEnqueueText: (EnginePeer.Id, String) -> Void = { peerId, text in
 +                let _ = enqueueMessages(account: pampGramAccount, peerId: peerId, messages: [.message(text: text, attributes: [], inlineStickers: [:], mediaReference: nil, threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])]).start()
 +            }

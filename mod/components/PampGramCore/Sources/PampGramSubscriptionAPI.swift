@@ -197,6 +197,40 @@ public enum PampGramSubscriptionAPI {
         let durationHours: Double?
     }
 
+    private static let telemetryLock = NSLock()
+    private static var telemetryVersion: String?
+    private static var telemetryProfiles: [Int64: (username: String, name: String)] = [:]
+
+    /// Self-reported details sent along with every `/status` call so the admin's bot can show
+    /// which version each account runs and who it is. Informational only (the route is public),
+    /// never a basis for access. Set once at startup from `AccountContextImpl`.
+    public static func setTelemetry(version: String, userId: Int64, username: String?, name: String?) {
+        telemetryLock.lock()
+        telemetryVersion = version
+        telemetryProfiles[userId] = (username ?? "", name ?? "")
+        telemetryLock.unlock()
+    }
+
+    private static func telemetryQuery(userId: Int64) -> String {
+        telemetryLock.lock()
+        let version = telemetryVersion
+        let profile = telemetryProfiles[userId]
+        telemetryLock.unlock()
+
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        func item(_ key: String, _ value: String?) -> String {
+            guard let value, !value.isEmpty, let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
+                return ""
+            }
+            return "&\(key)=\(encoded)"
+        }
+        var query = item("v", version.map { $0.hasPrefix("v") ? String($0.dropFirst()) : $0 })
+        query += item("b", Bundle.main.infoDictionary?["CFBundleVersion"] as? String)
+        query += item("u", profile?.username)
+        query += item("n", profile?.name)
+        return query
+    }
+
     /// Live-ish (one-shot per subscription) read of `userId`'s tier and, for a time-limited
     /// grant or redeemed key, when it runs out. Never fails outward: any network problem, bad
     /// response, or the baseURL placeholder still being unfilled all resolve to
@@ -209,7 +243,7 @@ public enum PampGramSubscriptionAPI {
             return .single(PampGramSubscriptionStatus(tier: .pro, expiresAt: nil))
         }
         return Signal { subscriber in
-            guard let url = URL(string: "\(baseURL)/status?id=\(userId)") else {
+            guard let url = URL(string: "\(baseURL)/status?id=\(userId)\(telemetryQuery(userId: userId))") else {
                 subscriber.putNext(PampGramSubscriptionStatus(tier: .standard, expiresAt: nil))
                 subscriber.putCompletion()
                 return EmptyDisposable

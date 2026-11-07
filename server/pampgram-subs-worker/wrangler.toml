@@ -10,3 +10,12 @@ kv_namespaces = [
 # ADMIN_TOKEN is a secret, not a var — set with:
 #   wrangler secret put ADMIN_TOKEN
 # Never put it in this file.
+
+# --- Telegram bot (see README, "Бот") ---
+# BOT_TOKEN and WEBHOOK_SECRET are secrets, set by setup-bot.sh (never in this file).
+[vars]
+ADMIN_TG_IDS = "8557314630"
+
+# Expires "come verify in DM" requests nobody answered.
+[triggers]
+crons = ["*/10 * * * *"]
