@@ -582,48 +582,16 @@ private func pampGramAdditionalEntries(settings: PampGramSettings) -> [PampGramA
     entries.append(.fakePhoneNumberRow("Фейковый номер телефона", settings.fakePhoneNumber.isEmpty ? "Выключено" : settings.fakePhoneNumber))
     entries.append(.profileIdsToggle("ID Профилей", settings.profileIdsEnabled))
     entries.append(.accountLinkToggle("Ссылка аккаунта", settings.accountLinkEnabled))
-    entries.append(.fakePremiumBadgeToggle("Фейк Premium / верификация", settings.fakePremiumBadgeEnabled))
-    entries.append(.fakeDeletedAccountToggle("Фейк «удалил аккаунт»", settings.fakeDeletedAccountEnabled))
-    entries.append(.profileFooter("Всё локально — видно только на этом устройстве и на скриншотах.\n• Скрыть номер — прячет настоящий номер из вашего профиля.\n• Фейковый номер — показывает другой номер вместо реального. Нажмите, чтобы ввести.\n• ID Профилей — числовой ID появляется в чужих профилях.\n• Ссылка аккаунта — t.me/username в чужих профилях.\n• Premium / верификация — звёздочка и галочка рядом с вашим именем.\n• «Удалил аккаунт» — ваш профиль выглядит как Deleted Account."))
-
-    // ── СООБЩЕНИЯ И ЧАТ ──
-    entries.append(.messagesHeader("СООБЩЕНИЯ И ЧАТ"))
-    entries.append(.fakeForwardedFromToggle("Фейк «Переслано от»", settings.fakeForwardedFromEnabled))
-    entries.append(.fakeReactionsToggle("Фейк реакции", settings.fakeReactionsEnabled))
-    entries.append(.chatEditorToggle("Редактор чата", settings.chatEditorEnabled))
-    entries.append(.chatTimeMachineToggle("Машина времени", settings.chatTimeMachineEnabled))
-    entries.append(.invisibleMessagesToggle("Невидимые сообщения", settings.invisibleMessagesEnabled))
-    entries.append(.fakeDeletedMessageToggle("Фейк удаления", settings.fakeDeletedMessageEnabled))
-    entries.append(.fakeSystemMessagesToggle("Фейк системные сообщения", settings.fakeSystemMessagesEnabled))
-    entries.append(.messagesFooter("Зажмите сообщение → PampGram. Невидимые и системные сообщения — в «Меню» (зажмите аватарку в чате).\n• Фейк пересылка — «Переслано от…» с введённым именем.\n• Фейк реакции — реакция с нужным числом под сообщением.\n• Редактор чата и Машина времени — пункт «Изменить время».\n• Фейк удаления — сообщение выглядит удалённым собеседником (затемнено, значок корзины).\n• Невидимые — сообщение из невидимых символов: приходит, а в чате пусто.\n• Системные сообщения — «Аккаунт верифицирован», «Номер изменён» и т.д.\nВсё видно только на этом устройстве."))
-
-    // ── ГЕНЕРАТОРЫ ──
-    entries.append(.generatorsHeader("ГЕНЕРАТОРЫ"))
-    entries.append(.conversationGeneratorToggle("Генератор переписки", settings.conversationGeneratorEnabled))
-    entries.append(.fakePaymentReceiptsToggle("Генератор чеков", settings.fakePaymentReceiptsEnabled))
-    entries.append(.generatorsFooter("• Генератор переписки — «Меню» на аватарке в чате: реплики через «;», «я: …» и «он: …», появляются локально.\n• Генератор чеков — реалистичные чеки Stars/TON/Premium с хешем и деталями транзакции."))
-
-    // ── ГОЛОС И ЗВОНКИ ──
-    entries.append(.voiceCallsHeader("ГОЛОС И ЗВОНКИ"))
-    entries.append(.fakeIncomingCallToggle("Фейк входящий звонок", settings.fakeIncomingCallEnabled))
-    entries.append(.callOverridesRow("Настройки звонков"))
-    entries.append(.voiceCallsFooter("• Фейк звонок — полноэкранный входящий звонок от любого контакта с вибрацией и звуком.\n• Настройки звонков — косметическое редактирование отображения звонков."))
+    entries.append(.profileFooter("Всё локально — видно только на этом устройстве и на скриншотах.\n• Скрыть номер — прячет настоящий номер из вашего профиля.\n• Фейковый номер — показывает другой номер вместо реального. Нажмите, чтобы ввести.\n• ID Профилей — числовой ID появляется в чужих профилях.\n• Ссылка аккаунта — t.me/username в чужих профилях."))
 
     // ── ИНСТРУМЕНТЫ ──
     entries.append(.toolsHeader("ИНСТРУМЕНТЫ"))
     entries.append(.fakeLocationRow("Фейковая геолокация", settings.fakeLocationEnabled ? "Включено" : "Выключено"))
     entries.append(.chatLockRow("Блокировка чатов", settings.chatLockEnabled ? "Включено" : "Выключено"))
-    entries.append(.fakeAdminRow("Фейк админ"))
-    entries.append(.fakeSubscribersToggle("Фейк подписчики", settings.fakeSubscribersEnabled))
     let fakeBots = pampGramParseFakeBots(settings.fakeBotsRaw)
     let builtInCount = settings.fakeCryptoBotEnabled && !fakeBots.contains(where: { $0.id == PampGramFakeCryptoBotRuntime.officialBotUserId }) ? 1 : 0
     entries.append(.fakeBotsRow("Фейковые боты", "\(fakeBots.count + builtInCount)"))
-    entries.append(.fakePortalsToggle("Фейковый Portals", settings.fakePortalsEnabled))
-    entries.append(.fakeTypingToggle("Фейк набор текста", settings.fakeTypingEnabled))
-    entries.append(.reactionSpammerToggle("Спам реакциями", settings.reactionSpammerEnabled))
-    entries.append(.fakeScreenshotNotificationToggle("Фейк скриншот", settings.fakeScreenshotNotificationEnabled))
-    entries.append(.diagnosticsRow("Диагностика"))
-    entries.append(.toolsFooter("• Геолокация — отправка поддельного местоположения. Выбор точки на карте.\n• Блокировка чатов — локальный пароль на выбранные чаты.\n• Фейк админ — визуальные посты от имени админа в любом канале.\n• Фейк подписчики — любое число участников в своём канале или группе.\n• Фейковые боты — список ботов с локальным CryptoBot-кошельком внутри.\n• Фейковый Portals — локальная копия мини-аппа @portals с балансами и витриной.\n• Фейк набор текста — в меню чата: «Печатает…» / «Записывает ГС…» без остановки.\n• Спам реакциями — ставит/снимает реакцию в цикле. Непрерывные уведомления.\n• Фейк скриншот — отправляет «Сделан снимок экрана» в секретный чат без реального скриншота.\n• Диагностика — журнал того, что мод делал на этом устройстве (автосохранение, правки сообщений). Можно скопировать и прислать."))
+    entries.append(.toolsFooter("• Геолокация — отправка поддельного местоположения. Выбор точки на карте.\n• Блокировка чатов — локальный пароль на выбранные чаты.\n• Фейковые боты — список ботов с локальным CryptoBot-кошельком внутри."))
 
     // ── ПРЕМИУМ ──
     entries.append(.premiumHeader("ПРЕМИУМ"))
