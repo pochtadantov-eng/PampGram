@@ -156,5 +156,5 @@ export async function showCustomPage(ctx, id) {
 		return toast(ctx, "Раздел недоступен", true);
 	}
 	await toast(ctx);
-	return show(ctx, `<b>${esc(labelOf(`${item.emoji ?? ""} ${item.text}`))}</b>\n\n${esc(item.page ?? "")}`, kb([[btn("← Назад", item.section === "shop" ? "shop" : "menu")]]));
+	return show(ctx, `<b>${esc(item.text)}</b>\n\n${esc(item.page ?? "")}`, kb([[btn("← Назад", item.section === "shop" ? "shop" : "menu")]]));
 }

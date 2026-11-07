@@ -56,6 +56,7 @@ test("admin adds a link button and a page button; customers see them, the page o
 	tg.reset();
 	await handleUpdate(env, tg, press(ALICE, `cb:${page.id}`));
 	assert.match(tg.last("editMessageText").text, /Ответы на частые вопросы/);
+	assert.match(tg.last("editMessageText").text, /^<b>FAQ<\/b>/, "title is the name only, no emoji");
 });
 
 test("custom buttons go before the admin row for the admin and also work in the tariff list", async () => {
@@ -363,7 +364,7 @@ test("a tariff can get its own emoji (plain or animated) shown on its button and
 	assert.ok(!("_icon" in button));
 	tg.reset();
 	await handleUpdate(env, tg, press(ALICE, "t:std"));
-	assert.match(tg.last("editMessageText").text, /💥 Standard/);
+	assert.doesNotMatch(tg.last("editMessageText").text, /💥/, "the emoji stays on the button only");
 
 	await handleUpdate(env, tg, press(ADMIN, "a:te:std"));
 	await handleUpdate(env, tg, msg(ADMIN, "-"));

@@ -102,7 +102,7 @@ export async function showTariff(ctx, code) {
 		await toast(ctx, "Этот тариф недоступен", true);
 		return showTariffs(ctx);
 	}
-	const text = `<b>${tariff.emoji ? `${esc(tariff.emoji)} ` : ""}${esc(tariff.title)}</b>\n${esc(tariff.desc ?? "")}\n\nУровень: ${tierLabel(tariff.tier)}\nСрок: ${fmtHours(tariff.hours)}\nЦена: ${tariff.stars} ⭐`;
+	const text = `<b>${esc(tariff.title)}</b>\n${esc(tariff.desc ?? "")}\n\nУровень: ${tierLabel(tariff.tier)}\nСрок: ${fmtHours(tariff.hours)}\nЦена: ${tariff.stars} ⭐`;
 	const methods = (await getPayMethods(ctx.env)).filter((method) => method.active);
 	const starFront = Boolean((await getConfig(ctx.env)).starFront);
 	const rows = methods.map((method) =>
