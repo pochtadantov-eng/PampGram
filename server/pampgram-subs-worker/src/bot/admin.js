@@ -10,6 +10,7 @@ import {
 	listOrderSummaries, listUserOrders, getState, setState, clearState, getCheck, saveCheck, listChecks,
 } from "./store.js";
 import { payCallback, payInput, pendingClaims } from "./payadmin.js";
+import { visualsCallback, visualsInput } from "./visuals.js";
 import { totalsText } from "./pay.js";
 
 const PAGE_SIZE = 8;
@@ -30,6 +31,7 @@ export async function adminHome(ctx) {
 			[btn("🔎 Найти", "a:find"), btn("💰 Тарифы", "a:t")],
 			[btn("📦 Выдача", "a:b"), btn("💳 Оплата", "a:p")],
 			[btn(claims ? `🧾 Заявки на оплату (${claims})` : "🧾 Заявки на оплату", "a:pq"), btn("⚙️ Настройки", "a:c")],
+			[btn("🖼 Баннеры", "a:im"), btn("✨ Эмодзи", "a:em")],
 			[btn("🔄 Импорт старых пользователей", "a:import")],
 			[btn("← В меню", "menu")],
 		])
@@ -570,7 +572,7 @@ export async function adminCallback(ctx, data) {
 			return show(ctx, prompt, CANCEL);
 		}
 		default:
-			if (await payCallback(ctx, parts)) {
+			if ((await payCallback(ctx, parts)) || (await visualsCallback(ctx, parts))) {
 				return;
 			}
 			return toast(ctx, "Неизвестное действие");
@@ -591,6 +593,9 @@ export async function adminInput(ctx, message) {
 		await clearState(ctx.env, ctx.from.id);
 	};
 	if (await payInput(ctx, state, text)) {
+		return true;
+	}
+	if (await visualsInput(ctx, state, message)) {
 		return true;
 	}
 	switch (state.a) {

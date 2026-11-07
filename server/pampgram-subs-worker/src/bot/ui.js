@@ -57,3 +57,12 @@ export const tierLabel = (tier) => (tier === "pro" ? "Premium" : "Standard");
 
 /** "1 234" style grouping for money-like numbers. */
 export const fmtNumber = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+
+/** A tariff without a duration must not read "0 дней": the number becomes "навсегда". */
+export function fixTitle(title, hours) {
+	const text = String(title ?? "");
+	if (hours && hours > 0) {
+		return text;
+	}
+	return text.replace(/(?<![\p{L}\d])0\s*(?:дней|дня|день|дн|часов|часа|час|ч)(?![\p{L}])\.?/giu, "навсегда");
+}

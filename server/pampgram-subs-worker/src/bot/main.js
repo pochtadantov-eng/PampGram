@@ -4,6 +4,7 @@ import { recordBotSeen, updateUser } from "../users.js";
 import { say } from "./context.js";
 import { trySend } from "./telegram.js";
 import { isAdmin } from "./store.js";
+import { withEmoji } from "./emoji.js";
 import { adminHome, adminCallback, adminInput, answerCheck } from "./admin.js";
 import {
 	showMenu, showTariffs, showTariff, startPurchase, handlePreCheckout, handleSuccessfulPayment,
@@ -108,7 +109,8 @@ async function handleMembership(ctx, update) {
 	}, ctx.now);
 }
 
-export async function handleUpdate(env, tg, update, now = Date.now()) {
+export async function handleUpdate(env, rawTg, update, now = Date.now()) {
+	const tg = withEmoji(env, rawTg);
 	const ctx = buildContext(env, tg, now, update);
 	if (!ctx.from || ctx.from.is_bot) {
 		return;

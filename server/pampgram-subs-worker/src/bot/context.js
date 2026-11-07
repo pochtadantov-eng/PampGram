@@ -24,8 +24,17 @@ export async function show(ctx, text, extra = {}) {
 			});
 			return true;
 		} catch (error) {
-			if (String(error.description ?? error.message).includes("not modified")) {
+			const reason = String(error.description ?? error.message);
+			if (reason.includes("not modified")) {
 				return true;
+			}
+			if (reason.includes("no text in the message")) {
+				// the message is a banner (photo/animation): replace it instead of editing
+				try {
+					await ctx.tg.call("deleteMessage", { chat_id: ctx.chatId, message_id: ctx.callback.message_id });
+				} catch {
+					// too old to delete: the new message is still sent below
+				}
 			}
 		}
 	}

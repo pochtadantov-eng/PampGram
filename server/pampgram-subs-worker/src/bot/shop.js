@@ -5,8 +5,8 @@ import { issueKey, redeemKeyForAccount } from "../keys.js";
 import { updateUser, getUser } from "../users.js";
 import { say, show, toast } from "./context.js";
 import { trySend } from "./telegram.js";
-import { btn, urlBtn, kb, esc, fmtTime, fmtHours, tierLabel } from "./ui.js";
-import { getConfig, getTariffs, getBundle, getOrder, saveOrder, listUserOrders, newId, markCharge, chargeOrder, adminIds, isAdmin, getPayMethods } from "./store.js";
+import { btn, urlBtn, kb, esc, fmtTime, fmtHours, tierLabel, fixTitle } from "./ui.js";
+import { getBanners, getConfig, getTariffs, getBundle, getOrder, saveOrder, listUserOrders, newId, markCharge, chargeOrder, adminIds, isAdmin, getPayMethods } from "./store.js";
 import { manualAmount, formatAmount, orderPrice } from "./pay.js";
 
 export async function notifyAdmins(ctx, text, extra = {}) {
@@ -18,6 +18,33 @@ export async function notifyAdmins(ctx, text, extra = {}) {
 export async function banReason(env, userId) {
 	const record = await readBanRecord(env, String(userId));
 	return record.full ? record.full.reason : null;
+}
+
+const BANNER_METHOD = { photo: ["sendPhoto", "photo"], animation: ["sendAnimation", "animation"], video: ["sendVideo", "video"] };
+
+/**
+ * Shows a screen with the admin's banner above it (a picture, GIF or video with the text as its caption).
+ * Without a banner, or if Telegram refuses the file, it is the ordinary text screen.
+ */
+export async function showWithBanner(ctx, key, text, extra = {}) {
+	const banner = (await getBanners(ctx.env))[key];
+	const [method, field] = BANNER_METHOD[banner?.type] ?? [];
+	if (!method || !banner.fileId) {
+		return show(ctx, text, extra);
+	}
+	const inCaption = text.length <= 1000;
+	try {
+		await ctx.tg.call(method, { chat_id: ctx.chatId, [field]: banner.fileId, ...(inCaption ? { caption: text, parse_mode: "HTML", ...extra } : {}) });
+	} catch {
+		return show(ctx, text, extra);
+	}
+	if (ctx.callback?.message_id) {
+		await ctx.tg.call("deleteMessage", { chat_id: ctx.chatId, message_id: ctx.callback.message_id }).catch(() => {});
+	}
+	if (!inCaption) {
+		return say(ctx, text, extra);
+	}
+	return true;
 }
 
 export async function showMenu(ctx) {
@@ -33,7 +60,7 @@ export async function showMenu(ctx) {
 	if (isAdmin(ctx.env, ctx.from.id)) {
 		rows.push([btn("🛠 Админ-панель", "a:home")]);
 	}
-	return show(ctx, config.welcome, kb(rows));
+	return showWithBanner(ctx, "menu", config.welcome, kb(rows));
 }
 
 async function ownsTier(env, userId, tier) {
@@ -63,7 +90,7 @@ export async function showTariffs(ctx) {
 	}
 	const rows = tariffs.map((tariff) => [btn(`${tariff.title} — ${tariff.stars} ⭐`, `t:${tariff.code}`)]);
 	rows.push([btn("← Назад", "menu")]);
-	return show(ctx, "<b>Тарифы</b>\nВыберите тариф, затем способ оплаты. Ключ и файлы приходят после оплаты.", kb(rows));
+	return showWithBanner(ctx, "shop", "<b>Тарифы</b>\nВыберите тариф, затем способ оплаты. Ключ и файлы приходят после оплаты.", kb(rows));
 }
 
 export async function showTariff(ctx, code) {
@@ -230,7 +257,7 @@ export async function deliver(ctx, order) {
 	const expiry = order.hours > 0 ? `, действует ${fmtHours(order.hours)} с момента активации` : "";
 	await say(
 		ctx,
-		`✅ <b>Оплата получена</b>\n${esc(order.title)} — ${esc(orderPrice(order))}\n\nВаш ключ активации (${tierLabel(order.tier)}${expiry}):\n<code>${esc(order.key)}</code>\n\nКлюч одноразовый: он привяжется к тому аккаунту Telegram, который введёт его первым.`,
+		`✅ <b>Оплата получена</b>\n${esc(fixTitle(order.title, order.hours))} — ${esc(orderPrice(order))}\n\nВаш ключ активации (${tierLabel(order.tier)}${expiry}):\n<code>${esc(order.key)}</code>\n\nКлюч одноразовый: он привяжется к тому аккаунту Telegram, который введёт его первым.`,
 		kb([[btn("🔗 Привязать к этому аккаунту", `bind:${order.id}`)]])
 	);
 	const sent = await sendBundle(ctx, order.tier);
@@ -269,7 +296,7 @@ export async function showPurchases(ctx) {
 	}
 	const lines = orders.slice(0, 10).map((order) => {
 		const state = order.boundAt ? "привязан к вашему аккаунту" : "не активирован";
-		return `• <b>${esc(order.title)}</b> — ${esc(orderPrice(order))}, ${esc(fmtTime(order.paidAt))}\n  <code>${esc(order.key ?? "—")}</code> (${state})`;
+		return `• <b>${esc(fixTitle(order.title, order.hours))}</b> — ${esc(orderPrice(order))}, ${esc(fmtTime(order.paidAt))}\n  <code>${esc(order.key ?? "—")}</code> (${state})`;
 	});
 	return show(ctx, `<b>Мои покупки</b>\n\n${lines.join("\n\n")}`, kb([[btn("📥 Скачать файлы", "dl")], [btn("← Назад", "menu")]]));
 }

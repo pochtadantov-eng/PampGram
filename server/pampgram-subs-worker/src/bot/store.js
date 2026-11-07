@@ -14,6 +14,7 @@
  */
 
 import { listAllKeys } from "../core.js";
+import { fixTitle } from "./ui.js";
 
 export const DEFAULT_CONFIG = {
 	welcome: "👋 <b>PampGram</b> — мод для Telegram.\n\nЗдесь можно оформить доступ, получить файлы для установки и ключ активации.",
@@ -53,7 +54,8 @@ export async function setConfig(env, patch) {
 
 export async function getTariffs(env) {
 	const stored = await readJson(env, "tariffs");
-	return Array.isArray(stored) ? stored : DEFAULT_TARIFFS.map((tariff) => ({ ...tariff }));
+	const list = Array.isArray(stored) ? stored : DEFAULT_TARIFFS.map((tariff) => ({ ...tariff }));
+	return list.map((tariff) => ({ ...tariff, title: fixTitle(tariff.title, tariff.hours) }));
 }
 
 export async function saveTariffs(env, tariffs) {
@@ -92,6 +94,38 @@ export async function getBundle(env) {
 
 export async function saveBundle(env, items) {
 	await env.SUBS.put("bundle", JSON.stringify(items));
+}
+
+/** Animated (custom) emoji: { "⭐": "<custom_emoji_id>", ... }, keyed by the plain emoji it replaces. */
+export async function getEmoji(env) {
+	const stored = await readJson(env, "emoji");
+	return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+}
+
+export async function saveEmoji(env, map) {
+	await env.SUBS.put("emoji", JSON.stringify(map));
+}
+
+export async function getEmojiError(env) {
+	return readJson(env, "emoji_err");
+}
+
+export async function setEmojiError(env, value) {
+	if (value) {
+		await env.SUBS.put("emoji_err", JSON.stringify(value));
+	} else {
+		await env.SUBS.delete("emoji_err");
+	}
+}
+
+/** Banners: { menu: { type: "photo"|"animation"|"video", fileId }, shop: {...} }. */
+export async function getBanners(env) {
+	const stored = await readJson(env, "banners");
+	return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+}
+
+export async function saveBanners(env, banners) {
+	await env.SUBS.put("banners", JSON.stringify(banners));
 }
 
 export function newId(length = 8) {
