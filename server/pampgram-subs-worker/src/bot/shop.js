@@ -89,7 +89,7 @@ export async function showTariffs(ctx) {
 	if (tariffs.length === 0) {
 		return show(ctx, "Сейчас нет доступных тарифов.", kb([[btn("← Назад", "menu")]]));
 	}
-	const rows = tariffs.map((tariff) => [btn(`${tariff.title} — ${tariff.stars} ⭐`, `t:${tariff.code}`)]);
+	const rows = tariffs.map((tariff) => [{ ...btn(`${tariff.emoji ? `${tariff.emoji} ` : ""}${tariff.title} — ${tariff.stars} ⭐`, `t:${tariff.code}`), ...(tariff.icon && tariff.emoji ? { _icon: tariff.icon } : {}) }]);
 	rows.push([btn("← Назад", "menu")]);
 	return showWithBanner(ctx, "shop", "<b>Тарифы</b>\nВыберите тариф, затем способ оплаты. Ключ и файлы приходят после оплаты.", kb(await customizeRows(ctx.env, "shop", rows, 1)));
 }
@@ -101,7 +101,7 @@ export async function showTariff(ctx, code) {
 		await toast(ctx, "Этот тариф недоступен", true);
 		return showTariffs(ctx);
 	}
-	const text = `<b>${esc(tariff.title)}</b>\n${esc(tariff.desc ?? "")}\n\nУровень: ${tierLabel(tariff.tier)}\nСрок: ${fmtHours(tariff.hours)}\nЦена: ${tariff.stars} ⭐`;
+	const text = `<b>${tariff.emoji ? `${esc(tariff.emoji)} ` : ""}${esc(tariff.title)}</b>\n${esc(tariff.desc ?? "")}\n\nУровень: ${tierLabel(tariff.tier)}\nСрок: ${fmtHours(tariff.hours)}\nЦена: ${tariff.stars} ⭐`;
 	const methods = (await getPayMethods(ctx.env)).filter((method) => method.active);
 	const rows = methods.map((method) =>
 		method.kind === "stars"

@@ -11,7 +11,7 @@ import {
 } from "./store.js";
 import { payCallback, payInput, pendingClaims } from "./payadmin.js";
 import { visualsCallback, visualsInput } from "./visuals.js";
-import { buttonsCallback, buttonsInput } from "./buttonsadmin.js";
+import { buttonsCallback, buttonsInput, readEmoji } from "./buttonsadmin.js";
 import { GUARDED, askPassword, showPasswordMenu, securityInput } from "./security.js";
 import { backupCallback, makeBackup } from "./backup.js";
 import { totalsText } from "./pay.js";
@@ -291,6 +291,7 @@ async function showTariffCard(ctx, code) {
 		esc(tariff.desc ?? ""),
 		`Уровень: ${tierLabel(tariff.tier)} · срок: ${fmtHours(tariff.hours)} · цена: ${tariff.stars} ⭐`,
 		tariff.requires ? `Нужна покупка: ${tierLabel(tariff.requires)}` : "",
+		`Эмодзи на кнопке: ${tariff.emoji ? `${esc(tariff.emoji)}${tariff.icon ? " (анимированный)" : ""}` : "нет"}`,
 		`Статус: ${tariff.active ? "продаётся" : "выключен"}`,
 	].filter(Boolean).join("\n");
 	return show(
@@ -299,6 +300,7 @@ async function showTariffCard(ctx, code) {
 		kb([
 			[btn(tariff.active ? "⏸ Выключить" : "▶️ Включить", `a:tt:${code}`), btn("💲 Цена", `a:tp:${code}`)],
 			[btn("✏️ Название", `a:tn:${code}`), btn("📝 Описание", `a:td:${code}`)],
+			[btn("🙂 Эмодзи на кнопке", `a:te:${code}`)],
 			[btn("🗑 Удалить", `a:tx:${code}`), btn("← К тарифам", "a:t")],
 		])
 	);
@@ -524,6 +526,10 @@ export async function adminCallback(ctx, data) {
 			const prompt = { price: "Новая цена в ⭐ (целое число).", title: "Новое название.", desc: "Новое описание." }[field];
 			return show(ctx, prompt, CANCEL);
 		}
+		case "te":
+			await toast(ctx);
+			await setState(ctx.env, ctx.from.id, { a: "tariff_emoji", code: arg });
+			return show(ctx, "Пришлите эмодзи для кнопки этого тарифа: обычный или анимированный (Premium). «-» уберёт эмодзи.", kb([[btn("✖️ Отмена", `a:t:${arg}`)]]));
 		case "ta":
 			await toast(ctx);
 			await setState(ctx.env, ctx.from.id, { a: "tariff_add" });
@@ -654,6 +660,23 @@ export async function adminInput(ctx, message) {
 			await saveTariffs(ctx.env, [...existing, parsed.tariff]);
 			await done();
 			await showTariffCard({ ...ctx, callback: null }, parsed.tariff.code);
+			return true;
+		}
+		case "tariff_emoji": {
+			let patch;
+			if (text === "-") {
+				patch = { emoji: "", icon: "" };
+			} else {
+				const found = readEmoji(message, text);
+				if (!found) {
+					await say(ctx, "Не вижу эмодзи. Пришлите одно эмодзи (или «-», чтобы убрать).", kb([[btn("✖️ Отмена", `a:t:${state.code}`)]]));
+					return true;
+				}
+				patch = { emoji: found.emoji, icon: found.icon ?? "" };
+			}
+			await editTariff(ctx, state.code, (tariff) => Object.assign(tariff, patch));
+			await done();
+			await showTariffCard({ ...ctx, callback: null }, state.code);
 			return true;
 		}
 		case "tariff_edit": {

@@ -241,7 +241,7 @@ export async function buttonsCallback(ctx, parts) {
 }
 
 /** Reads the emoji an admin sent: { emoji, icon } for an animated one, { emoji } for an ordinary one. */
-function readEmoji(message, text) {
+export function readEmoji(message, text) {
 	const ids = customEmojiIds(message);
 	if (ids.length > 0) {
 		const entity = [...(message.entities ?? [])].find((item) => item.type === "custom_emoji");

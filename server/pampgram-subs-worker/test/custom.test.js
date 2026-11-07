@@ -341,3 +341,33 @@ test("the section screen shows a preview of the rows and the button card shows i
 	const data = tg.last("editMessageText").reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
 	assert.ok(data.includes("a:btu:menu:dl") && data.includes("a:btd:menu:dl") && data.includes("a:btj:menu:dl"));
 });
+
+test("a tariff can get its own emoji (plain or animated) shown on its button and card", async () => {
+	const env = createEnv();
+	const tg = createTelegram();
+	await handleUpdate(env, tg, press(ADMIN, "a:t:std"));
+	assert.ok(flat(tg.last("editMessageText")).some((b) => b.callback_data === "a:te:std"));
+	await handleUpdate(env, tg, press(ADMIN, "a:te:std"));
+	await handleUpdate(env, tg, msg(ADMIN, "🔥"));
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, "shop"));
+	assert.ok(flat(tg.last("editMessageText")).some((b) => b.callback_data === "t:std" && b.text.startsWith("🔥 Standard")));
+
+	await handleUpdate(env, tg, press(ADMIN, "a:te:std"));
+	await handleUpdate(env, tg, msg(ADMIN, "💥", { entities: [{ type: "custom_emoji", offset: 0, length: 2, custom_emoji_id: "555" }] }));
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, "shop"));
+	const button = flat(tg.last("editMessageText")).find((b) => b.callback_data === "t:std");
+	assert.equal(button.icon_custom_emoji_id, "555");
+	assert.match(button.text, /^Standard — 200/);
+	assert.ok(!("_icon" in button));
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, "t:std"));
+	assert.match(tg.last("editMessageText").text, /💥 Standard/);
+
+	await handleUpdate(env, tg, press(ADMIN, "a:te:std"));
+	await handleUpdate(env, tg, msg(ADMIN, "-"));
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, "shop"));
+	assert.ok(flat(tg.last("editMessageText")).some((b) => b.callback_data === "t:std" && b.text.startsWith("Standard")));
+});
