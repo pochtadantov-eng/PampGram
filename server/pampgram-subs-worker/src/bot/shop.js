@@ -6,7 +6,8 @@ import { updateUser, getUser } from "../users.js";
 import { say, show, toast } from "./context.js";
 import { trySend } from "./telegram.js";
 import { btn, urlBtn, kb, esc, fmtTime, fmtHours, tierLabel } from "./ui.js";
-import { getConfig, getTariffs, getBundle, getOrder, saveOrder, listUserOrders, newId, markCharge, chargeOrder, adminIds, isAdmin } from "./store.js";
+import { getConfig, getTariffs, getBundle, getOrder, saveOrder, listUserOrders, newId, markCharge, chargeOrder, adminIds, isAdmin, getPayMethods } from "./store.js";
+import { manualAmount, formatAmount, orderPrice } from "./pay.js";
 
 export async function notifyAdmins(ctx, text, extra = {}) {
 	for (const id of adminIds(ctx.env)) {
@@ -40,7 +41,7 @@ async function ownsTier(env, userId, tier) {
 	return orders.some((order) => order.tier === tier && (order.status === "paid" || order.status === "delivered"));
 }
 
-async function availableTariffs(env, userId) {
+export async function availableTariffs(env, userId) {
 	const tariffs = (await getTariffs(env)).filter((tariff) => tariff.active);
 	const result = [];
 	for (const tariff of tariffs) {
@@ -62,7 +63,7 @@ export async function showTariffs(ctx) {
 	}
 	const rows = tariffs.map((tariff) => [btn(`${tariff.title} — ${tariff.stars} ⭐`, `t:${tariff.code}`)]);
 	rows.push([btn("← Назад", "menu")]);
-	return show(ctx, "<b>Тарифы</b>\nОплата — Telegram Stars ⭐. Ключ и файлы приходят сразу после оплаты.", kb(rows));
+	return show(ctx, "<b>Тарифы</b>\nВыберите тариф, затем способ оплаты. Ключ и файлы приходят после оплаты.", kb(rows));
 }
 
 export async function showTariff(ctx, code) {
@@ -73,7 +74,15 @@ export async function showTariff(ctx, code) {
 		return showTariffs(ctx);
 	}
 	const text = `<b>${esc(tariff.title)}</b>\n${esc(tariff.desc ?? "")}\n\nУровень: ${tierLabel(tariff.tier)}\nСрок: ${fmtHours(tariff.hours)}\nЦена: ${tariff.stars} ⭐`;
-	return show(ctx, text, kb([[btn(`⭐ Оплатить ${tariff.stars}`, `buy:${tariff.code}`)], [btn("← К тарифам", "shop")]]));
+	const methods = (await getPayMethods(ctx.env)).filter((method) => method.active);
+	const rows = methods.map((method) =>
+		method.kind === "stars"
+			? [btn(`⭐ ${method.title} — ${tariff.stars} ⭐`, `buy:${tariff.code}`)]
+			: [btn(`💳 ${method.title} — ${formatAmount(manualAmount(method, tariff), method.currency)}`.slice(0, 60), `pay:${tariff.code}:${method.id}`)]
+	);
+	rows.push([btn("← К тарифам", "shop")]);
+	const hint = methods.length === 0 ? "\n\nСпособы оплаты пока не настроены. Напишите в поддержку." : "\n\nВыберите способ оплаты:";
+	return show(ctx, text + hint, kb(rows));
 }
 
 export async function startPurchase(ctx, code) {
@@ -85,6 +94,10 @@ export async function startPurchase(ctx, code) {
 	const tariff = (await availableTariffs(ctx.env, ctx.from.id)).find((item) => item.code === code);
 	if (!tariff) {
 		await toast(ctx, "Этот тариф недоступен", true);
+		return;
+	}
+	if (!(await getPayMethods(ctx.env)).some((method) => method.kind === "stars" && method.active)) {
+		await toast(ctx, "Оплата Stars сейчас отключена", true);
 		return;
 	}
 	const order = {
@@ -158,9 +171,17 @@ export async function handleSuccessfulPayment(ctx, payment) {
 	if (chargeId) {
 		await markCharge(ctx.env, chargeId, order.id);
 	}
+	order.chargeId = chargeId ?? null;
+	await fulfillOrder(ctx, order, ctx.from, true);
+}
+
+/**
+ * Marks an order paid, issues its key, delivers key + files to the buyer (`ctx.chatId` must be the
+ * buyer's chat) and optionally tells the admins. Shared by Stars payments and manual confirmation.
+ */
+export async function fulfillOrder(ctx, order, buyer, notify) {
 	order.status = "paid";
 	order.paidAt = ctx.now;
-	order.chargeId = chargeId ?? null;
 	order.key = await issueKey(ctx.env, order.tier, order.hours > 0 ? order.hours : undefined);
 	await saveOrder(ctx.env, order);
 	await updateUser(ctx.env, order.userId, (user) => {
@@ -171,13 +192,16 @@ export async function handleSuccessfulPayment(ctx, payment) {
 	if (!order.key) {
 		await notifyAdmins(ctx, `⚠️ Оплата прошла, но ключ не создался: заказ ${esc(order.id)}, пользователь ${esc(order.userId)}`);
 		await say(ctx, "Оплата получена. Ключ выдадим вручную в ближайшее время.");
-		return;
+		return false;
 	}
 	await deliver(ctx, order);
 	order.status = "delivered";
 	await saveOrder(ctx.env, order);
-	const who = ctx.from.username ? `@${esc(ctx.from.username)}` : `id ${esc(ctx.from.id)}`;
-	await notifyAdmins(ctx, `💰 <b>Новая оплата</b>\n${esc(order.title)} — ${order.stars} ⭐\nПокупатель: ${who} (<code>${esc(order.userId)}</code>)`, kb([[btn("👤 Профиль", `a:u:${order.userId}`)]]));
+	if (notify) {
+		const who = buyer.username ? `@${esc(buyer.username)}` : `id ${esc(buyer.id)}`;
+		await notifyAdmins(ctx, `💰 <b>Новая оплата</b>\n${esc(order.title)} — ${esc(orderPrice(order))}\nПокупатель: ${who} (<code>${esc(order.userId)}</code>)`, kb([[btn("👤 Профиль", `a:u:${order.userId}`)]]));
+	}
+	return true;
 }
 
 async function sendBundle(ctx, tier) {
@@ -206,7 +230,7 @@ export async function deliver(ctx, order) {
 	const expiry = order.hours > 0 ? `, действует ${fmtHours(order.hours)} с момента активации` : "";
 	await say(
 		ctx,
-		`✅ <b>Оплата получена</b>\n${esc(order.title)} — ${order.stars} ⭐\n\nВаш ключ активации (${tierLabel(order.tier)}${expiry}):\n<code>${esc(order.key)}</code>\n\nКлюч одноразовый: он привяжется к тому аккаунту Telegram, который введёт его первым.`,
+		`✅ <b>Оплата получена</b>\n${esc(order.title)} — ${esc(orderPrice(order))}\n\nВаш ключ активации (${tierLabel(order.tier)}${expiry}):\n<code>${esc(order.key)}</code>\n\nКлюч одноразовый: он привяжется к тому аккаунту Telegram, который введёт его первым.`,
 		kb([[btn("🔗 Привязать к этому аккаунту", `bind:${order.id}`)]])
 	);
 	const sent = await sendBundle(ctx, order.tier);
@@ -245,7 +269,7 @@ export async function showPurchases(ctx) {
 	}
 	const lines = orders.slice(0, 10).map((order) => {
 		const state = order.boundAt ? "привязан к вашему аккаунту" : "не активирован";
-		return `• <b>${esc(order.title)}</b> — ${order.stars} ⭐, ${esc(fmtTime(order.paidAt))}\n  <code>${esc(order.key ?? "—")}</code> (${state})`;
+		return `• <b>${esc(order.title)}</b> — ${esc(orderPrice(order))}, ${esc(fmtTime(order.paidAt))}\n  <code>${esc(order.key ?? "—")}</code> (${state})`;
 	});
 	return show(ctx, `<b>Мои покупки</b>\n\n${lines.join("\n\n")}`, kb([[btn("📥 Скачать файлы", "dl")], [btn("← Назад", "menu")]]));
 }

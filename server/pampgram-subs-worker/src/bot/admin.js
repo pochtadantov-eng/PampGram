@@ -9,6 +9,8 @@ import {
 	getConfig, setConfig, getTariffs, saveTariffs, getBundle, saveBundle, newId,
 	listOrderSummaries, listUserOrders, getState, setState, clearState, getCheck, saveCheck, listChecks,
 } from "./store.js";
+import { payCallback, payInput, pendingClaims } from "./payadmin.js";
+import { totalsText } from "./pay.js";
 
 const PAGE_SIZE = 8;
 const ONLINE_MS = 10 * 60 * 1000;
@@ -19,13 +21,15 @@ const CANCEL = kb([[btn("✖️ Отмена", "a:cancel")]]);
 
 export async function adminHome(ctx) {
 	await clearState(ctx.env, ctx.from.id);
+	const claims = await pendingClaims(ctx.env);
 	return show(
 		ctx,
 		"🛠 <b>Админ-панель</b>",
 		kb([
 			[btn("📊 Статистика", "a:stats"), btn("👥 Пользователи", "a:ul:all:0")],
 			[btn("🔎 Найти", "a:find"), btn("💰 Тарифы", "a:t")],
-			[btn("📦 Выдача", "a:b"), btn("⚙️ Настройки", "a:c")],
+			[btn("📦 Выдача", "a:b"), btn("💳 Оплата", "a:p")],
+			[btn(claims ? `🧾 Заявки на оплату (${claims})` : "🧾 Заявки на оплату", "a:pq"), btn("⚙️ Настройки", "a:c")],
 			[btn("🔄 Импорт старых пользователей", "a:import")],
 			[btn("← В меню", "menu")],
 		])
@@ -46,8 +50,9 @@ async function showStats(ctx) {
 		versions.set(version, (versions.get(version) ?? 0) + 1);
 	}
 	const versionLines = [...versions.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([version, n]) => `${esc(version)} — ${n}`);
-	const revenue = orders.reduce((sum, order) => sum + (order.s || 0), 0);
-	const revenue30 = orders.filter((order) => now - (order.at || 0) < 30 * DAY_MS).reduce((sum, order) => sum + (order.s || 0), 0);
+	const asMoney = (list) => totalsText(list.map((order) => ({ stars: order.s, currency: order.c, amount: order.a })));
+	const revenue = asMoney(orders);
+	const revenue30 = asMoney(orders.filter((order) => now - (order.at || 0) < 30 * DAY_MS));
 	const text = [
 		"📊 <b>Статистика</b>",
 		`Пользователей: <b>${users.length}</b> (запускали бота: ${count((u) => u.b)})`,
@@ -58,7 +63,7 @@ async function showStats(ctx) {
 		"<b>Версии приложения</b>",
 		versionLines.join("\n") || "нет данных",
 		"",
-		`💰 Выручка: <b>${fmtNumber(revenue)} ⭐</b> (оплат: ${orders.length}), за 30 дней: ${fmtNumber(revenue30)} ⭐`,
+		`💰 Выручка: <b>${esc(revenue)}</b> (оплат: ${orders.length}), за 30 дней: ${esc(revenue30)}`,
 	].join("\n");
 	return show(ctx, text, kb([[btn("← Админка", "a:home")]]));
 }
@@ -126,7 +131,7 @@ async function profileText(ctx, id) {
 	lines.push(`Ключ активирован: ${profile.activatedAt ? `да (${esc(fmtTime(profile.activatedAt, tz))})` : "нет"}`);
 	lines.push(`Бот: ${profile.bot ? (profile.bot.blocked ? "заблокировал бота" : "запускал") : "не запускал"}`);
 	const paid = orders.filter((order) => order.status === "paid" || order.status === "delivered");
-	lines.push(`Покупок: ${paid.length}${paid.length ? ` (${fmtNumber(paid.reduce((sum, order) => sum + order.stars, 0))} ⭐)` : ""}`);
+	lines.push(`Покупок: ${paid.length}${paid.length ? ` (${esc(totalsText(paid))})` : ""}`);
 	if (ban.full) {
 		lines.push(`⛔ <b>Заблокирован</b>: ${esc(ban.full.reason)}${ban.full.at ? ` (${esc(fmtTime(ban.full.at, tz))})` : ""}`);
 	}
@@ -565,6 +570,9 @@ export async function adminCallback(ctx, data) {
 			return show(ctx, prompt, CANCEL);
 		}
 		default:
+			if (await payCallback(ctx, parts)) {
+				return;
+			}
 			return toast(ctx, "Неизвестное действие");
 	}
 }
@@ -582,6 +590,9 @@ export async function adminInput(ctx, message) {
 	const done = async () => {
 		await clearState(ctx.env, ctx.from.id);
 	};
+	if (await payInput(ctx, state, text)) {
+		return true;
+	}
 	switch (state.a) {
 		case "find":
 			if (await findUser({ ...ctx, callback: null }, text)) {

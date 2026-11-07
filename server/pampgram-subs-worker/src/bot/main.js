@@ -9,6 +9,7 @@ import {
 	showMenu, showTariffs, showTariff, startPurchase, handlePreCheckout, handleSuccessfulPayment,
 	bindKey, showPurchases, resendFiles, showPrivacy,
 } from "./shop.js";
+import { startManualPurchase, claimPaid, cancelOrder, forwardProof } from "./pay.js";
 
 function buildContext(env, tg, now, update) {
 	const callback = update.callback_query;
@@ -41,6 +42,14 @@ async function handleCallback(ctx, data) {
 			return showTariff(ctx, arg);
 		case "buy":
 			return startPurchase(ctx, arg);
+		case "pay": {
+			const [code, methodId] = arg.split(":");
+			return startManualPurchase(ctx, code, methodId);
+		}
+		case "pd":
+			return claimPaid(ctx, arg);
+		case "px":
+			return cancelOrder(ctx, arg);
 		case "bind":
 			return bindKey(ctx, arg);
 		case "my":
@@ -80,6 +89,9 @@ async function handleMessage(ctx, message) {
 		return showMenu(ctx);
 	}
 	if (isAdmin(ctx.env, ctx.from.id) && (await adminInput(ctx, message))) {
+		return;
+	}
+	if (await forwardProof(ctx, message)) {
 		return;
 	}
 	return showMenu(ctx);

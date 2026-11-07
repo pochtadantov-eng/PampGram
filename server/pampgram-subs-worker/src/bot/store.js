@@ -9,6 +9,8 @@
  *   "charge:<chargeId>"      -> orderId, so a repeated payment notification is applied once
  *   "st:<adminId>"           -> JSON conversation state of an admin mid-prompt (1 h TTL)
  *   "check:<userId>"         -> JSON "come verify in DM" request
+ *   "pay"                    -> JSON array of payment methods (built-in Stars + manual requisites)
+ *   "ust:<userId>"           -> JSON { orderId }: a buyer who said "I paid" and may send a receipt (24 h TTL)
  */
 
 import { listAllKeys } from "../core.js";
@@ -58,6 +60,31 @@ export async function saveTariffs(env, tariffs) {
 	await env.SUBS.put("tariffs", JSON.stringify(tariffs));
 }
 
+export const STARS_METHOD = { id: "stars", kind: "stars", title: "Telegram Stars", active: true };
+
+/** Payment methods; the built-in Stars method is always present (it can be switched off, not removed). */
+export async function getPayMethods(env) {
+	const stored = await readJson(env, "pay");
+	const methods = Array.isArray(stored) ? stored : [];
+	return methods.some((method) => method.kind === "stars") ? methods : [{ ...STARS_METHOD }, ...methods];
+}
+
+export async function savePayMethods(env, methods) {
+	await env.SUBS.put("pay", JSON.stringify(methods));
+}
+
+export async function getUserState(env, userId) {
+	return readJson(env, `ust:${userId}`);
+}
+
+export async function setUserState(env, userId, state) {
+	await env.SUBS.put(`ust:${userId}`, JSON.stringify(state), { expirationTtl: 24 * 3600 });
+}
+
+export async function clearUserState(env, userId) {
+	await env.SUBS.delete(`ust:${userId}`);
+}
+
 export async function getBundle(env) {
 	const stored = await readJson(env, "bundle");
 	return Array.isArray(stored) ? stored : [];
@@ -79,7 +106,13 @@ export function newId(length = 8) {
 }
 
 function orderMeta(order) {
-	return { st: order.status, s: order.stars, at: order.createdAt, tr: order.tariff, u: order.userId };
+	const meta = { st: order.status, s: order.stars, at: order.createdAt, tr: order.tariff, u: order.userId };
+	if (order.currency) {
+		// manual (non-Stars) order: carry the amount so totals need no order bodies
+		meta.c = order.currency;
+		meta.a = order.amount;
+	}
+	return meta;
 }
 
 export async function saveOrder(env, order) {
