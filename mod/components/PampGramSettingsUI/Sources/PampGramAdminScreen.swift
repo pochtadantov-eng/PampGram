@@ -23,7 +23,7 @@ private func parseDurationHours(_ raw: String) -> Double? {
     if let plainHours = Double(value.replacingOccurrences(of: ",", with: ".")), plainHours > 0 {
         return plainHours
     }
-    guard let regex = try? NSRegularExpression(pattern: "(\\d+(?:[.,]\\d+)?)\\s*(д|ч)") else {
+    guard let regex = try? NSRegularExpression(pattern: "(\\d+(?:[.,]\\d+)?)\\s*(д|ч|м)") else {
         return nil
     }
     let nsRange = NSRange(value.startIndex..., in: value)
@@ -37,7 +37,13 @@ private func parseDurationHours(_ raw: String) -> Double? {
             return
         }
         matched = true
-        totalHours += value[unitRange] == "д" ? number * 24 : number
+        if value[unitRange] == "д" {
+            totalHours += number * 24
+        } else if value[unitRange] == "ч" {
+            totalHours += number
+        } else {
+            totalHours += number / 60
+        }
     }
     return matched && totalHours > 0 ? totalHours : nil
 }
@@ -45,15 +51,19 @@ private func parseDurationHours(_ raw: String) -> Double? {
 /// The inverse of `parseDurationHours`, for tooltips — "27" becomes "1д 3ч", "24" becomes "1д",
 /// "3" becomes "3ч".
 private func formatDurationHours(_ hours: Double) -> String {
-    let totalHours = max(1, Int((hours * 60).rounded()) / 60)
-    let days = totalHours / 24
-    let remainingHours = totalHours % 24
+    let totalMinutes = max(1, Int((hours * 60).rounded()))
+    let days = totalMinutes / 1440
+    let remainingHours = (totalMinutes % 1440) / 60
+    let minutes = totalMinutes % 60
     var parts: [String] = []
     if days > 0 {
         parts.append("\(days)д")
     }
-    if remainingHours > 0 || parts.isEmpty {
+    if remainingHours > 0 {
         parts.append("\(remainingHours)ч")
+    }
+    if minutes > 0 {
+        parts.append("\(minutes)мин")
     }
     return parts.joined(separator: " ")
 }
@@ -344,48 +354,44 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
     let showDurationChoice: (String, @escaping (Double?) -> Void) -> Void = { subtitle, completion in
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
         let sheet = ActionSheetController(presentationData: presentationData)
-        sheet.setItemGroups([
-            ActionSheetItemGroup(items: [
-                ActionSheetTextItem(title: subtitle),
-                ActionSheetButtonItem(title: "Навсегда", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(nil)
-                }),
-                ActionSheetButtonItem(title: "1 час", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(1)
-                }),
-                ActionSheetButtonItem(title: "24 часа", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(24)
-                }),
-                ActionSheetButtonItem(title: "7 дней", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(7 * 24)
-                }),
-                ActionSheetButtonItem(title: "30 дней", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(30 * 24)
-                }),
-                ActionSheetButtonItem(title: "Свой срок…", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    presentControllerImpl?(promptController(
-                        context: context,
-                        text: "Свой срок",
-                        subtitle: "Например «3д 12ч», «5д» или «18ч»",
-                        value: "",
-                        placeholder: "3д 12ч",
-                        characterLimit: 32,
-                        apply: { value in
-                            guard let hours = parseDurationHours(value ?? "") else {
-                                presentTooltipImpl?("Не разобрал срок — попробуй, например, «3д 12ч».")
-                                return
-                            }
-                            completion(hours)
+        // Presets: 1–5 minutes, 1 day, 1 month (30 days), forever. Any other length is "Свой срок…".
+        var presets: [(String, Double?)] = []
+        let minuteTitles = ["1 минута", "2 минуты", "3 минуты", "4 минуты", "5 минут"]
+        for (index, title) in minuteTitles.enumerated() {
+            presets.append((title, Double(index + 1) / 60.0))
+        }
+        presets.append(("1 день", 24.0))
+        presets.append(("1 месяц", 30.0 * 24.0))
+        presets.append(("Навсегда", nil))
+        var durationItems: [ActionSheetItem] = [ActionSheetTextItem(title: subtitle)]
+        for preset in presets {
+            durationItems.append(ActionSheetButtonItem(title: preset.0, color: .accent, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                completion(preset.1)
+            }))
+        }
+        durationItems.append(
+            ActionSheetButtonItem(title: "Свой срок…", color: .accent, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Свой срок",
+                    subtitle: "Например «3д 12ч», «5д», «18ч» или «30м»",
+                    value: "",
+                    placeholder: "3д 12ч",
+                    characterLimit: 32,
+                    apply: { value in
+                        guard let hours = parseDurationHours(value ?? "") else {
+                            presentTooltipImpl?("Не разобрал срок — попробуй, например, «3д 12ч».")
+                            return
                         }
-                    ))
-                })
-            ]),
+                        completion(hours)
+                    }
+                ))
+            })
+        )
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: durationItems),
             ActionSheetItemGroup(items: [
                 ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
                     sheet?.dismissAnimated()
@@ -679,7 +685,7 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .usersFooter("Все аккаунты, которые PampGram знает — открывали мод или были забанены: тариф, когда сервер видел их в последний раз, и статус бана. Отсюда же снимаются баны."),
             .keysHeader("КЛЮЧИ АКТИВАЦИИ"),
             .generateKeyAction("Сгенерировать ключ", adminToken != nil),
-            .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются. Для PRO можно выбрать срок (часы или дни) — он начинает отсчитываться с момента активации, а не с момента генерации ключа."),
+            .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются. Для PRO можно выбрать срок (1–5 минут, 1 день, 1 месяц, навсегда или свой) — он начинает отсчитываться с момента активации, а не с момента генерации ключа."),
             .banHeader("ДОСТУП"),
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),

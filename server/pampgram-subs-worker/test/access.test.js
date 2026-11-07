@@ -167,3 +167,15 @@ test("admin accounts (ADMIN_TG_IDS) are always active", async () => {
 	await call(env, "POST", "/ban", { id: 1000, scope: "full", reason: "r", token: "admin-token" });
 	assert.equal((await call(env, "GET", `/access?id=1000&nonce=${NONCE}`)).json.state, "active");
 });
+
+test("short keys: a 1-minute key activates and its expiry is one minute away", async () => {
+	const { env } = await setup();
+	const minted = await call(env, "POST", "/generate-key", { tier: "pro", durationHours: 1 / 60, token: "admin-token" });
+	assert.equal(minted.status, 200);
+	const before = Date.now();
+	await call(env, "POST", "/redeem-key", { id: 50, key: minted.json.key });
+	const { json } = await call(env, "GET", `/access?id=50&nonce=${NONCE}`);
+	assert.equal(json.state, "active");
+	assert.ok(json.expiresAt >= before + 59_000 && json.expiresAt <= Date.now() + 61_000);
+	assert.ok(json.ttl <= 61_000, "offline trust never outlives the key");
+});
