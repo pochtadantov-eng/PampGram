@@ -21,6 +21,7 @@
 #   WORKER_URL    its public address                     (default: https://pampgram.pochtadantov.workers.dev)
 #   ADMIN_TG_IDS  Telegram ids allowed in /admin, comma-separated (default: 8557314630)
 #   KV_ID         KV namespace id, if auto-detection can't pick one
+#   COMPAT_DATE   Workers compatibility_date to deploy with (default: 2024-11-01)
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -28,6 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 WORKER_NAME="${WORKER_NAME:-pampgram}"
 WORKER_URL="${WORKER_URL:-https://pampgram.pochtadantov.workers.dev}"
 ADMIN_TG_IDS="${ADMIN_TG_IDS:-8557314630}"
+COMPAT_DATE="${COMPAT_DATE:-2024-11-01}"
 
 if [ -z "${BOT_TOKEN:-}" ]; then
 	read -rsp "Токен бота от @BotFather: " BOT_TOKEN
@@ -67,7 +69,7 @@ echo "KV: ${KV_ID}"
 cat > wrangler.bot.toml <<TOML
 name = "${WORKER_NAME}"
 main = "src/index.js"
-compatibility_date = "2024-11-01"
+compatibility_date = "${COMPAT_DATE}"
 
 kv_namespaces = [
   { binding = "SUBS", id = "${KV_ID}" }
