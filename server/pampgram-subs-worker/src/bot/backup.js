@@ -12,6 +12,10 @@ export const BACKUP_KEYS = ["cfg", "tariffs", "bundle", "pay", "emoji", "banners
 const KEEP = 12;
 
 export async function makeBackup(env, reason, now = Date.now()) {
+	// two copies in the same millisecond must never share a key (the second would overwrite the first)
+	while ((await env.SUBS.get(`bk:${now}`)) !== null) {
+		now++;
+	}
 	const data = {};
 	for (const key of BACKUP_KEYS) {
 		data[key] = await env.SUBS.get(key);

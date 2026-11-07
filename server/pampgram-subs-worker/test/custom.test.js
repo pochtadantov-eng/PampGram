@@ -567,3 +567,16 @@ test("if Telegram refuses the invoice with the cancel button, a plain invoice is
 	assert.equal(sent[1].reply_markup, undefined);
 	assert.equal(tg.sent("sendMessage").length, 0, "no error shown to the buyer");
 });
+
+test("two backups taken in the same millisecond never overwrite each other", async () => {
+	const env = createEnv();
+	await env.SUBS.put("emoji", JSON.stringify({ a: "1" }));
+	const first = await makeBackup(env, "первая", 5000);
+	await env.SUBS.put("emoji", JSON.stringify({}));
+	const second = await makeBackup(env, "вторая", 5000);
+	assert.notEqual(first, second);
+	assert.equal((await listBackups(env)).length, 2);
+	const { restoreBackup } = await import("../src/bot/backup.js");
+	await restoreBackup(env, first);
+	assert.deepEqual(JSON.parse(await env.SUBS.get("emoji")), { a: "1" });
+});
