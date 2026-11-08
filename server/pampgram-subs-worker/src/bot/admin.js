@@ -17,6 +17,7 @@ import { textsCallback, textsInput } from "./texts.js";
 import { GUARDED, askPassword, showPasswordMenu, securityInput } from "./security.js";
 import { backupCallback, makeBackup } from "./backup.js";
 import { totalsText } from "./pay.js";
+import { issueKey } from "../keys.js";
 
 const PAGE_SIZE = 8;
 const ONLINE_MS = 10 * 60 * 1000;
@@ -39,6 +40,7 @@ export async function adminHome(ctx) {
 			[btn("🖼 Баннеры", "a:im"), btn("✨ Эмодзи", "a:em")],
 			[btn("🔘 Кнопки", "a:bt"), btn("💾 Копии", "a:bk")],
 			[btn("📝 Тексты", "a:tk"), btn("🔐 Пароль", "a:pw")],
+			[btn("🔑 Создать ключ", "a:k")],
 			[btn("🔄 Импорт старых пользователей", "a:import")],
 			[btn("← В меню", "menu")],
 		])
@@ -253,12 +255,47 @@ export async function expireChecks(env, tg, now) {
 	}
 }
 
+// Premium durations offered both for handing out a subscription and for minting a key:
+// 1–5 minutes (for trials), 1 day, 1 month (30 days) and forever.
+const DURATIONS = {
+	m1: { label: "1 минута", hours: 1 / 60 },
+	m2: { label: "2 минуты", hours: 2 / 60 },
+	m3: { label: "3 минуты", hours: 3 / 60 },
+	m4: { label: "4 минуты", hours: 4 / 60 },
+	m5: { label: "5 минут", hours: 5 / 60 },
+	d1: { label: "1 день", hours: 24 },
+	p7: { label: "7 дней", hours: 168 },
+	p30: { label: "1 месяц (30 дней)", hours: 720 },
+	pf: { label: "Навсегда", hours: 0 },
+};
+
 const GRANTS = {
 	std: { label: "Standard (сбросить Premium)", tier: "standard", hours: 0 },
-	p7: { label: "Premium 7 дней", tier: "pro", hours: 168 },
-	p30: { label: "Premium 30 дней", tier: "pro", hours: 720 },
-	pf: { label: "Premium навсегда", tier: "pro", hours: 0 },
+	...Object.fromEntries(Object.entries(DURATIONS).map(([key, duration]) => [key, { label: `Premium · ${duration.label}`, tier: "pro", hours: duration.hours }])),
 };
+
+async function showKeyMenu(ctx) {
+	const rows = Object.entries(DURATIONS).map(([key, duration]) => [btn(duration.label, `a:kg:${key}`)]);
+	rows.push([btn("← Админка", "a:home")]);
+	return show(ctx, "🔑 <b>Ключ активации (Premium)</b>\nНа какой срок? Срок идёт с момента активации ключа, а не с создания.", kb(rows));
+}
+
+async function makeKey(ctx, option) {
+	const duration = DURATIONS[option];
+	if (!duration) {
+		return toast(ctx, "Неизвестный срок", true);
+	}
+	const key = await issueKey(ctx.env, "pro", duration.hours > 0 ? duration.hours : undefined);
+	if (!key) {
+		return toast(ctx, "Не удалось создать ключ", true);
+	}
+	await toast(ctx, "Ключ создан");
+	return show(
+		ctx,
+		`🔑 Ключ Premium · ${esc(duration.label)}\n\n<code>${esc(key)}</code>\n\nОдноразовый: срок начнётся с активации в приложении.`,
+		kb([[btn("🔑 Ещё ключ", "a:k")], [btn("← Админка", "a:home")]])
+	);
+}
 
 async function applyGrant(ctx, id, option) {
 	const grant = GRANTS[option];
@@ -453,6 +490,11 @@ export async function adminCallback(ctx, data) {
 			await clearState(ctx.env, ctx.from.id);
 			await toast(ctx, "Отменено");
 			return adminHome(ctx);
+		case "k":
+			await toast(ctx);
+			return showKeyMenu(ctx);
+		case "kg":
+			return makeKey(ctx, arg);
 		case "stats":
 			await toast(ctx);
 			return showStats(ctx);

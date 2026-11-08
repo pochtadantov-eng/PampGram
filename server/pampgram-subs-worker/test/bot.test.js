@@ -431,3 +431,36 @@ test("blocking the bot is recorded on the profile", async () => {
 	await handleUpdate(env, tg, msg(ALICE, "/start"));
 	assert.equal(JSON.parse(await env.SUBS.get("u:2001")).bot.blocked, false);
 });
+
+test("admin panel mints keys for 1–5 minutes, a day, a month and forever", async () => {
+	const { env, tg } = setup();
+	await handleUpdate(env, tg, press(ADMIN, "a:k"));
+	const menu = JSON.stringify(tg.calls.map((c) => c.params));
+	for (const label of ["1 минута", "5 минут", "1 день", "1 месяц", "Навсегда"]) {
+		assert.ok(menu.includes(label), `menu offers ${label}`);
+	}
+	tg.reset();
+	await handleUpdate(env, tg, press(ADMIN, "a:kg:m2"));
+	const text = JSON.stringify(tg.calls.map((c) => c.params));
+	const key = text.match(/PMP-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}/)?.[0];
+	assert.ok(key, "the key is shown to the admin");
+	const stored = JSON.parse(await env.SUBS.get(`key:${key}`));
+	assert.equal(stored.tier, "pro");
+	assert.ok(Math.abs(stored.durationHours - 2 / 60) < 1e-9);
+
+	await handleUpdate(env, tg, press(ADMIN, "a:kg:pf"));
+	const forever = JSON.stringify(tg.calls.map((c) => c.params)).match(/PMP-[A-Z0-9-]+/g).pop();
+	assert.equal(await env.SUBS.get(`key:${forever}`), "pro", "a permanent key is stored as the plain tier");
+});
+
+test("admin panel grants Premium for a few minutes or a day", async () => {
+	const { env, tg } = setup();
+	const before = Date.now();
+	await handleUpdate(env, tg, press(ADMIN, "a:g:2001:m5"));
+	const short = await readSubscription(env, "2001");
+	assert.equal(short.tier, "pro");
+	assert.ok(short.expiresAt >= before + 299_000 && short.expiresAt <= Date.now() + 301_000);
+	await handleUpdate(env, tg, press(ADMIN, "a:g:2001:d1"));
+	const day = await readSubscription(env, "2001");
+	assert.ok(day.expiresAt >= before + 24 * 3600_000 - 1000);
+});

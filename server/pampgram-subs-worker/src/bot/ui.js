@@ -46,6 +46,9 @@ export function fmtHours(hours) {
 	if (!hours || hours <= 0) {
 		return "навсегда";
 	}
+	if (hours < 1) {
+		return `${Math.round(hours * 60)} мин`;
+	}
 	if (hours % 24 === 0) {
 		const days = hours / 24;
 		return `${days} дн`;
