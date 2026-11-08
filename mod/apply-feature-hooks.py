@@ -271,15 +271,20 @@ replace_once(
     "            return state\n"
     "        }\n"
     "        var phase = state.phase\n"
+    "        var walletAddress = state.walletAddress\n"
     "        if case .empty = state.phase, let address = WalletContext.pampGramAddressOverride?() {\n"
     "            phase = .wallet(WalletInfo(address: address, publicKey: \"\"))\n"
+    "            walletAddress = address\n"
     "        }\n"
-    "        guard case .wallet = phase else {\n"
+    "        switch phase {\n"
+    "        case .wallet, .restoring:\n"
+    "            break\n"
+    "        default:\n"
     "            return state\n"
     "        }\n"
     "        return State(\n"
     "            phase: phase,\n"
-    "            walletAddress: state.walletAddress,\n"
+    "            walletAddress: walletAddress,\n"
     "            balance: .value(balance, updatedAt: Int32(Date().timeIntervalSince1970)),\n"
     "            transactions: state.transactions,\n"
     "            collectibles: state.collectibles,\n"
@@ -523,6 +528,36 @@ replace_once(
     "root controller PhantomGiftKit import",
     "import PampGramCore\nimport WalletContext\n",
     "import PampGramCore\nimport WalletContext\nimport PhantomGiftKit\n",
+)
+
+# ---------------------------------------------------------------------------
+# 12. The profile "Balance" chip and the card it opens come from the server's public wallet
+#     card (CachedUserData.walletCard), not from the wallet itself: substitute the visual
+#     balance there too, on your own profile.
+# ---------------------------------------------------------------------------
+print("\n[12] Visual balance on the profile chip and the public wallet card")
+
+replace_once(
+    header_swift,
+    "profile balance chip shows the visual balance",
+    "        if !self.isSettings, let balance = (screenData?.cachedData as? CachedUserData)?.walletCard?.balance, balance >= 100_000_000 {\n",
+    "        PampGramVisualExtrasRuntime.shared.start(accountKey: self.context.account.peerId.toInt64(), postbox: self.context.account.postbox)\n"
+    "        if !self.isSettings, peer?.id == self.context.account.peerId, let pampGramFakeBalance = PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: self.context.account.peerId.toInt64()) {\n"
+    "            currentWalletBalance = pampGramFakeBalance\n"
+    "        } else if !self.isSettings, let balance = (screenData?.cachedData as? CachedUserData)?.walletCard?.balance, balance >= 100_000_000 {\n",
+)
+peer_info_screen_swift = Path("submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift")
+replace_once(
+    peer_info_screen_swift,
+    "public wallet card opened from the chip shows the visual balance",
+    "            let screen = PeerWalletScreen(context: self.context, updatedPresentationData: controller.updatedPresentationData, peer: peer, card: (self.data?.cachedData as? CachedUserData)?.walletCard, sourceView:",
+    "            let pampGramRealCard = (self.data?.cachedData as? CachedUserData)?.walletCard\n"
+    "            var pampGramCard = pampGramRealCard\n"
+    "            if peer.id == self.context.account.peerId, let pampGramFakeBalance = PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: self.context.account.peerId.toInt64()) {\n"
+    "                let pampGramAddress = pampGramRealCard?.address ?? (PampGramVisualExtrasRuntime.shared.fakeWalletAddress(accountKey: self.context.account.peerId.toInt64()) ?? \"\")\n"
+    "                pampGramCard = WalletCard(address: pampGramAddress, balance: pampGramFakeBalance, stickers: pampGramRealCard?.stickers ?? [], backgroundNft: pampGramRealCard?.backgroundNft)\n"
+    "            }\n"
+    "            let screen = PeerWalletScreen(context: self.context, updatedPresentationData: controller.updatedPresentationData, peer: peer, card: pampGramCard, sourceView:",
 )
 
 # ---------------------------------------------------------------------------
