@@ -353,14 +353,39 @@ replace_once(
     "                                PampGramPhantomGiftManager.markPhantomTransfer(slug: uniqueGift.slug)\n"
     "                            }\n",
 )
+gift_view_swift = Path("submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift")
 replace_once(
-    Path("submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift"),
+    gift_view_swift,
     "gift screen transfer fee",
     "            let transferStars = arguments.transferStars ?? 0\n",
-    "            let transferStars = arguments.reference == nil ? PampGramPhantomGiftManager.transferFeeStars : (arguments.transferStars ?? 0)\n"
-    "            if arguments.reference == nil {\n"
+    # A visual gift reaches this screen either from the profile grid (no reference at all) or
+    # from its local chat message (a reference to a message in the Local namespace, which the
+    # server never saw). Both are handled locally.
+    "            let pampGramIsPhantomGift: Bool\n"
+    "            if let pampGramReference = arguments.reference, case let .message(pampGramMessageId) = pampGramReference {\n"
+    "                pampGramIsPhantomGift = pampGramMessageId.namespace == Namespaces.Message.Local\n"
+    "            } else {\n"
+    "                pampGramIsPhantomGift = arguments.reference == nil\n"
+    "            }\n"
+    "            let transferStars = pampGramIsPhantomGift ? PampGramPhantomGiftManager.transferFeeStars : (arguments.transferStars ?? 0)\n"
+    "            if pampGramIsPhantomGift {\n"
     "                PampGramPhantomGiftManager.markPhantomTransfer(slug: gift.slug)\n"
     "            }\n",
+)
+replace_once(
+    gift_view_swift,
+    "gift screen transfers a visual gift locally",
+    "                    if let tranfserGiftImpl {\n"
+    "                        return tranfserGiftImpl(transferStars == 0, reference, peerId)\n",
+    "                    if pampGramIsPhantomGift {\n"
+    "                        return PampGramPhantomGiftManager.sendUniqueGiftToPeer(context: context, uniqueGift: gift, peerId: peerId)\n"
+    "                        |> castError(TransferStarGiftError.self)\n"
+    "                        |> mapToSignal { success -> Signal<Never, TransferStarGiftError> in\n"
+    "                            return success ? .complete() : .fail(.generic)\n"
+    "                        }\n"
+    "                    }\n"
+    "                    if let tranfserGiftImpl {\n"
+    "                        return tranfserGiftImpl(transferStars == 0, reference, peerId)\n",
 )
 replace_once(
     Path("submodules/TelegramUI/Sources/SharedAccountContext.swift"),
