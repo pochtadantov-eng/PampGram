@@ -75,7 +75,7 @@ public final class PampGramAccessGate {
     private static let recordsKey = "PampGram_AccessRecords_v1"
     private static let lastSeenKey = "PampGram_AccessLastSeen_v1"
     private static let clockSlackMs: Int64 = 120_000
-    private static let pollIntervalMs: Int64 = 60_000
+    private static let pollIntervalMs: Int64 = 300_000
     private static let enforcementGraceSeconds: Double = 5.0
     private static let tamperReportIntervalSeconds: Double = 120.0
 

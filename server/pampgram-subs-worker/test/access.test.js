@@ -179,3 +179,22 @@ test("short keys: a 1-minute key activates and its expiry is one minute away", a
 	assert.ok(json.expiresAt >= before + 59_000 && json.expiresAt <= Date.now() + 61_000);
 	assert.ok(json.ttl <= 61_000, "offline trust never outlives the key");
 });
+
+test("/access and /status write 'last seen' at most once an hour (KV write quota)", async () => {
+	const { env } = await setup();
+	let writes = 0;
+	const put = env.SUBS.put.bind(env.SUBS);
+	env.SUBS.put = async (key, value, options) => {
+		if (key.startsWith("seen:") || key.startsWith("u:")) {
+			writes += 1;
+		}
+		return put(key, value, options);
+	};
+	for (let i = 0; i < 10; i++) {
+		await call(env, "GET", `/access?id=77&nonce=${NONCE}`);
+		await call(env, "GET", "/status?id=77");
+	}
+	assert.ok(writes <= 2, `only the first poll writes (got ${writes})`);
+	assert.ok(await env.SUBS.get("seen:77"));
+	assert.ok(await env.SUBS.get("u:77"));
+});

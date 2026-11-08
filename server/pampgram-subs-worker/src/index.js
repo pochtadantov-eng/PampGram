@@ -217,7 +217,7 @@ import {
 	listAllKeys,
 } from "./core.js";
 import { issueKey, redeemKeyForAccount } from "./keys.js";
-import { handleAccess, handleReportTamper, clearTamper, recordTamper } from "./access.js";
+import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSeen } from "./access.js";
 import { recordAppSeen, noteTier } from "./users.js";
 import { handleWebhook, runScheduled } from "./bot/webhook.js";
 
@@ -251,11 +251,11 @@ async function handleStatus(request, env, ctx) {
 	const { tier, expiresAt } = await readSubscription(env, id);
 	// Fire-and-forget: never awaited, so a KV write here can't slow down or fail this response.
 	const now = Date.now();
-	ctx.waitUntil(env.SUBS.put(`seen:${id}`, String(now)));
 	// Optional self-reported details (version, build, own username/name) for the admin's user
-	// list; unauthenticated like the rest of this route, so informational only.
+	// list; unauthenticated like the rest of this route, so informational only. Throttled (see
+	// noteAppSeen) so the free daily KV write quota isn't spent on "last seen".
 	ctx.waitUntil(
-		recordAppSeen(env, id, { version: url.searchParams.get("v"), build: url.searchParams.get("b"), username: url.searchParams.get("u"), name: url.searchParams.get("n") }, now).catch(() => {})
+		noteAppSeen(env, id, { version: url.searchParams.get("v"), build: url.searchParams.get("b"), username: url.searchParams.get("u"), name: url.searchParams.get("n") }, now).catch(() => {})
 	);
 	const sig = await hmacSign(env, `${id}|${tier}|${expiresAt ?? "null"}`);
 	return jsonResponse({ tier, expiresAt, sig });

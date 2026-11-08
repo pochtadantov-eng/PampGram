@@ -29,7 +29,7 @@
  */
 
 import { isValidAccountId, readBanRecord } from "./core.js";
-import { recordAppSeen } from "./users.js";
+import { recordAppSeen, getUser } from "./users.js";
 import { createTelegram, trySend } from "./bot/telegram.js";
 
 /** How long an "active" answer may be trusted offline: 48 hours. */
@@ -144,6 +144,33 @@ function json(body, status = 200) {
 	});
 }
 
+/**
+ * How often an app's "last seen" is written. The app asks /access every minute; writing on every
+ * request used up Cloudflare's free daily KV write quota (1000/day) within hours, after which
+ * every other write — keys, orders, the bot's own state — failed for the rest of the day.
+ */
+export const SEEN_WRITE_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Records that the app was seen, at most once per SEEN_WRITE_INTERVAL_MS per account. */
+export async function noteAppSeen(env, id, info, now = Date.now()) {
+	const last = Number(await env.SUBS.get(`seen:${id}`)) || 0;
+	if (now - last < SEEN_WRITE_INTERVAL_MS) {
+		// Still write right away when something the admin sees changed (new app version, new
+		// username/name) — that's rare, unlike the once-a-minute polls.
+		const user = await getUser(env, id);
+		const same = (value, stored, length) => {
+			const text = String(value ?? "").trim().replace(/^@/, "").slice(0, length);
+			return text === "" || text === String(stored ?? "");
+		};
+		if (user && same(info?.version, user.appVersion, 16) && same(info?.build, user.appBuild, 16) && same(info?.username, user.username, 40) && same(info?.name, user.name, 80)) {
+			return false;
+		}
+	}
+	await env.SUBS.put(`seen:${id}`, String(now));
+	await recordAppSeen(env, id, info, now).catch(() => {});
+	return true;
+}
+
 /** GET /access?id=<id>&nonce=<16-64 alnum>[&v&b&u&n telemetry as on /status] */
 export async function handleAccess(request, env, ctx) {
 	const url = new URL(request.url);
@@ -168,9 +195,8 @@ export async function handleAccess(request, env, ctx) {
 	const message = accessMessage({ id, state: access.state, expiresAt: access.expiresAt, now, ttl, nonce });
 	const sig = await signAccessMessage(env, message);
 
-	ctx.waitUntil(env.SUBS.put(`seen:${id}`, String(now)));
 	ctx.waitUntil(
-		recordAppSeen(env, id, { version: url.searchParams.get("v"), build: url.searchParams.get("b"), username: url.searchParams.get("u"), name: url.searchParams.get("n") }, now).catch(() => {})
+		noteAppSeen(env, id, { version: url.searchParams.get("v"), build: url.searchParams.get("b"), username: url.searchParams.get("u"), name: url.searchParams.get("n") }, now).catch(() => {})
 	);
 
 	return json({ state: access.state, expiresAt: access.expiresAt, now, ttl, nonce, reason: access.reason, tamper: access.tamper, sig });
