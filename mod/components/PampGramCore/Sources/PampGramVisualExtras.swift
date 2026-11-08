@@ -40,6 +40,9 @@ public struct PampGramVisualExtras: Codable, Equatable {
     public var badgeSource: String
     public var cardEnabled: Bool
     public var cardBalance: Int64
+    /// Address the visual wallet shows when Telegram's own wallet was never created. "" = a
+    /// neutral placeholder address.
+    public var cardAddress: String
     /// Index into the card background presets.
     public var cardBackground: Int
     /// Emoji "sticker" drawn on the card ("" = none).
@@ -52,15 +55,16 @@ public struct PampGramVisualExtras: Codable, Equatable {
     public static let badgeNames: [String] = ["Нет", "Major", "Hold"]
 
     public static var `default`: PampGramVisualExtras {
-        return PampGramVisualExtras(badge: 0, badgeFileId: 0, badgeSource: "", cardEnabled: false, cardBalance: 0, cardBackground: 0, cardSticker: "", cardStickerX: 0.82, cardStickerY: 0.28, usernames: [])
+        return PampGramVisualExtras(badge: 0, badgeFileId: 0, badgeSource: "", cardEnabled: false, cardBalance: 0, cardAddress: "", cardBackground: 0, cardSticker: "", cardStickerX: 0.82, cardStickerY: 0.28, usernames: [])
     }
 
-    public init(badge: Int, badgeFileId: Int64, badgeSource: String, cardEnabled: Bool, cardBalance: Int64, cardBackground: Int, cardSticker: String, cardStickerX: Double, cardStickerY: Double, usernames: [PampGramVisualUsername]) {
+    public init(badge: Int, badgeFileId: Int64, badgeSource: String, cardEnabled: Bool, cardBalance: Int64, cardAddress: String, cardBackground: Int, cardSticker: String, cardStickerX: Double, cardStickerY: Double, usernames: [PampGramVisualUsername]) {
         self.badge = badge
         self.badgeFileId = badgeFileId
         self.badgeSource = badgeSource
         self.cardEnabled = cardEnabled
         self.cardBalance = cardBalance
+        self.cardAddress = cardAddress
         self.cardBackground = cardBackground
         self.cardSticker = cardSticker
         self.cardStickerX = cardStickerX
@@ -76,6 +80,7 @@ public struct PampGramVisualExtras: Codable, Equatable {
         self.badgeSource = try container.decodeIfPresent(String.self, forKey: .badgeSource) ?? defaults.badgeSource
         self.cardEnabled = try container.decodeIfPresent(Bool.self, forKey: .cardEnabled) ?? defaults.cardEnabled
         self.cardBalance = try container.decodeIfPresent(Int64.self, forKey: .cardBalance) ?? defaults.cardBalance
+        self.cardAddress = try container.decodeIfPresent(String.self, forKey: .cardAddress) ?? defaults.cardAddress
         self.cardBackground = try container.decodeIfPresent(Int.self, forKey: .cardBackground) ?? defaults.cardBackground
         self.cardSticker = try container.decodeIfPresent(String.self, forKey: .cardSticker) ?? defaults.cardSticker
         self.cardStickerX = try container.decodeIfPresent(Double.self, forKey: .cardStickerX) ?? defaults.cardStickerX
@@ -149,6 +154,22 @@ public final class PampGramVisualExtrasRuntime {
         }
         let result = extras.cardBalance.multipliedReportingOverflow(by: 1_000_000_000)
         return result.overflow ? Int64.max : result.partialValue
+    }
+
+    /// Neutral placeholder shown as the wallet address when no address was entered.
+    public static let placeholderWalletAddress = "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
+
+    /// Address for the visual wallet when Telegram's real wallet was never created; nil when
+    /// "Карточка GRAM" is off (the real wallet state is shown untouched).
+    public func fakeWalletAddress() -> String? {
+        self.lock.lock()
+        let extras = self.current
+        self.lock.unlock()
+        if !extras.cardEnabled {
+            return nil
+        }
+        let trimmed = extras.cardAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? PampGramVisualExtrasRuntime.placeholderWalletAddress : trimmed
     }
 
     public func verificationFileId() -> Int64? {

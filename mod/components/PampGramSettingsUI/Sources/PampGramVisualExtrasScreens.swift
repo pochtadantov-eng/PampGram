@@ -310,9 +310,10 @@ private final class PampGramBadgeScreenController: PampGramVisualPageController 
 private final class PampGramCardScreenController: PampGramVisualPageController {
     private let enableSwitch = UISwitch()
     private var balanceField = UITextField()
+    private var addressField = UITextField()
 
     override func buildContent() {
-        let intro = self.makeLabel("Подменяет баланс в настоящем кошельке Telegram: на карточке кошелька («Open My Money»), в сумме в долларах и в плашке «Balance» под именем в профиле. Нужен созданный кошелёк в Telegram. Фон и наклейки карточки настраиваются в самом кошельке — это настоящий редактор Telegram.", size: 14.0, weight: .regular, color: self.secondaryColor)
+        let intro = self.makeLabel("Подменяет баланс в настоящем кошельке Telegram: на карточке кошелька («Open My Money»), в сумме в долларах и в плашке «Balance» под именем в профиле. Если кошелёк в Telegram не создан, он появится визуально — с этим балансом и адресом ниже. Фон и наклейки карточки настраиваются в самом кошельке — это настоящий редактор Telegram.", size: 14.0, weight: .regular, color: self.secondaryColor)
         self.stack.addArrangedSubview(intro)
 
         let switchRow = UIStackView(arrangedSubviews: [self.makeLabel("Подменять баланс", size: 16.0, weight: .regular, color: self.primaryColor), self.enableSwitch])
@@ -321,11 +322,21 @@ private final class PampGramCardScreenController: PampGramVisualPageController {
         self.enableSwitch.addTarget(self, action: #selector(self.switchChanged), for: .valueChanged)
         self.balanceField = self.makeField(placeholder: "Баланс GRAM", keyboard: .numberPad)
         self.balanceField.addTarget(self, action: #selector(self.balanceChanged(_:)), for: .editingChanged)
-        self.stack.addArrangedSubview(self.makePanel(title: "Баланс GRAM", content: [switchRow, self.balanceField]))
+        self.addressField = self.makeField(placeholder: "Адрес кошелька (необязательно)", keyboard: .asciiCapable)
+        self.addressField.addTarget(self, action: #selector(self.addressChanged(_:)), for: .editingChanged)
+        self.stack.addArrangedSubview(self.makePanel(title: "Баланс GRAM", content: [switchRow, self.balanceField, self.addressField]))
 
         self.loadExtras { [weak self] extras in
             self?.enableSwitch.isOn = extras.cardEnabled
             self?.balanceField.text = extras.cardBalance > 0 ? "\(extras.cardBalance)" : ""
+            self?.addressField.text = extras.cardAddress
+        }
+    }
+
+    @objc private func addressChanged(_ field: UITextField) {
+        let value = String((field.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+        self.updateExtras { extras in
+            extras.cardAddress = value
         }
     }
 
