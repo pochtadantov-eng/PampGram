@@ -16,6 +16,7 @@ import { getPayMethods, saveOrder, getOrder, newId, adminIds, getUserState, setU
 import { banReason, availableTariffs, notifyAdmins } from "./shop.js";
 import { findSellable } from "./products.js";
 import { getText } from "./texts.js";
+import { isAutoTon, tonComment, tonkeeperLink, markTonWaiting, confirmIfPaid } from "./ton.js";
 
 const MAX_PROOFS = 5;
 
@@ -112,6 +113,23 @@ export async function startManualPurchase(ctx, code, methodId) {
 	};
 	await saveOrder(ctx.env, order);
 	await toast(ctx);
+	if (isAutoTon(method)) {
+		await markTonWaiting(ctx.env, order);
+		return show(
+			ctx,
+			[
+				`<b>Оплата: ${esc(method.title)}</b>`,
+				tariff.kind === "item" ? `${esc(tariff.title)}` : `${esc(tariff.title)} · ${tierLabel(tariff.tier)} · ${fmtHours(tariff.hours)}`,
+				`К оплате: <b>${esc(order.priceText)}</b>`,
+				"",
+				`Адрес: <code>${esc(method.tonAddress)}</code>`,
+				`Комментарий: <code>${esc(tonComment(order))}</code>`,
+				"",
+				"Переведите сумму не меньше указанной <b>с этим комментарием</b> (без него платёж не найдётся). Кнопка ниже откроет Tonkeeper с заполненными полями. После перевода нажмите «Проверить оплату» — ключ придёт сам, обычно в течение минуты.",
+			].join("\n"),
+			kb([[{ text: "💎 Открыть в Tonkeeper", url: tonkeeperLink(method.tonAddress, order) }], [btn("🔄 Проверить оплату", `pd:${order.id}`)], [btn("✖️ Отмена", `px:${order.id}`)]])
+		);
+	}
 	return show(
 		ctx,
 		[
@@ -142,6 +160,19 @@ export async function claimPaid(ctx, orderId) {
 	}
 	if (order.status !== "awaiting") {
 		return toast(ctx, "Этот заказ уже обработан", true);
+	}
+	const method = (await getPayMethods(ctx.env)).find((item) => item.id === order.method);
+	if (isAutoTon(method)) {
+		let paid = false;
+		try {
+			paid = await confirmIfPaid(ctx.env, ctx.tg, order, method, ctx.now);
+		} catch {
+			return toast(ctx, "Не удалось проверить блокчейн, попробуйте через минуту", true);
+		}
+		if (!paid) {
+			return toast(ctx, "Платёж пока не найден. Если уже перевели — подождите минуту и нажмите ещё раз.", true);
+		}
+		return toast(ctx, "Оплата найдена, ключ отправлен");
 	}
 	order.status = "review";
 	order.claimedAt = ctx.now;

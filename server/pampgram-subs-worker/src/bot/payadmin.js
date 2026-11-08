@@ -11,6 +11,7 @@ import {
 import { fulfillOrder } from "./shop.js";
 import { getText } from "./texts.js";
 import { renderDetails, manualAmount, formatAmount, orderPrice, reviewButtons } from "./pay.js";
+import { isTonAddress } from "./ton.js";
 
 const CANCEL = kb([[btn("✖️ Отмена", "a:cancel")]]);
 
@@ -18,6 +19,8 @@ const DETAILS_HELP =
 	"Пришлите реквизиты текстом, можно в несколько строк. Строки вида «Подпись: значение» покупатель сможет скопировать одним тапом.\n\nПример:\n<code>Карта Сбербанк: 2202 2000 0000 0000\nПолучатель: Иван И.\nUSDT TRC20: TXyz…</code>";
 const RATE_HELP =
 	"Цена за 1 ⭐ в валюте этого способа: число и валюта. Сумма тарифа = цена в ⭐ × курс.\nПримеры: <code>1.8 ₽</code>, <code>0.02 USDT</code>, <code>0.9 грн</code>";
+
+const TON_HELP = "Адрес вашего TON-кошелька (Tonkeeper → Получить → скопировать адрес), например UQ…. Курс способа должен быть в TON (например «0.0045 TON» за 1 ⭐). Чтобы выключить автопроверку — отправьте «-».";
 
 export function parseRate(text) {
 	const match = /^(\d+(?:[.,]\d+)?)\s*(\S{1,8})$/.exec(text.trim());
@@ -61,6 +64,9 @@ export async function showPayCard(ctx, id) {
 		`💳 <b>${esc(method.title)}</b>`,
 		`Курс: 1 ⭐ = ${esc(method.rate)} ${esc(method.currency)}${example}`,
 		`Статус: ${method.active ? "включён" : "выключен"}`,
+		method.tonAddress
+			? `💎 Автопроверка TON: <code>${esc(method.tonAddress)}</code>${String(method.currency).toUpperCase() === "TON" ? "" : " (работает только при курсе в TON)"}`
+			: "💎 Автопроверка TON: выключена",
 		"",
 		"<b>Реквизиты (как увидит покупатель)</b>",
 		renderDetails(method.details),
@@ -71,6 +77,7 @@ export async function showPayCard(ctx, id) {
 		kb([
 			[btn(method.active ? "⏸ Выключить" : "▶️ Включить", `a:pt:${id}`), btn("✏️ Название", `a:pe:${id}:title`)],
 			[btn("📝 Реквизиты", `a:pe:${id}:details`), btn("💲 Курс", `a:pe:${id}:rate`)],
+			[btn("💎 Кошелёк TON (автопроверка)", `a:pe:${id}:ton`)],
 			[btn("🗑 Удалить", `a:pdel:${id}`), btn("← К способам", "a:p")],
 		])
 	);
@@ -182,12 +189,12 @@ export async function payCallback(ctx, parts) {
 			await show(ctx, "Название способа для покупателя, например «Карта Сбербанк» или «USDT TRC20».", CANCEL);
 			return true;
 		case "pe": {
-			if (!["title", "details", "rate"].includes(extra)) {
+			if (!["title", "details", "rate", "ton"].includes(extra)) {
 				return true;
 			}
 			await toast(ctx);
 			await setState(ctx.env, ctx.from.id, { a: "pay_edit", id: arg, field: extra });
-			await show(ctx, { title: "Новое название.", details: DETAILS_HELP, rate: RATE_HELP }[extra], CANCEL);
+			await show(ctx, { title: "Новое название.", details: DETAILS_HELP, rate: RATE_HELP, ton: TON_HELP }[extra], CANCEL);
 			return true;
 		}
 		case "pq":
@@ -267,6 +274,16 @@ export async function payInput(ctx, state, text) {
 			return true;
 		}
 		method.details = text;
+	} else if (state.field === "ton") {
+		const value = (text ?? "").trim();
+		if (value === "-") {
+			delete method.tonAddress;
+		} else if (isTonAddress(value)) {
+			method.tonAddress = value;
+		} else {
+			await say(ctx, `Это не похоже на адрес TON.\n${TON_HELP}`, CANCEL);
+			return true;
+		}
 	} else {
 		const parsed = parseRate(text);
 		if (!parsed) {

@@ -464,3 +464,87 @@ test("admin panel grants Premium for a few minutes or a day", async () => {
 	const day = await readSubscription(env, "2001");
 	assert.ok(day.expiresAt >= before + 24 * 3600_000 - 1000);
 });
+
+// ---------- TON straight to the owner's wallet ----------
+
+import { savePayMethods, getPayMethods as readPayMethods, getOrder as readOrder } from "../src/bot/store.js";
+
+const TON_ADDRESS = "UQ" + "A".repeat(46);
+
+async function withFetch(impl, fn) {
+	const original = globalThis.fetch;
+	globalThis.fetch = impl;
+	try {
+		return await fn();
+	} finally {
+		globalThis.fetch = original;
+	}
+}
+
+function toncenter(txs) {
+	return async () => new Response(JSON.stringify({ ok: true, result: txs }));
+}
+
+async function tonSetup() {
+	const { env, tg } = setup();
+	const methods = await readPayMethods(env);
+	await savePayMethods(env, [...methods, { id: "tonm", kind: "manual", title: "TON", details: "", rate: 0.01, currency: "TON", active: true, tonAddress: TON_ADDRESS }]);
+	return { env, tg };
+}
+
+async function startTonOrder(env, tg) {
+	tg.reset();
+	await handleUpdate(env, tg, press(ALICE, "pay:pro30:tonm"));
+	const text = JSON.stringify(tg.calls.map((c) => c.params));
+	assert.ok(text.includes(TON_ADDRESS), "address shown");
+	assert.ok(text.includes("app.tonkeeper.com/transfer"), "tonkeeper link");
+	const id = text.match(/PMP-([A-Za-z0-9]+)/)[1];
+	return readOrder(env, id);
+}
+
+test("TON: admin sets the wallet for auto-check", async () => {
+	const { env, tg } = setup();
+	const methods = await readPayMethods(env);
+	await savePayMethods(env, [...methods, { id: "m1", kind: "manual", title: "TON", details: "x", rate: 0.01, currency: "TON", active: true }]);
+	await handleUpdate(env, tg, press(ADMIN, "a:pe:m1:ton"));
+	await handleUpdate(env, tg, msg(ADMIN, "not an address"));
+	assert.equal((await readPayMethods(env)).find((m) => m.id === "m1").tonAddress, undefined);
+	await handleUpdate(env, tg, press(ADMIN, "a:pe:m1:ton"));
+	await handleUpdate(env, tg, msg(ADMIN, TON_ADDRESS));
+	assert.equal((await readPayMethods(env)).find((m) => m.id === "m1").tonAddress, TON_ADDRESS);
+});
+
+test("TON: payment is found on-chain and the key is delivered; a tx pays only once", async () => {
+	const { env, tg } = await tonSetup();
+	const order = await startTonOrder(env, tg);
+	assert.equal(order.amount, 5);
+	assert.ok(await env.SUBS.get(`tonwait:${order.id}`));
+
+	await withFetch(toncenter([]), () => handleUpdate(env, tg, press(ALICE, `pd:${order.id}`)));
+	assert.equal((await readOrder(env, order.id)).status, "awaiting", "nothing on-chain yet");
+
+	const tx = { utime: Math.floor(Date.now() / 1000), transaction_id: { hash: "h1", lt: "1" }, in_msg: { source: "UQbuyer", value: "5000000000", message: `PMP-${order.id}` } };
+	const short = { ...tx, transaction_id: { hash: "h0" }, in_msg: { ...tx.in_msg, value: "4000000000" } };
+	tg.reset();
+	await withFetch(toncenter([short, tx]), () => handleUpdate(env, tg, press(ALICE, `pd:${order.id}`)));
+	const paid = await readOrder(env, order.id);
+	assert.ok(["paid", "delivered"].includes(paid.status), paid.status);
+	assert.equal(paid.tonTx, "h1");
+	assert.ok(JSON.stringify(tg.calls).includes("PMP-"), "a key went out");
+	assert.equal(await env.SUBS.get("tontx:h1"), order.id);
+	assert.equal(await env.SUBS.get(`tonwait:${order.id}`), null);
+
+	// Same transaction can't pay a second order even with a copied comment.
+	const second = await startTonOrder(env, tg);
+	const reused = { ...tx, in_msg: { ...tx.in_msg, message: `PMP-${second.id}` } };
+	await withFetch(toncenter([reused]), () => handleUpdate(env, tg, press(ALICE, `pd:${second.id}`)));
+	assert.equal((await readOrder(env, second.id)).status, "awaiting");
+});
+
+test("TON: the cron finds a payment nobody pressed the button for", async () => {
+	const { env, tg } = await tonSetup();
+	const order = await startTonOrder(env, tg);
+	const tx = { utime: Math.floor(Date.now() / 1000), transaction_id: { hash: "c1" }, in_msg: { source: "UQbuyer", value: "6000000000", message: `PMP-${order.id}` } };
+	await withFetch(toncenter([tx]), () => runScheduled(env, tg));
+	assert.ok(["paid", "delivered"].includes((await readOrder(env, order.id)).status));
+});

@@ -3,6 +3,7 @@
 import { createTelegram } from "./telegram.js";
 import { handleUpdate } from "./main.js";
 import { expireChecks } from "./admin.js";
+import { checkTonOrders } from "./ton.js";
 
 function constantTimeEqual(a, b) {
 	if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) {
@@ -43,4 +44,9 @@ export async function runScheduled(env, tg = createTelegram(env)) {
 		return;
 	}
 	await expireChecks(env, tg, Date.now());
+	try {
+		await checkTonOrders(env, tg, Date.now());
+	} catch (error) {
+		console.error("ton check failed", error?.stack ?? error);
+	}
 }
