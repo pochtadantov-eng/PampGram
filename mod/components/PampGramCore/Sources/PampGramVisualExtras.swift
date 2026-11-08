@@ -111,8 +111,13 @@ public extension PampGramProfileVisualState {
 public final class PampGramVisualExtrasRuntime {
     public static let shared = PampGramVisualExtrasRuntime()
 
+    /// Neutral placeholder shown as the wallet address when no address was entered.
+    public static let placeholderWalletAddress = "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
+
     private let lock = NSLock()
-    private var current = PampGramVisualExtras.default
+    /// Per account: with several accounts signed in, one account's settings must never leak
+    /// into another's wallet or profile.
+    private var byAccount: [Int64: PampGramVisualExtras] = [:]
     private var startedAccounts: Set<Int64> = []
     private var disposables: [Int64: Disposable] = [:]
 
@@ -131,24 +136,29 @@ public final class PampGramVisualExtrasRuntime {
         let disposable = (PampGramProfileVisualStore.signal(postbox: postbox)
         |> deliverOn(Queue.concurrentDefaultQueue())).start(next: { state in
             let extras = state.visualExtras
-            PampGramVisualExtrasRuntime.shared.set(extras)
+            PampGramVisualExtrasRuntime.shared.set(extras, accountKey: accountKey)
         })
         self.lock.lock()
         self.disposables[accountKey] = disposable
         self.lock.unlock()
     }
 
-    private func set(_ extras: PampGramVisualExtras) {
+    private func set(_ extras: PampGramVisualExtras, accountKey: Int64) {
         self.lock.lock()
-        self.current = extras
+        self.byAccount[accountKey] = extras
         self.lock.unlock()
     }
 
-    /// The fake balance in nanograms when "Карточка GRAM" is on, otherwise nil (real balance).
-    public func fakeBalanceNanos() -> Int64? {
+    private func extras(accountKey: Int64) -> PampGramVisualExtras {
         self.lock.lock()
-        let extras = self.current
+        let result = self.byAccount[accountKey] ?? PampGramVisualExtras.default
         self.lock.unlock()
+        return result
+    }
+
+    /// The fake balance in nanograms when "Карточка GRAM" is on, otherwise nil (real balance).
+    public func fakeBalanceNanos(accountKey: Int64) -> Int64? {
+        let extras = self.extras(accountKey: accountKey)
         if !extras.cardEnabled {
             return nil
         }
@@ -156,15 +166,10 @@ public final class PampGramVisualExtrasRuntime {
         return result.overflow ? Int64.max : result.partialValue
     }
 
-    /// Neutral placeholder shown as the wallet address when no address was entered.
-    public static let placeholderWalletAddress = "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
-
     /// Address for the visual wallet when Telegram's real wallet was never created; nil when
     /// "Карточка GRAM" is off (the real wallet state is shown untouched).
-    public func fakeWalletAddress() -> String? {
-        self.lock.lock()
-        let extras = self.current
-        self.lock.unlock()
+    public func fakeWalletAddress(accountKey: Int64) -> String? {
+        let extras = self.extras(accountKey: accountKey)
         if !extras.cardEnabled {
             return nil
         }
@@ -172,10 +177,8 @@ public final class PampGramVisualExtrasRuntime {
         return trimmed.isEmpty ? PampGramVisualExtrasRuntime.placeholderWalletAddress : trimmed
     }
 
-    public func verificationFileId() -> Int64? {
-        self.lock.lock()
-        let fileId = self.current.badgeFileId
-        self.lock.unlock()
+    public func verificationFileId(accountKey: Int64) -> Int64? {
+        let fileId = self.extras(accountKey: accountKey).badgeFileId
         return fileId != 0 ? fileId : nil
     }
 }

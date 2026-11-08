@@ -319,12 +319,15 @@ replace_once(
     root_swift,
     "root controller wallet override install",
     "        tabBarController.pampGramTripleTap = {",
-    "        PampGramVisualExtrasRuntime.shared.start(accountKey: self.context.account.peerId.toInt64(), postbox: self.context.account.postbox)\n"
+    # The root controller belongs to the active account, so the override follows account
+    # switches: each new root controller re-binds it to its own account's settings.
+    "        let pampGramAccountKey = self.context.account.peerId.toInt64()\n"
+    "        PampGramVisualExtrasRuntime.shared.start(accountKey: pampGramAccountKey, postbox: self.context.account.postbox)\n"
     "        WalletContext.pampGramBalanceOverride = {\n"
-    "            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos()\n"
+    "            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: pampGramAccountKey)\n"
     "        }\n"
     "        WalletContext.pampGramAddressOverride = {\n"
-    "            return PampGramVisualExtrasRuntime.shared.fakeWalletAddress()\n"
+    "            return PampGramVisualExtrasRuntime.shared.fakeWalletAddress(accountKey: pampGramAccountKey)\n"
     "        }\n"
     "        tabBarController.pampGramTripleTap = {",
 )
@@ -340,7 +343,7 @@ replace_once(
     "            }\n"
     "            if peer.id == self.context.account.peerId {\n"
     "                PampGramVisualExtrasRuntime.shared.start(accountKey: self.context.account.peerId.toInt64(), postbox: self.context.account.postbox)\n"
-    "                if let pampGramFileId = PampGramVisualExtrasRuntime.shared.verificationFileId() {\n"
+    "                if let pampGramFileId = PampGramVisualExtrasRuntime.shared.verificationFileId(accountKey: self.context.account.peerId.toInt64()) {\n"
     "                    verifiedIcon = .emojiStatus(PeerEmojiStatus(content: .emoji(fileId: pampGramFileId), expirationDate: nil))\n"
     "                }\n"
     "            }\n",
