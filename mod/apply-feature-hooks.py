@@ -249,6 +249,95 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
+# 8. Real wallet + profile: fake GRAM balance on Telegram's own wallet card and "Balance" chip,
+#    and a copied verification icon next to your own name in the real profile header.
+# ---------------------------------------------------------------------------
+print("\n[8] Wallet balance override + profile verification icon")
+
+wallet_swift = Path("submodules/WalletContext/Sources/WalletContext.swift")
+replace_once(
+    wallet_swift,
+    "wallet override hook",
+    "public final class WalletContext {\n",
+    "public final class WalletContext {\n"
+    "    /// PampGram: when set and returning a value, the wallet reports that balance (nanograms)\n"
+    "    /// instead of the real one. Set once at startup by TelegramRootController.\n"
+    "    nonisolated(unsafe) public static var pampGramBalanceOverride: (() -> Int64?)?\n"
+    "\n"
+    "    static func pampGramApply(_ state: State) -> State {\n"
+    "        guard let override = WalletContext.pampGramBalanceOverride, let balance = override() else {\n"
+    "            return state\n"
+    "        }\n"
+    "        guard case .wallet = state.phase else {\n"
+    "            return state\n"
+    "        }\n"
+    "        return State(\n"
+    "            phase: state.phase,\n"
+    "            walletAddress: state.walletAddress,\n"
+    "            balance: .value(balance, updatedAt: Int32(Date().timeIntervalSince1970)),\n"
+    "            transactions: state.transactions,\n"
+    "            collectibles: state.collectibles,\n"
+    "            pendingTransfers: state.pendingTransfers,\n"
+    "            activeOperation: state.activeOperation,\n"
+    "            fiat: state.fiat,\n"
+    "            gaslessInfo: state.gaslessInfo,\n"
+    "            cardStickers: state.cardStickers,\n"
+    "            cardStickerChangesPending: state.cardStickerChangesPending,\n"
+    "            isSavingCardStickers: state.isSavingCardStickers,\n"
+    "            cardStickerSaveError: state.cardStickerSaveError\n"
+    "        )\n"
+    "    }\n"
+    "\n",
+)
+replace_once(
+    wallet_swift,
+    "wallet state signal override",
+    "            |> deliverOnMainQueue).start(next: subscriber.putNext)",
+    "            |> map { WalletContext.pampGramApply($0) }\n"
+    "            |> deliverOnMainQueue).start(next: subscriber.putNext)",
+)
+replace_once(
+    wallet_swift,
+    "wallet state value override",
+    "        self.output.currentState()\n",
+    "        WalletContext.pampGramApply(self.output.currentState())\n",
+)
+
+replace_once(
+    root_swift,
+    "root controller wallet imports",
+    "import TabBarUI\nimport PampGramSettingsUI\n",
+    "import TabBarUI\nimport PampGramSettingsUI\nimport PampGramCore\nimport WalletContext\n",
+)
+replace_once(
+    root_swift,
+    "root controller wallet override install",
+    "        tabBarController.pampGramTripleTap = {",
+    "        PampGramVisualExtrasRuntime.shared.start(accountKey: self.context.account.peerId.toInt64(), postbox: self.context.account.postbox)\n"
+    "        WalletContext.pampGramBalanceOverride = {\n"
+    "            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos()\n"
+    "        }\n"
+    "        tabBarController.pampGramTripleTap = {",
+)
+
+replace_once(
+    header_swift,
+    "profile verification icon",
+    "            if let verificationIconFileId = peer.verificationIconFileId {\n"
+    "                verifiedIcon = .emojiStatus(PeerEmojiStatus(content: .emoji(fileId: verificationIconFileId), expirationDate: nil))\n"
+    "            }\n",
+    "            if let verificationIconFileId = peer.verificationIconFileId {\n"
+    "                verifiedIcon = .emojiStatus(PeerEmojiStatus(content: .emoji(fileId: verificationIconFileId), expirationDate: nil))\n"
+    "            }\n"
+    "            if peer.id == self.context.account.peerId {\n"
+    "                PampGramVisualExtrasRuntime.shared.start(accountKey: self.context.account.peerId.toInt64(), postbox: self.context.account.postbox)\n"
+    "                if let pampGramFileId = PampGramVisualExtrasRuntime.shared.verificationFileId() {\n"
+    "                    verifiedIcon = .emojiStatus(PeerEmojiStatus(content: .emoji(fileId: pampGramFileId), expirationDate: nil))\n"
+    "                }\n"
+    "            }\n",
+)
+
+# ---------------------------------------------------------------------------
 print("\nPampGram: feature hooks done.")
 print("  ACTIVE: ChatTimeMachine, VideoMessageSaver, FakeBadge, FakeSubscribers, FakeDeletedAccount")
 print("  CONTEXT MENU ONLY: FakeForward, FakeReactions, FakeActivity, InvisibleMessage, ReactionSpammer,")

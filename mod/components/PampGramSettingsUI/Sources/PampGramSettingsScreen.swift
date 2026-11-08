@@ -553,7 +553,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     let visualRatingLabel = profileVisuals.ratingEnabled ? "Уровень \(max(1, profileVisuals.ratingValue))" : "Настроить"
     entries.append(.visualRating("Визуальный рейтинг", visualRatingLabel))
     let visualExtras = profileVisuals.visualExtras
-    entries.append(.visualExtra(0, "Галочки", PampGramVisualExtras.badgeNames[min(2, max(0, visualExtras.badge))]))
+    entries.append(.visualExtra(0, "Галочки", visualExtras.badgeFileId != 0 ? (visualExtras.badgeSource.isEmpty ? "Включена" : visualExtras.badgeSource) : "Нет"))
     entries.append(.visualExtra(1, "Карточка GRAM", visualExtras.cardEnabled ? "Включена" : "Настроить"))
     entries.append(.visualExtra(2, "Юзернеймы", "\(visualExtras.usernames.count)"))
     if settings.masterEnabled {

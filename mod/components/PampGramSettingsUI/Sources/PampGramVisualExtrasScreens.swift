@@ -230,284 +230,107 @@ class PampGramVisualPageController: ViewController {
     }
 }
 
-// MARK: - Verification badges (Major / Hold)
-
-private func pampGramBadgeImage(kind: Int, side: CGFloat) -> UIImage {
-    let size = CGSize(width: side, height: side)
-    let renderer = UIGraphicsImageRenderer(size: size)
-    return renderer.image { _ in
-        let rect = CGRect(origin: .zero, size: size)
-        let color: UIColor
-        if kind == 1 {
-            color = UIColor(red: 0.56, green: 0.27, blue: 0.93, alpha: 1.0)
-        } else {
-            color = UIColor(red: 0.19, green: 0.78, blue: 0.35, alpha: 1.0)
-        }
-        color.setFill()
-        UIBezierPath(ovalIn: rect).fill()
-        let config = UIImage.SymbolConfiguration(pointSize: side * 0.55, weight: .bold)
-        if let symbol = UIImage(systemName: "checkmark", withConfiguration: config)?.withTintColor(.white, renderingMode: .alwaysOriginal) {
-            let symbolSize = symbol.size
-            symbol.draw(in: CGRect(x: (side - symbolSize.width) / 2.0, y: (side - symbolSize.height) / 2.0, width: symbolSize.width, height: symbolSize.height))
-        }
-    }
-}
+// MARK: - Verification badge (copied from a verified account)
 
 private final class PampGramBadgeScreenController: PampGramVisualPageController {
-    private let previewName = UILabel()
-    private let previewBadge = UIImageView()
-    private var rowButtons: [UIButton] = []
-    private var selectedKind = 0
+    private var usernameField = UITextField()
+    private let statusLabel = UILabel()
 
     override func buildContent() {
-        self.previewName.translatesAutoresizingMaskIntoConstraints = false
-        self.previewName.text = "Ваш профиль"
-        self.previewName.font = UIFont.systemFont(ofSize: 22.0, weight: .bold)
-        self.previewName.textColor = self.primaryColor
-        self.previewBadge.translatesAutoresizingMaskIntoConstraints = false
-        self.previewBadge.contentMode = .scaleAspectFit
-        let previewRow = UIStackView(arrangedSubviews: [self.previewName, self.previewBadge, UIView()])
-        previewRow.axis = .horizontal
-        previewRow.alignment = .center
-        previewRow.spacing = 8.0
-        self.previewBadge.widthAnchor.constraint(equalToConstant: 22.0).isActive = true
-        self.previewBadge.heightAnchor.constraint(equalToConstant: 22.0).isActive = true
-        self.stack.addArrangedSubview(self.makePanel(title: "Предпросмотр", content: [previewRow]))
+        let intro = self.makeLabel("Галочка рядом с вашим именем в профиле — такая же, как у аккаунтов с верификацией Major, Hold и т.п. Введите юзернейм любого аккаунта, у которого есть нужная галочка, и она скопируется к вам. Видно только на этом устройстве.", size: 14.0, weight: .regular, color: self.secondaryColor)
+        self.stack.addArrangedSubview(intro)
 
-        var buttons: [UIView] = []
-        for kind in 0 ... 2 {
-            let button = self.makeButton(kind > 0 ? "  " + PampGramVisualExtras.badgeNames[kind] : PampGramVisualExtras.badgeNames[kind], filled: false, action: #selector(self.badgePressed(_:)))
-            button.tag = kind
-            if kind > 0 {
-                button.setImage(pampGramBadgeImage(kind: kind, side: 22.0).withRenderingMode(.alwaysOriginal), for: .normal)
-            }
-            self.rowButtons.append(button)
-            buttons.append(button)
-        }
-        self.stack.addArrangedSubview(self.makePanel(title: "Галочка рядом с именем", content: buttons))
-        let note = self.makeLabel("Локальная метка Major или Hold рядом с вашим именем. Видна только на этом устройстве.", size: 13.0, weight: .regular, color: self.secondaryColor)
-        self.stack.addArrangedSubview(note)
+        self.usernameField = self.makeField(placeholder: "@username с галочкой Major или Hold", keyboard: .asciiCapable)
+        self.statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        self.statusLabel.font = UIFont.systemFont(ofSize: 14.0, weight: .medium)
+        self.statusLabel.textColor = self.primaryColor
+        self.statusLabel.numberOfLines = 0
+        let copyButton = self.makeButton("Скопировать галочку", filled: true, action: #selector(self.copyPressed))
+        let removeButton = self.makeButton("Убрать галочку", filled: false, action: #selector(self.removePressed))
+        self.stack.addArrangedSubview(self.makePanel(title: "Галочка верификации", content: [self.usernameField, copyButton, removeButton, self.statusLabel]))
 
         self.loadExtras { [weak self] extras in
-            self?.selectedKind = min(2, max(0, extras.badge))
-            self?.refresh()
-        }
-        self.refresh()
-    }
-
-    private func refresh() {
-        if self.selectedKind == 0 {
-            self.previewBadge.image = nil
-            self.previewBadge.isHidden = true
-        } else {
-            self.previewBadge.image = pampGramBadgeImage(kind: self.selectedKind, side: 22.0)
-            self.previewBadge.isHidden = false
-        }
-        for button in self.rowButtons {
-            button.alpha = button.tag == self.selectedKind ? 1.0 : 0.55
+            if extras.badgeFileId != 0 {
+                self?.statusLabel.text = "Сейчас: галочка с \(extras.badgeSource.isEmpty ? "аккаунта" : extras.badgeSource)."
+            } else {
+                self?.statusLabel.text = "Сейчас: галочки нет."
+            }
         }
     }
 
-    @objc private func badgePressed(_ sender: UIButton) {
-        let kind = sender.tag
-        self.selectedKind = kind
+    @objc private func copyPressed() {
+        var name = (self.usernameField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if let range = name.range(of: "t.me/") {
+            name = String(name[range.upperBound...])
+        }
+        if name.hasPrefix("@") {
+            name.removeFirst()
+        }
+        let finalName = name
+        guard !finalName.isEmpty else {
+            self.statusLabel.text = "Введите юзернейм."
+            return
+        }
+        self.statusLabel.text = "Ищу @\(finalName)…"
+        let _ = (self.context.engine.peers.resolvePeerByName(name: finalName, referrer: nil)
+        |> mapToSignal { result -> Signal<EnginePeer?, NoError> in
+            guard case let .result(peer) = result else {
+                return .complete()
+            }
+            return .single(peer)
+        }
+        |> deliverOnMainQueue).startStandalone(next: { [weak self] peer in
+            guard let self = self else {
+                return
+            }
+            guard let peer = peer, let fileId = peer.verificationIconFileId else {
+                self.statusLabel.text = "У @\(finalName) нет галочки верификации (Major, Hold и т.п.)."
+                return
+            }
+            let source = "@" + finalName
+            self.updateExtras { extras in
+                extras.badgeFileId = fileId
+                extras.badgeSource = source
+            }
+            self.statusLabel.text = "Галочка скопирована с \(source). Откройте свой профиль."
+        })
+    }
+
+    @objc private func removePressed() {
         self.updateExtras { extras in
-            extras.badge = kind
+            extras.badgeFileId = 0
+            extras.badgeSource = ""
         }
-        self.refresh()
+        self.statusLabel.text = "Галочка убрана."
     }
 }
 
 // MARK: - GRAM card
 
-private final class PampGramGramCardView: UIView {
-    static let backgrounds: [(UIColor, UIColor)] = [
-        (UIColor(red: 0.20, green: 0.45, blue: 0.98, alpha: 1.0), UIColor(red: 0.30, green: 0.65, blue: 1.0, alpha: 1.0)),
-        (UIColor(red: 0.45, green: 0.22, blue: 0.85, alpha: 1.0), UIColor(red: 0.75, green: 0.35, blue: 0.95, alpha: 1.0)),
-        (UIColor(red: 0.10, green: 0.62, blue: 0.45, alpha: 1.0), UIColor(red: 0.30, green: 0.82, blue: 0.55, alpha: 1.0)),
-        (UIColor(red: 0.92, green: 0.38, blue: 0.20, alpha: 1.0), UIColor(red: 1.00, green: 0.65, blue: 0.25, alpha: 1.0)),
-        (UIColor(red: 0.85, green: 0.20, blue: 0.40, alpha: 1.0), UIColor(red: 1.00, green: 0.45, blue: 0.55, alpha: 1.0)),
-        (UIColor(red: 0.10, green: 0.12, blue: 0.20, alpha: 1.0), UIColor(red: 0.28, green: 0.32, blue: 0.45, alpha: 1.0))
-    ]
-
-    private let gradient = CAGradientLayer()
-    private let sheen = CAGradientLayer()
-    private let balanceLabel = UILabel()
-    private let captionLabel = UILabel()
-    private let stickerLabel = UILabel()
-    private let qrView = UIImageView()
-    private var stickerX: Double = 0.82
-    private var stickerY: Double = 0.28
-    var onStickerMoved: ((Double, Double) -> Void)?
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        self.layer.cornerRadius = 22.0
-        self.layer.masksToBounds = true
-
-        self.gradient.startPoint = CGPoint(x: 0.0, y: 0.0)
-        self.gradient.endPoint = CGPoint(x: 1.0, y: 1.0)
-        self.layer.addSublayer(self.gradient)
-
-        self.sheen.colors = [UIColor.white.withAlphaComponent(0.0).cgColor, UIColor.white.withAlphaComponent(0.28).cgColor, UIColor.white.withAlphaComponent(0.0).cgColor]
-        self.sheen.startPoint = CGPoint(x: 0.0, y: 0.5)
-        self.sheen.endPoint = CGPoint(x: 1.0, y: 0.5)
-        self.layer.addSublayer(self.sheen)
-
-        self.balanceLabel.font = UIFont.systemFont(ofSize: 30.0, weight: .heavy)
-        self.balanceLabel.textColor = .white
-        self.balanceLabel.adjustsFontSizeToFitWidth = true
-        self.balanceLabel.minimumScaleFactor = 0.5
-        self.addSubview(self.balanceLabel)
-
-        self.captionLabel.font = UIFont.systemFont(ofSize: 13.0, weight: .semibold)
-        self.captionLabel.textColor = UIColor.white.withAlphaComponent(0.75)
-        self.captionLabel.text = "GRAM · КАРТА"
-        self.addSubview(self.captionLabel)
-
-        self.qrView.image = UIImage(systemName: "qrcode")
-        self.qrView.tintColor = UIColor.white.withAlphaComponent(0.9)
-        self.qrView.contentMode = .scaleAspectFit
-        self.addSubview(self.qrView)
-
-        self.stickerLabel.font = UIFont.systemFont(ofSize: 44.0)
-        self.stickerLabel.isUserInteractionEnabled = true
-        self.stickerLabel.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(self.stickerPanned(_:))))
-        self.addSubview(self.stickerLabel)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func apply(_ extras: PampGramVisualExtras) {
-        let index = min(PampGramGramCardView.backgrounds.count - 1, max(0, extras.cardBackground))
-        let pair = PampGramGramCardView.backgrounds[index]
-        self.gradient.colors = [pair.0.cgColor, pair.1.cgColor]
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.groupingSeparator = " "
-        let amount = formatter.string(from: NSNumber(value: extras.cardBalance)) ?? "\(extras.cardBalance)"
-        self.balanceLabel.text = "◆ \(amount) GRAM"
-        self.stickerLabel.text = extras.cardSticker
-        self.stickerLabel.isHidden = extras.cardSticker.isEmpty
-        self.stickerX = extras.cardStickerX
-        self.stickerY = extras.cardStickerY
-        self.setNeedsLayout()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let width = self.bounds.width
-        let height = self.bounds.height
-        self.gradient.frame = self.bounds
-        self.balanceLabel.frame = CGRect(x: 22.0, y: height * 0.36, width: width - 110.0, height: 40.0)
-        self.captionLabel.frame = CGRect(x: 22.0, y: height - 42.0, width: width - 44.0, height: 20.0)
-        self.qrView.frame = CGRect(x: width - 70.0, y: height * 0.34, width: 46.0, height: 46.0)
-        self.stickerLabel.sizeToFit()
-        let centerX = CGFloat(self.stickerX) * width
-        let centerY = CGFloat(self.stickerY) * height
-        self.stickerLabel.center = CGPoint(x: centerX, y: centerY)
-        let sheenWidth = width * 0.55
-        self.sheen.frame = CGRect(x: 0.0, y: 0.0, width: sheenWidth, height: height)
-        if self.sheen.animation(forKey: "sheen") == nil && width > 0.0 {
-            let animation = CABasicAnimation(keyPath: "transform.translation.x")
-            animation.fromValue = -sheenWidth
-            animation.toValue = width + sheenWidth
-            animation.duration = 2.8
-            animation.repeatCount = Float.infinity
-            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            self.sheen.add(animation, forKey: "sheen")
-        }
-    }
-
-    @objc private func stickerPanned(_ gesture: UIPanGestureRecognizer) {
-        guard self.bounds.width > 0.0, self.bounds.height > 0.0 else {
-            return
-        }
-        let point = gesture.location(in: self)
-        self.stickerX = min(0.95, max(0.05, Double(point.x / self.bounds.width)))
-        self.stickerY = min(0.9, max(0.1, Double(point.y / self.bounds.height)))
-        self.setNeedsLayout()
-        if gesture.state == .ended {
-            self.onStickerMoved?(self.stickerX, self.stickerY)
-        }
-    }
-}
-
 private final class PampGramCardScreenController: PampGramVisualPageController {
-    private let card = PampGramGramCardView()
     private let enableSwitch = UISwitch()
     private var balanceField = UITextField()
-    private var current = PampGramVisualExtras.default
 
     override func buildContent() {
-        self.card.translatesAutoresizingMaskIntoConstraints = false
-        self.card.heightAnchor.constraint(equalToConstant: 190.0).isActive = true
-        self.card.onStickerMoved = { [weak self] x, y in
-            self?.current.cardStickerX = x
-            self?.current.cardStickerY = y
-            self?.updateExtras { extras in
-                extras.cardStickerX = x
-                extras.cardStickerY = y
-            }
-        }
-        self.stack.addArrangedSubview(self.card)
+        let intro = self.makeLabel("Подменяет баланс в настоящем кошельке Telegram: на карточке кошелька («Open My Money»), в сумме в долларах и в плашке «Balance» под именем в профиле. Нужен созданный кошелёк в Telegram. Фон и наклейки карточки настраиваются в самом кошельке — это настоящий редактор Telegram.", size: 14.0, weight: .regular, color: self.secondaryColor)
+        self.stack.addArrangedSubview(intro)
 
-        let switchRow = UIStackView(arrangedSubviews: [self.makeLabel("Показывать карточку", size: 16.0, weight: .regular, color: self.primaryColor), self.enableSwitch])
+        let switchRow = UIStackView(arrangedSubviews: [self.makeLabel("Подменять баланс", size: 16.0, weight: .regular, color: self.primaryColor), self.enableSwitch])
         switchRow.axis = .horizontal
         switchRow.alignment = .center
         self.enableSwitch.addTarget(self, action: #selector(self.switchChanged), for: .valueChanged)
         self.balanceField = self.makeField(placeholder: "Баланс GRAM", keyboard: .numberPad)
         self.balanceField.addTarget(self, action: #selector(self.balanceChanged(_:)), for: .editingChanged)
-        self.stack.addArrangedSubview(self.makePanel(title: "Баланс", content: [switchRow, self.balanceField]))
-
-        var swatches: [UIView] = []
-        let swatchRow = UIStackView()
-        swatchRow.axis = .horizontal
-        swatchRow.distribution = .fillEqually
-        swatchRow.spacing = 8.0
-        for index in 0 ..< PampGramGramCardView.backgrounds.count {
-            let button = UIButton(type: .system)
-            button.tag = index
-            button.backgroundColor = PampGramGramCardView.backgrounds[index].0
-            button.layer.cornerRadius = 12.0
-            button.heightAnchor.constraint(equalToConstant: 40.0).isActive = true
-            button.addTarget(self, action: #selector(self.backgroundPressed(_:)), for: .touchUpInside)
-            swatchRow.addArrangedSubview(button)
-        }
-        swatches.append(swatchRow)
-        self.stack.addArrangedSubview(self.makePanel(title: "Фон", content: swatches))
-
-        let stickerRow = UIStackView()
-        stickerRow.axis = .horizontal
-        stickerRow.distribution = .fillEqually
-        stickerRow.spacing = 6.0
-        for symbol in ["🔥", "💎", "⭐️", "🚀", "🎁", "🐶"] {
-            let button = UIButton(type: .system)
-            button.setTitle(symbol, for: .normal)
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 28.0)
-            button.backgroundColor = UIColor(white: 0.5, alpha: 0.18)
-            button.layer.cornerRadius = 10.0
-            button.heightAnchor.constraint(equalToConstant: 46.0).isActive = true
-            button.addTarget(self, action: #selector(self.stickerPressed(_:)), for: .touchUpInside)
-            stickerRow.addArrangedSubview(button)
-        }
-        let removeButton = self.makeButton("Убрать наклейку", filled: false, action: #selector(self.removeStickerPressed))
-        self.stack.addArrangedSubview(self.makePanel(title: "Наклейка (тяните по карточке)", content: [stickerRow, removeButton]))
+        self.stack.addArrangedSubview(self.makePanel(title: "Баланс GRAM", content: [switchRow, self.balanceField]))
 
         self.loadExtras { [weak self] extras in
-            self?.current = extras
             self?.enableSwitch.isOn = extras.cardEnabled
             self?.balanceField.text = extras.cardBalance > 0 ? "\(extras.cardBalance)" : ""
-            self?.card.apply(extras)
         }
-        self.card.apply(self.current)
     }
 
     @objc private func switchChanged() {
         let value = self.enableSwitch.isOn
-        self.current.cardEnabled = value
         self.updateExtras { extras in
             extras.cardEnabled = value
         }
@@ -516,36 +339,8 @@ private final class PampGramCardScreenController: PampGramVisualPageController {
     @objc private func balanceChanged(_ field: UITextField) {
         let digits = String((field.text ?? "").filter { $0.isNumber }.prefix(12))
         let value = Int64(digits) ?? 0
-        self.current.cardBalance = value
-        self.card.apply(self.current)
         self.updateExtras { extras in
             extras.cardBalance = value
-        }
-    }
-
-    @objc private func backgroundPressed(_ sender: UIButton) {
-        let index = sender.tag
-        self.current.cardBackground = index
-        self.card.apply(self.current)
-        self.updateExtras { extras in
-            extras.cardBackground = index
-        }
-    }
-
-    @objc private func stickerPressed(_ sender: UIButton) {
-        let symbol = sender.title(for: .normal) ?? ""
-        self.current.cardSticker = symbol
-        self.card.apply(self.current)
-        self.updateExtras { extras in
-            extras.cardSticker = symbol
-        }
-    }
-
-    @objc private func removeStickerPressed() {
-        self.current.cardSticker = ""
-        self.card.apply(self.current)
-        self.updateExtras { extras in
-            extras.cardSticker = ""
         }
     }
 }
