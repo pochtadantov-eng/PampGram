@@ -338,6 +338,84 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
+# 9. Visual gift transfer through Telegram's own "Transfer" screen: the confirm alert shows the
+#    local 25-Star fee ("Transfer for ⭐25"), Telegram doesn't check the real Stars balance for a
+#    visual gift (the local fee is checked by sendGiftToPeer), and the transfer itself is local.
+# ---------------------------------------------------------------------------
+print("\n[9] Visual gift transfer: 25-Star fee in the original Transfer flow")
+
+replace_once(
+    Path("submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift"),
+    "profile grid transfer fee",
+    "                            let transferStars = gift.reference == nil ? 0 : (gift.transferStars ?? 0)\n",
+    "                            let transferStars = gift.reference == nil ? PampGramPhantomGiftManager.transferFeeStars : (gift.transferStars ?? 0)\n"
+    "                            if gift.reference == nil {\n"
+    "                                PampGramPhantomGiftManager.markPhantomTransfer(slug: uniqueGift.slug)\n"
+    "                            }\n",
+)
+replace_once(
+    Path("submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift"),
+    "gift screen transfer fee",
+    "            let transferStars = arguments.transferStars ?? 0\n",
+    "            let transferStars = arguments.reference == nil ? PampGramPhantomGiftManager.transferFeeStars : (arguments.transferStars ?? 0)\n"
+    "            if arguments.reference == nil {\n"
+    "                PampGramPhantomGiftManager.markPhantomTransfer(slug: gift.slug)\n"
+    "            }\n",
+)
+replace_once(
+    Path("submodules/TelegramUI/Sources/SharedAccountContext.swift"),
+    "transfer alert skips the real balance check for visual gifts",
+    "                    if transferStars > 0, let starsContext = context.starsContext, let starsState = starsContext.currentState {",
+    "                    if transferStars > 0, !PampGramPhantomTransferMarker.shared.contains(slug: gift.slug), let starsContext = context.starsContext, let starsState = starsContext.currentState {",
+)
+
+# ---------------------------------------------------------------------------
+# 10. Visual usernames in the real profile: listed as additional usernames next to the main
+#     one; tapping one opens Telegram's own collectible-username sheet with the local price/date.
+# ---------------------------------------------------------------------------
+print("\n[10] Visual usernames in the profile")
+
+profile_items_swift = Path(
+    "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift"
+)
+replace_once(
+    profile_items_swift,
+    "additional usernames include the visual ones",
+    "            let usernames = user.usernames.filter { $0.isActive && $0.username != mainUsername }\n"
+    "            if !usernames.isEmpty {\n"
+    "                additionalUsernames = presentationData.strings.Profile_AdditionalUsernames(String(usernames.map { \"@\\($0.username)\" }.joined(separator: \", \"))).string\n"
+    "            }\n",
+    "            var pampGramUsernameList = user.usernames.filter { $0.isActive && $0.username != mainUsername }.map { $0.username }\n"
+    "            if user.id == context.account.peerId {\n"
+    "                pampGramUsernameList.append(contentsOf: pampGramProfileVisuals.visualExtras.usernames.map { $0.name })\n"
+    "            }\n"
+    "            if !pampGramUsernameList.isEmpty {\n"
+    "                additionalUsernames = presentationData.strings.Profile_AdditionalUsernames(String(pampGramUsernameList.map { \"@\\($0)\" }.joined(separator: \", \"))).string\n"
+    "            }\n",
+)
+replace_once(
+    profile_items_swift,
+    "tapping a visual username opens the collectible sheet",
+    "                                interaction.openUsername(String(username[username.index(username.startIndex, offsetBy: 1)...]), false, progress)\n",
+    "                                let pampGramTapped = String(username[username.index(username.startIndex, offsetBy: 1)...])\n"
+    "                                if user.id == context.account.peerId, let visual = pampGramProfileVisuals.visualExtras.usernames.first(where: { $0.name.lowercased() == pampGramTapped.lowercased() }) {\n"
+    "                                    let info = TelegramCollectibleItemInfo(\n"
+    "                                        subject: .username(visual.name),\n"
+    "                                        purchaseDate: visual.boughtAt,\n"
+    "                                        currency: \"USD\",\n"
+    "                                        currencyAmount: visual.priceUsdCents,\n"
+    "                                        cryptoCurrency: \"TON\",\n"
+    "                                        cryptoCurrencyAmount: Int64((visual.priceTon * 1_000_000_000.0).rounded()),\n"
+    "                                        url: \"https://fragment.com/username/\\(visual.name)\"\n"
+    "                                    )\n"
+    "                                    let initialData = CollectibleItemInfoScreen.pampGramLocalInitialData(peer: EnginePeer(user), subject: .username(visual.name), info: info)\n"
+    "                                    interaction.getController()?.push(CollectibleItemInfoScreen(context: context, initialData: initialData))\n"
+    "                                } else {\n"
+    "                                    interaction.openUsername(pampGramTapped, false, progress)\n"
+    "                                }\n",
+)
+
+# ---------------------------------------------------------------------------
 print("\nPampGram: feature hooks done.")
 print("  ACTIVE: ChatTimeMachine, VideoMessageSaver, FakeBadge, FakeSubscribers, FakeDeletedAccount")
 print("  CONTEXT MENU ONLY: FakeForward, FakeReactions, FakeActivity, InvisibleMessage, ReactionSpammer,")

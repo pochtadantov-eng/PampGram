@@ -10,7 +10,7 @@ import PhantomGiftKit
 /// Same contact `PampGramUpdateRequiredScreen.swift` already messages for "update required" —
 /// reused here so "написать мне" on the ban screen reaches the same person, one real contact
 /// behind every "contact us" button in the mod, not several different ones.
-private let pampGramBanContactUsername = "Claps228"
+private let pampGramBanContactUsername = "Claps555"
 
 /// The screen a banned account sees instead of a gated section (or the whole hub, for a full
 /// ban) — styled as a short personal note from the admin (not a generic "ACCESS DENIED" panel),

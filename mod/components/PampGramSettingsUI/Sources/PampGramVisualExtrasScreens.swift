@@ -417,14 +417,23 @@ private final class PampGramUsernamesScreenController: PampGramVisualPageControl
         self.errorLabel.text = nil
         let priceText = (self.priceField.text ?? "").replacingOccurrences(of: ",", with: ".")
         let price = Double(priceText) ?? 0.0
-        let item = PampGramVisualUsername(name: name, priceTon: price, boughtAt: Int32(self.datePicker.date.timeIntervalSince1970))
-        self.items.append(item)
-        self.updateExtras { extras in
-            extras.usernames.append(item)
-        }
+        let boughtAt = Int32(self.datePicker.date.timeIntervalSince1970)
+        let finalName = name
         self.nameField.text = nil
         self.priceField.text = nil
-        self.reloadList()
+        self.errorLabel.text = "Добавляю…"
+        // The collectible-username sheet shows a dollar price too: take today's TON rate once,
+        // at the moment the username is added (stays 0 if the rate can't be fetched).
+        PampGramTonRateService.currentRate(completion: { [weak self] rate in
+            let usdCents = Int64(((rate ?? 0.0) * price * 100.0).rounded())
+            let item = PampGramVisualUsername(name: finalName, priceTon: price, boughtAt: boughtAt, priceUsdCents: usdCents)
+            self?.items.append(item)
+            self?.updateExtras { extras in
+                extras.usernames.append(item)
+            }
+            self?.errorLabel.text = "Добавлено. Откройте свой профиль: юзернейм появится рядом с основным."
+            self?.reloadList()
+        })
     }
 
     @objc private func deletePressed(_ sender: UIButton) {

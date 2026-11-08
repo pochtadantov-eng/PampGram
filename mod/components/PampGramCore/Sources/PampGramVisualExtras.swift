@@ -7,11 +7,23 @@ public struct PampGramVisualUsername: Codable, Equatable {
     public var name: String
     public var priceTon: Double
     public var boughtAt: Int32
+    /// The same price in US cents at the TON rate of the moment it was added (shown by
+    /// Telegram's collectible-username sheet next to the TON price). 0 = unknown.
+    public var priceUsdCents: Int64
 
-    public init(name: String, priceTon: Double, boughtAt: Int32) {
+    public init(name: String, priceTon: Double, boughtAt: Int32, priceUsdCents: Int64 = 0) {
         self.name = name
         self.priceTon = priceTon
         self.boughtAt = boughtAt
+        self.priceUsdCents = priceUsdCents
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        self.priceTon = try container.decodeIfPresent(Double.self, forKey: .priceTon) ?? 0.0
+        self.boughtAt = try container.decodeIfPresent(Int32.self, forKey: .boughtAt) ?? 0
+        self.priceUsdCents = try container.decodeIfPresent(Int64.self, forKey: .priceUsdCents) ?? 0
     }
 }
 
