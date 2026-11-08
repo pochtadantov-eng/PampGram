@@ -206,6 +206,41 @@ public enum PampGramLocalLedgerStore {
     }
 }
 
+/// The "Галочка рядом с именем" choice in the profile visuals editor. Exactly one of these
+/// renders next to the account owner's own name — see `PeerInfoHeaderNode`'s `credibilityIcon`
+/// override in `apply-profile-visuals.py` for where it actually draws (a recolored version of
+/// Telegram's own verified-checkmark glyph, never the real `peer.isVerified`/`isPremium` fields).
+public enum PampGramNameBadgeStyle: String, CaseIterable {
+    case none
+    case major
+    case hold
+
+    public var displayName: String {
+        switch self {
+        case .none: return "Нет"
+        case .major: return "Major"
+        case .hold: return "Hold"
+        }
+    }
+}
+
+extension PampGramNameBadgeStyle: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawValue = try container.decode(String.self, forKey: .value)
+        self = PampGramNameBadgeStyle(rawValue: rawValue) ?? .none
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.rawValue, forKey: .value)
+    }
+}
+
 public struct PampGramProfileVisualState: Codable, Equatable {
     public var ratingEnabled: Bool
     public var ratingValue: Int64
@@ -215,6 +250,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
     public var anonymousNumberPurchasedAt: Int32
     public var anonymousNumberPriceTonNanos: Int64
     public var anonymousNumberPriceUsdCents: Int64
+    public var nameBadgeStyle: PampGramNameBadgeStyle
 
     public static var `default`: PampGramProfileVisualState {
         return PampGramProfileVisualState(
@@ -225,11 +261,12 @@ public struct PampGramProfileVisualState: Codable, Equatable {
             anonymousNumber: "+888 0000 0000",
             anonymousNumberPurchasedAt: Int32(Date().timeIntervalSince1970),
             anonymousNumberPriceTonNanos: 0,
-            anonymousNumberPriceUsdCents: 0
+            anonymousNumberPriceUsdCents: 0,
+            nameBadgeStyle: .none
         )
     }
 
-    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64, anonymousNumberPriceUsdCents: Int64) {
+    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64, anonymousNumberPriceUsdCents: Int64, nameBadgeStyle: PampGramNameBadgeStyle) {
         self.ratingEnabled = ratingEnabled
         self.ratingValue = ratingValue
         self.ratingPoints = ratingPoints
@@ -238,6 +275,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumberPurchasedAt = anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = anonymousNumberPriceTonNanos
         self.anonymousNumberPriceUsdCents = anonymousNumberPriceUsdCents
+        self.nameBadgeStyle = nameBadgeStyle
     }
 
     public init(from decoder: Decoder) throws {
@@ -251,6 +289,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumberPurchasedAt = try container.decodeIfPresent(Int32.self, forKey: .anonymousNumberPurchasedAt) ?? defaults.anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceTonNanos) ?? defaults.anonymousNumberPriceTonNanos
         self.anonymousNumberPriceUsdCents = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceUsdCents) ?? defaults.anonymousNumberPriceUsdCents
+        self.nameBadgeStyle = try container.decodeIfPresent(PampGramNameBadgeStyle.self, forKey: .nameBadgeStyle) ?? defaults.nameBadgeStyle
     }
 }
 
@@ -267,6 +306,61 @@ public enum PampGramProfileVisualStore {
         return postbox.preferencesView(keys: [PampGramPreferencesKeys.profileVisuals])
         |> map { view in
             view.values[PampGramPreferencesKeys.profileVisuals]?.get(PampGramProfileVisualState.self) ?? .default
+        }
+        |> distinctUntilChanged
+    }
+}
+
+/// "Карточка GRAM" (Подарки → Карточка GRAM): a cosmetic wallet-card editor for the same local
+/// `fakeTonBalanceNanos` counter the rest of PampGram already shows as "TON/GRAM" — this struct
+/// only holds the card's own look (whether it's shown at all, its background swatch, and where
+/// one emoji "sticker" sits on it). The balance itself lives in `PampGramSettings`, so editing it
+/// here and editing it from "Дополнительно → TON" stay in sync automatically.
+public struct PampGramGramCardState: Codable, Equatable {
+    public var visible: Bool
+    public var backgroundIndex: Int32
+    public var stickerEmoji: String?
+    /// Sticker position as a 0...1 fraction of the card's own width/height, not points — so the
+    /// same saved position still looks right if the card is ever drawn at a different size.
+    public var stickerX: Double
+    public var stickerY: Double
+
+    public static var `default`: PampGramGramCardState {
+        return PampGramGramCardState(visible: true, backgroundIndex: 0, stickerEmoji: nil, stickerX: 0.5, stickerY: 0.5)
+    }
+
+    public init(visible: Bool, backgroundIndex: Int32, stickerEmoji: String?, stickerX: Double, stickerY: Double) {
+        self.visible = visible
+        self.backgroundIndex = backgroundIndex
+        self.stickerEmoji = stickerEmoji
+        self.stickerX = stickerX
+        self.stickerY = stickerY
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = PampGramGramCardState.default
+        self.visible = try container.decodeIfPresent(Bool.self, forKey: .visible) ?? defaults.visible
+        self.backgroundIndex = try container.decodeIfPresent(Int32.self, forKey: .backgroundIndex) ?? defaults.backgroundIndex
+        self.stickerEmoji = try container.decodeIfPresent(String.self, forKey: .stickerEmoji) ?? defaults.stickerEmoji
+        self.stickerX = try container.decodeIfPresent(Double.self, forKey: .stickerX) ?? defaults.stickerX
+        self.stickerY = try container.decodeIfPresent(Double.self, forKey: .stickerY) ?? defaults.stickerY
+    }
+}
+
+public enum PampGramGramCardStore {
+    public static func state(transaction: Transaction) -> PampGramGramCardState {
+        return transaction.getPreferencesEntry(key: PampGramPreferencesKeys.gramCard)?.get(PampGramGramCardState.self) ?? .default
+    }
+
+    public static func update(transaction: Transaction, _ f: (PampGramGramCardState) -> PampGramGramCardState) {
+        transaction.setPreferencesEntry(key: PampGramPreferencesKeys.gramCard, value: PreferencesEntry(f(self.state(transaction: transaction))))
+    }
+
+    public static func signal(postbox: Postbox) -> Signal<PampGramGramCardState, NoError> {
+        return postbox.preferencesView(keys: [PampGramPreferencesKeys.gramCard])
+        |> map { view in
+            view.values[PampGramPreferencesKeys.gramCard]?.get(PampGramGramCardState.self) ?? .default
         }
         |> distinctUntilChanged
     }

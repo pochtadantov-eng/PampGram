@@ -325,4 +325,115 @@ replace_once(
 """,
 )
 
+# "Галочка рядом с именем" (badge next to the account owner's own name): reuses Telegram's own
+# verified-checkmark glyph, just recolored, by adding a case to the private `CredibilityIcon`
+# enum this file already branches on for the rating/number overrides' neighbor,
+# `self.currentStarRating`. Never touches `peer.isVerified`/`peer.isPremium` themselves — those
+# still read the real server values everywhere else in the app; this only ever wins the local
+# `credibilityIcon` choice for the account owner's own profile, outside Settings.
+replace_once(
+    header_path,
+    "add a pampGramBadge case to CredibilityIcon",
+    """    private enum CredibilityIcon: Equatable {
+        case none
+        case premium
+        case verified
+        case fake
+        case scam
+        case emojiStatus(PeerEmojiStatus)
+    }""",
+    """    private enum CredibilityIcon: Equatable {
+        case none
+        case premium
+        case verified
+        case fake
+        case scam
+        case emojiStatus(PeerEmojiStatus)
+        case pampGramBadge(UIColor)
+    }""",
+)
+
+replace_once(
+    header_path,
+    "override credibilityIcon with the local badge on the owner's own profile",
+    """            if let verificationIconFileId = peer.verificationIconFileId {
+                verifiedIcon = .emojiStatus(PeerEmojiStatus(content: .emoji(fileId: verificationIconFileId), expirationDate: nil))
+            }
+        }""",
+    """            if let verificationIconFileId = peer.verificationIconFileId {
+                verifiedIcon = .emojiStatus(PeerEmojiStatus(content: .emoji(fileId: verificationIconFileId), expirationDate: nil))
+            }
+
+            // Local-only, like the visual rating above: only ever wins on the account owner's
+            // own profile, outside Settings, and never changes what anyone else's client shows.
+            if self.isMyProfile && !self.isSettings {
+                switch pampGramProfileVisuals.nameBadgeStyle {
+                case .major:
+                    credibilityIcon = .pampGramBadge(UIColor(rgb: 0x8e44ec))
+                case .hold:
+                    credibilityIcon = .pampGramBadge(UIColor(rgb: 0x34c759))
+                case .none:
+                    break
+                }
+            }
+        }""",
+)
+
+replace_once(
+    header_path,
+    "draw the pampGramBadge case as a recolored verified checkmark",
+    """            case let .emojiStatus(emojiStatus):
+                currentEmojiStatus = emojiStatus
+                emojiRegularStatusContent = .animation(content: .customEmoji(fileId: emojiStatus.fileId), size: CGSize(width: 80.0, height: 80.0), placeholderColor: presentationData.theme.list.mediaPlaceholderColor, themeColor: navigationContentsAccentColor, loopMode: .forever)
+                emojiExpandedStatusContent = .animation(content: .customEmoji(fileId: emojiStatus.fileId), size: CGSize(width: 80.0, height: 80.0), placeholderColor: navigationContentsAccentColor, themeColor: navigationContentsAccentColor, loopMode: .forever)
+            }""",
+    """            case let .emojiStatus(emojiStatus):
+                currentEmojiStatus = emojiStatus
+                emojiRegularStatusContent = .animation(content: .customEmoji(fileId: emojiStatus.fileId), size: CGSize(width: 80.0, height: 80.0), placeholderColor: presentationData.theme.list.mediaPlaceholderColor, themeColor: navigationContentsAccentColor, loopMode: .forever)
+                emojiExpandedStatusContent = .animation(content: .customEmoji(fileId: emojiStatus.fileId), size: CGSize(width: 80.0, height: 80.0), placeholderColor: navigationContentsAccentColor, themeColor: navigationContentsAccentColor, loopMode: .forever)
+            case let .pampGramBadge(color):
+                emojiRegularStatusContent = .verified(fillColor: color, foregroundColor: .white, sizeType: .large)
+                emojiExpandedStatusContent = .verified(fillColor: color, foregroundColor: .white, sizeType: .large)
+            }""",
+)
+
+replace_once(
+    header_path,
+    "add a hasPampGramBadge title-width flag",
+    """        var isPremium = false
+        var isVerified = false
+        var isFake = false
+        let titleStringText: String""",
+    """        var isPremium = false
+        var isVerified = false
+        var isFake = false
+        var hasPampGramBadge = false
+        let titleStringText: String""",
+)
+
+replace_once(
+    header_path,
+    "set hasPampGramBadge for the account owner's own profile",
+    """        if let peer = peer {
+            isPremium = peer.isPremium
+            isVerified = peer.isVerified
+            isFake = peer.isFake || peer.isScam
+        }""",
+    """        if let peer = peer {
+            isPremium = peer.isPremium
+            isVerified = peer.isVerified
+            isFake = peer.isFake || peer.isScam
+            if self.isMyProfile && !self.isSettings && pampGramProfileVisuals.nameBadgeStyle != .none {
+                hasPampGramBadge = true
+            }
+        }""",
+)
+
+replace_once(
+    header_path,
+    "reserve title width for the local badge too",
+    """        var titleConstrainedSize = CGSize(width: width - stripLeft - stripRight - textSideInset * 2.0 - (isPremium || isVerified || isFake ? 20.0 : 0.0), height: .greatestFiniteMagnitude)""",
+    """        var titleConstrainedSize = CGSize(width: width - stripLeft - stripRight - textSideInset * 2.0 - (isPremium || isVerified || isFake || hasPampGramBadge ? 20.0 : 0.0), height: .greatestFiniteMagnitude)""",
+)
+
 print("PampGram: profile visual integration complete.")

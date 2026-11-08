@@ -27,6 +27,8 @@ private final class PampGramSettingsArguments {
     let deleteAllPhantomGifts: () -> Void
     let openVisualNumberEditor: () -> Void
     let openVisualRatingEditor: () -> Void
+    let openBadgeStyle: () -> Void
+    let openGramCard: () -> Void
     let openCollectionMarket: () -> Void
     let openStarsLedger: () -> Void
     let openTonLedger: () -> Void
@@ -45,6 +47,8 @@ private final class PampGramSettingsArguments {
         deleteAllPhantomGifts: @escaping () -> Void,
         openVisualNumberEditor: @escaping () -> Void,
         openVisualRatingEditor: @escaping () -> Void,
+        openBadgeStyle: @escaping () -> Void,
+        openGramCard: @escaping () -> Void,
         openCollectionMarket: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
         openTonLedger: @escaping () -> Void
@@ -62,6 +66,8 @@ private final class PampGramSettingsArguments {
         self.deleteAllPhantomGifts = deleteAllPhantomGifts
         self.openVisualNumberEditor = openVisualNumberEditor
         self.openVisualRatingEditor = openVisualRatingEditor
+        self.openBadgeStyle = openBadgeStyle
+        self.openGramCard = openGramCard
         self.openCollectionMarket = openCollectionMarket
         self.openStarsLedger = openStarsLedger
         self.openTonLedger = openTonLedger
@@ -101,6 +107,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case tonBalanceHeader(String)
     case fakeTonDisplayToggle(String, Bool)
     case tonBalance(String, String)
+    case gramCard(String, String)
     case tonBalanceFooter(String)
 
     case localRublesHeader(String)
@@ -114,6 +121,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case profileVisualsHeader(String)
     case visualNumberEditor(String, String)
     case visualRating(String, String)
+    case badgeStyle(String, String)
     case collectionHeader(String)
     case collectionMarket(String, String)
     case collectionFooter(String)
@@ -141,13 +149,13 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.phantomGifts.rawValue
         case .starsBalanceHeader, .fakeStarsDisplayToggle, .starsBalance, .starsBalanceFooter:
             return PampGramSettingsSection.starsBalance.rawValue
-        case .tonBalanceHeader, .fakeTonDisplayToggle, .tonBalance, .tonBalanceFooter:
+        case .tonBalanceHeader, .fakeTonDisplayToggle, .tonBalance, .gramCard, .tonBalanceFooter:
             return PampGramSettingsSection.tonBalance.rawValue
         case .localRublesHeader, .localRublesPurchaseToggle, .localRublesBalance, .localRublesFooter:
             return PampGramSettingsSection.localRubles.rawValue
         case .fromHimGiftsToggle, .fromHimGiftsFooter:
             return PampGramSettingsSection.fromHimGifts.rawValue
-        case .profileVisualsHeader, .visualNumberEditor, .visualRating:
+        case .profileVisualsHeader, .visualNumberEditor, .visualRating, .badgeStyle:
             return PampGramSettingsSection.profileVisuals.rawValue
         case .collectionHeader, .collectionMarket, .collectionFooter:
             return PampGramSettingsSection.collectionMarket.rawValue
@@ -165,39 +173,41 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .visualToggle: return -2
         case .visualFooter: return -1
         case .aboutText: return 1
-        case .phantomGiftsHeader: return 2
-        case .phantomGiftsToggle: return 3
-        case .phantomGiftsFooter: return 4
-        case .fromHimGiftsToggle: return 5
-        case .fromHimGiftsFooter: return 6
-        case .starsBalanceHeader: return 7
-        case .fakeStarsDisplayToggle: return 8
-        case .starsBalance: return 9
-        case .starsBalanceFooter: return 10
-        case .tonBalanceHeader: return 11
-        case .fakeTonDisplayToggle: return 12
-        case .tonBalance: return 13
-        case .tonBalanceFooter: return 14
-        case .localRublesHeader: return 15
-        case .localRublesPurchaseToggle: return 16
-        case .localRublesBalance: return 17
-        case .localRublesFooter: return 18
-        case .profileVisualsHeader: return 19
-        case .visualNumberEditor: return 20
-        case .visualRating: return 21
-        case .collectionHeader: return 22
-        case .collectionMarket: return 23
-        case .collectionFooter: return 24
-        case .ledgerHeader: return 25
-        case .starsLedger: return 26
-        case .tonLedger: return 27
-        case .ledgerFooter: return 29
-        case .resetBalances: return 30
-        case .resetBalancesFooter: return 31
-        case .storageHeader: return 32
-        case .phantomGiftsCount: return 33
-        case .deleteAllPhantomGifts: return 34
-        case .storageFooter: return 35
+        case .phantomGiftsHeader: return 10
+        case .phantomGiftsToggle: return 11
+        case .phantomGiftsFooter: return 12
+        case .fromHimGiftsToggle: return 20
+        case .fromHimGiftsFooter: return 21
+        case .starsBalanceHeader: return 30
+        case .fakeStarsDisplayToggle: return 31
+        case .starsBalance: return 32
+        case .starsBalanceFooter: return 33
+        case .tonBalanceHeader: return 40
+        case .fakeTonDisplayToggle: return 41
+        case .tonBalance: return 42
+        case .gramCard: return 43
+        case .tonBalanceFooter: return 44
+        case .localRublesHeader: return 50
+        case .localRublesPurchaseToggle: return 51
+        case .localRublesBalance: return 52
+        case .localRublesFooter: return 53
+        case .profileVisualsHeader: return 60
+        case .visualNumberEditor: return 61
+        case .visualRating: return 62
+        case .badgeStyle: return 63
+        case .collectionHeader: return 70
+        case .collectionMarket: return 71
+        case .collectionFooter: return 72
+        case .ledgerHeader: return 80
+        case .starsLedger: return 81
+        case .tonLedger: return 82
+        case .ledgerFooter: return 83
+        case .resetBalances: return 90
+        case .resetBalancesFooter: return 91
+        case .storageHeader: return 100
+        case .phantomGiftsCount: return 101
+        case .deleteAllPhantomGifts: return 102
+        case .storageFooter: return 103
         }
     }
 
@@ -248,6 +258,10 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.editTonBalance()
             })
+        case let .gramCard(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "creditcard.fill", backgroundColor: UIColor(rgb: 0x0098ea)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openGramCard()
+            })
         case let .fromHimGiftsToggle(title, value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleFromHimGifts(value)
@@ -256,6 +270,8 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualNumberEditor)
         case let .visualRating(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualRatingEditor)
+        case let .badgeStyle(title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openBadgeStyle)
         case let .collectionMarket(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openCollectionMarket)
         case let .starsLedger(title, label):
@@ -391,7 +407,7 @@ private func parseRublesTopUp(_ text: String) -> Int64? {
     return whole * 100 + fraction
 }
 
-private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, phantomGiftCount: Int) -> [PampGramSettingsEntry] {
+private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals: PampGramProfileVisualState, gramCard: PampGramGramCardState, phantomGiftCount: Int) -> [PampGramSettingsEntry] {
     var entries: [PampGramSettingsEntry] = []
 
     entries.append(.visualToggle(settings.masterEnabled))
@@ -414,6 +430,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.tonBalanceHeader("ТОНЫ"))
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.tonBalance("TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
+    entries.append(.gramCard("Карточка GRAM", gramCard.visible ? "Показана" : "Скрыта"))
     entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM, независимо от звёзд."))
 
     entries.append(.localRublesHeader("РУБЛИ ДЛЯ ПОПОЛНЕНИЯ ЗВЁЗД"))
@@ -426,6 +443,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.visualNumberEditor("Визуальный +888", visualNumberLabel))
     let visualRatingLabel = profileVisuals.ratingEnabled ? "Уровень \(max(1, profileVisuals.ratingValue))" : "Настроить"
     entries.append(.visualRating("Визуальный рейтинг", visualRatingLabel))
+    entries.append(.badgeStyle("Галочка рядом с именем", profileVisuals.nameBadgeStyle.displayName))
 
     entries.append(.collectionHeader("КОЛЛЕКЦИЯ И МАРКЕТ"))
     entries.append(.collectionMarket("Коллекция и маркет", "\(phantomGiftCount) подарков"))
@@ -612,6 +630,8 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         },
         openVisualNumberEditor: { presentNumberEditorImpl?() },
         openVisualRatingEditor: { presentRatingEditorImpl?() },
+        openBadgeStyle: { pushControllerImpl?(pampGramBadgeStyleController(context: context)) },
+        openGramCard: { pushControllerImpl?(pampGramGramCardController(context: context)) },
         openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
         openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },
         openTonLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .ton)) }
@@ -621,10 +641,11 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         context.sharedContext.presentationData,
         PampGramCore.rawSettingsSignal(postbox: context.account.postbox),
         PampGramProfileVisualStore.signal(postbox: context.account.postbox),
+        PampGramGramCardStore.signal(postbox: context.account.postbox),
         PampGramPhantomGiftStore.allGiftsSignal(context: context)
     )
     |> deliverOnMainQueue
-    |> map { presentationData, settings, profileVisuals, phantomGifts -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, settings, profileVisuals, gramCard, phantomGifts -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Подарки"),
@@ -635,7 +656,7 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: pampGramSettingsEntries(settings: settings, profileVisuals: profileVisuals, phantomGiftCount: phantomGifts.count),
+            entries: pampGramSettingsEntries(settings: settings, profileVisuals: profileVisuals, gramCard: gramCard, phantomGiftCount: phantomGifts.count),
             style: .blocks,
             animateChanges: true
         )
