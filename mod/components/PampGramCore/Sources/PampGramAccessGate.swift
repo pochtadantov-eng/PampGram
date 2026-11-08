@@ -364,45 +364,56 @@ public final class PampGramAccessGate {
         let isAdmin = userId == PampGramSubscriptionAPI.adminAccountId
         let transactionSignal = postbox.transaction { transaction -> Void in
             let raw = PampGramCore.rawSettings(transaction: transaction)
-            var needsWrite = false
-            if raw.isOwnerAccount && !isAdmin {
-                needsWrite = true
+            if PampGramAccessGate.needsEnforcement(raw: raw, action: action, isAdmin: isAdmin) {
+                PampGramCore.updateSettings(transaction: transaction, { settings in
+                    return PampGramAccessGate.enforced(settings, action: action, isAdmin: isAdmin)
+                })
             }
-            if action == 1 && raw.bannedLocally {
-                needsWrite = true
-            }
-            if action >= 2 && !raw.bannedLocally {
-                needsWrite = true
-            }
-            if action == 3 && (raw.fakeStarsBalance != 0 || raw.fakeTonBalanceNanos != 0 || raw.localRublesBalanceKopecks != 0) {
-                needsWrite = true
-            }
-            guard needsWrite else {
-                return
-            }
-            PampGramCore.updateSettings(transaction: transaction, { settings in
-                var settings = settings
-                // The owner flag is only ever legitimate on the admin's own account; a copy of
-                // it on any other account means the stored settings were edited.
-                if settings.isOwnerAccount && !isAdmin {
-                    settings.isOwnerAccount = false
-                }
-                if action == 1 {
-                    settings.bannedLocally = false
-                } else if action >= 2 {
-                    settings.bannedLocally = true
-                }
-                if action == 3 {
-                    settings.fakeStarsBalance = 0
-                    settings.fakeTonBalanceNanos = 0
-                    settings.localRublesBalanceKopecks = 0
-                }
-                return settings
-            })
         }
         let _ = (transactionSignal |> deliverOn(Queue.concurrentDefaultQueue())).start(next: { _ in
             PampGramAccessGate.shared.noteEnforced(userId: userId, locked: action >= 2)
         })
+    }
+
+    /// Kept out of the transaction closure on purpose: the Swift 6.4 optimizer crashed
+    /// ("cannot get borrow introducers", SimplifyCFG) on this logic when it was written inline
+    /// as a guard/early-return over the large settings struct.
+    @inline(never)
+    private static func needsEnforcement(raw: PampGramSettings, action: Int, isAdmin: Bool) -> Bool {
+        if raw.isOwnerAccount && !isAdmin {
+            return true
+        }
+        if action == 1 {
+            return raw.bannedLocally
+        }
+        if action >= 2 && !raw.bannedLocally {
+            return true
+        }
+        if action == 3 {
+            return raw.fakeStarsBalance != 0 || raw.fakeTonBalanceNanos != 0 || raw.localRublesBalanceKopecks != 0
+        }
+        return false
+    }
+
+    @inline(never)
+    private static func enforced(_ settings: PampGramSettings, action: Int, isAdmin: Bool) -> PampGramSettings {
+        var result = settings
+        // The owner flag is only ever legitimate on the admin's own account; a copy of it on
+        // any other account means the stored settings were edited.
+        if result.isOwnerAccount && !isAdmin {
+            result.isOwnerAccount = false
+        }
+        if action == 1 {
+            result.bannedLocally = false
+        } else if action >= 2 {
+            result.bannedLocally = true
+        }
+        if action == 3 {
+            result.fakeStarsBalance = 0
+            result.fakeTonBalanceNanos = 0
+            result.localRublesBalanceKopecks = 0
+        }
+        return result
     }
 
     private func noteEnforced(userId: Int64, locked: Bool) {
