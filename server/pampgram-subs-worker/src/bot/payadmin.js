@@ -11,7 +11,7 @@ import {
 import { fulfillOrder } from "./shop.js";
 import { getText } from "./texts.js";
 import { renderDetails, manualAmount, formatAmount, orderPrice, reviewButtons } from "./pay.js";
-import { isTonAddress } from "./ton.js";
+import { isTonAddress, tonRubRate, rubToTon } from "./ton.js";
 
 const CANCEL = kb([[btn("✖️ Отмена", "a:cancel")]]);
 
@@ -20,7 +20,17 @@ const DETAILS_HELP =
 const RATE_HELP =
 	"Цена за 1 ⭐ в валюте этого способа: число и валюта. Сумма тарифа = цена в ⭐ × курс.\nПримеры: <code>1.8 ₽</code>, <code>0.02 USDT</code>, <code>0.9 грн</code>";
 
-const TON_HELP = "Адрес вашего TON-кошелька (Tonkeeper → Получить → скопировать адрес), например UQ…. Курс способа должен быть в TON (например «0.0045 TON» за 1 ⭐). Чтобы выключить автопроверку — отправьте «-».";
+const TON_HELP = "Отправьте адрес вашего TON-кошелька: Tonkeeper → «Получить» → скопировать адрес (начинается с UQ или EQ).";
+const RUB_RATE_HELP = "Сколько рублей стоит 1 ⭐ для этого способа? Например: 1.8 — тогда тариф за 500 ⭐ будет стоить 900 ₽, а в TON бот пересчитает сам по текущему курсу.";
+
+function parseRub(text) {
+	const match = /^(\d+(?:[.,]\d+)?)\s*(?:₽|руб\.?|р\.?|rub)?$/i.exec(text);
+	if (!match) {
+		return null;
+	}
+	const rate = Number(match[1].replace(",", "."));
+	return rate > 0 && rate < 1e6 ? rate : null;
+}
 
 export function parseRate(text) {
 	const match = /^(\d+(?:[.,]\d+)?)\s*(\S{1,8})$/.exec(text.trim());
@@ -35,8 +45,9 @@ export function parseRate(text) {
 
 export async function showPayList(ctx) {
 	const methods = await getPayMethods(ctx.env);
-	const rows = methods.map((method) => [btn(`${method.active ? "✅" : "⏸"} ${method.kind === "stars" ? "⭐" : "💳"} ${method.title}`.slice(0, 60), `a:p:${method.id}`)]);
-	rows.push([btn("➕ Добавить способ", "a:pa")]);
+	const rows = methods.map((method) => [btn(`${method.active ? "✅" : "⏸"} ${method.kind === "stars" ? "⭐" : method.kind === "ton" ? "💎" : "💳"} ${method.title}`.slice(0, 60), `a:p:${method.id}`)]);
+	rows.push([btn("➕ TON на мой кошелёк (Tonkeeper)", "a:pat")]);
+	rows.push([btn("➕ Другой способ (вручную)", "a:pa")]);
 	rows.push([btn("← Админка", "a:home")]);
 	return show(
 		ctx,
@@ -58,15 +69,36 @@ export async function showPayCard(ctx, id) {
 			kb([[btn(method.active ? "⏸ Выключить" : "▶️ Включить", `a:pt:${id}`)], [btn("← К способам", "a:p")]])
 		);
 	}
+	if (method.kind === "ton") {
+		const rate = await tonRubRate(ctx.env);
+		const sample = (await getTariffs(ctx.env)).find((item) => item.active);
+		const rub = sample ? manualAmount(method, sample) : null;
+		const lines = [
+			`💎 <b>${esc(method.title)}</b>`,
+			`Кошелёк: <code>${esc(method.tonAddress ?? "не задан")}</code>`,
+			`Цена: 1 ⭐ = ${esc(method.rate)} ₽, в TON пересчитывается по курсу при каждом заказе.`,
+			rate ? `Курс сейчас: 1 TON ≈ ${esc(formatAmount(rate, "₽"))}` : "Курс сейчас недоступен.",
+			sample && rate ? `Пример: ${esc(sample.title)} — ${esc(formatAmount(rub, "₽"))} ≈ ${esc(formatAmount(rubToTon(rub, rate), "TON"))}` : "",
+			`Статус: ${method.active ? "включён" : "выключен"}`,
+			"",
+			"Покупатель переводит TON с уникальным комментарием, бот сам находит платёж в блокчейне и выдаёт ключ.",
+		].filter(Boolean);
+		return show(
+			ctx,
+			lines.join("\n"),
+			kb([
+				[btn(method.active ? "⏸ Выключить" : "▶️ Включить", `a:pt:${id}`), btn("✏️ Название", `a:pe:${id}:title`)],
+				[btn("💎 Кошелёк", `a:pe:${id}:ton`), btn("💲 ₽ за 1 ⭐", `a:pe:${id}:rate`)],
+				[btn("🗑 Удалить", `a:pdel:${id}`), btn("← К способам", "a:p")],
+			])
+		);
+	}
 	const tariff = (await getTariffs(ctx.env)).find((item) => item.active);
 	const example = tariff ? `\nПример: ${esc(tariff.title)} — ${esc(formatAmount(manualAmount(method, tariff), method.currency))}` : "";
 	const text = [
 		`💳 <b>${esc(method.title)}</b>`,
 		`Курс: 1 ⭐ = ${esc(method.rate)} ${esc(method.currency)}${example}`,
 		`Статус: ${method.active ? "включён" : "выключен"}`,
-		method.tonAddress
-			? `💎 Автопроверка TON: <code>${esc(method.tonAddress)}</code>${String(method.currency).toUpperCase() === "TON" ? "" : " (работает только при курсе в TON)"}`
-			: "💎 Автопроверка TON: выключена",
 		"",
 		"<b>Реквизиты (как увидит покупатель)</b>",
 		renderDetails(method.details),
@@ -77,7 +109,6 @@ export async function showPayCard(ctx, id) {
 		kb([
 			[btn(method.active ? "⏸ Выключить" : "▶️ Включить", `a:pt:${id}`), btn("✏️ Название", `a:pe:${id}:title`)],
 			[btn("📝 Реквизиты", `a:pe:${id}:details`), btn("💲 Курс", `a:pe:${id}:rate`)],
-			[btn("💎 Кошелёк TON (автопроверка)", `a:pe:${id}:ton`)],
 			[btn("🗑 Удалить", `a:pdel:${id}`), btn("← К способам", "a:p")],
 		])
 	);
@@ -176,6 +207,11 @@ export async function payCallback(ctx, parts) {
 			await showPayCard(ctx, arg);
 			return true;
 		}
+		case "pat":
+			await toast(ctx);
+			await setState(ctx.env, ctx.from.id, { a: "pay_add_ton", step: "address" });
+			await show(ctx, TON_HELP, CANCEL);
+			return true;
 		case "pdel": {
 			const methods = await getPayMethods(ctx.env);
 			await savePayMethods(ctx.env, methods.filter((item) => item.id !== arg || item.kind === "stars"));
@@ -220,10 +256,33 @@ const showPayHome = (ctx, id) => (id ? showPayCard(ctx, id) : showPayList(ctx));
 
 /** Returns true when `state` belongs to the payment editor (and the message was consumed). */
 export async function payInput(ctx, state, text) {
-	if (state.a !== "pay_add" && state.a !== "pay_edit") {
+	if (state.a !== "pay_add" && state.a !== "pay_edit" && state.a !== "pay_add_ton") {
 		return false;
 	}
 	const plain = { ...ctx, callback: null };
+	if (state.a === "pay_add_ton") {
+		const value = (text ?? "").trim();
+		if (state.step === "address") {
+			if (!isTonAddress(value)) {
+				await say(ctx, `Это не похоже на адрес TON.\n${TON_HELP}`, CANCEL);
+				return true;
+			}
+			await setState(ctx.env, ctx.from.id, { a: "pay_add_ton", step: "rate", address: value });
+			await say(ctx, RUB_RATE_HELP, CANCEL);
+			return true;
+		}
+		const rate = parseRub(value);
+		if (!rate) {
+			await say(ctx, `Не понял число.\n${RUB_RATE_HELP}`, CANCEL);
+			return true;
+		}
+		const methods = await getPayMethods(ctx.env);
+		const method = { id: newId(6), kind: "ton", title: "TON (Tonkeeper)", details: "", tonAddress: state.address, rate, currency: "₽", active: true };
+		await savePayMethods(ctx.env, [...methods, method]);
+		await clearState(ctx.env, ctx.from.id);
+		await showPayCard(plain, method.id);
+		return true;
+	}
 	if (state.a === "pay_add") {
 		if (state.step === "title") {
 			if (!text || text.length > 40) {
@@ -256,7 +315,7 @@ export async function payInput(ctx, state, text) {
 		return true;
 	}
 	const methods = await getPayMethods(ctx.env);
-	const method = methods.find((item) => item.id === state.id && item.kind === "manual");
+	const method = methods.find((item) => item.id === state.id && (item.kind === "manual" || item.kind === "ton"));
 	if (!method) {
 		await clearState(ctx.env, ctx.from.id);
 		await showPayList(plain);
@@ -284,6 +343,14 @@ export async function payInput(ctx, state, text) {
 			await say(ctx, `Это не похоже на адрес TON.\n${TON_HELP}`, CANCEL);
 			return true;
 		}
+	} else if (method.kind === "ton") {
+		const rate = parseRub((text ?? "").trim());
+		if (!rate) {
+			await say(ctx, `Не понял число.\n${RUB_RATE_HELP}`, CANCEL);
+			return true;
+		}
+		method.rate = rate;
+		method.currency = "₽";
 	} else {
 		const parsed = parseRate(text);
 		if (!parsed) {

@@ -548,3 +548,44 @@ test("TON: the cron finds a payment nobody pressed the button for", async () => 
 	await withFetch(toncenter([tx]), () => runScheduled(env, tg));
 	assert.ok(["paid", "delivered"].includes((await readOrder(env, order.id)).status));
 });
+
+test("TON in rubles: admin adds wallet + ₽ per star, the order is priced in TON by the live rate", async () => {
+	const { env, tg } = setup();
+	const router = async (url) => {
+		if (String(url).includes("tonapi.io")) {
+			return new Response(JSON.stringify({ rates: { TON: { prices: { RUB: 300 } } } }));
+		}
+		return new Response(JSON.stringify({ ok: true, result: [] }));
+	};
+	await withFetch(router, async () => {
+		await handleUpdate(env, tg, press(ADMIN, "a:pat"));
+		await handleUpdate(env, tg, msg(ADMIN, TON_ADDRESS));
+		await handleUpdate(env, tg, msg(ADMIN, "1.8"));
+	});
+	const method = (await readPayMethods(env)).find((m) => m.kind === "ton");
+	assert.ok(method, "TON method created");
+	assert.equal(method.tonAddress, TON_ADDRESS);
+	assert.equal(method.rate, 1.8);
+	tg.reset();
+	await withFetch(router, () => handleUpdate(env, tg, press(ALICE, `pay:pro30:${method.id}`)));
+	const text = JSON.stringify(tg.calls.map((c) => c.params));
+	const id = text.match(/PMP-([A-Za-z0-9]+)/)[1];
+	const order = await readOrder(env, id);
+	// 500 ⭐ × 1.8 ₽ = 900 ₽; 900 / 300 = 3 TON
+	assert.equal(order.amount, 3);
+	assert.equal(order.currency, "TON");
+	assert.ok(order.priceText.includes("900"));
+
+	const tx = { utime: Math.floor(Date.now() / 1000), transaction_id: { hash: "r1" }, in_msg: { source: "UQbuyer", value: "3000000000", message: `PMP-${id}` } };
+	await withFetch(toncenter([tx]), () => handleUpdate(env, tg, press(ALICE, `pd:${id}`)));
+	assert.ok(["paid", "delivered"].includes((await readOrder(env, id)).status));
+});
+
+test("TON in rubles: no rate available -> no order, buyer is told to retry", async () => {
+	const { env, tg } = setup();
+	const methods = await readPayMethods(env);
+	await savePayMethods(env, [...methods, { id: "tr", kind: "ton", title: "TON", details: "", tonAddress: TON_ADDRESS, rate: 1.8, currency: "₽", active: true }]);
+	tg.reset();
+	await withFetch(async () => new Response("down", { status: 500 }), () => handleUpdate(env, tg, press(ALICE, "pay:pro30:tr")));
+	assert.ok(!JSON.stringify(tg.calls).includes("PMP-"), "no order shown");
+});

@@ -16,7 +16,7 @@ import { getPayMethods, saveOrder, getOrder, newId, adminIds, getUserState, setU
 import { banReason, availableTariffs, notifyAdmins } from "./shop.js";
 import { findSellable } from "./products.js";
 import { getText } from "./texts.js";
-import { isAutoTon, tonComment, tonkeeperLink, markTonWaiting, confirmIfPaid } from "./ton.js";
+import { isAutoTon, tonComment, tonkeeperLink, markTonWaiting, confirmIfPaid, tonRubRate, rubToTon } from "./ton.js";
 
 const MAX_PROOFS = 5;
 
@@ -84,13 +84,28 @@ export async function startManualPurchase(ctx, code, methodId) {
 		await toast(ctx, "Доступ ограничен", true);
 		return;
 	}
-	const method = (await getPayMethods(ctx.env)).find((item) => item.id === methodId && item.kind === "manual" && item.active);
+	const method = (await getPayMethods(ctx.env)).find((item) => item.id === methodId && (item.kind === "manual" || item.kind === "ton") && item.active);
 	const tariff = (await findSellable(ctx.env, code)) ?? (await availableTariffs(ctx.env, ctx.from.id)).find((item) => item.code === code);
 	if (!method || !tariff) {
 		await toast(ctx, "Этот способ или тариф недоступен", true);
 		return;
 	}
-	const amount = manualAmount(method, tariff);
+	let amount = manualAmount(method, tariff);
+	let currency = method.currency;
+	let priceText = formatAmount(amount, method.currency);
+	if (method.kind === "ton") {
+		// The method's rate is rubles per star; the TON amount follows the live TON/RUB rate and is
+		// fixed for this order once it is created.
+		const rate = await tonRubRate(ctx.env);
+		if (!rate) {
+			await toast(ctx, "Курс TON сейчас недоступен, попробуйте через минуту", true);
+			return;
+		}
+		const rub = amount;
+		amount = rubToTon(rub, rate);
+		currency = "TON";
+		priceText = `${formatAmount(amount, "TON")} (≈ ${formatAmount(rub, "₽")})`;
+	}
 	const order = {
 		id: newId(10),
 		userId: String(ctx.from.id),
@@ -102,9 +117,9 @@ export async function startManualPurchase(ctx, code, methodId) {
 		...(tariff.kind === "item" ? { kind: "item", pid: tariff.pid, give: tariff.give } : {}),
 		method: method.id,
 		methodTitle: method.title,
-		currency: method.currency,
+		currency,
 		amount,
-		priceText: formatAmount(amount, method.currency),
+		priceText,
 		status: "awaiting",
 		createdAt: ctx.now,
 		paidAt: null,

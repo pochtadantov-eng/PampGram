@@ -110,7 +110,7 @@ export async function showTariff(ctx, code) {
 	const rows = methods.map((method) =>
 		method.kind === "stars"
 			? [btn(`⭐ ${method.title} — ${tariff.stars}${starFront ? "" : " ⭐"}`, `buy:${tariff.code}`)]
-			: [btn(`💳 ${method.title} — ${formatAmount(manualAmount(method, tariff), method.currency)}`.slice(0, 60), `pay:${tariff.code}:${method.id}`)]
+			: [btn(`${method.kind === "ton" ? "💎" : "💳"} ${method.title} — ${formatAmount(manualAmount(method, tariff), method.currency)}`.slice(0, 60), `pay:${tariff.code}:${method.id}`)]
 	);
 	rows.push([btn("← К тарифам", "shop")]);
 	const hint = `\n\n${await getText(ctx.env, methods.length === 0 ? "no_methods" : "choose_method")}`;

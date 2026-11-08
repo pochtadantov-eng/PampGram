@@ -35,7 +35,65 @@ export function tonkeeperLink(address, order) {
 }
 
 export function isAutoTon(method) {
-	return Boolean(method && method.kind === "manual" && method.tonAddress && String(method.currency).toUpperCase() === "TON");
+	return Boolean(method && method.tonAddress && (method.kind === "ton" || (method.kind === "manual" && String(method.currency).toUpperCase() === "TON")));
+}
+
+const RATE_KEY = "tonrate:rub";
+const RATE_FRESH_MS = 5 * 60 * 1000;
+const RATE_STALE_OK_MS = 6 * 60 * 60 * 1000;
+
+async function fetchRubRate(fetchImpl) {
+	try {
+		const response = await fetchImpl("https://tonapi.io/v2/rates?tokens=ton&currencies=rub");
+		const data = await response.json();
+		const rate = Number(data?.rates?.TON?.prices?.RUB);
+		if (rate > 0) {
+			return rate;
+		}
+	} catch {
+		// fall through to the second source
+	}
+	try {
+		const response = await fetchImpl("https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=rub");
+		const data = await response.json();
+		const rate = Number(data?.["the-open-network"]?.rub);
+		if (rate > 0) {
+			return rate;
+		}
+	} catch {
+		// no source answered
+	}
+	return null;
+}
+
+/**
+ * Price of 1 TON in rubles: tonapi.io, falling back to CoinGecko; cached 5 minutes in KV. If
+ * both are down, a cached value up to 6 hours old is still used; otherwise null.
+ */
+export async function tonRubRate(env, fetchImpl = fetch, now = Date.now()) {
+	let cached = null;
+	try {
+		cached = JSON.parse((await env.SUBS.get(RATE_KEY)) ?? "null");
+	} catch {
+		cached = null;
+	}
+	if (cached && cached.rate > 0 && now - cached.at < RATE_FRESH_MS) {
+		return cached.rate;
+	}
+	const rate = await fetchRubRate(fetchImpl);
+	if (rate) {
+		await env.SUBS.put(RATE_KEY, JSON.stringify({ rate, at: now }));
+		return rate;
+	}
+	if (cached && cached.rate > 0 && now - cached.at < RATE_STALE_OK_MS) {
+		return cached.rate;
+	}
+	return null;
+}
+
+/** Rubles -> TON at `rate` (₽ per TON), rounded up to 0.01 TON. */
+export function rubToTon(rub, rate) {
+	return Math.ceil((rub / rate) * 100 - 1e-9) / 100;
 }
 
 async function fetchIncoming(address, fetchImpl) {
