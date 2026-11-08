@@ -262,17 +262,19 @@ replace_once(
     "public final class WalletContext {\n"
     "    /// PampGram: when set and returning a value, the wallet reports that balance (nanograms)\n"
     "    /// instead of the real one. Set once at startup by TelegramRootController.\n"
-    "    nonisolated(unsafe) public static var pampGramBalanceOverride: (() -> Int64?)?\n"
+    "    nonisolated(unsafe) public static var pampGramBalanceOverride: ((Int64) -> Int64?)?\n"
     "    /// PampGram: address to show as a visual wallet when the real one was never created.\n"
-    "    nonisolated(unsafe) public static var pampGramAddressOverride: (() -> String?)?\n"
+    "    nonisolated(unsafe) public static var pampGramAddressOverride: ((Int64) -> String?)?\n"
+    "    /// PampGram: the account this wallet belongs to (the overrides are per account).\n"
+    "    let pampGramAccountKey: Int64\n"
     "\n"
-    "    static func pampGramApply(_ state: State) -> State {\n"
-    "        guard let override = WalletContext.pampGramBalanceOverride, let balance = override() else {\n"
+    "    static func pampGramApply(_ state: State, accountKey: Int64) -> State {\n"
+    "        guard let override = WalletContext.pampGramBalanceOverride, let balance = override(accountKey) else {\n"
     "            return state\n"
     "        }\n"
     "        var phase = state.phase\n"
     "        var walletAddress = state.walletAddress\n"
-    "        if case .empty = state.phase, let address = WalletContext.pampGramAddressOverride?() {\n"
+    "        if case .empty = state.phase, let address = WalletContext.pampGramAddressOverride?(accountKey) {\n"
     "            phase = .wallet(WalletInfo(address: address, publicKey: \"\"))\n"
     "            walletAddress = address\n"
     "        }\n"
@@ -304,14 +306,21 @@ replace_once(
     wallet_swift,
     "wallet state signal override",
     "            |> deliverOnMainQueue).start(next: subscriber.putNext)",
-    "            |> map { WalletContext.pampGramApply($0) }\n"
+    "            |> map { WalletContext.pampGramApply($0, accountKey: self.pampGramAccountKey) }\n"
     "            |> deliverOnMainQueue).start(next: subscriber.putNext)",
 )
 replace_once(
     wallet_swift,
     "wallet state value override",
     "        self.output.currentState()\n",
-    "        WalletContext.pampGramApply(self.output.currentState())\n",
+    "        WalletContext.pampGramApply(self.output.currentState(), accountKey: self.pampGramAccountKey)\n",
+)
+replace_once(
+    wallet_swift,
+    "wallet remembers its account",
+    "        let operationTaskRegistry = WalletOperationTaskRegistry()\n",
+    "        self.pampGramAccountKey = engine.account.peerId.toInt64()\n"
+    "        let operationTaskRegistry = WalletOperationTaskRegistry()\n",
 )
 
 replace_once(
@@ -328,11 +337,11 @@ replace_once(
     # switches: each new root controller re-binds it to its own account's settings.
     "        let pampGramAccountKey = self.context.account.peerId.toInt64()\n"
     "        PampGramVisualExtrasRuntime.shared.start(accountKey: pampGramAccountKey, postbox: self.context.account.postbox)\n"
-    "        WalletContext.pampGramBalanceOverride = {\n"
-    "            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: pampGramAccountKey)\n"
+    "        WalletContext.pampGramBalanceOverride = { walletAccountKey in\n"
+    "            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey)\n"
     "        }\n"
-    "        WalletContext.pampGramAddressOverride = {\n"
-    "            return PampGramVisualExtrasRuntime.shared.fakeWalletAddress(accountKey: pampGramAccountKey)\n"
+    "        WalletContext.pampGramAddressOverride = { walletAccountKey in\n"
+    "            return PampGramVisualExtrasRuntime.shared.fakeWalletAddress(accountKey: walletAccountKey)\n"
     "        }\n"
     "        tabBarController.pampGramTripleTap = {",
 )
@@ -649,6 +658,28 @@ replace_once(
     "                })\n"
     "            }\n"
     "            controller.loginWithNumber = { [weak self, weak controller] number, syncContacts in\n",
+)
+
+# ---------------------------------------------------------------------------
+# 14. The public wallet card screen (opened from the profile chip) keeps re-reading the server
+#     card; substitute the visual balance every time it updates, on your own card.
+# ---------------------------------------------------------------------------
+print("\n[14] Visual balance on the public wallet card screen")
+
+peer_wallet_build = Path("submodules/TelegramUI/Components/Wallet/PeerWalletScreen/BUILD")
+peer_wallet_swift = Path("submodules/TelegramUI/Components/Wallet/PeerWalletScreen/Sources/PeerWalletScreen.swift")
+add_dep_if_missing(peer_wallet_build, "PeerWalletScreen BUILD dep", '"//submodules/AccountContext"')
+add_import_if_missing(peer_wallet_swift, "PeerWalletScreen import PampGramCore", "import AccountContext\n")
+replace_once(
+    peer_wallet_swift,
+    "peer wallet card shows the visual balance",
+    "        private func updateCard(_ card: WalletCard?, context: AccountContext) {\n",
+    "        private func updateCard(_ card: WalletCard?, context: AccountContext) {\n"
+    "            var card = card\n"
+    "            if self.peer.id == context.account.peerId, let pampGramFakeBalance = PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: context.account.peerId.toInt64()) {\n"
+    "                let pampGramAddress = card?.address ?? (PampGramVisualExtrasRuntime.shared.fakeWalletAddress(accountKey: context.account.peerId.toInt64()) ?? \"\")\n"
+    "                card = WalletCard(address: pampGramAddress, balance: pampGramFakeBalance, stickers: card?.stickers ?? [], backgroundNft: card?.backgroundNft)\n"
+    "            }\n",
 )
 
 # ---------------------------------------------------------------------------
