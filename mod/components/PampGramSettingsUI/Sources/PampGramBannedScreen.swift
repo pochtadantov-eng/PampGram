@@ -301,3 +301,17 @@ public func pampGramGateTier(context: AccountContext, push: @escaping (ViewContr
         }
     })
 }
+
+/// Opens PampGram's gifts section from outside the settings tree (triple tap on the bottom
+/// "Chats" tab, see apply-feature-hooks.py): same tier and ban checks as tapping "Подарки" in the
+/// hub, then the gifts settings pushed onto the app's own navigation stack.
+public func pampGramOpenGiftsFromTabBar(context: AccountContext, navigationController: NavigationController) {
+    let push: (ViewController) -> Void = { [weak navigationController] controller in
+        navigationController?.pushViewController(controller)
+    }
+    pampGramGateTier(context: context, push: push, openReal: {
+        pampGramGateSection(context: context, section: .gifts, openReal: {
+            push(pampGramGiftsSettingsController(context: context))
+        })
+    })
+}

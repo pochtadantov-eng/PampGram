@@ -199,6 +199,56 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
+# 7. Triple tap on the bottom "Chats" tab opens PampGram's gifts section. The tab bar already
+#    counts quick successive taps (debugTapCounter, used for the 10-tap debug menu); this adds
+#    a callback at the third one and TelegramRootController answers it for the chats tab only.
+# ---------------------------------------------------------------------------
+print("\n[7/7] Triple tap on the Chats tab -> PampGram gifts")
+
+tab_bar_swift = Path("submodules/TabBarUI/Sources/TabBarController.swift")
+replace_once(
+    tab_bar_swift,
+    "tab bar triple-tap property",
+    "    private var debugTapCounter: (Double, Int) = (0.0, 0)\n",
+    "    private var debugTapCounter: (Double, Int) = (0.0, 0)\n"
+    "    public var pampGramTripleTap: ((Int) -> Void)?\n",
+)
+replace_once(
+    tab_bar_swift,
+    "tab bar triple-tap hook",
+    "                if strongSelf.debugTapCounter.1 >= 10 {",
+    "                if strongSelf.debugTapCounter.1 == 3 {\n"
+    "                    strongSelf.pampGramTripleTap?(index)\n"
+    "                }\n"
+    "                \n"
+    "                if strongSelf.debugTapCounter.1 >= 10 {",
+)
+
+root_swift = Path("submodules/TelegramUI/Sources/TelegramRootController.swift")
+replace_once(
+    root_swift,
+    "root controller import",
+    "import TabBarUI\n",
+    "import TabBarUI\nimport PampGramSettingsUI\n",
+)
+replace_once(
+    root_swift,
+    "root controller triple-tap handler",
+    "        self.rootTabController = tabBarController\n        self.pushViewController(tabBarController, animated: false)\n",
+    "        self.rootTabController = tabBarController\n"
+    "        tabBarController.pampGramTripleTap = { [weak self, weak tabBarController, weak chatListController] index in\n"
+    "            guard let self, let tabBarController, let chatListController else {\n"
+    "                return\n"
+    "            }\n"
+    "            guard index >= 0 && index < tabBarController.controllers.count && tabBarController.controllers[index] === chatListController else {\n"
+    "                return\n"
+    "            }\n"
+    "            pampGramOpenGiftsFromTabBar(context: self.context, navigationController: self)\n"
+    "        }\n"
+    "        self.pushViewController(tabBarController, animated: false)\n",
+)
+
+# ---------------------------------------------------------------------------
 print("\nPampGram: feature hooks done.")
 print("  ACTIVE: ChatTimeMachine, VideoMessageSaver, FakeBadge, FakeSubscribers, FakeDeletedAccount")
 print("  CONTEXT MENU ONLY: FakeForward, FakeReactions, FakeActivity, InvisibleMessage, ReactionSpammer,")
