@@ -561,6 +561,97 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
+# 13. Log in with a bot token when adding an account: a new TelegramCore function
+#     (auth.importBotAuthorization, generated from the schema at build time) and a "Бот" button
+#     on the phone-entry screen that asks for the token.
+# ---------------------------------------------------------------------------
+print("\n[13] Bot-token login on the phone-entry screen")
+
+import shutil
+shutil.copyfile(
+    Path(__file__).resolve().parent / "hooks-sources" / "PampGramBotAuthorization.swift",
+    Path("submodules/TelegramCore/Sources/PampGramBotAuthorization.swift"),
+)
+print("  OK: TelegramCore bot authorization source")
+
+phone_entry_swift = Path("submodules/AuthorizationUI/Sources/AuthorizationSequencePhoneEntryController.swift")
+replace_once(
+    phone_entry_swift,
+    "phone entry bot-token property",
+    "    var accountUpdated: ((UnauthorizedAccount) -> Void)?\n",
+    "    var accountUpdated: ((UnauthorizedAccount) -> Void)?\n"
+    "    var pampGramLoginWithBotToken: ((String) -> Void)?\n",
+)
+replace_once(
+    phone_entry_swift,
+    "phone entry bot-token button",
+    "        if !otherAccountPhoneNumbers.1.isEmpty {\n"
+    "            self.navigationItem.leftBarButtonItem = UIBarButtonItem(title: \"___close\", style: .plain, target: self, action: #selector(self.cancelPressed))\n"
+    "        }\n",
+    "        if !otherAccountPhoneNumbers.1.isEmpty {\n"
+    "            self.navigationItem.leftBarButtonItem = UIBarButtonItem(title: \"___close\", style: .plain, target: self, action: #selector(self.cancelPressed))\n"
+    "        }\n"
+    "        self.navigationItem.rightBarButtonItem = UIBarButtonItem(title: \"Бот\", style: .plain, target: self, action: #selector(self.pampGramBotTokenPressed))\n",
+)
+replace_once(
+    phone_entry_swift,
+    "phone entry bot-token prompt",
+    "    @objc private func cancelPressed() {\n",
+    "    @objc private func pampGramBotTokenPressed() {\n"
+    "        let alert = UIAlertController(title: \"Вход по токену бота\", message: \"Вставьте токен бота из @BotFather (вида 123456:ABC…).\", preferredStyle: .alert)\n"
+    "        alert.addTextField { field in\n"
+    "            field.placeholder = \"123456789:AA…\"\n"
+    "            field.autocorrectionType = .no\n"
+    "            field.autocapitalizationType = .none\n"
+    "        }\n"
+    "        alert.addAction(UIAlertAction(title: \"Отмена\", style: .cancel, handler: nil))\n"
+    "        alert.addAction(UIAlertAction(title: \"Войти\", style: .default, handler: { [weak self, weak alert] _ in\n"
+    "            let token = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? \"\"\n"
+    "            if !token.isEmpty {\n"
+    "                self?.pampGramLoginWithBotToken?(token)\n"
+    "            }\n"
+    "        }))\n"
+    "        self.present(alert, animated: true, completion: nil)\n"
+    "    }\n"
+    "\n"
+    "    func pampGramShowBotTokenError(_ text: String) {\n"
+    "        let alert = UIAlertController(title: nil, message: text, preferredStyle: .alert)\n"
+    "        alert.addAction(UIAlertAction(title: \"OK\", style: .default, handler: nil))\n"
+    "        self.present(alert, animated: true, completion: nil)\n"
+    "    }\n"
+    "\n"
+    "    @objc private func cancelPressed() {\n",
+)
+replace_once(
+    Path("submodules/AuthorizationUI/Sources/AuthorizationSequenceController.swift"),
+    "authorization sequence bot-token login",
+    "            controller.loginWithNumber = { [weak self, weak controller] number, syncContacts in\n",
+    "            controller.pampGramLoginWithBotToken = { [weak self, weak controller] token in\n"
+    "                guard let self else {\n"
+    "                    return\n"
+    "                }\n"
+    "                controller?.inProgress = true\n"
+    "                let _ = (authorizeWithBotToken(accountManager: self.sharedContext.accountManager, account: self.account, token: token)\n"
+    "                |> deliverOnMainQueue).startStandalone(error: { [weak controller] error in\n"
+    "                    controller?.inProgress = false\n"
+    "                    let text: String\n"
+    "                    switch error {\n"
+    "                    case .invalidToken:\n"
+    "                        text = \"Неверный токен бота.\"\n"
+    "                    case .limitExceeded:\n"
+    "                        text = \"Слишком много попыток. Попробуйте позже.\"\n"
+    "                    case .generic:\n"
+    "                        text = \"Не удалось войти по токену бота.\"\n"
+    "                    }\n"
+    "                    controller?.pampGramShowBotTokenError(text)\n"
+    "                }, completed: { [weak controller] in\n"
+    "                    controller?.inProgress = false\n"
+    "                })\n"
+    "            }\n"
+    "            controller.loginWithNumber = { [weak self, weak controller] number, syncContacts in\n",
+)
+
+# ---------------------------------------------------------------------------
 print("\nPampGram: feature hooks done.")
 print("  ACTIVE: ChatTimeMachine, VideoMessageSaver, FakeBadge, FakeSubscribers, FakeDeletedAccount")
 print("  CONTEXT MENU ONLY: FakeForward, FakeReactions, FakeActivity, InvisibleMessage, ReactionSpammer,")
