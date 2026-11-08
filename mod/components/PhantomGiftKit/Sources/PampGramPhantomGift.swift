@@ -160,7 +160,7 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     /// calling a real, network-backed `ProfileGiftsContext` method. `fromPeer` is resolved by
     /// the caller (`PampGramPhantomGiftStore.resolvedProfileGiftsSignal`) from `fromPeerId` —
     /// this type only stores an id, never a full `EnginePeer`.
-    public func asProfileGift(fromPeer: EnginePeer?) -> ProfileGiftsContext.State.StarGift {
+    public func asProfileGift(fromPeer: EnginePeer?, reference: StarGiftReference? = nil) -> ProfileGiftsContext.State.StarGift {
         // A local market listing (`marketPrice`) never touches the stored `self.gift` — only
         // this projection, the one GiftViewScreen actually reads `resellAmounts` off of, so
         // listing/unlisting flips the real "Продать"/"Снять с продажи" button and green
@@ -200,9 +200,15 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         if let marketPrice = self.marketPrice, case let .unique(uniqueGift) = gift {
             gift = .unique(Self.withResellListing(uniqueGift, price: marketPrice))
         }
+        // Crafting: a unique visual gift can always be crafted (Telegram's own anvil button and
+        // craft screen show when this is set; the craft itself is answered locally).
+        var canCraftAt: Int32?
+        if case .unique = gift {
+            canCraftAt = 0
+        }
         return ProfileGiftsContext.State.StarGift(
             gift: gift,
-            reference: nil,
+            reference: reference,
             fromPeer: fromPeer,
             date: self.date,
             text: projectedText,
@@ -226,7 +232,7 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             dropOriginalDetailsStars: nil,
             number: self.number,
             isRefunded: false,
-            canCraftAt: nil
+            canCraftAt: canCraftAt
         )
     }
 

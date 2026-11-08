@@ -453,6 +453,79 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
+# 11. Visual crafting on Telegram's own craft screen: for a local visual gift the screen's list
+#     of the user's gifts and the craft itself are answered locally (PhantomGiftKit), through
+#     two hooks on CraftGiftsContext installed by TelegramRootController.
+# ---------------------------------------------------------------------------
+print("\n[11] Visual crafting on the original craft screen")
+
+star_gifts_swift = Path("submodules/TelegramCore/Sources/TelegramEngine/Payments/StarGifts.swift")
+replace_once(
+    star_gifts_swift,
+    "craft context local gifts hook",
+    "    public var state: Signal<CraftGiftsContext.State, NoError> {\n"
+    "        return Signal { subscriber in\n",
+    "    /// PampGram: local data source for crafting a visual gift (nil = use the server).\n"
+    "    nonisolated(unsafe) public static var pampGramLocalGifts: ((Int64) -> Signal<[ProfileGiftsContext.State.StarGift], NoError>?)?\n"
+    "    /// PampGram: local craft for a visual gift (nil = use the server).\n"
+    "    nonisolated(unsafe) public static var pampGramLocalCraft: ((Int64, [StarGiftReference]) -> Signal<ProfileGiftsContext.State.StarGift, CraftStarGiftError>?)?\n"
+    "\n"
+    "    public var state: Signal<CraftGiftsContext.State, NoError> {\n"
+    "        if let pampGramLocal = CraftGiftsContext.pampGramLocalGifts?(self.giftId) {\n"
+    "            return pampGramLocal\n"
+    "            |> map { gifts -> CraftGiftsContext.State in\n"
+    "                return CraftGiftsContext.State(gifts: gifts, count: Int32(gifts.count), dataState: .ready(canLoadMore: false, nextOffset: nil))\n"
+    "            }\n"
+    "        }\n"
+    "        return Signal { subscriber in\n",
+)
+replace_once(
+    star_gifts_swift,
+    "craft context local craft hook",
+    "    public func craft(references: [StarGiftReference]) -> Signal<ProfileGiftsContext.State.StarGift, CraftStarGiftError> {\n",
+    "    public func craft(references: [StarGiftReference]) -> Signal<ProfileGiftsContext.State.StarGift, CraftStarGiftError> {\n"
+    "        if let pampGramLocal = CraftGiftsContext.pampGramLocalCraft?(self.giftId, references) {\n"
+    "            return pampGramLocal\n"
+    "        }\n",
+)
+replace_once(
+    gift_view_swift,
+    "craft screen opened for a visual gift",
+    "                let craftScreen = self.context.sharedContext.makeGiftCraftScreen(\n",
+    "                if arguments.reference == nil {\n"
+    "                    PampGramPhantomCraftMarker.shared.begin(giftId: gift.giftId)\n"
+    "                } else {\n"
+    "                    PampGramPhantomCraftMarker.shared.end()\n"
+    "                }\n"
+    "                let craftScreen = self.context.sharedContext.makeGiftCraftScreen(\n",
+)
+replace_once(
+    root_swift,
+    "root controller craft hooks",
+    "        tabBarController.pampGramTripleTap = {",
+    "        let pampGramCraftContext: AccountContext = self.context\n"
+    "        CraftGiftsContext.pampGramLocalGifts = { [weak pampGramCraftContext] giftId in\n"
+    "            guard let pampGramCraftContext, PampGramPhantomCraftMarker.shared.isActive(giftId: giftId) else {\n"
+    "                return nil\n"
+    "            }\n"
+    "            return PampGramPhantomGiftManager.craftCandidates(context: pampGramCraftContext, giftId: giftId)\n"
+    "        }\n"
+    "        CraftGiftsContext.pampGramLocalCraft = { [weak pampGramCraftContext] giftId, references in\n"
+    "            guard let pampGramCraftContext, PampGramPhantomCraftMarker.shared.isActive(giftId: giftId) else {\n"
+    "                return nil\n"
+    "            }\n"
+    "            return PampGramPhantomGiftManager.craftLocally(context: pampGramCraftContext, giftId: giftId, references: references)\n"
+    "        }\n"
+    "        tabBarController.pampGramTripleTap = {",
+)
+replace_once(
+    root_swift,
+    "root controller PhantomGiftKit import",
+    "import PampGramCore\nimport WalletContext\n",
+    "import PampGramCore\nimport WalletContext\nimport PhantomGiftKit\n",
+)
+
+# ---------------------------------------------------------------------------
 print("\nPampGram: feature hooks done.")
 print("  ACTIVE: ChatTimeMachine, VideoMessageSaver, FakeBadge, FakeSubscribers, FakeDeletedAccount")
 print("  CONTEXT MENU ONLY: FakeForward, FakeReactions, FakeActivity, InvisibleMessage, ReactionSpammer,")
