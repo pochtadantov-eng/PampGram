@@ -35,6 +35,7 @@ private final class PampGramSettingsArguments {
     let deleteAllPhantomGifts: () -> Void
     let openVisualNumberEditor: () -> Void
     let openVisualRatingEditor: () -> Void
+    let openVisualExtra: (Int) -> Void
     let openCollectionMarket: () -> Void
     let openGiftConstructor: () -> Void
     let openStarsLedger: () -> Void
@@ -61,6 +62,7 @@ private final class PampGramSettingsArguments {
         deleteAllPhantomGifts: @escaping () -> Void,
         openVisualNumberEditor: @escaping () -> Void,
         openVisualRatingEditor: @escaping () -> Void,
+        openVisualExtra: @escaping (Int) -> Void,
         openCollectionMarket: @escaping () -> Void,
         openGiftConstructor: @escaping () -> Void,
         openStarsLedger: @escaping () -> Void,
@@ -86,6 +88,7 @@ private final class PampGramSettingsArguments {
         self.deleteAllPhantomGifts = deleteAllPhantomGifts
         self.openVisualNumberEditor = openVisualNumberEditor
         self.openVisualRatingEditor = openVisualRatingEditor
+        self.openVisualExtra = openVisualExtra
         self.openCollectionMarket = openCollectionMarket
         self.openGiftConstructor = openGiftConstructor
         self.openStarsLedger = openStarsLedger
@@ -150,6 +153,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
     case profileVisualsHeader(String)
     case visualNumberEditor(String, String)
     case visualRating(String, String)
+    case visualExtra(Int, String, String)
     case collectionHeader(String)
     case collectionMarket(String, String)
     case giftConstructor(String)
@@ -201,7 +205,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return PampGramSettingsSection.tonBalance.rawValue
         case .localRublesHeader, .localRublesPurchaseToggle, .localRublesBalance, .localRublesFooter:
             return PampGramSettingsSection.localRubles.rawValue
-        case .profileVisualsHeader, .visualNumberEditor, .visualRating:
+        case .profileVisualsHeader, .visualNumberEditor, .visualRating, .visualExtra:
             return PampGramSettingsSection.profileVisuals.rawValue
         case .collectionHeader, .collectionMarket, .giftConstructor, .collectionFooter:
             return PampGramSettingsSection.collectionMarket.rawValue
@@ -247,6 +251,7 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         case .profileVisualsHeader: return 19
         case .visualNumberEditor: return 20
         case .visualRating: return 21
+        case let .visualExtra(index, _, _): return Int32(400 + index)
         case .collectionHeader: return 22
         case .collectionMarket: return 23
         case .giftConstructor: return 39
@@ -275,8 +280,17 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
         }
     }
 
+    /// Display order. Same as `stableId`, except the visual extras (badges, GRAM card, usernames,
+    /// crafting) sort right after the visual rating even though their ids are unique and large.
+    private var sortKey: Int64 {
+        if case let .visualExtra(index, _, _) = self {
+            return 21_001 + Int64(index)
+        }
+        return Int64(self.stableId) * 1000
+    }
+
     static func <(lhs: PampGramSettingsEntry, rhs: PampGramSettingsEntry) -> Bool {
-        return lhs.stableId < rhs.stableId
+        return lhs.sortKey < rhs.sortKey
     }
 
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
@@ -348,6 +362,12 @@ private enum PampGramSettingsEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "number.circle.fill", backgroundColor: UIColor(rgb: 0x3b82f6)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualNumberEditor)
         case let .visualRating(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "trophy.fill", backgroundColor: UIColor(rgb: 0xff9500)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openVisualRatingEditor)
+        case let .visualExtra(index, title, label):
+            let icons: [(String, UInt32)] = [("checkmark.seal.fill", 0x8e44ec), ("creditcard.fill", 0x3b82f6), ("at.circle.fill", 0x30b0c7), ("hammer.fill", 0xff6b35)]
+            let icon = icons[min(max(index, 0), icons.count - 1)]
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: icon.0, backgroundColor: UIColor(rgb: icon.1)), title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openVisualExtra(index)
+            })
         case let .collectionMarket(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: generatePampGramSectionIcon(systemName: "square.grid.2x2.fill", backgroundColor: UIColor(rgb: 0x30b0c7)), title: title, label: label, sectionId: self.section, style: .blocks, action: arguments.openCollectionMarket)
         case let .giftConstructor(title):
@@ -532,6 +552,13 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.visualNumberEditor("Визуальный +888", visualNumberLabel))
     let visualRatingLabel = profileVisuals.ratingEnabled ? "Уровень \(max(1, profileVisuals.ratingValue))" : "Настроить"
     entries.append(.visualRating("Визуальный рейтинг", visualRatingLabel))
+    let visualExtras = profileVisuals.visualExtras
+    entries.append(.visualExtra(0, "Галочки", PampGramVisualExtras.badgeNames[min(2, max(0, visualExtras.badge))]))
+    entries.append(.visualExtra(1, "Карточка GRAM", visualExtras.cardEnabled ? "Включена" : "Настроить"))
+    entries.append(.visualExtra(2, "Юзернеймы", "\(visualExtras.usernames.count)"))
+    if settings.masterEnabled {
+        entries.append(.visualExtra(3, "Крафт подарков", "Открыть"))
+    }
 
     entries.append(.collectionHeader("КОЛЛЕКЦИЯ И МАРКЕТ"))
     entries.append(.collectionMarket("Коллекция и маркет", "\(phantomGiftCount) подарков"))
@@ -758,6 +785,9 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
         },
         openVisualNumberEditor: { presentNumberEditorImpl?() },
         openVisualRatingEditor: { presentRatingEditorImpl?() },
+        openVisualExtra: { kind in
+            pushControllerImpl?(pampGramVisualExtraController(context: context, kind: kind))
+        },
         openCollectionMarket: { pushControllerImpl?(pampGramGiftMarketController(context: context)) },
         openGiftConstructor: { pushControllerImpl?(pampGramGiftConstructorController(context: context)) },
         openStarsLedger: { pushControllerImpl?(pampGramLedgerController(context: context, currency: .stars)) },

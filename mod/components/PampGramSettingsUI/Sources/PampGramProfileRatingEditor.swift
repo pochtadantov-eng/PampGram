@@ -83,6 +83,7 @@ private final class PampGramProfileRatingEditorController: ViewController {
     private let presetScrollView = UIScrollView()
     private let presetStackView = UIStackView()
     private var presetButtons: [PampGramRatingPresetButton] = []
+    private var stageButtons: [UIButton] = []
 
     private var primaryColor: UIColor = .label
     private var secondaryColor: UIColor = .secondaryLabel
@@ -206,6 +207,7 @@ private final class PampGramProfileRatingEditorController: ViewController {
         self.stackView.addArrangedSubview(self.makePreviewPanel())
         self.stackView.addArrangedSubview(self.makePresetPanel())
         self.stackView.addArrangedSubview(self.makeLevelPanel())
+        self.stackView.addArrangedSubview(self.makeStagePanel())
         self.stackView.addArrangedSubview(self.makePointsPanel())
         self.stackView.addArrangedSubview(self.makeDisplayPanel())
 
@@ -286,7 +288,7 @@ private final class PampGramProfileRatingEditorController: ViewController {
             self.presetStackView.centerYAnchor.constraint(equalTo: self.presetScrollView.frameLayoutGuide.centerYAnchor)
         ])
 
-        for level in [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 99] {
+        for level in 1 ... 99 {
             let button = PampGramRatingPresetButton(level: level)
             button.addTarget(self, action: #selector(self.presetPressed(_:)), for: .touchUpInside)
             self.presetButtons.append(button)
@@ -320,6 +322,48 @@ private final class PampGramProfileRatingEditorController: ViewController {
             self.levelSlider.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -16.0)
         ])
         return panel
+    }
+
+    /// "Этап уровня": five quick stops inside the selected level (start, 25 %, 50 %, 75 %, end);
+    /// each one sets the points to that fraction of the level's real range.
+    private func makeStagePanel() -> UIView {
+        let panel = PampGramGlass.makePanel(cornerRadius: 20.0)
+        let title = self.makeLabel("Этап уровня", font: .systemFont(ofSize: 17.0, weight: .semibold), color: self.primaryColor)
+        panel.addSubview(title)
+        let row = UIStackView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 8.0
+        panel.addSubview(row)
+        let titles = ["Начало", "25%", "50%", "75%", "Конец"]
+        for (index, text) in titles.enumerated() {
+            let button = UIButton(type: .system)
+            button.tag = index
+            button.setTitle(text, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 13.0, weight: .semibold)
+            button.setTitleColor(.white, for: .normal)
+            button.backgroundColor = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
+            button.layer.cornerRadius = 10.0
+            button.heightAnchor.constraint(equalToConstant: 36.0).isActive = true
+            button.addTarget(self, action: #selector(self.stagePressed(_:)), for: .touchUpInside)
+            self.stageButtons.append(button)
+            row.addArrangedSubview(button)
+        }
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 18.0),
+            title.topAnchor.constraint(equalTo: panel.topAnchor, constant: 16.0),
+            row.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 18.0),
+            row.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -18.0),
+            row.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 10.0),
+            row.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -16.0)
+        ])
+        return panel
+    }
+
+    @objc private func stagePressed(_ sender: UIButton) {
+        self.pointsProgress = Float(sender.tag) / 4.0
+        self.updateUI()
     }
 
     private func makePointsPanel() -> UIView {
@@ -452,6 +496,10 @@ private final class PampGramProfileRatingEditorController: ViewController {
     }
 
     private func updateUI() {
+        let nearestStage = Int((self.pointsProgress * 4.0).rounded())
+        for button in self.stageButtons {
+            button.alpha = button.tag == nearestStage ? 1.0 : 0.5
+        }
         let points = self.points(for: self.selectedLevel, progress: self.pointsProgress)
         let range = self.pointsRange(for: self.selectedLevel)
         self.levelSlider.value = Float(self.selectedLevel)
