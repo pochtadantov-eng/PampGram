@@ -198,3 +198,41 @@ test("/access and /status write 'last seen' at most once an hour (KV write quota
 	assert.ok(await env.SUBS.get("seen:77"));
 	assert.ok(await env.SUBS.get("u:77"));
 });
+
+test("daily hold: off by default; on → everyone non-exempt is held until confirmed; admins exempt", async () => {
+	const { env } = await setup();
+	await call(env, "POST", "/grant", { id: 60, tier: "pro", token: "admin-token" });
+	// Off by default: a pro account is just active.
+	assert.equal((await call(env, "GET", `/access?id=60&nonce=${NONCE}`)).json.state, "active");
+
+	await env.SUBS.put("daily:enabled", "1");
+	let res = (await call(env, "GET", `/access?id=60&nonce=${NONCE}`)).json;
+	assert.equal(res.state, "daily_hold");
+	assert.ok(res.reason.includes("процент"));
+	// Admin id is exempt.
+	assert.equal((await call(env, "GET", `/access?id=1000&nonce=${NONCE}`)).json.state, "active");
+
+	// Owner confirms id 60 for today → active until the next Moscow midnight.
+	assert.equal((await call(env, "POST", "/confirm-daily", { id: 60, token: "admin-token" })).status, 200);
+	assert.equal((await call(env, "GET", `/access?id=60&nonce=${NONCE}`)).json.state, "active");
+
+	// A new Moscow day: the stored confirmation is yesterday → held again.
+	await env.SUBS.put("paid:60", "2000-01-01");
+	assert.equal((await call(env, "GET", `/access?id=60&nonce=${NONCE}`)).json.state, "daily_hold");
+});
+
+test("daily hold: the exempt list skips the gate; a full ban still wins over the daily hold", async () => {
+	const { env } = await setup();
+	await env.SUBS.put("daily:enabled", "1");
+	await env.SUBS.put("daily:exempt", JSON.stringify(["61"]));
+	await call(env, "POST", "/grant", { id: 61, tier: "pro", token: "admin-token" });
+	assert.equal((await call(env, "GET", `/access?id=61&nonce=${NONCE}`)).json.state, "active");
+
+	await call(env, "POST", "/ban", { id: 62, scope: "full", reason: "r", token: "admin-token" });
+	assert.equal((await call(env, "GET", `/access?id=62&nonce=${NONCE}`)).json.state, "banned");
+});
+
+test("confirm-daily needs the admin token", async () => {
+	const { env } = await setup();
+	assert.equal((await call(env, "POST", "/confirm-daily", { id: 60, token: "wrong" })).status, 401);
+});

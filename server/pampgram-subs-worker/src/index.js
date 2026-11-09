@@ -217,7 +217,7 @@ import {
 	listAllKeys,
 } from "./core.js";
 import { issueKey, redeemKeyForAccount } from "./keys.js";
-import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSeen } from "./access.js";
+import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSeen, confirmDaily } from "./access.js";
 import { recordAppSeen, noteTier } from "./users.js";
 import { handleWebhook, runScheduled } from "./bot/webhook.js";
 
@@ -660,6 +660,25 @@ async function handleFetchLedgerSync(request, env) {
 	return jsonResponse({ payload: stored ?? null });
 }
 
+async function handleConfirmDaily(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+	const { id, token } = payload ?? {};
+	if (!isAuthorized(token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	const idString = typeof id === "number" ? String(id) : id;
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	await confirmDaily(env, idString);
+	return jsonResponse({ ok: true });
+}
+
 export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
@@ -675,6 +694,9 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/report-tamper") {
 			return handleReportTamper(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/confirm-daily") {
+			return handleConfirmDaily(request, env);
 		}
 		if (request.method === "GET" && url.pathname === "/ban-status") {
 			return handleBanStatus(request, env);

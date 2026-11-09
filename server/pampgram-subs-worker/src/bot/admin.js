@@ -10,6 +10,7 @@ import {
 	listOrderSummaries, listUserOrders, getState, setState, clearState, getCheck, saveCheck, listChecks,
 } from "./store.js";
 import { payCallback, payInput, pendingClaims } from "./payadmin.js";
+import { isDailyEnabled, isDailyHeld, confirmDaily } from "../access.js";
 import { visualsCallback, visualsInput } from "./visuals.js";
 import { buttonsCallback, buttonsInput, readEmoji } from "./buttonsadmin.js";
 import { productsCallback, productsInput } from "./products.js";
@@ -29,6 +30,7 @@ const CANCEL = kb([[btn("✖️ Отмена", "a:cancel")]]);
 export async function adminHome(ctx) {
 	await clearState(ctx.env, ctx.from.id);
 	const claims = await pendingClaims(ctx.env);
+	const dailyOn = await isDailyEnabled(ctx.env);
 	return show(
 		ctx,
 		"🛠 <b>Админ-панель</b>",
@@ -41,6 +43,7 @@ export async function adminHome(ctx) {
 			[btn("🔘 Кнопки", "a:bt"), btn("💾 Копии", "a:bk")],
 			[btn("📝 Тексты", "a:tk"), btn("🔐 Пароль", "a:pw")],
 			[btn("🔑 Создать ключ", "a:k")],
+			[btn(dailyOn ? "🧾 Дневная проверка процентов: ВКЛ" : "🧾 Дневная проверка процентов: выкл", "a:dt")],
 			[btn("🔄 Импорт старых пользователей", "a:import")],
 			[btn("← В меню", "menu")],
 		])
@@ -161,7 +164,9 @@ async function showProfile(ctx, id) {
 		return toast(ctx, "Неверный id", true);
 	}
 	const { text, banned } = await profileText(ctx, id);
+	const held = await isDailyHeld(ctx.env, id);
 	const rows = [
+		[btn(held ? "💸 Подтвердить оплату % (сегодня)" : "✅ Оплата % подтверждена сегодня", `a:dok:${id}`)],
 		[banned ? btn("✅ Разбанить", `a:unban:${id}`) : btn("🚫 Забанить", `a:ban:${id}`), btn("🔍 На проверку в ЛС", `a:chk:${id}`)],
 		[btn("💎 Выдать тариф", `a:gr:${id}`), btn("✉️ Написать", `a:dm:${id}`)],
 		[btn("📝 Заметка", `a:note:${id}`), btn("🔄 Обновить", `a:u:${id}`)],
@@ -490,6 +495,19 @@ export async function adminCallback(ctx, data) {
 			await clearState(ctx.env, ctx.from.id);
 			await toast(ctx, "Отменено");
 			return adminHome(ctx);
+		case "dt": {
+			const next = !(await isDailyEnabled(ctx.env));
+			await ctx.env.SUBS.put("daily:enabled", next ? "1" : "0");
+			await toast(ctx, next ? "Дневная проверка включена" : "Выключена");
+			return adminHome(ctx);
+		}
+		case "dok":
+			if (!isValidAccountId(arg)) {
+				return toast(ctx, "Неверный id", true);
+			}
+			await confirmDaily(ctx.env, arg);
+			await toast(ctx, "Оплата подтверждена на сегодня");
+			return showProfile(ctx, arg);
 		case "k":
 			await toast(ctx);
 			return showKeyMenu(ctx);

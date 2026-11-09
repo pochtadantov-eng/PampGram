@@ -37,6 +37,9 @@ private func pampGramAccessLockContent(for kind: PampGramAccessLockKind) -> Pamp
         return PampGramAccessLockContent(title: "Нет связи с сервером", body: "Подключитесь к интернету, чтобы подтвердить подписку.", showBuy: false, showActivate: false, showRetry: true, showSpinner: false)
     case .clockTampered:
         return PampGramAccessLockContent(title: "Неверное время", body: "Включите автоматическую установку даты и времени и подключитесь к интернету, чтобы подтвердить подписку.", showBuy: false, showActivate: false, showRetry: true, showSpinner: false)
+    case .ownerConfirm(let message):
+        let body = message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Пусть владелец подтвердит, что вы оплатили свой процент." : message
+        return PampGramAccessLockContent(title: "Нужно подтверждение", body: body, showBuy: false, showActivate: false, showRetry: true, showSpinner: false)
     }
 }
 

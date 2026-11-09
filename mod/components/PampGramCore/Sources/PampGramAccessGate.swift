@@ -16,6 +16,8 @@ public enum PampGramAccessLockKind: Equatable {
     case unreachable
     /// The device clock was moved back to stretch an offline answer.
     case clockTampered
+    /// Daily "owner confirms you paid your percentage" gate (server state "daily_hold").
+    case ownerConfirm(message: String)
 }
 
 public enum PampGramAccessState: Equatable {
@@ -178,8 +180,10 @@ public final class PampGramAccessGate {
                 return 3
             case .needsKey:
                 return 4
-            case .banned:
+            case .ownerConfirm:
                 return 5
+            case .banned:
+                return 6
             }
         }
     }
@@ -209,6 +213,8 @@ public final class PampGramAccessGate {
             return .locked(.needsKey(expired: false))
         case "expired":
             return .locked(.needsKey(expired: true))
+        case "daily_hold":
+            return .locked(.ownerConfirm(message: record.reason ?? ""))
         case "active":
             if nowMs < record.receivedAt - PampGramAccessGate.clockSlackMs || nowMs < lastSeenMs - PampGramAccessGate.clockSlackMs {
                 return .locked(.clockTampered)
@@ -314,7 +320,7 @@ public final class PampGramAccessGate {
             switch kind {
             case .checking, .unreachable:
                 return 0
-            case .needsKey, .clockTampered:
+            case .needsKey, .clockTampered, .ownerConfirm:
                 return 2
             case .banned:
                 return 3
@@ -459,7 +465,7 @@ public final class PampGramAccessGate {
                 return "balance_edit"
             }
             return nil
-        case .needsKey, .clockTampered:
+        case .needsKey, .clockTampered, .ownerConfirm:
             if !raw.bannedLocally {
                 return "settings_unlocked"
             }

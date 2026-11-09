@@ -45,6 +45,54 @@ function adminIds(env) {
 		.filter(Boolean);
 }
 
+/**
+ * Daily "owner confirms you paid your percentage" gate. Independent of the licence: when it's
+ * on, every account except the exempt ones (the admins plus "daily:exempt" in KV) is locked
+ * each day until the owner confirms that account for the current day. The owner confirms per
+ * account from the users list; the confirmation lasts until the next Moscow midnight, then the
+ * lock comes back on its own. Off by default — the owner turns it on with "daily:enabled".
+ */
+export const DAILY_HOLD_MESSAGE = "Пусть владелец подтвердит, что вы оплатили свой процент.";
+
+/** Today's date (YYYY-MM-DD) in Moscow time (UTC+3), where the daily reset happens at midnight. */
+export function moscowDate(now = Date.now()) {
+	return new Date(now + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+export async function dailyExemptIds(env) {
+	let extra = [];
+	try {
+		const stored = JSON.parse((await env.SUBS.get("daily:exempt")) ?? "[]");
+		if (Array.isArray(stored)) {
+			extra = stored.map((value) => String(value));
+		}
+	} catch {
+		extra = [];
+	}
+	return new Set([...adminIds(env), ...extra]);
+}
+
+export async function isDailyEnabled(env) {
+	return (await env.SUBS.get("daily:enabled")) === "1";
+}
+
+/** True when `idString` is currently waiting for the owner's daily confirmation. */
+export async function isDailyHeld(env, idString, now = Date.now()) {
+	if (!(await isDailyEnabled(env))) {
+		return false;
+	}
+	if ((await dailyExemptIds(env)).has(idString)) {
+		return false;
+	}
+	const confirmed = await env.SUBS.get(`paid:${idString}`);
+	return confirmed !== moscowDate(now);
+}
+
+/** Owner confirms `idString` for today (Moscow). Clears the hold until the next midnight. */
+export async function confirmDaily(env, idString, now = Date.now()) {
+	await env.SUBS.put(`paid:${idString}`, moscowDate(now));
+}
+
 /** The licence part only (ignores bans): "active" | "none" | "expired". */
 export async function readLicense(env, idString, now = Date.now()) {
 	if (adminIds(env).includes(idString)) {
@@ -84,6 +132,11 @@ export async function computeAccess(env, idString, now = Date.now()) {
 	if (ban.full) {
 		const tamper = await env.SUBS.get(`tamper:${idString}`);
 		return { state: "banned", expiresAt: null, reason: ban.full.reason, tamper: Boolean(tamper) };
+	}
+	// The daily "paid your percentage" gate sits above the licence: even an account with a valid
+	// key is held each day until the owner confirms it. Admins and the "daily:exempt" list skip it.
+	if (await isDailyHeld(env, idString, now)) {
+		return { state: "daily_hold", expiresAt: null, reason: DAILY_HOLD_MESSAGE, tamper: false };
 	}
 	const license = await readLicense(env, idString, now);
 	return { state: license.state, expiresAt: license.expiresAt, reason: null, tamper: false };
