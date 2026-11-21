@@ -160,7 +160,9 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     /// calling a real, network-backed `ProfileGiftsContext` method. `fromPeer` is resolved by
     /// the caller (`PampGramPhantomGiftStore.resolvedProfileGiftsSignal`) from `fromPeerId` —
     /// this type only stores an id, never a full `EnginePeer`.
-    public func asProfileGift(fromPeer: EnginePeer?, reference: StarGiftReference? = nil) -> ProfileGiftsContext.State.StarGift {
+    /// - Parameter accountPeerId: when set, craft (anvil) is offered only if this gift lives on
+    ///   that account's own profile — never on someone else's gift grid.
+    public func asProfileGift(fromPeer: EnginePeer?, reference: StarGiftReference? = nil, accountPeerId: EnginePeer.Id? = nil) -> ProfileGiftsContext.State.StarGift {
         // A local market listing (`marketPrice`) never touches the stored `self.gift` — only
         // this projection, the one GiftViewScreen actually reads `resellAmounts` off of, so
         // listing/unlisting flips the real "Продать"/"Снять с продажи" button and green
@@ -200,10 +202,10 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
         if let marketPrice = self.marketPrice, case let .unique(uniqueGift) = gift {
             gift = .unique(Self.withResellListing(uniqueGift, price: marketPrice))
         }
-        // Crafting: a unique visual gift can always be crafted (Telegram's own anvil button and
-        // craft screen show when this is set; the craft itself is answered locally).
+        // Crafting: Telegram's anvil shows when canCraftAt is set. Only own-profile unique
+        // visual gifts get it — never gifts shown on another peer's profile.
         var canCraftAt: Int32?
-        if case .unique = gift {
+        if case .unique = gift, let accountPeerId, self.peerId == accountPeerId {
             canCraftAt = 0
         }
         return ProfileGiftsContext.State.StarGift(

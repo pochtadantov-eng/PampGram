@@ -18,7 +18,7 @@ public extension PampGramPhantomGiftManager {
                     continue
                 }
                 if case let .unique(uniqueGift) = gift.gift, uniqueGift.giftId == giftId {
-                    result.append(gift.asProfileGift(fromPeer: nil, reference: .slug(slug: uniqueGift.slug)))
+                    result.append(gift.asProfileGift(fromPeer: nil, reference: .slug(slug: uniqueGift.slug), accountPeerId: context.account.peerId))
                 }
             }
             return result
@@ -73,7 +73,7 @@ public extension PampGramPhantomGiftManager {
             guard let crafted = crafted, case let .unique(uniqueGift) = crafted.gift else {
                 return .fail(.craftFailed)
             }
-            return .single(crafted.asProfileGift(fromPeer: nil, reference: .slug(slug: uniqueGift.slug)))
+            return .single(crafted.asProfileGift(fromPeer: nil, reference: .slug(slug: uniqueGift.slug), accountPeerId: context.account.peerId))
         }
     }
 }

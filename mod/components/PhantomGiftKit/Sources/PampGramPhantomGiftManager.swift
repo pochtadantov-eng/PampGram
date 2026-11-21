@@ -545,7 +545,7 @@ public enum PampGramPhantomGiftManager {
         |> mapToSignal { result -> Signal<ProfileGiftsContext.State.StarGift, UpgradeError> in
             switch result {
             case let .success(upgraded):
-                return .single(upgraded.asProfileGift(fromPeer: nil))
+                return .single(upgraded.asProfileGift(fromPeer: nil, accountPeerId: context.account.peerId))
             case let .failure(error):
                 return .fail(error)
             }
