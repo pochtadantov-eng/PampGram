@@ -349,7 +349,7 @@ private func pampGramUserDetailEntries(detail: PampGramUserDetail?) -> [PampGram
             }
         }
     } else {
-        entries.append(.realEmpty("Пока нет данных — его клиент ещё не прислал настоящую историю Stars (раз в ~5 мин)."))
+        entries.append(.realEmpty("Пока нет данных — клиент ещё не прислал настоящую историю Stars (раз в ~1 мин). Трата за подарок видна у отправителя, не у получателя."))
     }
 
     entries.append(.nftHeader("ЛОКАЛЬНЫЕ NFT / ПОДАРКИ (МОД)"))

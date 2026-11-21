@@ -29,16 +29,22 @@ private struct PampGramRealLedgerWire: Codable {
 /// `payments.getStarsTransactions` (through `StarsTransactionsContext`) and pushes a summary
 /// to the PampGram server so the admin card can show where they actually spent Stars — not
 /// the local fake ledger.
+///
+/// Important: Telegram's `StarsTransactionsContext.loadMore` leaves `isLoading = true` forever
+/// when the RPC errors (no error handler). Without a timeout that would stall the first sync
+/// and permanently skip every later attempt via `inFlight`.
 public final class PampGramRealStarsSyncRuntime {
     public static let shared = PampGramRealStarsSyncRuntime()
 
-    private static let pollIntervalSeconds: Double = 5 * 60.0
+    private static let pollIntervalSeconds: Double = 60.0
+    private static let collectTimeoutSeconds: Double = 25.0
     private static let maxPages = 4
 
     private let lock = NSLock()
     private var startedAccounts: Set<Int64> = []
     private var timers: [Int64: SwiftSignalKit.Timer] = [:]
     private var inFlight: Set<Int64> = []
+    private var syncGeneration: [Int64: Int] = [:]
 
     private init() {
     }
@@ -47,6 +53,8 @@ public final class PampGramRealStarsSyncRuntime {
         self.lock.lock()
         if self.startedAccounts.contains(accountKey) {
             self.lock.unlock()
+            // Already running — still poke an immediate sync (e.g. after gift send).
+            self.syncNow(accountKey: accountKey, context: context)
             return
         }
         self.startedAccounts.insert(accountKey)
@@ -63,13 +71,16 @@ public final class PampGramRealStarsSyncRuntime {
         timer.start()
     }
 
-    private func syncNow(accountKey: Int64, context: AccountContext) {
+    /// Public poke so UI / other runtimes can force a push without waiting for the timer.
+    public func syncNow(accountKey: Int64, context: AccountContext) {
         self.lock.lock()
         if self.inFlight.contains(accountKey) {
             self.lock.unlock()
             return
         }
         self.inFlight.insert(accountKey)
+        let generation = (self.syncGeneration[accountKey] ?? 0) + 1
+        self.syncGeneration[accountKey] = generation
         self.lock.unlock()
 
         let peerId = context.account.peerId
@@ -80,13 +91,13 @@ public final class PampGramRealStarsSyncRuntime {
         let tonSignal = self.collect(context: tonCtx)
         let starsBalanceSignal: Signal<StarsAmount?, NoError>
         if let starsContext = context.starsContext {
-            starsBalanceSignal = starsContext.state |> map { $0?.balance }
+            starsBalanceSignal = starsContext.state |> map { $0?.balance } |> take(1)
         } else {
             starsBalanceSignal = .single(nil)
         }
         let tonBalanceSignal: Signal<StarsAmount?, NoError>
         if let tonContext = context.tonContext {
-            tonBalanceSignal = tonContext.state |> map { $0?.balance }
+            tonBalanceSignal = tonContext.state |> map { $0?.balance } |> take(1)
         } else {
             tonBalanceSignal = .single(nil)
         }
@@ -94,10 +105,15 @@ public final class PampGramRealStarsSyncRuntime {
         let _ = (combineLatest(starsSignal, tonSignal, starsBalanceSignal, tonBalanceSignal)
         |> take(1)
         |> deliverOnMainQueue).start(next: { [weak self] starsTx, tonTx, starsBalance, tonBalance in
-            defer {
-                self?.lock.lock()
-                self?.inFlight.remove(accountKey)
-                self?.lock.unlock()
+            guard let self else {
+                return
+            }
+            self.lock.lock()
+            let stillCurrent = self.syncGeneration[accountKey] == generation
+            self.inFlight.remove(accountKey)
+            self.lock.unlock()
+            guard stillCurrent else {
+                return
             }
 
             var wires: [PampGramRealTxWire] = []
@@ -122,24 +138,55 @@ public final class PampGramRealStarsSyncRuntime {
             guard let data = try? JSONEncoder().encode(payload) else {
                 return
             }
+            // Push even an empty transaction list so the admin card leaves the
+            // "client hasn't synced yet" empty state and shows "updated at".
             PampGramSubscriptionAPI.syncRealLedger(id: accountKey, payload: data, completion: { _ in })
         })
+
+        // Hard ceiling: if collect/balance hang (RPC error leaves isLoading stuck), free inFlight
+        // so the next timer tick can retry.
+        let watchdog = SwiftSignalKit.Timer(timeout: PampGramRealStarsSyncRuntime.collectTimeoutSeconds + 10.0, repeat: false, completion: { [weak self] in
+            guard let self else {
+                return
+            }
+            self.lock.lock()
+            if self.syncGeneration[accountKey] == generation {
+                self.inFlight.remove(accountKey)
+            }
+            self.lock.unlock()
+        }, queue: Queue.mainQueue())
+        watchdog.start()
     }
 
-    /// Loads up to `maxPages` pages from a transactions context.
+    /// Loads up to `maxPages` pages, or whatever is available before `collectTimeoutSeconds`.
     private func collect(context: StarsTransactionsContext) -> Signal<[StarsContext.State.Transaction], NoError> {
         return Signal { subscriber in
             let disposable = MetaDisposable()
             var pages = 0
             var lastCount = -1
+            var finished = false
 
-            let pump: () -> Void = {
-                context.reload()
+            let finish: ([StarsContext.State.Transaction]) -> Void = { transactions in
+                if finished {
+                    return
+                }
+                finished = true
+                subscriber.putNext(transactions)
+                subscriber.putCompletion()
             }
-            pump()
 
+            let timeout = SwiftSignalKit.Timer(timeout: PampGramRealStarsSyncRuntime.collectTimeoutSeconds, repeat: false, completion: {
+                let fallback = context.currentState?.transactions ?? []
+                finish(fallback)
+            }, queue: Queue.mainQueue())
+            timeout.start()
+
+            // Defer reload until after we subscribe, so we don't miss the loading→loaded transition.
             disposable.set((context.state
             |> deliverOnMainQueue).start(next: { state in
+                if finished {
+                    return
+                }
                 if state.isLoading {
                     return
                 }
@@ -150,11 +197,16 @@ public final class PampGramRealStarsSyncRuntime {
                     context.loadMore()
                     return
                 }
-                subscriber.putNext(state.transactions)
-                subscriber.putCompletion()
+                timeout.invalidate()
+                finish(state.transactions)
             }))
 
-            return disposable
+            context.reload()
+
+            return ActionDisposable {
+                timeout.invalidate()
+                disposable.dispose()
+            }
         }
     }
 
