@@ -109,3 +109,65 @@ test("/users-list still reports users that only have the legacy seen: key", asyn
 	assert.equal(json.total, 1);
 	assert.equal(json.users[0].id, "77");
 });
+
+test("/user-detail returns profile, ban, tier and ledger totals for the admin", async () => {
+	const env = createEnv();
+	const now = Date.now();
+	await env.SUBS.put("seen:88", String(now));
+	await env.SUBS.put(
+		"u:88",
+		JSON.stringify({
+			id: "88",
+			firstSeen: now - 60_000,
+			lastSeen: now,
+			sessions: [now - 60_000, now],
+			username: "tester",
+			name: "Test User",
+			appVersion: "1.5.2",
+			appBuild: "252",
+			bot: null,
+			activatedAt: null,
+			purchases: 0,
+			note: "",
+		})
+	);
+	await call(env, "POST", "/grant", { id: 88, tier: "pro", token: "admin-token", durationHours: 24 });
+	await call(env, "POST", "/ban", { id: 88, token: "admin-token", scope: "full", reason: "abuse" });
+	await env.SUBS.put(
+		"ledgersync:88",
+		JSON.stringify({
+			starsBalance: 900,
+			tonBalanceNanos: 2_500_000_000,
+			operations: [
+				{ id: 1, currency: { value: "stars" }, kind: { value: "topUp" }, amount: 1000, date: 100, title: "Пополнение" },
+				{ id: 2, currency: { value: "stars" }, kind: { value: "purchase" }, amount: -100, date: 200, title: "Покупка" },
+				{ id: 3, currency: { value: "ton" }, kind: { value: "credit" }, amount: 3_000_000_000, date: 300, title: "Зачисление" },
+				{ id: 4, currency: { value: "ton" }, kind: { value: "debit" }, amount: -500_000_000, date: 400, title: "Списание" },
+			],
+		})
+	);
+
+	const denied = await call(env, "POST", "/user-detail", { token: "wrong", id: 88 });
+	assert.equal(denied.status, 401);
+
+	const { status, json } = await call(env, "POST", "/user-detail", { token: "admin-token", id: 88 });
+	assert.equal(status, 200);
+	assert.equal(json.id, "88");
+	assert.equal(json.username, "tester");
+	assert.equal(json.appVersion, "1.5.2");
+	assert.equal(json.tier, "pro");
+	assert.equal(json.full.reason, "abuse");
+	assert.equal(json.sessions.length, 2);
+	assert.equal(json.ledger.starsBalance, 900);
+	assert.equal(json.ledger.starsReceived, 1000);
+	assert.equal(json.ledger.starsSpent, 100);
+	assert.equal(json.ledger.tonReceivedNanos, 3_000_000_000);
+	assert.equal(json.ledger.tonSpentNanos, 500_000_000);
+	assert.equal(json.ledger.operations[0].title, "Списание");
+
+	const list = (await call(env, "POST", "/users-list", { token: "admin-token" })).json;
+	const row = list.users.find((user) => user.id === "88");
+	assert.equal(row.username, "tester");
+	assert.equal(row.sessionsCount, 2);
+	assert.equal(row.tier, "pro");
+});

@@ -130,18 +130,30 @@
  *     body: { "token": "<ADMIN_TOKEN>" }
  *     -> { "users": [{
  *            "id": "<id>", "tier": "standard"|"pro", "tierChangedAt": <ms>|null, "lastSeen": <ms>,
+ *            "username": "", "name": "", "appVersion": "", "firstSeen": <ms>, "sessionsCount": <n>,
  *            "full": {"reason":"<text>","at":<ms>}|null,
  *            "sections": { "<section>": {"reason":"<text>","at":<ms>} }
  *          }, ...], "total": <count> }
  *     Admin-only — backs the admin panel's "Пользователи" screen (which replaced the old,
  *     separate "Разбанить" screen and its now-removed /banned-list route: one merged list of
  *     every account PampGram knows about, banned or not, with tier and ban detail together).
- *     The account set is every id with a "seen:<id>", "ban:<id>", OR "sub:<id>" entry — union,
- *     not just "seen:", so an account banned before it ever opened the app, or one an admin
+ *     The account set is every id with a "seen:<id>", "ban:<id>", "sub:<id>", OR "u:<id>"
+ *     entry — union, so an account banned before it ever opened the app, or one an admin
  *     granted a tier to via /grant before it ever opened the app (or one that's never called
  *     /status for any other reason), still shows up instead of silently vanishing from this
- *     list; such an account reports `lastSeen: 0`. `total` is just `users.length`, sent
- *     separately so the client can show a count without counting the array itself.
+ *     list; such an account reports `lastSeen: 0`. Profile fields come from "u:<id>" when
+ *     present. `total` is just `users.length`, sent separately so the client can show a count
+ *     without counting the array itself.
+ *
+ *   POST /user-detail
+ *     body: { "token": "<ADMIN_TOKEN>", "id": <telegram account id> }
+ *     -> { "id", "username", "name", "appVersion", "appBuild", "firstSeen", "lastSeen",
+ *          "sessions": [<ms>, ...], "tier", "tierChangedAt", "expiresAt",
+ *          "full", "sections",
+ *          "ledger": { starsBalance, tonBalanceNanos, starsSpent, starsReceived,
+ *                      tonSpentNanos, tonReceivedNanos, operationCount, operations: [...] } | null }
+ *     Admin-only. One card for managing a person: who they are, when they opened the mod,
+ *     PRO/STANDARD, ban state, and the last pushed fake Stars/TON ledger (balances + ops).
  *
  *   POST /generate-key
  *     body: { "token": "<ADMIN_TOKEN>", "tier": "pro" | "standard",
@@ -218,7 +230,7 @@ import {
 } from "./core.js";
 import { issueKey, issueUnbanKey, redeemKeyForAccount } from "./keys.js";
 import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSeen, confirmDaily } from "./access.js";
-import { recordAppSeen, noteTier } from "./users.js";
+import { recordAppSeen, noteTier, getUser, summarizeLedger } from "./users.js";
 import { handleWebhook, runScheduled } from "./bot/webhook.js";
 
 function jsonResponse(body, status = 200) {
@@ -441,11 +453,16 @@ async function handleUsersList(request, env) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
 
-	// Union of "seen:", "ban:", and "sub:" ids: an account banned before it ever opened the
-	// app, or one an admin granted a tier to via /grant before it ever opened the app, has no
-	// "seen:" entry, but still belongs on this list rather than silently disappearing from
-	// admin view.
-	const [seenKeys, banKeys, subKeys] = await Promise.all([listAllKeys(env, "seen:"), listAllKeys(env, "ban:"), listAllKeys(env, "sub:")]);
+	// Union of "seen:", "ban:", "sub:", and "u:" ids: an account banned before it ever opened
+	// the app, or one an admin granted a tier to via /grant before it ever opened the app, has
+	// no "seen:" entry, but still belongs on this list rather than silently disappearing from
+	// admin view. "u:" covers profiles the bot saw that never called /status.
+	const [seenKeys, banKeys, subKeys, userKeys] = await Promise.all([
+		listAllKeys(env, "seen:"),
+		listAllKeys(env, "ban:"),
+		listAllKeys(env, "sub:"),
+		listAllKeys(env, "u:"),
+	]);
 	const ids = new Set();
 	for (const key of seenKeys) {
 		ids.add(key.name.slice("seen:".length));
@@ -456,22 +473,34 @@ async function handleUsersList(request, env) {
 	for (const key of subKeys) {
 		ids.add(key.name.slice("sub:".length));
 	}
+	for (const key of userKeys) {
+		ids.add(key.name.slice("u:".length));
+	}
 
 	const users = await Promise.all(
 		Array.from(ids).map(async (idString) => {
-			const [lastSeenRaw, tierRaw, tierChangedRaw, banRecord] = await Promise.all([
+			const [lastSeenRaw, subscription, tierChangedRaw, banRecord, profile] = await Promise.all([
 				env.SUBS.get(`seen:${idString}`),
-				env.SUBS.get(`sub:${idString}`),
+				readSubscription(env, idString),
 				env.SUBS.get(`tier_changed:${idString}`),
 				readBanRecord(env, idString),
+				getUser(env, idString),
 			]);
-			const lastSeen = parseInt(lastSeenRaw, 10);
+			const lastSeenFromSeen = parseInt(lastSeenRaw, 10);
+			const lastSeen = Number.isInteger(lastSeenFromSeen)
+				? lastSeenFromSeen
+				: (profile?.lastSeen || 0);
 			const tierChangedAt = parseInt(tierChangedRaw, 10);
 			return {
 				id: idString,
-				tier: ALLOWED_TIERS.has(tierRaw) ? tierRaw : "standard",
-				tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : null,
-				lastSeen: Number.isInteger(lastSeen) ? lastSeen : 0,
+				tier: subscription.tier,
+				tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : (profile?.tierChangedAt ?? null),
+				lastSeen,
+				username: profile?.username || "",
+				name: profile?.name || "",
+				appVersion: profile?.appVersion || "",
+				firstSeen: profile?.firstSeen || 0,
+				sessionsCount: Array.isArray(profile?.sessions) ? profile.sessions.length : 0,
 				full: banRecord.full,
 				sections: banRecord.sections,
 			};
@@ -480,6 +509,53 @@ async function handleUsersList(request, env) {
 	users.sort((a, b) => b.lastSeen - a.lastSeen);
 
 	return jsonResponse({ users, total: users.length });
+}
+
+async function handleUserDetail(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	if (!isAuthorized(payload?.token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+
+	const idString = payload?.id === undefined || payload?.id === null ? "" : String(payload.id);
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+
+	const [lastSeenRaw, subscription, tierChangedRaw, banRecord, profile, ledgerRaw] = await Promise.all([
+		env.SUBS.get(`seen:${idString}`),
+		readSubscription(env, idString),
+		env.SUBS.get(`tier_changed:${idString}`),
+		readBanRecord(env, idString),
+		getUser(env, idString),
+		env.SUBS.get(`ledgersync:${idString}`),
+	]);
+	const lastSeenFromSeen = parseInt(lastSeenRaw, 10);
+	const tierChangedAt = parseInt(tierChangedRaw, 10);
+	const lastSeen = Number.isInteger(lastSeenFromSeen) ? lastSeenFromSeen : (profile?.lastSeen || 0);
+
+	return jsonResponse({
+		id: idString,
+		username: profile?.username || "",
+		name: profile?.name || "",
+		appVersion: profile?.appVersion || "",
+		appBuild: profile?.appBuild || "",
+		firstSeen: profile?.firstSeen || 0,
+		lastSeen,
+		sessions: Array.isArray(profile?.sessions) ? profile.sessions.slice(-40) : [],
+		tier: subscription.tier,
+		tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : (profile?.tierChangedAt ?? null),
+		expiresAt: subscription.expiresAt,
+		full: banRecord.full,
+		sections: banRecord.sections,
+		ledger: summarizeLedger(ledgerRaw),
+	});
 }
 
 async function handleGenerateKey(request, env) {
@@ -731,6 +807,9 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/users-list") {
 			return handleUsersList(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/user-detail") {
+			return handleUserDetail(request, env);
 		}
 		if (request.method === "POST" && url.pathname === "/generate-key") {
 			return handleGenerateKey(request, env);

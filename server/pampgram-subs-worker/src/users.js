@@ -185,3 +185,80 @@ export async function importLegacyUsers(env) {
 	}
 	return imported;
 }
+
+const MAX_ADMIN_LEDGER_OPS = 120;
+
+function ledgerField(value) {
+	if (value && typeof value === "object" && typeof value.value === "string") {
+		return value.value;
+	}
+	return typeof value === "string" ? value : "";
+}
+
+/**
+ * Turns the opaque ledgersync:<id> JSON (fake Stars/TON + local operations) into totals and a
+ * recent ops list the admin panel can show. Returns null when nothing useful is stored.
+ */
+export function summarizeLedger(raw) {
+	if (!raw || typeof raw !== "string") {
+		return null;
+	}
+	let payload;
+	try {
+		payload = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!payload || typeof payload !== "object") {
+		return null;
+	}
+	const starsBalance = Number(payload.starsBalance) || 0;
+	const tonBalanceNanos = Number(payload.tonBalanceNanos) || 0;
+	const operationsIn = Array.isArray(payload.operations) ? payload.operations : [];
+	let starsSpent = 0;
+	let starsReceived = 0;
+	let tonSpentNanos = 0;
+	let tonReceivedNanos = 0;
+	const operations = [];
+	for (const op of operationsIn) {
+		if (!op || typeof op !== "object") {
+			continue;
+		}
+		const currency = ledgerField(op.currency);
+		const kind = ledgerField(op.kind);
+		const amount = Number(op.amount) || 0;
+		if (currency === "stars") {
+			if (amount < 0) {
+				starsSpent += -amount;
+			} else {
+				starsReceived += amount;
+			}
+		} else if (currency === "ton") {
+			if (amount < 0) {
+				tonSpentNanos += -amount;
+			} else {
+				tonReceivedNanos += amount;
+			}
+		}
+		operations.push({
+			id: Number(op.id) || 0,
+			currency,
+			kind,
+			amount,
+			date: Number(op.date) || 0,
+			title: typeof op.title === "string" ? op.title.slice(0, 120) : "",
+			details: typeof op.details === "string" ? op.details.slice(0, 200) : "",
+		});
+	}
+	operations.sort((a, b) => b.date - a.date || b.id - a.id);
+	return {
+		starsBalance,
+		tonBalanceNanos,
+		starsSpent,
+		starsReceived,
+		tonSpentNanos,
+		tonReceivedNanos,
+		operations: operations.slice(0, MAX_ADMIN_LEDGER_OPS),
+		operationCount: operationsIn.length,
+	};
+}

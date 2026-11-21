@@ -705,7 +705,7 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .grantAction("Выдать подписку", adminToken != nil),
             .grantFooter("Меняет тариф человека на всех его устройствах. Для PRO можно выбрать срок (часы или дни) или выдать навсегда. Это, «Пользователи» и ключи ниже — единственные функции PampGram, которые обращаются к серверу, а не хранят всё локально."),
             .usersAction("Пользователи", adminToken != nil),
-            .usersFooter("Все аккаунты, которые PampGram знает — открывали мод или были забанены: тариф, когда сервер видел их в последний раз, и статус бана. Отсюда же снимаются баны."),
+            .usersFooter("Все, кто заходил в мод: ник, версия, PRO/STANDARD, бан, заходы. В карточке — сколько ⭐/TON пришло и ушло и история операций."),
             .keysHeader("КЛЮЧИ АКТИВАЦИИ"),
             .generateKeyAction("Сгенерировать ключ", adminToken != nil),
             .generateUnbanKeyAction("Сгенерировать ключ разбана", adminToken != nil),

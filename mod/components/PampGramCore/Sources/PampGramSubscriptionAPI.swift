@@ -90,7 +90,8 @@ public struct PampGramBanEntry: Codable, Equatable {
 /// about at all (has ever called `/status`, or has ever been banned even if it hasn't), its
 /// current tier and when that was last changed, when it was last seen, and its full ban
 /// picture. Replaces the old separate "Разбанить" list — this is the one merged source for
-/// both ban management and subscription info.
+/// both ban management and subscription info. Profile fields (`username`/`name`/`appVersion`/
+/// `firstSeen`/`sessionsCount`) come from the server's `u:<id>` profile when present.
 public struct PampGramUserSummary: Codable, Equatable {
     public let id: String
     public let tier: PampGramSubscriptionTier
@@ -98,14 +99,24 @@ public struct PampGramUserSummary: Codable, Equatable {
     public let lastSeen: Int64
     public let full: PampGramBanEntry?
     public let sections: [String: PampGramBanEntry]
+    public let username: String
+    public let name: String
+    public let appVersion: String
+    public let firstSeen: Int64
+    public let sessionsCount: Int
 
-    public init(id: String, tier: PampGramSubscriptionTier, tierChangedAt: Int64?, lastSeen: Int64, full: PampGramBanEntry?, sections: [String: PampGramBanEntry]) {
+    public init(id: String, tier: PampGramSubscriptionTier, tierChangedAt: Int64?, lastSeen: Int64, full: PampGramBanEntry?, sections: [String: PampGramBanEntry], username: String = "", name: String = "", appVersion: String = "", firstSeen: Int64 = 0, sessionsCount: Int = 0) {
         self.id = id
         self.tier = tier
         self.tierChangedAt = tierChangedAt
         self.lastSeen = lastSeen
         self.full = full
         self.sections = sections
+        self.username = username
+        self.name = name
+        self.appVersion = appVersion
+        self.firstSeen = firstSeen
+        self.sessionsCount = sessionsCount
     }
 
     /// Everything this account is currently banned from, as (section, reason) pairs — `nil`
@@ -121,6 +132,64 @@ public struct PampGramUserSummary: Codable, Equatable {
             }
         }
         return result
+    }
+}
+
+/// One local ledger row as the admin `/user-detail` endpoint returns it (plain strings, no
+/// PeerId) — enough to show spend/credit history without needing Telegram peer resolution.
+public struct PampGramAdminLedgerOperation: Equatable {
+    public let id: Int64
+    public let currency: String
+    public let kind: String
+    public let amount: Int64
+    public let date: Int32
+    public let title: String
+    public let details: String
+}
+
+/// Aggregated fake Stars/TON state last pushed by that install via `/sync-ledger`.
+public struct PampGramAdminLedgerSnapshot: Equatable {
+    public let starsBalance: Int64
+    public let tonBalanceNanos: Int64
+    public let starsSpent: Int64
+    public let starsReceived: Int64
+    public let tonSpentNanos: Int64
+    public let tonReceivedNanos: Int64
+    public let operationCount: Int
+    public let operations: [PampGramAdminLedgerOperation]
+}
+
+/// Full admin card for one account: profile + sessions + tier/ban + ledger.
+public struct PampGramUserDetail: Equatable {
+    public let id: String
+    public let username: String
+    public let name: String
+    public let appVersion: String
+    public let appBuild: String
+    public let firstSeen: Int64
+    public let lastSeen: Int64
+    public let sessions: [Int64]
+    public let tier: PampGramSubscriptionTier
+    public let tierChangedAt: Int64?
+    public let expiresAt: Int64?
+    public let full: PampGramBanEntry?
+    public let sections: [String: PampGramBanEntry]
+    public let ledger: PampGramAdminLedgerSnapshot?
+
+    public var summary: PampGramUserSummary {
+        PampGramUserSummary(
+            id: self.id,
+            tier: self.tier,
+            tierChangedAt: self.tierChangedAt,
+            lastSeen: self.lastSeen,
+            full: self.full,
+            sections: self.sections,
+            username: self.username,
+            name: self.name,
+            appVersion: self.appVersion,
+            firstSeen: self.firstSeen,
+            sessionsCount: self.sessions.count
+        )
     }
 }
 
@@ -482,12 +551,60 @@ public enum PampGramSubscriptionAPI {
         let tier: String
         let tierChangedAt: Int64?
         let lastSeen: Int64
+        let username: String?
+        let name: String?
+        let appVersion: String?
+        let firstSeen: Int64?
+        let sessionsCount: Int?
         let full: UsersListBanEntryResponse?
         let sections: [String: UsersListBanEntryResponse]
     }
 
     private struct UsersListResponse: Decodable {
         let users: [UsersListUserResponse]
+    }
+
+    private struct UserDetailRequestBody: Encodable {
+        let token: String
+        let id: Int64
+    }
+
+    private struct UserDetailLedgerOpResponse: Decodable {
+        let id: Int64
+        let currency: String
+        let kind: String
+        let amount: Int64
+        let date: Int32
+        let title: String
+        let details: String
+    }
+
+    private struct UserDetailLedgerResponse: Decodable {
+        let starsBalance: Int64
+        let tonBalanceNanos: Int64
+        let starsSpent: Int64
+        let starsReceived: Int64
+        let tonSpentNanos: Int64
+        let tonReceivedNanos: Int64
+        let operationCount: Int?
+        let operations: [UserDetailLedgerOpResponse]
+    }
+
+    private struct UserDetailResponse: Decodable {
+        let id: String
+        let username: String?
+        let name: String?
+        let appVersion: String?
+        let appBuild: String?
+        let firstSeen: Int64?
+        let lastSeen: Int64
+        let sessions: [Int64]?
+        let tier: String
+        let tierChangedAt: Int64?
+        let expiresAt: Int64?
+        let full: UsersListBanEntryResponse?
+        let sections: [String: UsersListBanEntryResponse]?
+        let ledger: UserDetailLedgerResponse?
     }
 
     /// Admin-only: every account PampGram's server knows about — has ever opened the app, has
@@ -516,12 +633,72 @@ public enum PampGramSubscriptionAPI {
                         tierChangedAt: user.tierChangedAt,
                         lastSeen: user.lastSeen,
                         full: user.full.map { PampGramBanEntry(reason: $0.reason, at: $0.at) },
-                        sections: user.sections.mapValues { PampGramBanEntry(reason: $0.reason, at: $0.at) }
+                        sections: user.sections.mapValues { PampGramBanEntry(reason: $0.reason, at: $0.at) },
+                        username: user.username ?? "",
+                        name: user.name ?? "",
+                        appVersion: user.appVersion ?? "",
+                        firstSeen: user.firstSeen ?? 0,
+                        sessionsCount: user.sessionsCount ?? 0
                     )
                 }
             }
             DispatchQueue.main.async {
                 completion(users)
+            }
+        }.resume()
+    }
+
+    /// Admin-only: one person's card — profile, sessions, PRO/STANDARD, bans, and the last
+    /// synced Stars/TON ledger (balances + recent operations).
+    public static func fetchUserDetail(userId: Int64, adminToken: String, completion: @escaping (PampGramUserDetail?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/user-detail") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(UserDetailRequestBody(token: adminToken, id: userId))
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            var detail: PampGramUserDetail?
+            if let data, let decoded = try? JSONDecoder().decode(UserDetailResponse.self, from: data) {
+                let ledger: PampGramAdminLedgerSnapshot?
+                if let raw = decoded.ledger {
+                    ledger = PampGramAdminLedgerSnapshot(
+                        starsBalance: raw.starsBalance,
+                        tonBalanceNanos: raw.tonBalanceNanos,
+                        starsSpent: raw.starsSpent,
+                        starsReceived: raw.starsReceived,
+                        tonSpentNanos: raw.tonSpentNanos,
+                        tonReceivedNanos: raw.tonReceivedNanos,
+                        operationCount: raw.operationCount ?? raw.operations.count,
+                        operations: raw.operations.map {
+                            PampGramAdminLedgerOperation(id: $0.id, currency: $0.currency, kind: $0.kind, amount: $0.amount, date: $0.date, title: $0.title, details: $0.details)
+                        }
+                    )
+                } else {
+                    ledger = nil
+                }
+                detail = PampGramUserDetail(
+                    id: decoded.id,
+                    username: decoded.username ?? "",
+                    name: decoded.name ?? "",
+                    appVersion: decoded.appVersion ?? "",
+                    appBuild: decoded.appBuild ?? "",
+                    firstSeen: decoded.firstSeen ?? 0,
+                    lastSeen: decoded.lastSeen,
+                    sessions: decoded.sessions ?? [],
+                    tier: PampGramSubscriptionTier(rawValue: decoded.tier) ?? .standard,
+                    tierChangedAt: decoded.tierChangedAt,
+                    expiresAt: decoded.expiresAt,
+                    full: decoded.full.map { PampGramBanEntry(reason: $0.reason, at: $0.at) },
+                    sections: (decoded.sections ?? [:]).mapValues { PampGramBanEntry(reason: $0.reason, at: $0.at) },
+                    ledger: ledger
+                )
+            }
+            DispatchQueue.main.async {
+                completion(detail)
             }
         }.resume()
     }
