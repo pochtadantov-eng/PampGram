@@ -23909,7 +23909,7 @@ index 490861400..7251bad62 100644
          "//submodules/TelegramNotices",
          "//submodules/TooltipUI",
 diff --git a/submodules/TelegramUI/Components/Wallet/WalletScreen/Sources/WalletScreen.swift b/submodules/TelegramUI/Components/Wallet/WalletScreen/Sources/WalletScreen.swift
-index cdda30da8..ba089cf46 100644
+index cdda30da8..cca09aee3 100644
 --- a/submodules/TelegramUI/Components/Wallet/WalletScreen/Sources/WalletScreen.swift
 +++ b/submodules/TelegramUI/Components/Wallet/WalletScreen/Sources/WalletScreen.swift
 @@ -29,6 +29,7 @@ import MultilineTextComponent
@@ -23925,7 +23925,7 @@ index cdda30da8..ba089cf46 100644
  
          private func openReceive() {
 +            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {
-+                pampGramPresentVisualWalletTopUp(context: component.context)
++                pampGramPresentVisualWalletTopUp(context: component.context, presenter: self.environment?.controller())
 +                return
 +            }
              guard let component = self.component, let controller = self.environment?.controller() else {
@@ -23936,12 +23936,40 @@ index cdda30da8..ba089cf46 100644
  
          private func openSend(address: String? = nil) {
 +            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {
-+                pampGramPresentVisualWalletSend(context: component.context)
++                pampGramPresentVisualWalletSend(context: component.context, presenter: self.environment?.controller())
 +                return
 +            }
              guard let component = self.component,
                    let controller = self.environment?.controller(),
                    self.walletAddress != nil,
+@@ -3426,6 +3435,7 @@ private final class WalletScreenComponent: Component {
+                 foreground: environment.theme.list.itemCheckColors.foregroundColor,
+                 pressedColor: environment.theme.list.itemCheckColors.fillColor.withMultipliedAlpha(0.9)
+             )
++            let pampGramVisualWalletActive = pampGramVisualWalletIsActive(context: component.context)
+             let isNewAddFundsButton = self.addFundsButton.view?.superview == nil
+             self.addFundsButton.parentState = state
+             let addFundsButtonSize = self.addFundsButton.update(
+@@ -3440,7 +3450,7 @@ private final class WalletScreenComponent: Component {
+                             color: environment.theme.list.itemCheckColors.foregroundColor
+                         ))
+                     ),
+-                    isEnabled: walletAddress != nil,
++                    isEnabled: pampGramVisualWalletActive || walletAddress != nil,
+                     action: { [weak self] in
+                         self?.openReceive()
+                     }
+@@ -3478,8 +3488,8 @@ private final class WalletScreenComponent: Component {
+                             color: environment.theme.list.itemCheckColors.foregroundColor
+                         ))
+                     ),
+-                    isEnabled: walletAddress != nil && !self.isResolvingSigningAccess,
+-                    displaysProgress: self.isResolvingSigningAccess,
++                    isEnabled: pampGramVisualWalletActive || (walletAddress != nil && !self.isResolvingSigningAccess),
++                    displaysProgress: !pampGramVisualWalletActive && self.isResolvingSigningAccess,
+                     action: { [weak self] in
+                         self?.openSend()
+                     }
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
 index 080872b20..8d0fa4c0d 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
@@ -25495,7 +25523,7 @@ index b7c69492d..5c701c023 100644
              }
              
 diff --git a/submodules/TelegramUI/Sources/TelegramRootController.swift b/submodules/TelegramUI/Sources/TelegramRootController.swift
-index 6a0712917..f3586167d 100644
+index 6a0712917..96086e235 100644
 --- a/submodules/TelegramUI/Sources/TelegramRootController.swift
 +++ b/submodules/TelegramUI/Sources/TelegramRootController.swift
 @@ -14,6 +14,10 @@ import AppBundle
@@ -25509,13 +25537,16 @@ index 6a0712917..f3586167d 100644
  import WallpaperBackgroundNode
  import ChatPresentationInterfaceState
  import CameraScreen
-@@ -249,6 +253,81 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
+@@ -249,6 +253,84 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
          self.chatListController = chatListController
          self.accountSettingsController = accountSettingsController
          self.rootTabController = tabBarController
 +        let pampGramAccountKey = self.context.account.peerId.toInt64()
 +        PampGramVisualExtrasRuntime.shared.start(accountKey: pampGramAccountKey, postbox: self.context.account.postbox)
 +        PampGramWalletCardStickersRuntime.shared.start(context: self.context)
++        PampGramVisualExtrasRuntime.notifyWalletRefresh = {
++            WalletContext.pampGramNotifyVisualRefresh()
++        }
 +        WalletContext.pampGramBalanceOverride = { walletAccountKey in
 +            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey)
 +        }

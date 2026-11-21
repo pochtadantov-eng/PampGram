@@ -124,6 +124,10 @@ public final class PampGramVisualExtrasRuntime {
     /// Neutral placeholder shown as the wallet address when no address was entered.
     public static let placeholderWalletAddress = "UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJKZ"
 
+    /// Wired once at startup (TelegramRootController) to `WalletContext.pampGramNotifyVisualRefresh`
+    /// so the Money screen re-reads the visual balance after «Карточка GRAM» / top-up / send.
+    public static var notifyWalletRefresh: (() -> Void)?
+
     private let lock = NSLock()
     /// Per account: with several accounts signed in, one account's settings must never leak
     /// into another's wallet or profile.
@@ -161,8 +165,14 @@ public final class PampGramVisualExtrasRuntime {
 
     private func set(_ extras: PampGramVisualExtras, accountKey: Int64) {
         self.lock.lock()
+        let previous = self.byAccount[accountKey]
         self.byAccount[accountKey] = extras
         self.lock.unlock()
+        if previous != extras {
+            Queue.mainQueue().async {
+                PampGramVisualExtrasRuntime.notifyWalletRefresh?()
+            }
+        }
     }
 
     private func extras(accountKey: Int64) -> PampGramVisualExtras {
@@ -192,8 +202,14 @@ public final class PampGramVisualExtrasRuntime {
 
     public func setWalletTransactions(_ items: [PampGramVisualWalletTx], accountKey: Int64) {
         self.lock.lock()
+        let previous = self.walletTxByAccount[accountKey] ?? []
         self.walletTxByAccount[accountKey] = items
         self.lock.unlock()
+        if previous != items {
+            Queue.mainQueue().async {
+                PampGramVisualExtrasRuntime.notifyWalletRefresh?()
+            }
+        }
     }
 
     /// Address for the visual wallet when Telegram's real wallet was never created; nil when

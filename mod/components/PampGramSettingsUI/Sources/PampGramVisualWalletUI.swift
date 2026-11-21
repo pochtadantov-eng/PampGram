@@ -12,8 +12,8 @@ import PampGramCore
 // MARK: - Public entry points
 
 /// Visual «Пополнить»: asks for a GRAM amount and credits the card + history.
-public func pampGramPresentVisualWalletTopUp(context: AccountContext) {
-    guard let top = pampGramVisualWalletTopController(context: context) else {
+public func pampGramPresentVisualWalletTopUp(context: AccountContext, presenter: ViewController? = nil) {
+    guard let top = pampGramVisualWalletTopController(context: context, preferred: presenter) else {
         return
     }
     top.present(promptController(
@@ -48,7 +48,7 @@ public func pampGramPresentVisualWalletTopUp(context: AccountContext) {
 }
 
 /// Visual «Отправить»: uses the current chat peer when given, otherwise asks for @username.
-public func pampGramPresentVisualWalletSend(context: AccountContext, preselectedPeerId: EnginePeer.Id? = nil, preselectedTitle: String? = nil) {
+public func pampGramPresentVisualWalletSend(context: AccountContext, preselectedPeerId: EnginePeer.Id? = nil, preselectedTitle: String? = nil, presenter: ViewController? = nil) {
     if let peerId = preselectedPeerId {
         let title = preselectedTitle ?? "Получатель"
         if preselectedTitle == nil {
@@ -56,14 +56,14 @@ public func pampGramPresentVisualWalletSend(context: AccountContext, preselected
             |> deliverOnMainQueue).startStandalone(next: { peer in
                 let presentationData = context.sharedContext.currentPresentationData.with { $0 }
                 let resolved = peer?.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder) ?? title
-                pampGramPresentVisualWalletSendAmount(context: context, peerId: peerId, peerTitle: resolved)
+                pampGramPresentVisualWalletSendAmount(context: context, peerId: peerId, peerTitle: resolved, presenter: presenter)
             })
         } else {
-            pampGramPresentVisualWalletSendAmount(context: context, peerId: peerId, peerTitle: title)
+            pampGramPresentVisualWalletSendAmount(context: context, peerId: peerId, peerTitle: title, presenter: presenter)
         }
         return
     }
-    guard let top = pampGramVisualWalletTopController(context: context) else {
+    guard let top = pampGramVisualWalletTopController(context: context, preferred: presenter) else {
         return
     }
     top.present(promptController(
@@ -119,8 +119,8 @@ private func pampGramVisualWalletResolvePeer(context: AccountContext, query: Str
     })
 }
 
-public func pampGramPresentVisualWalletSendAmount(context: AccountContext, peerId: EnginePeer.Id, peerTitle: String) {
-    guard let top = pampGramVisualWalletTopController(context: context) else {
+public func pampGramPresentVisualWalletSendAmount(context: AccountContext, peerId: EnginePeer.Id, peerTitle: String, presenter: ViewController? = nil) {
+    guard let top = pampGramVisualWalletTopController(context: context, preferred: presenter) else {
         return
     }
     top.present(promptController(
@@ -141,8 +141,8 @@ public func pampGramPresentVisualWalletSendAmount(context: AccountContext, peerI
 }
 
 /// Inserts a visual incoming GRAM card as if the counterparty sent money (does not change their balance).
-public func pampGramPresentVisualWalletReceiveInChat(context: AccountContext, peerId: EnginePeer.Id, peerTitle: String) {
-    guard let top = pampGramVisualWalletTopController(context: context) else {
+public func pampGramPresentVisualWalletReceiveInChat(context: AccountContext, peerId: EnginePeer.Id, peerTitle: String, presenter: ViewController? = nil) {
+    guard let top = pampGramVisualWalletTopController(context: context, preferred: presenter) else {
         return
     }
     top.present(promptController(
@@ -411,8 +411,27 @@ private func pampGramVisualWalletFormatDate(_ timestamp: Int32) -> String {
     return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(timestamp)))
 }
 
-private func pampGramVisualWalletTopController(context: AccountContext) -> ViewController? {
-    return (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
+private func pampGramVisualWalletTopController(context: AccountContext, preferred: ViewController? = nil) -> ViewController? {
+    if let preferred {
+        return preferred
+    }
+    guard let root = context.sharedContext.mainWindow?.viewController else {
+        return nil
+    }
+    var current: UIViewController = root
+    while let presented = current.presentedViewController {
+        current = presented
+    }
+    if let tab = current as? UITabBarController {
+        current = tab.selectedViewController ?? tab
+    }
+    if let nav = current as? NavigationController {
+        return (nav.topViewController as? ViewController) ?? nav
+    }
+    if let nav = current as? UINavigationController {
+        return (nav.topViewController as? ViewController) ?? (nav as? ViewController)
+    }
+    return current as? ViewController
 }
 
 private func pampGramVisualWalletToast(context: AccountContext, text: String) {

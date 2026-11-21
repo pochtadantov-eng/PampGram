@@ -395,6 +395,9 @@ replace_once(
     "        let pampGramAccountKey = self.context.account.peerId.toInt64()\n"
     "        PampGramVisualExtrasRuntime.shared.start(accountKey: pampGramAccountKey, postbox: self.context.account.postbox)\n"
     "        PampGramWalletCardStickersRuntime.shared.start(context: self.context)\n"
+    "        PampGramVisualExtrasRuntime.notifyWalletRefresh = {\n"
+    "            WalletContext.pampGramNotifyVisualRefresh()\n"
+    "        }\n"
     "        WalletContext.pampGramBalanceOverride = { walletAccountKey in\n"
     "            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey)\n"
     "        }\n"
@@ -825,7 +828,7 @@ replace_once(
     "        private func openReceive() {\n",
     "        private func openReceive() {\n"
     "            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {\n"
-    "                pampGramPresentVisualWalletTopUp(context: component.context)\n"
+    "                pampGramPresentVisualWalletTopUp(context: component.context, presenter: self.environment?.controller())\n"
     "                return\n"
     "            }\n",
 )
@@ -835,7 +838,7 @@ replace_once(
     "        private func openSend(address: String? = nil) {\n",
     "        private func openSend(address: String? = nil) {\n"
     "            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {\n"
-    "                pampGramPresentVisualWalletSend(context: component.context)\n"
+    "                pampGramPresentVisualWalletSend(context: component.context, presenter: self.environment?.controller())\n"
     "                return\n"
     "            }\n",
 )
