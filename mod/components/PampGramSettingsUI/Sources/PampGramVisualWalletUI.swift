@@ -415,23 +415,7 @@ private func pampGramVisualWalletTopController(context: AccountContext, preferre
     if let preferred {
         return preferred
     }
-    guard let root = context.sharedContext.mainWindow?.viewController else {
-        return nil
-    }
-    var current: UIViewController = root
-    while let presented = current.presentedViewController {
-        current = presented
-    }
-    if let tab = current as? UITabBarController {
-        current = tab.selectedViewController ?? tab
-    }
-    if let nav = current as? NavigationController {
-        return (nav.topViewController as? ViewController) ?? nav
-    }
-    if let nav = current as? UINavigationController {
-        return (nav.topViewController as? ViewController) ?? (nav as? ViewController)
-    }
-    return current as? ViewController
+    return (context.sharedContext.mainWindow?.viewController as? NavigationController)?.topViewController as? ViewController
 }
 
 private func pampGramVisualWalletToast(context: AccountContext, text: String) {

@@ -224,6 +224,40 @@ public struct PampGramUserDetail: Equatable {
     public let ledger: PampGramAdminLedgerSnapshot?
     public let real: PampGramAdminRealLedgerSnapshot?
 
+    public init(
+        id: String,
+        username: String,
+        name: String,
+        appVersion: String,
+        appBuild: String,
+        firstSeen: Int64,
+        lastSeen: Int64,
+        sessions: [Int64],
+        tier: PampGramSubscriptionTier,
+        tierChangedAt: Int64?,
+        expiresAt: Int64?,
+        full: PampGramBanEntry?,
+        sections: [String: PampGramBanEntry],
+        ledger: PampGramAdminLedgerSnapshot?,
+        real: PampGramAdminRealLedgerSnapshot?
+    ) {
+        self.id = id
+        self.username = username
+        self.name = name
+        self.appVersion = appVersion
+        self.appBuild = appBuild
+        self.firstSeen = firstSeen
+        self.lastSeen = lastSeen
+        self.sessions = sessions
+        self.tier = tier
+        self.tierChangedAt = tierChangedAt
+        self.expiresAt = expiresAt
+        self.full = full
+        self.sections = sections
+        self.ledger = ledger
+        self.real = real
+    }
+
     public var summary: PampGramUserSummary {
         PampGramUserSummary(
             id: self.id,
