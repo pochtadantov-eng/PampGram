@@ -80,6 +80,7 @@ private enum PampGramUserDetailSection: Int32 {
     case profile
     case status
     case sessions
+    case real
     case nfts
     case ledger
     case actions
@@ -95,6 +96,11 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
     case sessionsHeader(String)
     case sessionsSummary(String)
     case sessionRow(Int32, String)
+    case realHeader(String)
+    case realBalance(String)
+    case realStats(String)
+    case realEmpty(String)
+    case realOp(Int32, String, String, String)
     case nftHeader(String)
     case nftSummary(String)
     case nftEmpty(String)
@@ -115,6 +121,8 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
             return PampGramUserDetailSection.status.rawValue
         case .sessionsHeader, .sessionsSummary, .sessionRow:
             return PampGramUserDetailSection.sessions.rawValue
+        case .realHeader, .realBalance, .realStats, .realEmpty, .realOp:
+            return PampGramUserDetailSection.real.rawValue
         case .nftHeader, .nftSummary, .nftEmpty, .nftRow:
             return PampGramUserDetailSection.nfts.rawValue
         case .ledgerHeader, .ledgerBalance, .ledgerStats, .ledgerEmpty, .ledgerOp:
@@ -145,15 +153,20 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
         case .sessionsHeader: return 20
         case .sessionsSummary: return 21
         case let .sessionRow(index, _): return 22 + index
-        case .nftHeader: return 100
-        case .nftSummary: return 101
-        case .nftEmpty: return 102
-        case let .nftRow(index, _, _, _): return 110 + index
-        case .ledgerHeader: return 400
-        case .ledgerBalance: return 401
-        case .ledgerStats: return 402
-        case .ledgerEmpty: return 403
-        case let .ledgerOp(index, _, _, _): return 410 + index
+        case .realHeader: return 80
+        case .realBalance: return 81
+        case .realStats: return 82
+        case .realEmpty: return 83
+        case let .realOp(index, _, _, _): return 90 + index
+        case .nftHeader: return 500
+        case .nftSummary: return 501
+        case .nftEmpty: return 502
+        case let .nftRow(index, _, _, _): return 510 + index
+        case .ledgerHeader: return 1200
+        case .ledgerBalance: return 1201
+        case .ledgerStats: return 1202
+        case .ledgerEmpty: return 1203
+        case let .ledgerOp(index, _, _, _): return 1210 + index
         case .reloadAction: return 9000
         case .footer: return 9001
         }
@@ -165,6 +178,10 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
              let (.statusHeader(a), .statusHeader(b)),
              let (.sessionsHeader(a), .sessionsHeader(b)),
              let (.sessionsSummary(a), .sessionsSummary(b)),
+             let (.realHeader(a), .realHeader(b)),
+             let (.realBalance(a), .realBalance(b)),
+             let (.realStats(a), .realStats(b)),
+             let (.realEmpty(a), .realEmpty(b)),
              let (.nftHeader(a), .nftHeader(b)),
              let (.nftSummary(a), .nftSummary(b)),
              let (.nftEmpty(a), .nftEmpty(b)),
@@ -182,7 +199,8 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
             return a1 == b1 && a2 == b2
         case let (.sessionRow(ai, at), .sessionRow(bi, bt)):
             return ai == bi && at == bt
-        case let (.nftRow(ai, a1, a2, a3), .nftRow(bi, b1, b2, b3)),
+        case let (.realOp(ai, a1, a2, a3), .realOp(bi, b1, b2, b3)),
+             let (.nftRow(ai, a1, a2, a3), .nftRow(bi, b1, b2, b3)),
              let (.ledgerOp(ai, a1, a2, a3), .ledgerOp(bi, b1, b2, b3)):
             return ai == bi && a1 == b1 && a2 == b2 && a3 == b3
         default:
@@ -197,7 +215,7 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramUserDetailArguments
         switch self {
-        case let .profileHeader(text), let .statusHeader(text), let .sessionsHeader(text), let .nftHeader(text), let .ledgerHeader(text):
+        case let .profileHeader(text), let .statusHeader(text), let .sessionsHeader(text), let .realHeader(text), let .nftHeader(text), let .ledgerHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .profileRow(title, label), let .statusRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: title == "ID" ? {
@@ -211,11 +229,11 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.openTier()
             })
-        case let .sessionsSummary(text), let .nftSummary(text), let .nftEmpty(text), let .ledgerBalance(text), let .ledgerStats(text), let .ledgerEmpty(text), let .footer(text):
+        case let .sessionsSummary(text), let .realBalance(text), let .realStats(text), let .realEmpty(text), let .nftSummary(text), let .nftEmpty(text), let .ledgerBalance(text), let .ledgerStats(text), let .ledgerEmpty(text), let .footer(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .sessionRow(_, text):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: text, label: "", sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
-        case let .nftRow(_, title, label, detail), let .ledgerOp(_, title, label, detail):
+        case let .realOp(_, title, label, detail), let .nftRow(_, title, label, detail), let .ledgerOp(_, title, label, detail):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, additionalDetailLabel: detail, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
         case let .reloadAction(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -284,7 +302,36 @@ private func pampGramUserDetailEntries(detail: PampGramUserDetail?) -> [PampGram
         entries.append(.sessionRow(Int32(index), pampGramUserDetailFormatMs(session)))
     }
 
-    entries.append(.nftHeader("NFT / ПОДАРКИ"))
+    entries.append(.realHeader("НАСТОЯЩИЕ STARS / TON"))
+    if let real = detail.real {
+        entries.append(.realBalance("Баланс Telegram: \(real.starsBalance) ⭐ · \(pampGramUserDetailFormatTon(nanos: real.tonBalanceNanos))"))
+        entries.append(.realStats("⭐ пришло \(real.starsReceived) / ушло \(real.starsSpent)\nTON пришло \(pampGramUserDetailFormatTon(nanos: real.tonReceivedNanos)) / ушло \(pampGramUserDetailFormatTon(nanos: real.tonSpentNanos))\nОпераций с подарками: \(real.giftOps)\nВсего: \(real.transactionCount)\nОбновлено: \(pampGramUserDetailFormatMs(real.updatedAt))"))
+        if real.transactions.isEmpty {
+            entries.append(.realEmpty("Telegram ещё не отдал историю (или она пустая)."))
+        } else {
+            for (index, tx) in real.transactions.enumerated() {
+                let gift = tx.giftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                let base = tx.title.isEmpty ? (gift.isEmpty ? "Операция" : gift) : tx.title
+                let title = !gift.isEmpty && !tx.title.isEmpty && gift != tx.title ? "\(base): \(gift)" : base
+                let label = pampGramUserDetailAmountText(currency: tx.currency, amount: tx.amount)
+                var parts = [pampGramUserDetailFormatMs(Int64(tx.date) * 1000)]
+                if !tx.peer.isEmpty {
+                    parts.append(tx.peer)
+                }
+                if !tx.description.isEmpty {
+                    parts.append(tx.description)
+                }
+                if !tx.flags.isEmpty {
+                    parts.append(tx.flags.joined(separator: ", "))
+                }
+                entries.append(.realOp(Int32(index), title, label, parts.joined(separator: " · ")))
+            }
+        }
+    } else {
+        entries.append(.realEmpty("Пока нет данных — его клиент ещё не прислал настоящую историю Stars (раз в ~5 мин)."))
+    }
+
+    entries.append(.nftHeader("ЛОКАЛЬНЫЕ NFT / ПОДАРКИ (МОД)"))
     if let ledger = detail.ledger {
         entries.append(.nftSummary("Пришло \(ledger.nftReceived) · куплено \(ledger.nftBought) · продано \(ledger.nftSold) · передано \(ledger.nftTransferred)"))
         if ledger.nfts.isEmpty {
@@ -297,12 +344,12 @@ private func pampGramUserDetailEntries(detail: PampGramUserDetail?) -> [PampGram
             }
         }
 
-        entries.append(.ledgerHeader("ПОЛНАЯ ИСТОРИЯ ОПЕРАЦИЙ"))
+        entries.append(.ledgerHeader("ЛОКАЛЬНАЯ ИСТОРИЯ МОДА"))
         var balanceParts = ["\(ledger.starsBalance) ⭐", pampGramUserDetailFormatTon(nanos: ledger.tonBalanceNanos)]
         if ledger.rublesBalanceKopecks != 0 || ledger.rublesSpent != 0 || ledger.rublesReceived != 0 {
             balanceParts.append(String(format: "%.2f ₽", Double(ledger.rublesBalanceKopecks) / 100.0))
         }
-        entries.append(.ledgerBalance("Баланс: \(balanceParts.joined(separator: " · "))"))
+        entries.append(.ledgerBalance("Визуальный баланс: \(balanceParts.joined(separator: " · "))"))
         var stats = "⭐ пришло \(ledger.starsReceived) / ушло \(ledger.starsSpent)\nTON пришло \(pampGramUserDetailFormatTon(nanos: ledger.tonReceivedNanos)) / ушло \(pampGramUserDetailFormatTon(nanos: ledger.tonSpentNanos))"
         if ledger.rublesSpent != 0 || ledger.rublesReceived != 0 {
             stats += String(format: "\n₽ пришло %.2f / ушло %.2f", Double(ledger.rublesReceived) / 100.0, Double(ledger.rublesSpent) / 100.0)
@@ -328,13 +375,13 @@ private func pampGramUserDetailEntries(detail: PampGramUserDetail?) -> [PampGram
             }
         }
     } else {
-        entries.append(.nftEmpty("Этот аккаунт ещё не синхронизировал историю."))
-        entries.append(.ledgerHeader("ПОЛНАЯ ИСТОРИЯ ОПЕРАЦИЙ"))
+        entries.append(.nftEmpty("Локальных NFT мода пока нет."))
+        entries.append(.ledgerHeader("ЛОКАЛЬНАЯ ИСТОРИЯ МОДА"))
         entries.append(.ledgerEmpty("Нет данных — устройство ещё не пушило /sync-ledger."))
     }
 
     entries.append(.reloadAction("Обновить"))
-    entries.append(.footer("Полная история с его устройства: ⭐/TON/₽ и NFT (покупка, «подарок мне», продажа, передача). Обновляется после локальных операций через sync-ledger."))
+    entries.append(.footer("Сверху — настоящие Stars/TON из Telegram (его клиент шлёт раз в ~5 мин). Ниже — локальная история мода (визуальные балансы/NFT)."))
     return entries
 }
 
@@ -360,7 +407,8 @@ public func pampGramUserDetailController(context: AccountContext, userId: Int64,
             expiresAt: nil,
             full: seed.full,
             sections: seed.sections,
-            ledger: nil
+            ledger: nil,
+            real: nil
         )))
     }
 

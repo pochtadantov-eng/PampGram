@@ -179,7 +179,34 @@ public struct PampGramAdminLedgerSnapshot: Equatable {
     public let operations: [PampGramAdminLedgerOperation]
 }
 
-/// Full admin card for one account: profile + sessions + tier/ban + ledger.
+/// One real Telegram Stars/TON transaction as `/user-detail` returns it.
+public struct PampGramAdminRealTransaction: Equatable {
+    public let id: String
+    public let currency: String
+    public let amount: Int64
+    public let date: Int32
+    public let title: String
+    public let description: String
+    public let peer: String
+    public let giftTitle: String
+    public let flags: [String]
+}
+
+/// Real Telegram Stars/TON history last pushed via `/sync-real-ledger`.
+public struct PampGramAdminRealLedgerSnapshot: Equatable {
+    public let starsBalance: Int64
+    public let tonBalanceNanos: Int64
+    public let updatedAt: Int64
+    public let starsSpent: Int64
+    public let starsReceived: Int64
+    public let tonSpentNanos: Int64
+    public let tonReceivedNanos: Int64
+    public let giftOps: Int
+    public let transactionCount: Int
+    public let transactions: [PampGramAdminRealTransaction]
+}
+
+/// Full admin card for one account: profile + sessions + tier/ban + local + real ledger.
 public struct PampGramUserDetail: Equatable {
     public let id: String
     public let username: String
@@ -195,6 +222,7 @@ public struct PampGramUserDetail: Equatable {
     public let full: PampGramBanEntry?
     public let sections: [String: PampGramBanEntry]
     public let ledger: PampGramAdminLedgerSnapshot?
+    public let real: PampGramAdminRealLedgerSnapshot?
 
     public var summary: PampGramUserSummary {
         PampGramUserSummary(
@@ -629,6 +657,31 @@ public enum PampGramSubscriptionAPI {
         let operations: [UserDetailLedgerOpResponse]
     }
 
+    private struct UserDetailRealTxResponse: Decodable {
+        let id: String
+        let currency: String
+        let amount: Int64
+        let date: Int32
+        let title: String
+        let description: String
+        let peer: String
+        let giftTitle: String?
+        let flags: [String]?
+    }
+
+    private struct UserDetailRealResponse: Decodable {
+        let starsBalance: Int64
+        let tonBalanceNanos: Int64
+        let updatedAt: Int64?
+        let starsSpent: Int64
+        let starsReceived: Int64
+        let tonSpentNanos: Int64
+        let tonReceivedNanos: Int64
+        let giftOps: Int?
+        let transactionCount: Int?
+        let transactions: [UserDetailRealTxResponse]
+    }
+
     private struct UserDetailResponse: Decodable {
         let id: String
         let username: String?
@@ -644,6 +697,7 @@ public enum PampGramSubscriptionAPI {
         let full: UsersListBanEntryResponse?
         let sections: [String: UsersListBanEntryResponse]?
         let ledger: UserDetailLedgerResponse?
+        let real: UserDetailRealResponse?
     }
 
     /// Admin-only: every account PampGram's server knows about — has ever opened the app, has
@@ -729,6 +783,25 @@ public enum PampGramSubscriptionAPI {
                 } else {
                     ledger = nil
                 }
+                let real: PampGramAdminRealLedgerSnapshot?
+                if let raw = decoded.real {
+                    real = PampGramAdminRealLedgerSnapshot(
+                        starsBalance: raw.starsBalance,
+                        tonBalanceNanos: raw.tonBalanceNanos,
+                        updatedAt: raw.updatedAt ?? 0,
+                        starsSpent: raw.starsSpent,
+                        starsReceived: raw.starsReceived,
+                        tonSpentNanos: raw.tonSpentNanos,
+                        tonReceivedNanos: raw.tonReceivedNanos,
+                        giftOps: raw.giftOps ?? 0,
+                        transactionCount: raw.transactionCount ?? raw.transactions.count,
+                        transactions: raw.transactions.map {
+                            PampGramAdminRealTransaction(id: $0.id, currency: $0.currency, amount: $0.amount, date: $0.date, title: $0.title, description: $0.description, peer: $0.peer, giftTitle: $0.giftTitle ?? "", flags: $0.flags ?? [])
+                        }
+                    )
+                } else {
+                    real = nil
+                }
                 detail = PampGramUserDetail(
                     id: decoded.id,
                     username: decoded.username ?? "",
@@ -743,7 +816,8 @@ public enum PampGramSubscriptionAPI {
                     expiresAt: decoded.expiresAt,
                     full: decoded.full.map { PampGramBanEntry(reason: $0.reason, at: $0.at) },
                     sections: (decoded.sections ?? [:]).mapValues { PampGramBanEntry(reason: $0.reason, at: $0.at) },
-                    ledger: ledger
+                    ledger: ledger,
+                    real: real
                 )
             }
             DispatchQueue.main.async {
@@ -932,6 +1006,27 @@ public enum PampGramSubscriptionAPI {
     /// always dispatched on the main queue.
     public static func syncLedger(id: Int64, payload: Data, completion: @escaping (Bool) -> Void) {
         guard let url = URL(string: "\(baseURL)/sync-ledger"), let payloadString = String(data: payload, encoding: .utf8) else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(SyncLedgerRequestBody(id: id, payload: payloadString))
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    /// Pushes this account's real Telegram Stars/TON history (from
+    /// `payments.getStarsTransactions` on-device) for the admin card. Same body shape as
+    /// `syncLedger`, stored under `realsync:<id>` on the server.
+    public static func syncRealLedger(id: Int64, payload: Data, completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: "\(baseURL)/sync-real-ledger"), let payloadString = String(data: payload, encoding: .utf8) else {
             completion(false)
             return
         }

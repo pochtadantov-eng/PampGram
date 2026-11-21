@@ -173,6 +173,29 @@ test("/user-detail returns profile, ban, tier and ledger totals for the admin", 
 	assert.equal(json.ledger.operations[0].title, "Продажа подарка");
 	assert.equal(json.ledger.operations[0].isGift, true);
 	assert.equal(json.ledger.operations[0].giftId, 778);
+	assert.equal(json.real, null);
+
+	await call(env, "POST", "/unban", { id: 88, token: "admin-token", scope: "all" });
+	const syncReal = await call(env, "POST", "/sync-real-ledger", {
+		id: 88,
+		payload: JSON.stringify({
+			starsBalance: 420,
+			tonBalanceNanos: 0,
+			updatedAt: now,
+			transactions: [
+				{ id: "tx1", currency: "stars", amount: -50, date: 800, title: "Gift", description: "to friend", peer: "@friend", giftTitle: "Lol Pop", flags: ["gift"] },
+				{ id: "tx2", currency: "stars", amount: 100, date: 900, title: "Top up", description: "", peer: "App Store", giftTitle: "", flags: [] },
+			],
+		}),
+	});
+	assert.equal(syncReal.status, 200);
+	const afterReal = (await call(env, "POST", "/user-detail", { token: "admin-token", id: 88 })).json;
+	assert.equal(afterReal.real.starsBalance, 420);
+	assert.equal(afterReal.real.starsSpent, 50);
+	assert.equal(afterReal.real.starsReceived, 100);
+	assert.equal(afterReal.real.giftOps, 1);
+	assert.equal(afterReal.real.transactions[0].title, "Top up");
+	assert.equal(afterReal.real.transactions.find((tx) => tx.id === "tx1").giftTitle, "Lol Pop");
 
 	const list = (await call(env, "POST", "/users-list", { token: "admin-token" })).json;
 	const row = list.users.find((user) => user.id === "88");

@@ -46,6 +46,9 @@
  *                             local change and read back once by /fetch-ledger-sync on a fresh
  *                             install/reinstall so the local balance and history survive it.
  *                             Whole-value overwrite, not a diff — same posture as "min_version".
+ *   key "realsync:<id>"     -> "<JSON string>", real Telegram Stars/TON history this install
+ *                             last pushed via /sync-real-ledger (from payments.getStarsTransactions
+ *                             on that account). Admin-only read via /user-detail.
  * Same posture throughout: a key that would only ever store the "nothing going on" value is
  * deleted instead of written, so the store only ever holds actual overrides.
  *
@@ -150,13 +153,12 @@
  *     -> { "id", "username", "name", "appVersion", "appBuild", "firstSeen", "lastSeen",
  *          "sessions": [<ms>, ...], "tier", "tierChangedAt", "expiresAt",
  *          "full", "sections",
- *          "ledger": { starsBalance, tonBalanceNanos, rubles…, starsSpent/Received,
- *                      tonSpent/Received, rublesSpent/Received,
- *                      nftReceived/Bought/Sold/Transferred, nfts: [...],
- *                      operationCount, operations: [...] } | null }
+ *          "ledger": { … local fake Stars/TON/NFT ops … } | null,
+ *          "real": { starsBalance, tonBalanceNanos, starsSpent/Received, ton…,
+ *                    giftOps, transactions: [... real Telegram Stars/TON …] } | null }
  *     Admin-only. One card for managing a person: who they are, when they opened the mod,
- *     PRO/STANDARD, ban state, and the last pushed ledger — full ops including NFT/gift
- *     rows (gift name in details, giftId when present).
+ *     PRO/STANDARD, ban state, local fake ledger, and real Telegram Stars/TON history
+ *     that install last pushed from payments.getStarsTransactions.
  *
  *   POST /generate-key
  *     body: { "token": "<ADMIN_TOKEN>", "tier": "pro" | "standard",
@@ -217,6 +219,13 @@
  *     device's own local ledger is still empty (a fresh install/reinstall, or an account that
  *     has genuinely never done anything yet — either way, restoring here is safe) — a device
  *     with existing local history never overwrites it from this.
+ *
+ *   POST /sync-real-ledger
+ *     body: { "id": <telegram account id>, "payload": "<JSON string>" }
+ *     -> { "ok": true }
+ *     Public. Same shape as /sync-ledger, but stores under "realsync:<id>" — the install's
+ *     real Telegram Stars/TON transactions (and balances) from payments.getStarsTransactions.
+ *     Admin reads it via /user-detail. Banned accounts are refused the same way as /sync-ledger.
  */
 
 import {
@@ -233,7 +242,7 @@ import {
 } from "./core.js";
 import { issueKey, issueUnbanKey, redeemKeyForAccount } from "./keys.js";
 import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSeen, confirmDaily } from "./access.js";
-import { recordAppSeen, noteTier, getUser, summarizeLedger } from "./users.js";
+import { recordAppSeen, noteTier, getUser, summarizeLedger, summarizeRealLedger } from "./users.js";
 import { handleWebhook, runScheduled } from "./bot/webhook.js";
 
 function jsonResponse(body, status = 200) {
@@ -531,13 +540,14 @@ async function handleUserDetail(request, env) {
 		return jsonResponse({ error: "invalid id" }, 400);
 	}
 
-	const [lastSeenRaw, subscription, tierChangedRaw, banRecord, profile, ledgerRaw] = await Promise.all([
+	const [lastSeenRaw, subscription, tierChangedRaw, banRecord, profile, ledgerRaw, realRaw] = await Promise.all([
 		env.SUBS.get(`seen:${idString}`),
 		readSubscription(env, idString),
 		env.SUBS.get(`tier_changed:${idString}`),
 		readBanRecord(env, idString),
 		getUser(env, idString),
 		env.SUBS.get(`ledgersync:${idString}`),
+		env.SUBS.get(`realsync:${idString}`),
 	]);
 	const lastSeenFromSeen = parseInt(lastSeenRaw, 10);
 	const tierChangedAt = parseInt(tierChangedRaw, 10);
@@ -558,6 +568,7 @@ async function handleUserDetail(request, env) {
 		full: banRecord.full,
 		sections: banRecord.sections,
 		ledger: summarizeLedger(ledgerRaw),
+		real: summarizeRealLedger(realRaw),
 	});
 }
 
@@ -737,6 +748,32 @@ async function handleSyncLedger(request, env) {
 	return jsonResponse({ ok: true });
 }
 
+async function handleSyncRealLedger(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { id, payload: ledgerPayload } = payload ?? {};
+	const idString = typeof id === "number" ? String(id) : id;
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	if (typeof ledgerPayload !== "string" || ledgerPayload.length === 0 || ledgerPayload.length > MAX_LEDGER_SYNC_LENGTH) {
+		return jsonResponse({ error: "invalid payload" }, 400);
+	}
+
+	if ((await readBanRecord(env, idString)).full) {
+		await recordTamper(env, idString, "real_ledger_sync_while_banned");
+		return jsonResponse({ error: "banned" }, 403);
+	}
+
+	await env.SUBS.put(`realsync:${idString}`, ledgerPayload);
+	return jsonResponse({ ok: true });
+}
+
 async function handleFetchLedgerSync(request, env) {
 	const url = new URL(request.url);
 	const id = url.searchParams.get("id");
@@ -828,6 +865,9 @@ export default {
 		}
 		if (request.method === "POST" && url.pathname === "/sync-ledger") {
 			return handleSyncLedger(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/sync-real-ledger") {
+			return handleSyncRealLedger(request, env);
 		}
 		if (request.method === "GET" && url.pathname === "/fetch-ledger-sync") {
 			return handleFetchLedgerSync(request, env);

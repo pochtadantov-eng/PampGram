@@ -335,3 +335,86 @@ export function summarizeLedger(raw) {
 		operationCount: operationsIn.length,
 	};
 }
+
+const MAX_ADMIN_REAL_TX = 400;
+
+/**
+ * Real Telegram Stars/TON history pushed by the install via /sync-real-ledger
+ * (`payments.getStarsTransactions` on that account). Separate from the local fake ledger.
+ */
+export function summarizeRealLedger(raw) {
+	if (!raw || typeof raw !== "string") {
+		return null;
+	}
+	let payload;
+	try {
+		payload = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!payload || typeof payload !== "object") {
+		return null;
+	}
+	const starsBalance = Number(payload.starsBalance) || 0;
+	const tonBalanceNanos = Number(payload.tonBalanceNanos) || 0;
+	const updatedAt = Number(payload.updatedAt) || 0;
+	const transactionsIn = Array.isArray(payload.transactions) ? payload.transactions : [];
+	let starsSpent = 0;
+	let starsReceived = 0;
+	let tonSpentNanos = 0;
+	let tonReceivedNanos = 0;
+	let giftOps = 0;
+	const transactions = [];
+	for (const tx of transactionsIn) {
+		if (!tx || typeof tx !== "object") {
+			continue;
+		}
+		const currency = typeof tx.currency === "string" ? tx.currency : "stars";
+		const amount = Number(tx.amount) || 0;
+		const title = typeof tx.title === "string" ? tx.title.slice(0, 160) : "";
+		const description = typeof tx.description === "string" ? tx.description.slice(0, 240) : "";
+		const peer = typeof tx.peer === "string" ? tx.peer.slice(0, 120) : "";
+		const giftTitle = typeof tx.giftTitle === "string" ? tx.giftTitle.slice(0, 160) : "";
+		const flags = Array.isArray(tx.flags) ? tx.flags.filter((f) => typeof f === "string").slice(0, 20) : [];
+		if (currency === "ton") {
+			if (amount < 0) {
+				tonSpentNanos += -amount;
+			} else {
+				tonReceivedNanos += amount;
+			}
+		} else {
+			if (amount < 0) {
+				starsSpent += -amount;
+			} else {
+				starsReceived += amount;
+			}
+		}
+		if (flags.includes("gift") || giftTitle || /gift|подар|nft/i.test(`${title} ${description}`)) {
+			giftOps += 1;
+		}
+		transactions.push({
+			id: typeof tx.id === "string" ? tx.id.slice(0, 80) : String(tx.id ?? ""),
+			currency,
+			amount,
+			date: Number(tx.date) || 0,
+			title,
+			description,
+			peer,
+			giftTitle,
+			flags,
+		});
+	}
+	transactions.sort((a, b) => b.date - a.date);
+	return {
+		starsBalance,
+		tonBalanceNanos,
+		updatedAt,
+		starsSpent,
+		starsReceived,
+		tonSpentNanos,
+		tonReceivedNanos,
+		giftOps,
+		transactions: transactions.slice(0, MAX_ADMIN_REAL_TX),
+		transactionCount: transactionsIn.length,
+	};
+}
