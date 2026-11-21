@@ -27,12 +27,14 @@ private func pampGramAccessLockContent(for kind: PampGramAccessLockKind) -> Pamp
         }
         return PampGramAccessLockContent(title: "Нужен ключ", body: "Чтобы пользоваться приложением, активируйте ключ. Купить ключ можно у @\(pampGramAccessContactUsername) в обычном Telegram.", showBuy: true, showActivate: true, showRetry: false, showSpinner: false)
     case .banned(let reason):
-        var body = "Доступ ко всему приложению заблокирован. Снять бан можно только ключом разбана от администратора или если он разбанит вас вручную."
         let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            body += "\n\nПричина: \(trimmed)"
+        var body: String
+        if trimmed.isEmpty {
+            body = "Вы были забанены. Спишитесь с владельцем для разбана."
+        } else {
+            body = "Вы были забанены по причине: \(trimmed)\n\nСпишитесь с владельцем для разбана."
         }
-        return PampGramAccessLockContent(title: "Доступ заблокирован", body: body, showBuy: false, showActivate: true, showRetry: true, showSpinner: false)
+        return PampGramAccessLockContent(title: "Вы забанены", body: body, showBuy: false, showActivate: true, showRetry: true, showSpinner: false)
     case .unreachable:
         return PampGramAccessLockContent(title: "Нет связи с сервером", body: "Подключитесь к интернету, чтобы подтвердить подписку.", showBuy: false, showActivate: false, showRetry: true, showSpinner: false)
     case .clockTampered:
@@ -130,7 +132,7 @@ private final class PampGramAccessLockViewController: UIViewController {
         self.buyButton.isHidden = !content.showBuy
         self.activateButton.isHidden = !content.showActivate
         if case .banned = kind {
-            self.activateButton.setTitle("Ключ разбана", for: .normal)
+            self.activateButton.setTitle("Получить разбан", for: .normal)
         } else {
             self.activateButton.setTitle("Активировать ключ", for: .normal)
         }
@@ -167,8 +169,8 @@ private final class PampGramAccessLockViewController: UIViewController {
         } else {
             isBan = false
         }
-        let title = isBan ? "Ключ разбана" : "Активировать ключ"
-        let message = isBan ? "Введите ключ разбана от администратора." : "Введите ключ, который вы получили."
+        let title = isBan ? "Получить разбан" : "Активировать ключ"
+        let message = isBan ? "Введите ключ разбана, который выдал владелец." : "Введите ключ, который вы получили."
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addTextField { field in
             field.placeholder = "PMP-XXXXX-XXXXX-XXXXX-XXXXX"
