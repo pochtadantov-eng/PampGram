@@ -80,13 +80,13 @@ public final class PampGramRealStarsSyncRuntime {
         let tonSignal = self.collect(context: tonCtx)
         let starsBalanceSignal: Signal<StarsAmount?, NoError>
         if let starsContext = context.starsContext {
-            starsBalanceSignal = starsContext.state |> map { Optional($0.balance) }
+            starsBalanceSignal = starsContext.state |> map { $0?.balance }
         } else {
             starsBalanceSignal = .single(nil)
         }
         let tonBalanceSignal: Signal<StarsAmount?, NoError>
         if let tonContext = context.tonContext {
-            tonBalanceSignal = tonContext.state |> map { Optional($0.balance) }
+            tonBalanceSignal = tonContext.state |> map { $0?.balance }
         } else {
             tonBalanceSignal = .single(nil)
         }
