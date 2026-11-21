@@ -1215,9 +1215,75 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
-# 18. Premium gift cards: no discount ribbons; prices always in ₽
+# 18. Chat title: stable visual Premium star (no jump on chat open)
 # ---------------------------------------------------------------------------
-print("\n[18] Premium gift cards: no ribbons, RUB prices")
+print("\n[18] Chat title stable local Premium badge")
+chat_title_build = Path("submodules/TelegramUI/Components/ChatTitleView/BUILD")
+if '"//submodules/TelegramUI/Components/PampGram/PhantomGiftKit"' not in chat_title_build.read_text():
+    text = chat_title_build.read_text()
+    anchor = '"//submodules/TelegramUI/Components/AnimatedTextComponent",'
+    if anchor not in text:
+        print("FAIL [ChatTitleView BUILD PhantomGiftKit]: anchor missing", file=sys.stderr)
+        sys.exit(1)
+    idx = text.index(anchor) + len(anchor)
+    chat_title_build.write_text(
+        text[:idx] + '\n        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",' + text[idx:]
+    )
+    print("  OK: ChatTitleView BUILD PhantomGiftKit")
+else:
+    print("  SKIP: ChatTitleView BUILD PhantomGiftKit (already present)")
+
+for chat_title_src, label, after_import in [
+    (
+        Path("submodules/TelegramUI/Components/ChatTitleView/Sources/ChatTitleView.swift"),
+        "ChatTitleView import PhantomGiftKit",
+        "import AnimatedTextComponent\n",
+    ),
+    (
+        Path("submodules/TelegramUI/Components/ChatTitleView/Sources/ChatTitleComponent.swift"),
+        "ChatTitleComponent import PhantomGiftKit",
+        "import NewsFeedSupport\n",
+    ),
+]:
+    text = chat_title_src.read_text()
+    if "import PhantomGiftKit" in text:
+        print(f"  SKIP: {label} (already present)")
+    elif after_import not in text:
+        print(f"FAIL [{label}]: import anchor missing", file=sys.stderr)
+        sys.exit(1)
+    else:
+        idx = text.index(after_import) + len(after_import)
+        chat_title_src.write_text(text[:idx] + "import PhantomGiftKit\n" + text[idx:])
+        print(f"  OK: {label}")
+
+replace_once(
+    Path("submodules/TelegramUI/Components/ChatTitleView/Sources/ChatTitleView.swift"),
+    "ChatTitleView local premium badge",
+    "                                    } else if peer.isPremium && !premiumConfiguration.isPremiumDisabled {\n"
+    "                                        titleCredibilityIcon = .premium\n"
+    "                                    }\n",
+    "                                    } else if (peer.isPremium || PampGramLocalPremiumRuntime.shared.isActive(peerId: peer.id)) && !premiumConfiguration.isPremiumDisabled {\n"
+    "                                        // PampGram: keep the visual Premium star stable when Telegram\n"
+    "                                        // briefly rewrites the peer without .isPremium on chat open.\n"
+    "                                        titleCredibilityIcon = .premium\n"
+    "                                    }\n",
+)
+replace_once(
+    Path("submodules/TelegramUI/Components/ChatTitleView/Sources/ChatTitleComponent.swift"),
+    "ChatTitleComponent local premium badge",
+    "                            } else if peer.isPremium && !premiumConfiguration.isPremiumDisabled {\n"
+    "                                titleCredibilityIcon = .premium\n"
+    "                            }\n",
+    "                            } else if (peer.isPremium || PampGramLocalPremiumRuntime.shared.isActive(peerId: peer.id)) && !premiumConfiguration.isPremiumDisabled {\n"
+    "                                // PampGram: stable visual Premium star (see ChatTitleView).\n"
+    "                                titleCredibilityIcon = .premium\n"
+    "                            }\n",
+)
+
+# ---------------------------------------------------------------------------
+# 19. Premium gift cards: no discount ribbons; prices always in ₽
+# ---------------------------------------------------------------------------
+print("\n[19] Premium gift cards: no ribbons, RUB prices")
 gift_options_src = Path(
     "submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift"
 )

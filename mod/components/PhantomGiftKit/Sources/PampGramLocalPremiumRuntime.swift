@@ -27,14 +27,27 @@ private struct PampGramLocalPremiumList: Codable {
 /// user, so this is a reconcile loop (same idea as `PampGramWornGiftRuntime`) rather than a one-shot
 /// write: any change to one of those records, or to the list itself, re-checks the flag and only
 /// writes when it is missing.
+///
+/// `isActive(peerId:)` is a synchronous in-memory mirror of the still-valid gifts. Chat title /
+/// list UI must prefer it over `peer.isPremium` alone: otherwise opening a chat briefly shows the
+/// name without the star (server peer rewrite cleared the flag), then reconcile puts it back and
+/// the badge jumps.
 public final class PampGramLocalPremiumRuntime {
     public static let shared = PampGramLocalPremiumRuntime()
 
     private let lock = NSLock()
     private var startedAccounts: Set<Int64> = []
     private var disposables: [Int64: Disposable] = [:]
+    private var activePeerIds: Set<PeerId> = []
 
     private init() {
+    }
+
+    /// True while a visual Premium gift for this peer is still running on this device.
+    public func isActive(peerId: EnginePeer.Id) -> Bool {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.activePeerIds.contains(peerId)
     }
 
     public func start(accountKey: Int64, context: AccountContext) {
@@ -56,7 +69,8 @@ public final class PampGramLocalPremiumRuntime {
         // For every peer on the list, re-run the reconcile whenever the peer's own record changes.
         // `mapToQueue` so a second trigger waits for the first instead of cancelling it half-way.
         let disposable = (records
-        |> mapToSignal { records -> Signal<Void, NoError> in
+        |> mapToSignal { [weak self] records -> Signal<Void, NoError> in
+            self?.updateActivePeers(records)
             if records.isEmpty {
                 return .single(Void())
             }
@@ -94,6 +108,7 @@ public final class PampGramLocalPremiumRuntime {
             list.records.append(PampGramLocalPremiumRecord(peerId: peerId, expiry: now + duration, originalWasPremium: user?.flags.contains(.isPremium) ?? false))
         }
         transaction.setPreferencesEntry(key: PampGramPreferencesKeys.localPremiumPeers, value: PreferencesEntry(list))
+        PampGramLocalPremiumRuntime.shared.updateActivePeers(list.records)
         if let user, !user.flags.contains(.isPremium) {
             updatePeersCustom(transaction: transaction, peers: [user.withUpdatedFlags(user.flags.union(.isPremium))], update: { _, updated in
                 return updated
@@ -101,9 +116,20 @@ public final class PampGramLocalPremiumRuntime {
         }
     }
 
+    private func updateActivePeers(_ records: [PampGramLocalPremiumRecord]) {
+        let now = Int32(Date().timeIntervalSince1970)
+        let ids = Set(records.compactMap { record -> PeerId? in
+            return record.expiry > now ? record.peerId : nil
+        })
+        self.lock.lock()
+        self.activePeerIds = ids
+        self.lock.unlock()
+    }
+
     private static func reconcile(postbox: Postbox) -> Signal<Never, NoError> {
         return postbox.transaction { transaction -> Void in
             guard var list = transaction.getPreferencesEntry(key: PampGramPreferencesKeys.localPremiumPeers)?.get(PampGramLocalPremiumList.self), !list.records.isEmpty else {
+                PampGramLocalPremiumRuntime.shared.updateActivePeers([])
                 return
             }
             let now = Int32(Date().timeIntervalSince1970)
@@ -124,6 +150,7 @@ public final class PampGramLocalPremiumRuntime {
                     })
                 }
             }
+            PampGramLocalPremiumRuntime.shared.updateActivePeers(remaining)
             if remaining != list.records {
                 list.records = remaining
                 transaction.setPreferencesEntry(key: PampGramPreferencesKeys.localPremiumPeers, value: PreferencesEntry(list))
