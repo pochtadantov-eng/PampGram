@@ -265,6 +265,8 @@ replace_once(
     "    nonisolated(unsafe) public static var pampGramBalanceOverride: ((Int64) -> Int64?)?\n"
     "    /// PampGram: address to show as a visual wallet when the real one was never created.\n"
     "    nonisolated(unsafe) public static var pampGramAddressOverride: ((Int64) -> String?)?\n"
+    "    /// PampGram: local Money history rows merged into the real wallet screen.\n"
+    "    nonisolated(unsafe) public static var pampGramTransactionsOverride: ((Int64) -> [Transaction]?)?\n"
     "    /// PampGram: the account this wallet belongs to (the overrides are per account).\n"
     "    let pampGramAccountKey: Int64\n"
     "\n"
@@ -284,11 +286,21 @@ replace_once(
     "        default:\n"
     "            return state\n"
     "        }\n"
+    "        var transactions = state.transactions\n"
+    "        if let fake = WalletContext.pampGramTransactionsOverride?(accountKey), !fake.isEmpty {\n"
+    "            var merged = fake\n"
+    "            let fakeIds = Set(fake.map(\\.id))\n"
+    "            for item in state.transactions.items where !fakeIds.contains(item.id) {\n"
+    "                merged.append(item)\n"
+    "            }\n"
+    "            merged.sort(by: { $0.timestamp > $1.timestamp })\n"
+    "            transactions = TransactionsState(items: merged, offset: state.transactions.offset, canLoadMore: state.transactions.canLoadMore, isLoadingMore: false, error: nil)\n"
+    "        }\n"
     "        return State(\n"
     "            phase: phase,\n"
     "            walletAddress: walletAddress,\n"
     "            balance: .value(balance, updatedAt: Int32(Date().timeIntervalSince1970)),\n"
-    "            transactions: state.transactions,\n"
+    "            transactions: transactions,\n"
     "            collectibles: state.collectibles,\n"
     "            pendingTransfers: state.pendingTransfers,\n"
     "            activeOperation: state.activeOperation,\n"
@@ -342,6 +354,35 @@ replace_once(
     "        }\n"
     "        WalletContext.pampGramAddressOverride = { walletAccountKey in\n"
     "            return PampGramVisualExtrasRuntime.shared.fakeWalletAddress(accountKey: walletAccountKey)\n"
+    "        }\n"
+    "        WalletContext.pampGramTransactionsOverride = { walletAccountKey in\n"
+    "            let items = PampGramVisualExtrasRuntime.shared.walletTransactions(accountKey: walletAccountKey)\n"
+    "            guard !items.isEmpty else {\n"
+    "                return nil\n"
+    "            }\n"
+    "            return items.map { item in\n"
+    "                let direction: WalletContext.Transaction.Direction = item.isIncoming ? .incoming : .outgoing\n"
+    "                let peer: WalletContext.Transaction.Peer\n"
+    "                switch item.kind {\n"
+    "                case .topUp:\n"
+    "                    peer = .onramp(address: item.address, domain: nil, providerName: item.peerTitle)\n"
+    "                case .withdraw:\n"
+    "                    peer = .address(item.address.isEmpty ? item.peerTitle : item.address, domain: nil)\n"
+    "                case .send, .receive:\n"
+    "                    peer = .onramp(address: item.address, domain: nil, providerName: item.peerTitle)\n"
+    "                }\n"
+    "                return WalletContext.Transaction(\n"
+    "                    id: \"pampgram-\\(item.id)\",\n"
+    "                    transactionHash: item.txHash.replacingOccurrences(of: \" \", with: \"\"),\n"
+    "                    logicalTime: \"\\(item.date)\",\n"
+    "                    timestamp: item.date,\n"
+    "                    direction: direction,\n"
+    "                    amount: abs(item.amountNanos),\n"
+    "                    fee: 0,\n"
+    "                    peer: peer,\n"
+    "                    comment: nil\n"
+    "                )\n"
+    "            }\n"
     "        }\n"
     "        tabBarController.pampGramTripleTap = {",
 )
@@ -683,7 +724,115 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
+# 15. Visual wallet send / top-up: when «Карточка GRAM» is on, Money's «Отправить» and
+#     «Пополнить» stay local instead of opening the real transfer / receive flows.
+# ---------------------------------------------------------------------------
+print("\n[15] Visual wallet send/top-up intercept on WalletScreen")
+
+wallet_screen_build = Path("submodules/TelegramUI/Components/Wallet/WalletScreen/BUILD")
+wallet_screen_swift = Path("submodules/TelegramUI/Components/Wallet/WalletScreen/Sources/WalletScreen.swift")
+# add_dep_if_missing only knows how to insert PampGramCore; insert SettingsUI by hand.
+_ws_build = wallet_screen_build.read_text()
+_ws_dep = '"//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI"'
+if _ws_dep not in _ws_build:
+    _ws_anchor = '"//submodules/AccountContext",'
+    if _ws_anchor not in _ws_build:
+        # Fall back: append near the end of deps if AccountContext isn't listed that way.
+        _ws_anchor = "deps = ["
+    if _ws_anchor not in _ws_build:
+        print("FAIL [WalletScreen BUILD]: cannot find deps anchor", file=sys.stderr)
+        sys.exit(1)
+    _idx = _ws_build.index(_ws_anchor) + len(_ws_anchor)
+    wallet_screen_build.write_text(_ws_build[:_idx] + "\n        " + _ws_dep + "," + _ws_build[_idx:])
+    print("  OK: WalletScreen BUILD dep PampGramSettingsUI")
+else:
+    print("  SKIP: WalletScreen BUILD dep PampGramSettingsUI (already present)")
+_ws_swift = wallet_screen_swift.read_text()
+if "import PampGramSettingsUI" not in _ws_swift:
+    _imp_anchor = "import WalletSendScreen\n"
+    if _imp_anchor not in _ws_swift:
+        print("FAIL [WalletScreen import]: anchor not found", file=sys.stderr)
+        sys.exit(1)
+    _idx = _ws_swift.index(_imp_anchor) + len(_imp_anchor)
+    wallet_screen_swift.write_text(_ws_swift[:_idx] + "import PampGramSettingsUI\n" + _ws_swift[_idx:])
+    print("  OK: WalletScreen import PampGramSettingsUI")
+else:
+    print("  SKIP: WalletScreen import PampGramSettingsUI (already present)")
+replace_once(
+    wallet_screen_swift,
+    "visual wallet intercept openReceive",
+    "        private func openReceive() {\n",
+    "        private func openReceive() {\n"
+    "            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {\n"
+    "                pampGramPresentVisualWalletTopUp(context: component.context)\n"
+    "                return\n"
+    "            }\n",
+)
+replace_once(
+    wallet_screen_swift,
+    "visual wallet intercept openSend",
+    "        private func openSend(address: String? = nil) {\n",
+    "        private func openSend(address: String? = nil) {\n"
+    "            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {\n"
+    "                pampGramPresentVisualWalletSend(context: component.context)\n"
+    "                return\n"
+    "            }\n",
+)
+
+# ---------------------------------------------------------------------------
+# 16. Chat ⋯ menu: «Отправить деньги» / «Получить GRAM в чат» for the visual wallet.
+# ---------------------------------------------------------------------------
+print("\n[16] Visual wallet actions in the chat more menu")
+
+chat_open_peer = Path("submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift")
+_cop = chat_open_peer.read_text()
+if "import PampGramSettingsUI" not in _cop:
+    _cop_anchor = "import PampGramCore\n"
+    if _cop_anchor not in _cop:
+        print("FAIL [ChatControllerOpenPeer import]: PampGramCore import missing", file=sys.stderr)
+        sys.exit(1)
+    _idx = _cop.index(_cop_anchor) + len(_cop_anchor)
+    chat_open_peer.write_text(_cop[:_idx] + "import PampGramSettingsUI\n" + _cop[_idx:])
+    print("  OK: ChatControllerOpenPeer import PampGramSettingsUI")
+else:
+    print("  SKIP: ChatControllerOpenPeer import PampGramSettingsUI (already present)")
+replace_once(
+    chat_open_peer,
+    "visual wallet chat more-menu items",
+    "        items.append(.action(ContextMenuActionItem(text: \"Восстановить чат\", icon: { theme in\n",
+    "        items.append(.action(ContextMenuActionItem(text: \"Отправить деньги\", icon: { theme in\n"
+    "            return generateTintedImage(image: UIImage(bundleImageName: \"Chat/Context Menu/Check\"), color: theme.contextMenu.primaryColor)\n"
+    "        }, action: { [weak self] action in\n"
+    "            action.dismissWithResult(.default)\n"
+    "            guard let self else { return }\n"
+    "            let presentationData = self.presentationData\n"
+    "            let peerName: String\n"
+    "            if let peer = self.presentationInterfaceState.renderedPeer?.peer {\n"
+    "                peerName = EnginePeer(peer).displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder)\n"
+    "            } else {\n"
+    "                peerName = \"Получатель\"\n"
+    "            }\n"
+    "            pampGramPresentVisualWalletSend(context: self.context, preselectedPeerId: peerId, preselectedTitle: peerName)\n"
+    "        }))\n"
+    "        items.append(.action(ContextMenuActionItem(text: \"Получить GRAM в чат\", icon: { theme in\n"
+    "            return generateTintedImage(image: UIImage(bundleImageName: \"Chat/Context Menu/Resend\"), color: theme.contextMenu.primaryColor)\n"
+    "        }, action: { [weak self] action in\n"
+    "            action.dismissWithResult(.default)\n"
+    "            guard let self else { return }\n"
+    "            let presentationData = self.presentationData\n"
+    "            let peerName: String\n"
+    "            if let peer = self.presentationInterfaceState.renderedPeer?.peer {\n"
+    "                peerName = EnginePeer(peer).displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder)\n"
+    "            } else {\n"
+    "                peerName = \"Отправитель\"\n"
+    "            }\n"
+    "            pampGramPresentVisualWalletReceiveInChat(context: self.context, peerId: peerId, peerTitle: peerName)\n"
+    "        }))\n"
+    "        items.append(.action(ContextMenuActionItem(text: \"Восстановить чат\", icon: { theme in\n",
+)
+
+# ---------------------------------------------------------------------------
 print("\nPampGram: feature hooks done.")
 print("  ACTIVE: ChatTimeMachine, VideoMessageSaver, FakeBadge, FakeSubscribers, FakeDeletedAccount")
 print("  CONTEXT MENU ONLY: FakeForward, FakeReactions, FakeActivity, InvisibleMessage, ReactionSpammer,")
-print("    FakeSystemMessages, FakePaymentReceipt, FakeIncomingCall, FakeScreenshotNotification")
+print("    FakeSystemMessages, FakePaymentReceipt, FakeIncomingCall, FakeScreenshotNotification, VisualWallet")

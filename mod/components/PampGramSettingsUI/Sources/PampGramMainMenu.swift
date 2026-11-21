@@ -75,6 +75,15 @@ public func pampGramPresentMainMenu(context: AccountContext, peerId: EnginePeer.
             }))
         }
 
+        buttons.append(ActionSheetButtonItem(title: "Отправить деньги", color: .accent, action: { [weak sheet] in
+            sheet?.dismissAnimated()
+            pampGramPresentVisualWalletSend(context: context, preselectedPeerId: peerId, preselectedTitle: peerName)
+        }))
+        buttons.append(ActionSheetButtonItem(title: "Получить GRAM в чат", color: .accent, action: { [weak sheet] in
+            sheet?.dismissAnimated()
+            pampGramPresentVisualWalletReceiveInChat(context: context, peerId: peerId, peerTitle: peerName)
+        }))
+
         if settings.fakeScreenshotNotificationEnabled && PampGramFakeScreenshotNotificationRuntime.shared.isSecretChat(peerId: peerId) {
             buttons.append(ActionSheetButtonItem(title: "Фейк скриншот", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()

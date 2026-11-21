@@ -313,14 +313,14 @@ private final class PampGramCardScreenController: PampGramVisualPageController {
     private var addressField = UITextField()
 
     override func buildContent() {
-        let intro = self.makeLabel("Подменяет баланс в настоящем кошельке Telegram: на карточке кошелька («Open My Money»), в сумме в долларах и в плашке «Balance» под именем в профиле. Если кошелёк в Telegram не создан, он появится визуально — с этим балансом и адресом ниже. Фон и наклейки карточки настраиваются в самом кошельке — это настоящий редактор Telegram.", size: 14.0, weight: .regular, color: self.secondaryColor)
+        let intro = self.makeLabel("Подменяет баланс в настоящем кошельке Telegram: карточка профиля, экран «Деньги», кнопки «Пополнить»/«Отправить», история и плашки в чате — всё локально. Дробные суммы можно писать через точку или запятую (0.1). Фон и наклейки карточки — в самом кошельке Telegram.", size: 14.0, weight: .regular, color: self.secondaryColor)
         self.stack.addArrangedSubview(intro)
 
         let switchRow = UIStackView(arrangedSubviews: [self.makeLabel("Подменять баланс", size: 16.0, weight: .regular, color: self.primaryColor), self.enableSwitch])
         switchRow.axis = .horizontal
         switchRow.alignment = .center
         self.enableSwitch.addTarget(self, action: #selector(self.switchChanged), for: .valueChanged)
-        self.balanceField = self.makeField(placeholder: "Баланс GRAM", keyboard: .numberPad)
+        self.balanceField = self.makeField(placeholder: "Баланс GRAM (например 0.1)", keyboard: .decimalPad)
         self.balanceField.addTarget(self, action: #selector(self.balanceChanged(_:)), for: .editingChanged)
         self.addressField = self.makeField(placeholder: "Адрес кошелька (необязательно)", keyboard: .asciiCapable)
         self.addressField.addTarget(self, action: #selector(self.addressChanged(_:)), for: .editingChanged)
@@ -328,7 +328,12 @@ private final class PampGramCardScreenController: PampGramVisualPageController {
 
         self.loadExtras { [weak self] extras in
             self?.enableSwitch.isOn = extras.cardEnabled
-            self?.balanceField.text = extras.cardBalance > 0 ? "\(extras.cardBalance)" : ""
+            let nanos = extras.resolvedBalanceNanos()
+            if nanos > 0 {
+                self?.balanceField.text = PampGramVisualWallet.formatGrams(nanos).replacingOccurrences(of: ",", with: ".")
+            } else {
+                self?.balanceField.text = ""
+            }
             self?.addressField.text = extras.cardAddress
         }
     }
@@ -348,10 +353,18 @@ private final class PampGramCardScreenController: PampGramVisualPageController {
     }
 
     @objc private func balanceChanged(_ field: UITextField) {
-        let digits = String((field.text ?? "").filter { $0.isNumber }.prefix(12))
-        let value = Int64(digits) ?? 0
+        let raw = (field.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        let nanos: Int64
+        if raw.isEmpty {
+            nanos = 0
+        } else if let value = Double(raw), value.isFinite, value >= 0.0 {
+            nanos = PampGramVisualWallet.nanos(fromGrams: value)
+        } else {
+            return
+        }
         self.updateExtras { extras in
-            extras.cardBalance = value
+            extras.setBalanceNanos(nanos)
         }
     }
 }

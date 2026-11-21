@@ -39,7 +39,13 @@ public struct PampGramVisualExtras: Codable, Equatable {
     /// Where the icon was copied from ("@username"), for display only.
     public var badgeSource: String
     public var cardEnabled: Bool
+    /// Legacy whole-GRAM balance (kept for older installs). Prefer `cardBalanceNanos`.
     public var cardBalance: Int64
+    /// Nanograms shown on the Money card / profile chip. 1 GRAM = 1_000_000_000.
+    public var cardBalanceNanos: Int64
+    /// True once the owner wrote a nanos balance (including zero), so legacy `cardBalance`
+    /// is no longer used as the source of truth.
+    public var cardDidSetNanos: Bool
     /// Address the visual wallet shows when Telegram's own wallet was never created. "" = a
     /// neutral placeholder address.
     public var cardAddress: String
@@ -55,15 +61,17 @@ public struct PampGramVisualExtras: Codable, Equatable {
     public static let badgeNames: [String] = ["Нет", "Major", "Hold"]
 
     public static var `default`: PampGramVisualExtras {
-        return PampGramVisualExtras(badge: 0, badgeFileId: 0, badgeSource: "", cardEnabled: false, cardBalance: 0, cardAddress: "", cardBackground: 0, cardSticker: "", cardStickerX: 0.82, cardStickerY: 0.28, usernames: [])
+        return PampGramVisualExtras(badge: 0, badgeFileId: 0, badgeSource: "", cardEnabled: false, cardBalance: 0, cardBalanceNanos: 0, cardDidSetNanos: false, cardAddress: "", cardBackground: 0, cardSticker: "", cardStickerX: 0.82, cardStickerY: 0.28, usernames: [])
     }
 
-    public init(badge: Int, badgeFileId: Int64, badgeSource: String, cardEnabled: Bool, cardBalance: Int64, cardAddress: String, cardBackground: Int, cardSticker: String, cardStickerX: Double, cardStickerY: Double, usernames: [PampGramVisualUsername]) {
+    public init(badge: Int, badgeFileId: Int64, badgeSource: String, cardEnabled: Bool, cardBalance: Int64, cardBalanceNanos: Int64 = 0, cardDidSetNanos: Bool = false, cardAddress: String, cardBackground: Int, cardSticker: String, cardStickerX: Double, cardStickerY: Double, usernames: [PampGramVisualUsername]) {
         self.badge = badge
         self.badgeFileId = badgeFileId
         self.badgeSource = badgeSource
         self.cardEnabled = cardEnabled
         self.cardBalance = cardBalance
+        self.cardBalanceNanos = cardBalanceNanos
+        self.cardDidSetNanos = cardDidSetNanos
         self.cardAddress = cardAddress
         self.cardBackground = cardBackground
         self.cardSticker = cardSticker
@@ -80,6 +88,8 @@ public struct PampGramVisualExtras: Codable, Equatable {
         self.badgeSource = try container.decodeIfPresent(String.self, forKey: .badgeSource) ?? defaults.badgeSource
         self.cardEnabled = try container.decodeIfPresent(Bool.self, forKey: .cardEnabled) ?? defaults.cardEnabled
         self.cardBalance = try container.decodeIfPresent(Int64.self, forKey: .cardBalance) ?? defaults.cardBalance
+        self.cardBalanceNanos = try container.decodeIfPresent(Int64.self, forKey: .cardBalanceNanos) ?? defaults.cardBalanceNanos
+        self.cardDidSetNanos = try container.decodeIfPresent(Bool.self, forKey: .cardDidSetNanos) ?? defaults.cardDidSetNanos
         self.cardAddress = try container.decodeIfPresent(String.self, forKey: .cardAddress) ?? defaults.cardAddress
         self.cardBackground = try container.decodeIfPresent(Int.self, forKey: .cardBackground) ?? defaults.cardBackground
         self.cardSticker = try container.decodeIfPresent(String.self, forKey: .cardSticker) ?? defaults.cardSticker
@@ -118,6 +128,7 @@ public final class PampGramVisualExtrasRuntime {
     /// Per account: with several accounts signed in, one account's settings must never leak
     /// into another's wallet or profile.
     private var byAccount: [Int64: PampGramVisualExtras] = [:]
+    private var walletTxByAccount: [Int64: [PampGramVisualWalletTx]] = [:]
     private var startedAccounts: Set<Int64> = []
     private var disposables: [Int64: Disposable] = [:]
 
@@ -133,13 +144,18 @@ public final class PampGramVisualExtrasRuntime {
         self.startedAccounts.insert(accountKey)
         self.lock.unlock()
 
-        let disposable = (PampGramProfileVisualStore.signal(postbox: postbox)
+        let bag = DisposableSet()
+        bag.add((PampGramProfileVisualStore.signal(postbox: postbox)
         |> deliverOn(Queue.concurrentDefaultQueue())).start(next: { state in
             let extras = state.visualExtras
             PampGramVisualExtrasRuntime.shared.set(extras, accountKey: accountKey)
-        })
+        }))
+        bag.add((PampGramVisualWallet.signal(postbox: postbox)
+        |> deliverOn(Queue.concurrentDefaultQueue())).start(next: { items in
+            PampGramVisualExtrasRuntime.shared.setWalletTransactions(items, accountKey: accountKey)
+        }))
         self.lock.lock()
-        self.disposables[accountKey] = disposable
+        self.disposables[accountKey] = bag
         self.lock.unlock()
     }
 
@@ -162,8 +178,22 @@ public final class PampGramVisualExtrasRuntime {
         if !extras.cardEnabled {
             return nil
         }
-        let result = extras.cardBalance.multipliedReportingOverflow(by: 1_000_000_000)
-        return result.overflow ? Int64.max : result.partialValue
+        return extras.resolvedBalanceNanos()
+    }
+
+    /// Local Money history rows for this account (empty when the visual card is off).
+    public func walletTransactions(accountKey: Int64) -> [PampGramVisualWalletTx] {
+        self.lock.lock()
+        let items = self.walletTxByAccount[accountKey] ?? []
+        let enabled = (self.byAccount[accountKey] ?? PampGramVisualExtras.default).cardEnabled
+        self.lock.unlock()
+        return enabled ? items : []
+    }
+
+    public func setWalletTransactions(_ items: [PampGramVisualWalletTx], accountKey: Int64) {
+        self.lock.lock()
+        self.walletTxByAccount[accountKey] = items
+        self.lock.unlock()
     }
 
     /// Address for the visual wallet when Telegram's real wallet was never created; nil when
