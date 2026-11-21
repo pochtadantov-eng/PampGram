@@ -13,6 +13,12 @@ import sys
 
 def replace_once(path: Path, label: str, old: str, new: str) -> None:
     text = path.read_text()
+    # Prefer the "already applied" check first: old can still match as a
+    # prefix/substring after the edit (e.g. property blocks), which would
+    # otherwise duplicate on a tree that already has telegram-ios.patch.
+    if new in text:
+        print(f"SKIP: {label} (already applied)")
+        return
     count = text.count(old)
     if count != 1:
         print(
@@ -27,6 +33,9 @@ def replace_once(path: Path, label: str, old: str, new: str) -> None:
 
 def replace_count(path: Path, label: str, old: str, new: str, expected_count: int) -> None:
     text = path.read_text()
+    if new in text and text.count(old) == 0:
+        print(f"SKIP: {label} (already applied)")
+        return
     count = text.count(old)
     if count != expected_count:
         print(
@@ -81,8 +90,6 @@ replace_once(
             self.requestLayout(animated: false)
         })
     }
-
-    deinit {
 """,
     """        self.pampGramSettingsDisposable = (PampGramCore.settingsSignal(postbox: context.account.postbox)
         |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
@@ -104,8 +111,6 @@ replace_once(
             self.requestLayout(animated: false)
         })
     }
-
-    deinit {
 """,
 )
 
@@ -162,10 +167,14 @@ replace_once(
     "prefer visual rating over the server rating badge",
     """        #endif
 
+        self.avatarListNode.avatarContainerNode.updateAccessibility(label: presentationData.strings.Privacy_ProfilePhoto, moreLabel: presentationData.strings.Common_More)
+        
         if let starRating = self.currentStarRating {
 """,
     """        #endif
 
+        self.avatarListNode.avatarContainerNode.updateAccessibility(label: presentationData.strings.Privacy_ProfilePhoto, moreLabel: presentationData.strings.Common_More)
+        
         // The preference is used for the account owner's own profile wherever it's shown —
         // the ordinary "Мой профиль" screen (isMyProfile) and this same header reused for the
         // Settings tab's own embedded profile (isSettings; see TelegramRootController.swift's

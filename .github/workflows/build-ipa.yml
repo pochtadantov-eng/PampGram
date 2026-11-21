@@ -39,7 +39,7 @@ jobs:
       - name: Check out Telegram-iOS
         run: |
           git clone --recursive --shallow-submodules --depth 1 -j8 \
-            --branch release-13.1.2 \
+            --branch release-13.2 \
             https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios
 
       # mod/components/* are whole new Bazel packages, dropped in as-is under a single
@@ -51,15 +51,18 @@ jobs:
         run: |
           git apply --check ../pampgram/mod/telegram-ios.patch
           git apply ../pampgram/mod/telegram-ios.patch
-          # @seends + the fake CryptoBot: a small second patch on top of the main one.
-          git apply --check ../pampgram/mod/seends-cryptobot.patch
-          git apply ../pampgram/mod/seends-cryptobot.patch
+          # @seends + the fake CryptoBot: folded into telegram-ios.patch on release-13.2+.
+          # Keep the file for older docs; only apply when it still has diff hunks.
+          if grep -q '^diff --git' ../pampgram/mod/seends-cryptobot.patch; then
+            git apply --check ../pampgram/mod/seends-cryptobot.patch
+            git apply ../pampgram/mod/seends-cryptobot.patch
+          else
+            echo "PampGram: seends-cryptobot.patch has no hunks (folded into telegram-ios.patch)"
+          fi
           mkdir -p submodules/TelegramUI/Components/PampGram
           cp -R ../pampgram/mod/components/. submodules/TelegramUI/Components/PampGram/
-          # The visual profile state is rendered in Telegram's profile screen by this
-          # anchor-checked post-patch, after the base PampGram patch is in place.
-          python3 ../pampgram/mod/apply-profile-visuals.py
-          python3 ../pampgram/mod/apply-feature-hooks.py
+          # Profile visuals + feature hooks are folded into telegram-ios.patch for
+          # release-13.2+. The Python helpers remain in mod/ for the next upstream bump.
           # Telegram-iOS 13.x fails the build up front if a file outside TelegramCore imports
           # Postbox unlisted; register the mod's files in its allowlists.
           python3 ../pampgram/mod/apply-postbox-allowlist.py

@@ -11,6 +11,12 @@ import sys
 
 def replace_once(path: Path, label: str, old: str, new: str) -> None:
     text = path.read_text()
+    # Prefer the "already applied" check first: after telegram-ios.patch on
+    # release-13.2+, `old` may be gone while a distinctive part of `new` remains,
+    # or `old` may still match as a substring and would otherwise duplicate.
+    if new in text:
+        print(f"  SKIP: {label} (already applied)")
+        return
     count = text.count(old)
     if count != 1:
         print(
@@ -24,6 +30,9 @@ def replace_once(path: Path, label: str, old: str, new: str) -> None:
 
 def insert_after(path: Path, label: str, anchor: str, insertion: str) -> None:
     text = path.read_text()
+    if insertion and insertion in text:
+        print(f"  SKIP: {label} (already applied)")
+        return
     count = text.count(anchor)
     if count < 1:
         print(f"FAIL [{label}]: anchor not found in {path}", file=sys.stderr)
