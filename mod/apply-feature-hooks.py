@@ -1215,8 +1215,75 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
+# 18. Premium gift cards: no discount ribbons; prices always in ₽
+# ---------------------------------------------------------------------------
+print("\n[18] Premium gift cards: no ribbons, RUB prices")
+gift_options_src = Path(
+    "submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift"
+)
+replace_once(
+    gift_options_src,
+    "premium gift ribbon removed",
+    "                            ribbon: product.discount.flatMap {\n"
+    "                                GiftItemComponent.Ribbon(\n"
+    '                                    text:  "-\\($0)%",\n'
+    "                                    color: .purple\n"
+    "                                )\n"
+    "                            },\n",
+    "                            ribbon: nil,\n",
+)
+
+gift_setup_src = Path(
+    "submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift"
+)
+replace_once(
+    gift_setup_src,
+    "premium price always RUB",
+    """    public var price: String {
+        return self.storeProduct?.price ?? formatCurrencyAmount(self.giftOption.amount, currency: self.giftOption.currency)
+    }
+""",
+    """    /// PampGram: always show Premium gift prices in rubles (cards + send button), never App Store $.
+    public var price: String {
+        if self.giftOption.currency.uppercased() == "RUB", self.giftOption.amount > 0 {
+            return formatCurrencyAmount(self.giftOption.amount, currency: "RUB")
+        }
+        if let storeProduct = self.storeProduct {
+            let (currency, amount) = storeProduct.priceCurrencyAndAmount
+            if currency.uppercased() == "RUB" {
+                return formatCurrencyAmount(amount, currency: "RUB")
+            }
+            let major = Double(amount) / 100.0
+            let rate: Double
+            switch currency.uppercased() {
+            case "EUR":
+                rate = 100.0
+            case "USD":
+                rate = 95.0
+            default:
+                rate = 95.0
+            }
+            let kopecks = Int64((major * rate * 100.0).rounded())
+            return formatCurrencyAmount(max(kopecks, 1), currency: "RUB")
+        }
+        if self.giftOption.amount > 0 {
+            let currency = self.giftOption.currency.uppercased()
+            if currency == "RUB" {
+                return formatCurrencyAmount(self.giftOption.amount, currency: "RUB")
+            }
+            let major = Double(self.giftOption.amount) / 100.0
+            let kopecks = Int64((major * 95.0 * 100.0).rounded())
+            return formatCurrencyAmount(max(kopecks, 1), currency: "RUB")
+        }
+        return formatCurrencyAmount(self.giftOption.amount, currency: "RUB")
+    }
+""",
+)
+
+# ---------------------------------------------------------------------------
 print("\nPampGram: feature hooks done.")
 print("  ACTIVE: ChatTimeMachine, VideoMessageSaver, FakeBadge, FakeSubscribers, FakeDeletedAccount")
 print("  CONTEXT MENU ONLY: FakeForward, FakeReactions, FakeActivity, InvisibleMessage, ReactionSpammer,")
 print("    FakeSystemMessages, FakePaymentReceipt, FakeIncomingCall, FakeScreenshotNotification, VisualWallet")
 print("  MINE TAB: visual gifts from own profile transfer for ⭐25")
+print("  PREMIUM: RUB prices, no ribbons; visual Stars on Pay-with-Stars footer")
