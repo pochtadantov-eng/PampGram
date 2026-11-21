@@ -20189,7 +20189,7 @@ index 2852a5f3f..421367b31 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
-index e1624f68a..eadc348f3 100644
+index e1624f68a..ee16fac9d 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 @@ -40,6 +40,8 @@ import GlassBarButtonComponent
@@ -20716,8 +20716,8 @@ index e1624f68a..eadc348f3 100644
 -                    let starsFooterRawString = environment.strings.Gift_Send_PayWithStars_Info("# \(balanceString)").string
 +                    var starsFooterRawString = environment.strings.Gift_Send_PayWithStars_Info("# \(balanceString)").string
 +                    // Drop the "[пополнить баланс >]()" link when visual/real Stars already cover the price.
-+                    if !needsTopUp, let linkStart = starsFooterRawString.range(of: "[") {
-+                        starsFooterRawString = String(starsFooterRawString[..<linkStart]).trimmingCharacters(in: .whitespacesAndNewlines)
++                    if !needsTopUp, let linkRange = starsFooterRawString.range(of: "[") {
++                        starsFooterRawString = String(starsFooterRawString[..<linkRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
 +                    }
                      let starsFooterText = NSMutableAttributedString(attributedString: parseMarkdownIntoAttributedString(starsFooterRawString, attributes: footerAttributes))
                      
