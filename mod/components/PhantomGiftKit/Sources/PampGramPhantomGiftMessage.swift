@@ -20,6 +20,10 @@ public enum PampGramPhantomGiftMessage {
     /// ribbon forever — that ribbon reads `resellAmounts` straight off the embedded gift,
     /// never PampGram's own local `marketPrice`.
     static func fakedOwnership(of uniqueGift: StarGift.UniqueGift, newOwnerPeerId: EnginePeer.Id) -> StarGift.UniqueGift {
+        // Visual gifts are never on TON: keep model/backdrop/# from the market listing, but
+        // strip every on-chain marker. Leaving `giftAddress` / `resellForTonOnly` / `hostPeerId`
+        // made GiftItemComponent paint the TON diamond and GiftViewScreen say
+        // "This gift is in TON Blockchain" for a purely local copy.
         return StarGift.UniqueGift(
             id: uniqueGift.id,
             giftId: uniqueGift.giftId,
@@ -29,9 +33,9 @@ public enum PampGramPhantomGiftMessage {
             owner: .peerId(newOwnerPeerId),
             attributes: uniqueGift.attributes,
             availability: uniqueGift.availability,
-            giftAddress: uniqueGift.giftAddress,
+            giftAddress: nil,
             resellAmounts: nil,
-            resellForTonOnly: uniqueGift.resellForTonOnly,
+            resellForTonOnly: false,
             releasedBy: uniqueGift.releasedBy,
             valueAmount: uniqueGift.valueAmount,
             valueCurrency: uniqueGift.valueCurrency,
@@ -39,7 +43,7 @@ public enum PampGramPhantomGiftMessage {
             flags: uniqueGift.flags,
             themePeerId: uniqueGift.themePeerId,
             peerColor: uniqueGift.peerColor,
-            hostPeerId: uniqueGift.hostPeerId,
+            hostPeerId: nil,
             minOfferStars: uniqueGift.minOfferStars,
             craftChancePermille: uniqueGift.craftChancePermille
         )

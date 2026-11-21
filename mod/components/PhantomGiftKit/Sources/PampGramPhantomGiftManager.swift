@@ -616,7 +616,7 @@ public enum PampGramPhantomGiftManager {
             owner: uniqueGift.owner,
             attributes: uniqueGift.attributes,
             availability: uniqueGift.availability,
-            giftAddress: uniqueGift.giftAddress,
+            giftAddress: nil,
             resellAmounts: nil,
             resellForTonOnly: false,
             releasedBy: uniqueGift.releasedBy,
@@ -626,7 +626,7 @@ public enum PampGramPhantomGiftManager {
             flags: uniqueGift.flags,
             themePeerId: uniqueGift.themePeerId,
             peerColor: uniqueGift.peerColor,
-            hostPeerId: uniqueGift.hostPeerId,
+            hostPeerId: nil,
             minOfferStars: uniqueGift.minOfferStars,
             craftChancePermille: uniqueGift.craftChancePermille
         ))
