@@ -216,7 +216,7 @@ import {
 	writeBanRecord,
 	listAllKeys,
 } from "./core.js";
-import { issueKey, redeemKeyForAccount } from "./keys.js";
+import { issueKey, issueUnbanKey, redeemKeyForAccount } from "./keys.js";
 import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSeen, confirmDaily } from "./access.js";
 import { recordAppSeen, noteTier } from "./users.js";
 import { handleWebhook, runScheduled } from "./bot/webhook.js";
@@ -490,11 +490,21 @@ async function handleGenerateKey(request, env) {
 		return jsonResponse({ error: "invalid json" }, 400);
 	}
 
-	const { token, tier, durationHours } = payload ?? {};
+	const { token, tier, durationHours, kind } = payload ?? {};
 
 	if (!isAuthorized(token, env)) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
+
+	// Unban keys: { kind: "unban" } — one-shot self-serve lift of a full ban. No tier.
+	if (kind === "unban") {
+		const key = await issueUnbanKey(env);
+		if (!key) {
+			return jsonResponse({ error: "could not generate key" }, 500);
+		}
+		return jsonResponse({ ok: true, key, kind: "unban" });
+	}
+
 	if (!ALLOWED_TIERS.has(tier)) {
 		return jsonResponse({ error: "invalid tier" }, 400);
 	}
@@ -533,6 +543,9 @@ async function handleRedeemKey(request, env) {
 			return jsonResponse({ error: "banned" }, 403);
 		}
 		return jsonResponse({ error: "key not found or already used" }, 404);
+	}
+	if (redeemed.unbanned) {
+		return jsonResponse({ ok: true, unbanned: true, tier: redeemed.tier, expiresAt: redeemed.expiresAt });
 	}
 	return jsonResponse({ ok: true, tier: redeemed.tier, expiresAt: redeemed.expiresAt });
 }

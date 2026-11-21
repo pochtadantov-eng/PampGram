@@ -528,13 +528,15 @@ public enum PampGramSubscriptionAPI {
 
     private struct GenerateKeyRequestBody: Encodable {
         let token: String
-        let tier: String
+        let tier: String?
         let durationHours: Double?
+        let kind: String?
     }
 
     private struct GenerateKeyResponse: Decodable {
         let ok: Bool
         let key: String?
+        let kind: String?
     }
 
     /// Admin-only: mints one fresh, unused activation key for `tier`, either permanent
@@ -553,7 +555,30 @@ public enum PampGramSubscriptionAPI {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: tier.rawValue, durationHours: durationHours))
+        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: tier.rawValue, durationHours: durationHours, kind: nil))
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            var key: String?
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(GenerateKeyResponse.self, from: data) {
+                key = decoded.key
+            }
+            DispatchQueue.main.async {
+                completion(key)
+            }
+        }.resume()
+    }
+
+    /// Admin-only: one-shot unban key. The banned account enters it on the fullscreen lock;
+    /// a normal PRO/STANDARD key cannot lift a ban.
+    public static func generateUnbanKey(adminToken: String, completion: @escaping (String?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/generate-key") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: nil, durationHours: nil, kind: "unban"))
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             var key: String?
@@ -575,19 +600,22 @@ public enum PampGramSubscriptionAPI {
         let ok: Bool
         let tier: String?
         let expiresAt: Double?
+        let unbanned: Bool?
     }
 
-    /// Not admin-only — this is the buyer-facing half of the key system, called from any
-    /// install once its owner has a key someone generated for them. Grants that key's tier
-    /// (and, if the key was minted with a duration, an expiry starting now) to `userId` (this
-    /// device's own account, always) exactly like an admin's `grantTier` would, and the key is
-    /// gone the moment the server accepts it — a second redemption attempt with the same
-    /// string, from this device or any other, fails exactly like an unknown key would.
-    /// `completion` reports the granted status on success, `nil` on any failure (network, an
-    /// already-used/unknown key, or a malformed response).
-    public static func redeemKey(userId: Int64, key: String, completion: @escaping (PampGramSubscriptionStatus?) -> Void) {
+    /// Result of redeeming any key (licence or unban).
+    public enum PampGramRedeemResult {
+        case granted(PampGramSubscriptionStatus)
+        case unbanned
+        case failed
+    }
+
+    /// Not admin-only — buyer-facing half of the key system. Accepts a normal licence key
+    /// (grants tier) or an unban key (lifts a full ban). A normal key while fully banned fails
+    /// on the server and does not consume the key.
+    public static func redeemKey(userId: Int64, key: String, completion: @escaping (PampGramRedeemResult) -> Void) {
         guard let url = URL(string: "\(baseURL)/redeem-key") else {
-            completion(nil)
+            completion(.failed)
             return
         }
         var request = URLRequest(url: url)
@@ -596,13 +624,17 @@ public enum PampGramSubscriptionAPI {
         request.httpBody = try? JSONEncoder().encode(RedeemKeyRequestBody(id: userId, key: key))
 
         URLSession.shared.dataTask(with: request) { data, response, error in
-            var status: PampGramSubscriptionStatus?
-            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(RedeemKeyResponse.self, from: data), let tierRaw = decoded.tier, let tier = PampGramSubscriptionTier(rawValue: tierRaw) {
-                let expiresAt = decoded.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000) }
-                status = PampGramSubscriptionStatus(tier: tier, expiresAt: expiresAt)
+            var result: PampGramRedeemResult = .failed
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(RedeemKeyResponse.self, from: data), decoded.ok {
+                if decoded.unbanned == true {
+                    result = .unbanned
+                } else if let tierRaw = decoded.tier, let tier = PampGramSubscriptionTier(rawValue: tierRaw) {
+                    let expiresAt = decoded.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000) }
+                    result = .granted(PampGramSubscriptionStatus(tier: tier, expiresAt: expiresAt))
+                }
             }
             DispatchQueue.main.async {
-                completion(status)
+                completion(result)
             }
         }.resume()
     }

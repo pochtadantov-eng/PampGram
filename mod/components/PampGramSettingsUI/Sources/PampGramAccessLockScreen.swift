@@ -27,12 +27,12 @@ private func pampGramAccessLockContent(for kind: PampGramAccessLockKind) -> Pamp
         }
         return PampGramAccessLockContent(title: "Нужен ключ", body: "Чтобы пользоваться приложением, активируйте ключ. Купить ключ можно у @\(pampGramAccessContactUsername) в обычном Telegram.", showBuy: true, showActivate: true, showRetry: false, showSpinner: false)
     case .banned(let reason):
-        var body = "Вы заблокированы за неправильное выполнение требований и нарушение правил."
+        var body = "Доступ ко всему приложению заблокирован. Снять бан можно только ключом разбана от администратора или если он разбанит вас вручную."
         let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             body += "\n\nПричина: \(trimmed)"
         }
-        return PampGramAccessLockContent(title: "Доступ заблокирован", body: body, showBuy: false, showActivate: false, showRetry: false, showSpinner: false)
+        return PampGramAccessLockContent(title: "Доступ заблокирован", body: body, showBuy: false, showActivate: true, showRetry: true, showSpinner: false)
     case .unreachable:
         return PampGramAccessLockContent(title: "Нет связи с сервером", body: "Подключитесь к интернету, чтобы подтвердить подписку.", showBuy: false, showActivate: false, showRetry: true, showSpinner: false)
     case .clockTampered:
@@ -81,6 +81,7 @@ private final class PampGramAccessLockViewController: UIViewController {
         self.configure(button: self.buyButton, title: "Купить ключ", filled: true, action: #selector(self.buyPressed))
         self.configure(button: self.activateButton, title: "Активировать ключ", filled: false, action: #selector(self.activatePressed))
         self.configure(button: self.retryButton, title: "Проверить снова", filled: false, action: #selector(self.retryPressed))
+        // Title for activate is rewritten in refresh() when the lock is a ban (unban key).
 
         self.idLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 13.0, weight: .regular)
         self.idLabel.textColor = UIColor(white: 1.0, alpha: 0.4)
@@ -128,6 +129,11 @@ private final class PampGramAccessLockViewController: UIViewController {
         self.bodyLabel.text = content.body
         self.buyButton.isHidden = !content.showBuy
         self.activateButton.isHidden = !content.showActivate
+        if case .banned = kind {
+            self.activateButton.setTitle("Ключ разбана", for: .normal)
+        } else {
+            self.activateButton.setTitle("Активировать ключ", for: .normal)
+        }
         self.retryButton.isHidden = !content.showRetry
         self.spinner.isHidden = !(content.showSpinner || self.isRedeeming)
         if content.showSpinner || self.isRedeeming {
@@ -154,7 +160,16 @@ private final class PampGramAccessLockViewController: UIViewController {
     }
 
     @objc private func activatePressed() {
-        let alert = UIAlertController(title: "Активировать ключ", message: "Введите ключ, который вы получили.", preferredStyle: .alert)
+        let snapshot = PampGramAccessGate.shared.snapshot
+        let isBan: Bool
+        if case .locked(.banned) = snapshot.state {
+            isBan = true
+        } else {
+            isBan = false
+        }
+        let title = isBan ? "Ключ разбана" : "Активировать ключ"
+        let message = isBan ? "Введите ключ разбана от администратора." : "Введите ключ, который вы получили."
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addTextField { field in
             field.placeholder = "PMP-XXXXX-XXXXX-XXXXX-XXXXX"
             field.autocapitalizationType = .allCharacters
@@ -176,12 +191,15 @@ private final class PampGramAccessLockViewController: UIViewController {
         self.refresh()
         // The server's reply to the redemption is NOT what unlocks the app: it only triggers a
         // fresh, signed /access check, and that signed answer is what the gate believes.
-        PampGramSubscriptionAPI.redeemKey(userId: userId, key: key, completion: { [weak self] status in
+        PampGramSubscriptionAPI.redeemKey(userId: userId, key: key, completion: { [weak self] result in
             self?.isRedeeming = false
             self?.refresh()
             PampGramAccessGate.shared.refreshNow()
-            if status == nil {
-                let alert = UIAlertController(title: "Не удалось активировать", message: "Проверьте ключ и интернет. Если ключ уже использован — напишите @\(pampGramAccessContactUsername).", preferredStyle: .alert)
+            switch result {
+            case .granted, .unbanned:
+                break
+            case .failed:
+                let alert = UIAlertController(title: "Не удалось активировать", message: "Проверьте ключ и интернет. Обычный ключ подписки бан не снимает — нужен ключ разбана. Если ключ уже использован — напишите @\(pampGramAccessContactUsername).", preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
                 self?.present(alert, animated: true, completion: nil)
             }

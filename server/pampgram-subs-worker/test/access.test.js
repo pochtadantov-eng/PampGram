@@ -109,7 +109,7 @@ test("/access: a full ban beats an active subscription and carries the reason", 
 	assert.equal((await call(env, "GET", `/access?id=7&nonce=${NONCE}`)).json.state, "active");
 });
 
-test("a banned account cannot redeem a key: the key survives and the attempt is tamper", async () => {
+test("a banned account cannot redeem a licence key: the key survives and the attempt is tamper", async () => {
 	const { env } = await setup();
 	await call(env, "POST", "/ban", { id: 9, scope: "full", reason: "r", token: "admin-token" });
 	const minted = await call(env, "POST", "/generate-key", { tier: "pro", durationHours: 24, token: "admin-token" });
@@ -120,6 +120,24 @@ test("a banned account cannot redeem a key: the key survives and the attempt is 
 	assert.equal((await call(env, "GET", `/access?id=9&nonce=${NONCE}`)).json.state, "banned");
 	// Still usable by someone else.
 	assert.equal((await call(env, "POST", "/redeem-key", { id: 10, key: minted.json.key })).status, 200);
+});
+
+test("an unban key lifts a full ban and is one-shot", async () => {
+	const { env } = await setup();
+	await call(env, "POST", "/grant", { id: 19, tier: "pro", token: "admin-token" });
+	await call(env, "POST", "/ban", { id: 19, scope: "full", reason: "spam", token: "admin-token" });
+	assert.equal((await call(env, "GET", `/access?id=19&nonce=${NONCE}`)).json.state, "banned");
+	const minted = await call(env, "POST", "/generate-key", { kind: "unban", token: "admin-token" });
+	assert.equal(minted.status, 200);
+	assert.equal(minted.json.kind, "unban");
+	const redeemed = await call(env, "POST", "/redeem-key", { id: 19, key: minted.json.key });
+	assert.equal(redeemed.status, 200);
+	assert.equal(redeemed.json.unbanned, true);
+	assert.equal(await env.SUBS.get(`ban:19`), null);
+	assert.equal(await env.SUBS.get(`key:${minted.json.key}`), null);
+	assert.equal((await call(env, "GET", `/access?id=19&nonce=${NONCE}`)).json.state, "active");
+	// Second use fails like an unknown key.
+	assert.equal((await call(env, "POST", "/redeem-key", { id: 19, key: minted.json.key })).status, 404);
 });
 
 test("/report-tamper on a banned account wipes subscription and ledger, flags it, survives key attempts", async () => {

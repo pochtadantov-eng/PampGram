@@ -273,8 +273,10 @@ public func pampGramGateFullAccess(context: AccountContext, onAllowed: @escaping
             pampGramPresentUpdateRequiredScreen(context: context)
         } else if !isChannelSubscribed {
             pampGramPresentFrozenScreen(context: context)
-        } else if let reason = status.full {
-            pampGramPresentBannedScreen(context: context, reason: reason)
+        } else if status.full != nil {
+            // Full ban: don't show a dismissible letter — force the signed /access gate so the
+            // whole-app overlay appears and only an unban key / admin unban can clear it.
+            PampGramAccessGate.shared.refreshNow()
         } else {
             onAllowed()
         }

@@ -73,15 +73,17 @@ private final class PampGramAdminArguments {
     let grantSubscription: () -> Void
     let openUsersList: () -> Void
     let generateKey: () -> Void
+    let generateUnbanKey: () -> Void
     let banFull: () -> Void
     let banSection: () -> Void
     let setMinVersion: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, generateUnbanKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
         self.openUsersList = openUsersList
         self.generateKey = generateKey
+        self.generateUnbanKey = generateUnbanKey
         self.banFull = banFull
         self.banSection = banSection
         self.setMinVersion = setMinVersion
@@ -114,6 +116,7 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
 
     case keysHeader(String)
     case generateKeyAction(String, Bool)
+    case generateUnbanKeyAction(String, Bool)
     case keysFooter(String)
 
     case banHeader(String)
@@ -129,7 +132,7 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return PampGramAdminSection.about.rawValue
-        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .versionHeader, .versionRow, .versionFooter:
+        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .generateUnbanKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .versionHeader, .versionRow, .versionFooter:
             return PampGramAdminSection.token.rawValue
         }
     }
@@ -156,22 +159,24 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 8
         case .generateKeyAction:
             return 9
-        case .keysFooter:
+        case .generateUnbanKeyAction:
             return 10
-        case .banHeader:
+        case .keysFooter:
             return 11
-        case .banFullAction:
+        case .banHeader:
             return 12
-        case .banSectionAction:
+        case .banFullAction:
             return 13
-        case .banFooter:
+        case .banSectionAction:
             return 14
-        case .versionHeader:
+        case .banFooter:
             return 15
-        case .versionRow:
+        case .versionHeader:
             return 16
-        case .versionFooter:
+        case .versionRow:
             return 17
+        case .versionFooter:
+            return 18
         }
     }
 
@@ -196,6 +201,8 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let (.keysHeader(lhsText), .keysHeader(rhsText)):
             return lhsText == rhsText
         case let (.generateKeyAction(lhsTitle, lhsEnabled), .generateKeyAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.generateUnbanKeyAction(lhsTitle, lhsEnabled), .generateUnbanKeyAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.keysFooter(lhsText), .keysFooter(rhsText)):
             return lhsText == rhsText
@@ -248,6 +255,10 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let .generateKeyAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.generateKey()
+            })
+        case let .generateUnbanKeyAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.generateUnbanKey()
             })
         case let .banFullAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -569,6 +580,18 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                 showKeyTierChoice(adminToken)
             }
         },
+        generateUnbanKey: {
+            requireAdminToken { adminToken in
+                PampGramSubscriptionAPI.generateUnbanKey(adminToken: adminToken) { key in
+                    guard let key else {
+                        presentTooltipImpl?("Не получилось — проверь токен и сервер.")
+                        return
+                    }
+                    UIPasteboard.general.string = key
+                    presentTooltipImpl?("Ключ разбана скопирован: \(key)")
+                }
+            }
+        },
         banFull: {
             requireAdminToken { adminToken in
                 presentControllerImpl?(promptController(
@@ -685,11 +708,12 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .usersFooter("Все аккаунты, которые PampGram знает — открывали мод или были забанены: тариф, когда сервер видел их в последний раз, и статус бана. Отсюда же снимаются баны."),
             .keysHeader("КЛЮЧИ АКТИВАЦИИ"),
             .generateKeyAction("Сгенерировать ключ", adminToken != nil),
-            .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются. Для PRO можно выбрать срок (1–5 минут, 1 день, 1 месяц, навсегда или свой) — он начинает отсчитываться с момента активации, а не с момента генерации ключа."),
+            .generateUnbanKeyAction("Сгенерировать ключ разбана", adminToken != nil),
+            .keysFooter("Обычный ключ — одноразовая активация тарифа (PRO/STANDARD). Ключ разбана — единственный способ, которым забаненный сам снимет полный бан с экрана блокировки (обычный ключ бан не снимает). Оба копируются в буфер сразу после генерации."),
             .banHeader("ДОСТУП"),
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),
-            .banFooter("Забаненный видит вместо раздела (или всего PampGram, если бан полный) закрытый замок и причину, которую ты укажешь. Разбанить — в разделе «Пользователи» выше."),
+            .banFooter("Полный бан сразу перекрывает всё приложение полноэкранным замком (в течение ~30 сек), не только вкладку PampGram. Снять — ключом разбана или вручную в «Пользователи»."),
             .versionHeader("ВЕРСИЯ"),
             .versionRow("Минимальная версия", minVersion == 0 ? "Не ограничена" : "\(minVersion)"),
             .versionFooter("Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Подними минимальную версию до номера новой сборки, чтобы все более старые (включая уже установленные у людей) сразу показывали «Вышло новое обновление» вместо PampGram.")

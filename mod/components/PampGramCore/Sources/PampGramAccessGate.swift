@@ -77,7 +77,9 @@ public final class PampGramAccessGate {
     private static let recordsKey = "PampGram_AccessRecords_v1"
     private static let lastSeenKey = "PampGram_AccessLastSeen_v1"
     private static let clockSlackMs: Int64 = 120_000
-    private static let pollIntervalMs: Int64 = 300_000
+    /// How often each signed-in account re-asks `/access`. Kept short so an admin full ban
+    /// covers the whole app within ~half a minute, not only when the victim opens PampGram.
+    private static let pollIntervalMs: Int64 = 30_000
     private static let enforcementGraceSeconds: Double = 5.0
     private static let tamperReportIntervalSeconds: Double = 120.0
 

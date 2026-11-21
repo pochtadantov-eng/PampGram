@@ -287,6 +287,17 @@ public func pampGramUsersListController(context: AccountContext) -> ViewControll
                         reload()
                     }
                 }))
+                buttons.append(ActionSheetButtonItem(title: "Ключ разбана (скопировать)", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    PampGramSubscriptionAPI.generateUnbanKey(adminToken: adminToken) { key in
+                        guard let key else {
+                            presentTooltipImpl?("Не получилось сгенерировать ключ.")
+                            return
+                        }
+                        UIPasteboard.general.string = key
+                        presentTooltipImpl?("Ключ разбана скопирован: \(key)")
+                    }
+                }))
             }
             for section in PampGramBanSection.allCases {
                 if let entry = user.sections[section.rawValue] {
