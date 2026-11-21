@@ -874,7 +874,7 @@ replace_once(
     "                peerName = \"Получатель\"\n"
     "            }\n"
     "            pampGramPresentVisualWalletSend(context: self.context, preselectedPeerId: peerId, preselectedTitle: peerName)\n"
-    "        }))\n"
+    "        })))\n"
     "        items.append(.action(ContextMenuActionItem(text: \"Получить GRAM в чат\", icon: { theme in\n"
     "            return generateTintedImage(image: UIImage(bundleImageName: \"Chat/Context Menu/Resend\"), color: theme.contextMenu.primaryColor)\n"
     "        }, action: { [weak self] action in\n"
@@ -888,7 +888,7 @@ replace_once(
     "                peerName = \"Отправитель\"\n"
     "            }\n"
     "            pampGramPresentVisualWalletReceiveInChat(context: self.context, peerId: peerId, peerTitle: peerName)\n"
-    "        }))\n"
+    "        })))\n"
     "        items.append(.action(ContextMenuActionItem(text: \"Восстановить чат\", icon: { theme in\n",
 )
 

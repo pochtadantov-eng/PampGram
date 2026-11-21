@@ -24405,7 +24405,7 @@ index 5bf77c1bb..0761f6efc 100644
                  controller.dismissed = { [weak self] in
                      self?.canReadHistory.set(true)
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
-index e1e8b94b0..83bfc0bb2 100644
+index e1e8b94b0..c20b3f61b 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
 @@ -33,6 +33,8 @@ import InstantPageUI
@@ -24445,7 +24445,7 @@ index e1e8b94b0..83bfc0bb2 100644
 +                peerName = "Получатель"
 +            }
 +            pampGramPresentVisualWalletSend(context: self.context, preselectedPeerId: peerId, preselectedTitle: peerName)
-+        }))
++        })))
 +        items.append(.action(ContextMenuActionItem(text: "Получить GRAM в чат", icon: { theme in
 +            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Resend"), color: theme.contextMenu.primaryColor)
 +        }, action: { [weak self] action in
@@ -24459,7 +24459,7 @@ index e1e8b94b0..83bfc0bb2 100644
 +                peerName = "Отправитель"
 +            }
 +            pampGramPresentVisualWalletReceiveInChat(context: self.context, peerId: peerId, peerTitle: peerName)
-+        }))
++        })))
 +        items.append(.action(ContextMenuActionItem(text: "Восстановить чат", icon: { theme in
 +            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Resend"), color: theme.contextMenu.primaryColor)
 +        }, action: { [weak self] action in
