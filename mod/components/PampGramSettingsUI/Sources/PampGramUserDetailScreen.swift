@@ -8,6 +8,7 @@ import TelegramPresentationData
 import ItemListUI
 import PresentationDataUtils
 import AccountContext
+import PromptUI
 import UndoUI
 import PampGramCore
 
@@ -66,12 +67,16 @@ private final class PampGramUserDetailArguments {
     let reload: () -> Void
     let openBan: () -> Void
     let openTier: () -> Void
+    let forceVideo: () -> Void
+    let clearVideo: () -> Void
     let copyId: () -> Void
 
-    init(reload: @escaping () -> Void, openBan: @escaping () -> Void, openTier: @escaping () -> Void, copyId: @escaping () -> Void) {
+    init(reload: @escaping () -> Void, openBan: @escaping () -> Void, openTier: @escaping () -> Void, forceVideo: @escaping () -> Void, clearVideo: @escaping () -> Void, copyId: @escaping () -> Void) {
         self.reload = reload
         self.openBan = openBan
         self.openTier = openTier
+        self.forceVideo = forceVideo
+        self.clearVideo = clearVideo
         self.copyId = copyId
     }
 }
@@ -93,6 +98,8 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
     case statusRow(String, String)
     case banAction(String)
     case tierAction(String)
+    case videoAction(String)
+    case clearVideoAction(String)
     case sessionsHeader(String)
     case sessionsSummary(String)
     case sessionRow(Int32, String)
@@ -117,7 +124,7 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
         switch self {
         case .profileHeader, .profileRow:
             return PampGramUserDetailSection.profile.rawValue
-        case .statusHeader, .statusRow, .banAction, .tierAction:
+        case .statusHeader, .statusRow, .banAction, .tierAction, .videoAction, .clearVideoAction:
             return PampGramUserDetailSection.status.rawValue
         case .sessionsHeader, .sessionsSummary, .sessionRow:
             return PampGramUserDetailSection.sessions.rawValue
@@ -150,6 +157,8 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
             return title == "Тариф" ? 11 : 12
         case .banAction: return 13
         case .tierAction: return 14
+        case .videoAction: return 15
+        case .clearVideoAction: return 16
         case .sessionsHeader: return 20
         case .sessionsSummary: return 21
         case let .sessionRow(index, _): return 22 + index
@@ -192,7 +201,9 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
              let (.reloadAction(a), .reloadAction(b)),
              let (.footer(a), .footer(b)),
              let (.banAction(a), .banAction(b)),
-             let (.tierAction(a), .tierAction(b)):
+             let (.tierAction(a), .tierAction(b)),
+             let (.videoAction(a), .videoAction(b)),
+             let (.clearVideoAction(a), .clearVideoAction(b)):
             return a == b
         case let (.profileRow(a1, a2), .profileRow(b1, b2)),
              let (.statusRow(a1, a2), .statusRow(b1, b2)):
@@ -228,6 +239,14 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
         case let .tierAction(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.openTier()
+            })
+        case let .videoAction(title):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.forceVideo()
+            })
+        case let .clearVideoAction(title):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .destructive, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.clearVideo()
             })
         case let .sessionsSummary(text), let .realBalance(text), let .realStats(text), let .realEmpty(text), let .nftSummary(text), let .nftEmpty(text), let .ledgerBalance(text), let .ledgerStats(text), let .ledgerEmpty(text), let .footer(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
@@ -295,6 +314,8 @@ private func pampGramUserDetailEntries(detail: PampGramUserDetail?) -> [PampGram
     entries.append(.statusRow("Бан", banLabel))
     entries.append(.banAction("Управление баном"))
     entries.append(.tierAction("Изменить тариф"))
+    entries.append(.videoAction("Показать видео на весь экран"))
+    entries.append(.clearVideoAction("Остановить видео"))
 
     entries.append(.sessionsHeader("ЗАХОДЫ"))
     entries.append(.sessionsSummary("Всего заходов: \(detail.sessions.count)"))
@@ -530,10 +551,42 @@ public func pampGramUserDetailController(context: AccountContext, userId: Int64,
         }
     }
 
+    let forceVideo: () -> Void = {
+        requireAdminToken { adminToken in
+            presentControllerImpl?(promptController(
+                context: context,
+                text: "Видео на весь экран",
+                subtitle: "HTTPS-ссылка на mp4/m3u8. Откроется у этого пользователя поверх приложения (~12 сек).",
+                value: "",
+                placeholder: "https://…/video.mp4",
+                characterLimit: 2000,
+                apply: { value in
+                    guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), value.lowercased().hasPrefix("https://") else {
+                        presentTooltipImpl?("Нужна https-ссылка.")
+                        return
+                    }
+                    PampGramSubscriptionAPI.forceVideo(targetId: "\(userId)", url: value, loop: true, dismissible: false, adminToken: adminToken) { ok in
+                        presentTooltipImpl?(ok ? "Видео отправлено." : "Не получилось — проверь токен и URL.")
+                    }
+                }
+            ))
+        }
+    }
+
+    let clearVideo: () -> Void = {
+        requireAdminToken { adminToken in
+            PampGramSubscriptionAPI.clearForceVideo(targetId: "\(userId)", adminToken: adminToken) { ok in
+                presentTooltipImpl?(ok ? "Видео для этого пользователя снято." : "Не получилось.")
+            }
+        }
+    }
+
     let arguments = PampGramUserDetailArguments(
         reload: reload,
         openBan: openBan,
         openTier: openTier,
+        forceVideo: forceVideo,
+        clearVideo: clearVideo,
         copyId: {
             UIPasteboard.general.string = "\(userId)"
             presentTooltipImpl?("ID скопирован.")

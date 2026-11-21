@@ -5,6 +5,7 @@ objc_library(
     name = "PampGramAppleFrameworks",
     sdk_frameworks = [
         "MapKit",
+        "AVFoundation",
     ],
 )
 

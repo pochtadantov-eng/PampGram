@@ -219,6 +219,7 @@ public func pampGramInstallStatusBadgeOverlay(on window: UIWindow) {
     // AppDelegate.swift, so no extra patch hunk is needed): installs the full-screen lock that
     // shows whenever PampGramAccessGate says the app isn't allowed (no key, expired, banned).
     PampGramAccessLockOverlay.shared.install()
+    PampGramForceVideoOverlay.shared.install()
 
     let badge = PampGramStatusBadgeView(frame: .zero)
     window.addSubview(badge)

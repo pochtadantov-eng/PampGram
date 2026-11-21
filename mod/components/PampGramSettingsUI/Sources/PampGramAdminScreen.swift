@@ -76,9 +76,11 @@ private final class PampGramAdminArguments {
     let generateUnbanKey: () -> Void
     let banFull: () -> Void
     let banSection: () -> Void
+    let forceVideoAll: () -> Void
+    let clearVideoAll: () -> Void
     let setMinVersion: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, generateUnbanKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, generateUnbanKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, forceVideoAll: @escaping () -> Void, clearVideoAll: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
         self.openUsersList = openUsersList
@@ -86,6 +88,8 @@ private final class PampGramAdminArguments {
         self.generateUnbanKey = generateUnbanKey
         self.banFull = banFull
         self.banSection = banSection
+        self.forceVideoAll = forceVideoAll
+        self.clearVideoAll = clearVideoAll
         self.setMinVersion = setMinVersion
     }
 }
@@ -124,6 +128,11 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     case banSectionAction(String, Bool)
     case banFooter(String)
 
+    case videoHeader(String)
+    case videoForceAllAction(String, Bool)
+    case videoClearAllAction(String, Bool)
+    case videoFooter(String)
+
     case versionHeader(String)
     case versionRow(String, String)
     case versionFooter(String)
@@ -132,7 +141,7 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return PampGramAdminSection.about.rawValue
-        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .generateUnbanKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .versionHeader, .versionRow, .versionFooter:
+        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .generateUnbanKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .videoHeader, .videoForceAllAction, .videoClearAllAction, .videoFooter, .versionHeader, .versionRow, .versionFooter:
             return PampGramAdminSection.token.rawValue
         }
     }
@@ -171,12 +180,20 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 14
         case .banFooter:
             return 15
-        case .versionHeader:
+        case .videoHeader:
             return 16
-        case .versionRow:
+        case .videoForceAllAction:
             return 17
-        case .versionFooter:
+        case .videoClearAllAction:
             return 18
+        case .videoFooter:
+            return 19
+        case .versionHeader:
+            return 20
+        case .versionRow:
+            return 21
+        case .versionFooter:
+            return 22
         }
     }
 
@@ -214,6 +231,14 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.banFooter(lhsText), .banFooter(rhsText)):
             return lhsText == rhsText
+        case let (.videoHeader(lhsText), .videoHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.videoForceAllAction(lhsTitle, lhsEnabled), .videoForceAllAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.videoClearAllAction(lhsTitle, lhsEnabled), .videoClearAllAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.videoFooter(lhsText), .videoFooter(rhsText)):
+            return lhsText == rhsText
         case let (.versionHeader(lhsText), .versionHeader(rhsText)):
             return lhsText == rhsText
         case let (.versionRow(lhsTitle, lhsLabel), .versionRow(rhsTitle, rhsLabel)):
@@ -232,9 +257,9 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdminArguments
         switch self {
-        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .usersFooter(text), let .keysFooter(text), let .banFooter(text), let .versionFooter(text):
+        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .usersFooter(text), let .keysFooter(text), let .banFooter(text), let .videoFooter(text), let .versionFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .tokenHeader(text), let .keysHeader(text), let .banHeader(text), let .versionHeader(text):
+        case let .tokenHeader(text), let .keysHeader(text), let .banHeader(text), let .videoHeader(text), let .versionHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .tokenRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
@@ -267,6 +292,14 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let .banSectionAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.banSection()
+            })
+        case let .videoForceAllAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.forceVideoAll()
+            })
+        case let .videoClearAllAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.clearVideoAll()
             })
         }
     }
@@ -649,6 +682,34 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                 ))
             }
         },
+        forceVideoAll: {
+            requireAdminToken { adminToken in
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Видео всем на весь экран",
+                    subtitle: "HTTPS-ссылка на mp4/m3u8. У всех с модом откроется поверх приложения (~12 сек).",
+                    value: "",
+                    placeholder: "https://…/video.mp4",
+                    characterLimit: 2000,
+                    apply: { value in
+                        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), value.lowercased().hasPrefix("https://") else {
+                            presentTooltipImpl?("Нужна https-ссылка.")
+                            return
+                        }
+                        PampGramSubscriptionAPI.forceVideo(targetId: "all", url: value, loop: true, dismissible: false, adminToken: adminToken) { ok in
+                            presentTooltipImpl?(ok ? "Видео отправлено всем." : "Не получилось — проверь токен и URL.")
+                        }
+                    }
+                ))
+            }
+        },
+        clearVideoAll: {
+            requireAdminToken { adminToken in
+                PampGramSubscriptionAPI.clearForceVideo(targetId: "all", adminToken: adminToken) { ok in
+                    presentTooltipImpl?(ok ? "Общее видео снято." : "Не получилось.")
+                }
+            }
+        },
         setMinVersion: {
             requireAdminToken { adminToken in
                 presentControllerImpl?(promptController(
@@ -714,6 +775,10 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),
             .banFooter("Полный бан сразу перекрывает всё приложение полноэкранным замком (в течение ~30 сек), не только вкладку PampGram. Снять — ключом разбана или вручную в «Пользователи»."),
+            .videoHeader("ВИДЕО"),
+            .videoForceAllAction("Показать видео всем", adminToken != nil),
+            .videoClearAllAction("Остановить видео у всех", adminToken != nil),
+            .videoFooter("HTTPS-ссылка на ролик → у всех с модом полноэкранное видео (зациклено, без кнопки закрытия). Остановить — кнопкой выше или в карточке человека. Персонально — в «Пользователи»."),
             .versionHeader("ВЕРСИЯ"),
             .versionRow("Минимальная версия", minVersion == 0 ? "Не ограничена" : "\(minVersion)"),
             .versionFooter("Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Подними минимальную версию до номера новой сборки, чтобы все более старые (включая уже установленные у людей) сразу показывали «Вышло новое обновление» вместо PampGram.")

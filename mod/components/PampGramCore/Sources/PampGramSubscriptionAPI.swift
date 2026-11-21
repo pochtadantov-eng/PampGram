@@ -1043,6 +1043,99 @@ public enum PampGramSubscriptionAPI {
         }.resume()
     }
 
+    /// Admin-pushed fullscreen video command (from GET/POST `/force-video`).
+    public struct PampGramForceVideoCommand: Equatable {
+        public let id: String
+        public let url: String
+        public let loop: Bool
+        public let dismissible: Bool
+        public let createdAt: Int64
+    }
+
+    private struct ForceVideoBodyResponse: Decodable {
+        let id: String
+        let url: String
+        let loop: Bool?
+        let dismissible: Bool?
+        let createdAt: Int64?
+    }
+
+    private struct ForceVideoGetResponse: Decodable {
+        let video: ForceVideoBodyResponse?
+    }
+
+    private struct ForceVideoPostRequest: Encodable {
+        let token: String
+        let url: String
+        let id: String
+        let loop: Bool
+        let dismissible: Bool
+    }
+
+    private struct ClearForceVideoRequest: Encodable {
+        let token: String
+        let id: String
+    }
+
+    /// Public poll: active force-video for this account (user-specific beats global).
+    public static func fetchForceVideo(userId: Int64, completion: @escaping (PampGramForceVideoCommand?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/force-video?id=\(userId)") else {
+            completion(nil)
+            return
+        }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            var result: PampGramForceVideoCommand?
+            if let data, let decoded = try? JSONDecoder().decode(ForceVideoGetResponse.self, from: data), let video = decoded.video {
+                result = PampGramForceVideoCommand(
+                    id: video.id,
+                    url: video.url,
+                    loop: video.loop ?? true,
+                    dismissible: video.dismissible ?? false,
+                    createdAt: video.createdAt ?? 0
+                )
+            }
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }.resume()
+    }
+
+    /// Admin: push fullscreen video to one account (`"\(userId)"`) or everyone (`"all"`).
+    public static func forceVideo(targetId: String, url: String, loop: Bool, dismissible: Bool, adminToken: String, completion: @escaping (Bool) -> Void) {
+        guard let endpoint = URL(string: "\(baseURL)/force-video") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(ForceVideoPostRequest(token: adminToken, url: url, id: targetId, loop: loop, dismissible: dismissible))
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    /// Admin: clear force-video for one account or `"all"` (global).
+    public static func clearForceVideo(targetId: String, adminToken: String, completion: @escaping (Bool) -> Void) {
+        guard let endpoint = URL(string: "\(baseURL)/clear-force-video") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(ClearForceVideoRequest(token: adminToken, id: targetId))
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
     private struct FetchLedgerSyncResponse: Decodable {
         let payload: String?
     }

@@ -203,3 +203,42 @@ test("/user-detail returns profile, ban, tier and ledger totals for the admin", 
 	assert.equal(row.sessionsCount, 2);
 	assert.equal(row.tier, "pro");
 });
+
+test("admin can force and clear fullscreen video for one user and for all", async () => {
+	const env = createEnv({ ADMIN_TOKEN: "admin-token" });
+	const forced = await call(env, "POST", "/force-video", {
+		token: "admin-token",
+		id: 42,
+		url: "https://example.com/clip.mp4",
+		loop: true,
+		dismissible: false,
+	});
+	assert.equal(forced.status, 200);
+	assert.ok(forced.json.video.id);
+	assert.equal(forced.json.video.url, "https://example.com/clip.mp4");
+
+	const getOne = await call(env, "GET", "/force-video?id=42");
+	assert.equal(getOne.json.video.url, "https://example.com/clip.mp4");
+
+	const getOther = await call(env, "GET", "/force-video?id=99");
+	assert.equal(getOther.json.video, null);
+
+	await call(env, "POST", "/force-video", {
+		token: "admin-token",
+		id: "all",
+		url: "https://cdn.example.com/all.m3u8",
+	});
+	const getGlobal = await call(env, "GET", "/force-video?id=99");
+	assert.equal(getGlobal.json.video.url, "https://cdn.example.com/all.m3u8");
+	// User-specific still wins over global.
+	const getPreferred = await call(env, "GET", "/force-video?id=42");
+	assert.equal(getPreferred.json.video.url, "https://example.com/clip.mp4");
+
+	assert.equal((await call(env, "POST", "/force-video", { token: "wrong", id: "all", url: "https://x.com/a.mp4" })).status, 401);
+	assert.equal((await call(env, "POST", "/force-video", { token: "admin-token", id: 1, url: "http://insecure.mp4" })).status, 400);
+
+	await call(env, "POST", "/clear-force-video", { token: "admin-token", id: 42 });
+	assert.equal((await call(env, "GET", "/force-video?id=42")).json.video.url, "https://cdn.example.com/all.m3u8");
+	await call(env, "POST", "/clear-force-video", { token: "admin-token", id: "all" });
+	assert.equal((await call(env, "GET", "/force-video?id=42")).json.video, null);
+});

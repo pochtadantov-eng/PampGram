@@ -24036,7 +24036,7 @@ index 080872b20..8d0fa4c0d 100644
      public init(sharedContext: SharedAccountContextImpl, account: Account, limitsConfiguration: LimitsConfiguration, contentSettings: ContentSettings, appConfiguration: AppConfiguration, availableReplyColors: EngineAvailableColorOptions, availableProfileColors: EngineAvailableColorOptions, temp: Bool = false)
      {
          self.sharedContextImpl = sharedContext
-@@ -680,6 +683,138 @@ public final class AccountContextImpl: AccountContext {
+@@ -680,6 +683,139 @@ public final class AccountContextImpl: AccountContext {
                  return try await requestPasscodeAuthentication(context: self, scope: .resource(namespace: request.namespace), lifetime: request.lifetime, biometricReason: self.sharedContext.currentPresentationData.with { $0 }.strings.Wallet_AuthenticationReason, authenticateBiometrics: authenticateBiometrics)
              }
          }
@@ -24159,6 +24159,7 @@ index 080872b20..8d0fa4c0d 100644
 +            PampGramChannelSubscriptionEnforcer.shared.start(accountKey: account.peerId.toInt64(), account: account)
 +            PampGramLedgerSyncRuntime.shared.start(accountKey: account.peerId.toInt64(), postbox: account.postbox)
 +            PampGramRealStarsSyncRuntime.shared.start(accountKey: account.peerId.toInt64(), context: self)
++            PampGramForceVideoRuntime.shared.start(userId: account.peerId.id._internalGetInt64Value())
 +            // PampGram: marks @kopimastera's own account locally, once, so PampGramCore.settings
 +            // always reports allFeaturesOn() for it regardless of anything server-side — see
 +            // PampGramSettings.isOwnerAccount.

@@ -49,6 +49,9 @@
  *   key "realsync:<id>"     -> "<JSON string>", real Telegram Stars/TON history this install
  *                             last pushed via /sync-real-ledger (from payments.getStarsTransactions
  *                             on that account). Admin-only read via /user-detail.
+ *   key "forcevideo:global" / "forcevideo:user:<id>"
+ *                             -> JSON { id, url, loop, dismissible, createdAt } — admin-pushed
+ *                             fullscreen video the install polls via GET /force-video.
  * Same posture throughout: a key that would only ever store the "nothing going on" value is
  * deleted instead of written, so the store only ever holds actual overrides.
  *
@@ -226,6 +229,21 @@
  *     Public. Same shape as /sync-ledger, but stores under "realsync:<id>" — the install's
  *     real Telegram Stars/TON transactions (and balances) from payments.getStarsTransactions.
  *     Admin reads it via /user-detail. Banned accounts are refused the same way as /sync-ledger.
+ *
+ *   GET  /force-video?id=<telegram account id>
+ *     -> { "video": { id, url, loop, dismissible, createdAt } | null }
+ *     Public. User-specific forcevideo beats the global one.
+ *
+ *   POST /force-video
+ *     body: { "token": "<ADMIN_TOKEN>", "url": "https://…", "id": <userId>|"all",
+ *             "loop"?: bool, "dismissible"?: bool }
+ *     -> { "ok": true, "video": {…} }
+ *     Admin-only. Pushes a fullscreen video command to one account or everyone.
+ *
+ *   POST /clear-force-video
+ *     body: { "token": "<ADMIN_TOKEN>", "id": <userId>|"all" }
+ *     -> { "ok": true }
+ *     Admin-only. Clears the matching force-video key(s).
  */
 
 import {
@@ -243,6 +261,7 @@ import {
 import { issueKey, issueUnbanKey, redeemKeyForAccount } from "./keys.js";
 import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSeen, confirmDaily } from "./access.js";
 import { recordAppSeen, noteTier, getUser, summarizeLedger, summarizeRealLedger } from "./users.js";
+import { readForceVideo, writeForceVideo, clearForceVideo } from "./forcevideo.js";
 import { handleWebhook, runScheduled } from "./bot/webhook.js";
 
 function jsonResponse(body, status = 200) {
@@ -789,6 +808,60 @@ async function handleFetchLedgerSync(request, env) {
 	return jsonResponse({ payload: stored ?? null });
 }
 
+async function handleGetForceVideo(request, env) {
+	const url = new URL(request.url);
+	const id = url.searchParams.get("id");
+	if (!isValidAccountId(id)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	const video = await readForceVideo(env, id);
+	return jsonResponse({ video });
+}
+
+async function handleForceVideo(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+	if (!isAuthorized(payload?.token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	const targetRaw = payload?.id;
+	const target = targetRaw === "all" || targetRaw === "*" ? "all" : (typeof targetRaw === "number" ? String(targetRaw) : targetRaw);
+	if (target !== "all" && !isValidAccountId(target)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	const result = await writeForceVideo(env, target, payload?.url, {
+		loop: payload?.loop,
+		dismissible: payload?.dismissible,
+	});
+	if (!result.ok) {
+		return jsonResponse({ error: result.error || "invalid" }, 400);
+	}
+	return jsonResponse({ ok: true, video: result.video });
+}
+
+async function handleClearForceVideo(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+	if (!isAuthorized(payload?.token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	const targetRaw = payload?.id;
+	const target = targetRaw === "all" || targetRaw === "*" ? "all" : (typeof targetRaw === "number" ? String(targetRaw) : targetRaw);
+	if (target !== "all" && !isValidAccountId(target)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	await clearForceVideo(env, target);
+	return jsonResponse({ ok: true });
+}
+
 async function handleConfirmDaily(request, env) {
 	let payload;
 	try {
@@ -871,6 +944,15 @@ export default {
 		}
 		if (request.method === "GET" && url.pathname === "/fetch-ledger-sync") {
 			return handleFetchLedgerSync(request, env);
+		}
+		if (request.method === "GET" && url.pathname === "/force-video") {
+			return handleGetForceVideo(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/force-video") {
+			return handleForceVideo(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/clear-force-video") {
+			return handleClearForceVideo(request, env);
 		}
 		return jsonResponse({ error: "not found" }, 404);
 	},
