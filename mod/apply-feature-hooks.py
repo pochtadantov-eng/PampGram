@@ -1309,15 +1309,16 @@ replace_once(
         return self.storeProduct?.price ?? formatCurrencyAmount(self.giftOption.amount, currency: self.giftOption.currency)
     }
 """,
-    """    /// PampGram: always show Premium gift prices in rubles (cards + send button), never App Store $.
-    public var price: String {
+    """    /// PampGram: currency/amount actually charged and shown on the gift bubble — always RUB
+    /// when we can convert, never the stock preview fallback `("USD", 1)` ($0.01).
+    public var pampGramChargeCurrencyAndAmount: (currency: String, amount: Int64) {
         if self.giftOption.currency.uppercased() == "RUB", self.giftOption.amount > 0 {
-            return formatCurrencyAmount(self.giftOption.amount, currency: "RUB")
+            return ("RUB", self.giftOption.amount)
         }
         if let storeProduct = self.storeProduct {
             let (currency, amount) = storeProduct.priceCurrencyAndAmount
             if currency.uppercased() == "RUB" {
-                return formatCurrencyAmount(amount, currency: "RUB")
+                return ("RUB", amount)
             }
             let major = Double(amount) / 100.0
             let rate: Double
@@ -1330,18 +1331,24 @@ replace_once(
                 rate = 95.0
             }
             let kopecks = Int64((major * rate * 100.0).rounded())
-            return formatCurrencyAmount(max(kopecks, 1), currency: "RUB")
+            return ("RUB", max(kopecks, 1))
         }
         if self.giftOption.amount > 0 {
             let currency = self.giftOption.currency.uppercased()
             if currency == "RUB" {
-                return formatCurrencyAmount(self.giftOption.amount, currency: "RUB")
+                return ("RUB", self.giftOption.amount)
             }
             let major = Double(self.giftOption.amount) / 100.0
             let kopecks = Int64((major * 95.0 * 100.0).rounded())
-            return formatCurrencyAmount(max(kopecks, 1), currency: "RUB")
+            return ("RUB", max(kopecks, 1))
         }
-        return formatCurrencyAmount(self.giftOption.amount, currency: "RUB")
+        return ("RUB", max(self.giftOption.amount, 1))
+    }
+
+    /// PampGram: always show Premium gift prices in rubles (cards + send button), never App Store $.
+    public var price: String {
+        let (currency, amount) = self.pampGramChargeCurrencyAndAmount
+        return formatCurrencyAmount(amount, currency: currency)
     }
 """,
 )
