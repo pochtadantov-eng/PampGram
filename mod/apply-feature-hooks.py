@@ -663,6 +663,25 @@ replace_once(
 peer_info_screen_swift = Path("submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift")
 replace_once(
     peer_info_screen_swift,
+    "own visual GRAM wallet opens Money from the profile chip",
+    "        self.headerNode.openWallet = { [weak self] in\n"
+    "            guard let self, let controller = self.controller, let peer = self.data?.peer else { return }\n",
+    "        self.headerNode.openWallet = { [weak self] in\n"
+    "            guard let self, let controller = self.controller, let peer = self.data?.peer else { return }\n"
+    "            // PampGram: own visual GRAM wallet is one thing — open the same Money screen\n"
+    "            // («Деньги») from the profile chip, not a separate public PeerWallet card.\n"
+    "            if peer.id == self.context.account.peerId,\n"
+    "               PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: self.context.account.peerId.toInt64()) != nil {\n"
+    "                guard WalletConfiguration.with(appConfiguration: self.context.currentAppConfiguration.with { $0 }).isAvailable else {\n"
+    "                    self.openSettings(section: .wallet)\n"
+    "                    return\n"
+    "                }\n"
+    "                controller.push(self.context.sharedContext.makeWalletScreen(context: self.context))\n"
+    "                return\n"
+    "            }\n",
+)
+replace_once(
+    peer_info_screen_swift,
     "public wallet card opened from the chip shows the visual balance",
     "            let screen = PeerWalletScreen(context: self.context, updatedPresentationData: controller.updatedPresentationData, peer: peer, card: (self.data?.cachedData as? CachedUserData)?.walletCard, sourceView:",
     "            let pampGramRealCard = (self.data?.cachedData as? CachedUserData)?.walletCard\n"
@@ -785,6 +804,35 @@ replace_once(
     "                let pampGramAddress = card?.address ?? (PampGramVisualExtrasRuntime.shared.fakeWalletAddress(accountKey: context.account.peerId.toInt64()) ?? \"\")\n"
     "                card = WalletCard(address: pampGramAddress, balance: pampGramFakeBalance, stickers: card?.stickers ?? [], backgroundNft: card?.backgroundNft)\n"
     "            }\n",
+)
+replace_once(
+    peer_wallet_swift,
+    "peer wallet refreshes visual balance from WalletContext",
+    "                    if self.fiatCurrency != state.fiat.selectedCurrency || self.fiatRate != state.fiat.selectedRate || self.hasOwnWallet != hasOwnWallet {\n"
+    "                        self.fiatCurrency = state.fiat.selectedCurrency\n"
+    "                        self.fiatRate = state.fiat.selectedRate\n"
+    "                        self.hasOwnWallet = hasOwnWallet\n"
+    "                        self.updated(transition: .immediate)\n"
+    "                    }\n",
+    "                    var needsUpdate = self.fiatCurrency != state.fiat.selectedCurrency || self.fiatRate != state.fiat.selectedRate || self.hasOwnWallet != hasOwnWallet\n"
+    "                    if needsUpdate {\n"
+    "                        self.fiatCurrency = state.fiat.selectedCurrency\n"
+    "                        self.fiatRate = state.fiat.selectedRate\n"
+    "                        self.hasOwnWallet = hasOwnWallet\n"
+    "                    }\n"
+    "                    // PampGram: same GRAM wallet as Money — refresh visual balance whenever\n"
+    "                    // WalletContext re-applies (settings amount / top-up / send).\n"
+    "                    if self.peer.id == context.account.peerId,\n"
+    "                       PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: context.account.peerId.toInt64()) != nil {\n"
+    "                        let previousBalance = self.card?.balance\n"
+    "                        self.updateCard(self.card, context: context)\n"
+    "                        if self.card?.balance != previousBalance {\n"
+    "                            needsUpdate = true\n"
+    "                        }\n"
+    "                    }\n"
+    "                    if needsUpdate {\n"
+    "                        self.updated(transition: .immediate)\n"
+    "                    }\n",
 )
 
 # ---------------------------------------------------------------------------

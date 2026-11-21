@@ -22252,7 +22252,7 @@ index 08e627e3f..f3fcdbb1c 100644
                              items[.peerMembers]!.append(PeerInfoScreenDisclosureItem(id: ItemAdmins, label: .text("\(adminCount == 0 ? "" : "\(presentationStringsFormattedNumber(adminCount, presentationData.dateTimeFormat.groupingSeparator))")"), text: presentationData.strings.GroupInfo_Administrators, icon: PresentationResourcesSettings.admins, action: {
                                  interaction.openParticipantsSection(.admins)
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
-index 463ab663d..d29d43a28 100644
+index 463ab663d..d39e68cb6 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 @@ -121,6 +121,7 @@ import UrlWhitelist
@@ -22294,11 +22294,22 @@ index 463ab663d..d29d43a28 100644
      let activeActionDisposable = MetaDisposable()
      let logoutConfirmationDisposable = MetaDisposable()
      let resolveUrlDisposable = MetaDisposable()
-@@ -1580,7 +1596,13 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -1580,7 +1596,24 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
  
          self.headerNode.openWallet = { [weak self] in
              guard let self, let controller = self.controller, let peer = self.data?.peer else { return }
 -            let screen = PeerWalletScreen(context: self.context, updatedPresentationData: controller.updatedPresentationData, peer: peer, card: (self.data?.cachedData as? CachedUserData)?.walletCard, sourceView: self.headerNode.walletBalance?.view, sendMoney: { [weak self] peerWalletScreen in
++            // PampGram: own visual GRAM wallet is one thing — open the same Money screen
++            // («Деньги») from the profile chip, not a separate public PeerWallet card.
++            if peer.id == self.context.account.peerId,
++               PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: self.context.account.peerId.toInt64()) != nil {
++                guard WalletConfiguration.with(appConfiguration: self.context.currentAppConfiguration.with { $0 }).isAvailable else {
++                    self.openSettings(section: .wallet)
++                    return
++                }
++                controller.push(self.context.sharedContext.makeWalletScreen(context: self.context))
++                return
++            }
 +            let pampGramRealCard = (self.data?.cachedData as? CachedUserData)?.walletCard
 +            var pampGramCard = pampGramRealCard
 +            if peer.id == self.context.account.peerId, let pampGramFakeBalance = PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: self.context.account.peerId.toInt64()) {
@@ -22309,7 +22320,7 @@ index 463ab663d..d29d43a28 100644
                  guard let self, let controller = self.controller else { return }
                  if peer.id == self.context.account.peerId {
                      guard WalletConfiguration.with(appConfiguration: self.context.currentAppConfiguration.with { $0 }).isAvailable else {
-@@ -2725,6 +2747,29 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -2725,6 +2758,29 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
                  }
              })
          }
@@ -22339,7 +22350,7 @@ index 463ab663d..d29d43a28 100644
      }
      
      /// The navigation bar, then the header (avatar, name, status), then the rows. The header's frame starts where the
-@@ -2746,6 +2791,8 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -2746,6 +2802,8 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
      }
      
      deinit {
@@ -22348,7 +22359,7 @@ index 463ab663d..d29d43a28 100644
          self.dataDisposable?.dispose()
          self.walletStickersPreloadDisposable.dispose()
          self.hiddenMediaDisposable?.dispose()
-@@ -5717,7 +5764,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -5717,7 +5775,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
          let sideInsets = peerInfoSideInsets(layout: layout)
          let headerInset = sideInsets.base
          
@@ -22357,7 +22368,7 @@ index 463ab663d..d29d43a28 100644
          
          let headerFrame = CGRect(origin: CGPoint(x: 0.0, y: contentHeight), size: CGSize(width: layout.size.width, height: layout.size.height))
          if additive {
-@@ -5735,7 +5782,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -5735,7 +5793,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
              insets.left += sideInsets.sectionLeft
              insets.right += sideInsets.sectionRight
              
@@ -22366,7 +22377,7 @@ index 463ab663d..d29d43a28 100644
              
              contentHeight += headerHeight
              if !((self.isSettings || self.isMyProfile) && self.state.isEditing) {
-@@ -5810,7 +5857,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -5810,7 +5868,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
              }
              
              var validEditingSections: [AnyHashable] = []
@@ -22375,7 +22386,7 @@ index 463ab663d..d29d43a28 100644
  
              for (sectionId, sectionItems) in editItems {
                  var insets = UIEdgeInsets()
-@@ -6134,7 +6181,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
+@@ -6134,7 +6192,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
                  let sideInsets = peerInfoSideInsets(layout: layout)
                  let headerInset = sideInsets.base
  
@@ -23867,7 +23878,7 @@ index ca6ec768f..02257dd1b 100644
          "//submodules/Components/ViewControllerComponent",
          "//submodules/Display",
 diff --git a/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/Sources/PeerWalletScreen.swift b/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/Sources/PeerWalletScreen.swift
-index 5317a9e79..261b90d04 100644
+index 5317a9e79..15ce4fc05 100644
 --- a/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/Sources/PeerWalletScreen.swift
 +++ b/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/Sources/PeerWalletScreen.swift
 @@ -2,6 +2,7 @@ import Foundation
@@ -23878,7 +23889,32 @@ index 5317a9e79..261b90d04 100644
  import TelegramCore
  import TelegramPresentationData
  import TelegramStringFormatting
-@@ -97,6 +98,11 @@ private final class PeerWalletOverlayComponent: Component {
+@@ -86,10 +87,23 @@ private final class PeerWalletOverlayComponent: Component {
+                 |> deliverOnMainQueue).startStrict(next: { [weak self] state in
+                     guard let self else { return }
+                     let hasOwnWallet = state.walletAddress != nil
+-                    if self.fiatCurrency != state.fiat.selectedCurrency || self.fiatRate != state.fiat.selectedRate || self.hasOwnWallet != hasOwnWallet {
++                    var needsUpdate = self.fiatCurrency != state.fiat.selectedCurrency || self.fiatRate != state.fiat.selectedRate || self.hasOwnWallet != hasOwnWallet
++                    if needsUpdate {
+                         self.fiatCurrency = state.fiat.selectedCurrency
+                         self.fiatRate = state.fiat.selectedRate
+                         self.hasOwnWallet = hasOwnWallet
++                    }
++                    // PampGram: same GRAM wallet as Money — refresh visual balance whenever
++                    // WalletContext re-applies (settings amount / top-up / send).
++                    if self.peer.id == context.account.peerId,
++                       PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: context.account.peerId.toInt64()) != nil {
++                        let previousBalance = self.card?.balance
++                        self.updateCard(self.card, context: context)
++                        if self.card?.balance != previousBalance {
++                            needsUpdate = true
++                        }
++                    }
++                    if needsUpdate {
+                         self.updated(transition: .immediate)
+                     }
+                 }))
+@@ -97,6 +111,11 @@ private final class PeerWalletOverlayComponent: Component {
          }
  
          private func updateCard(_ card: WalletCard?, context: AccountContext) {

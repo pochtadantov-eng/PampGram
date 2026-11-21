@@ -313,7 +313,7 @@ private final class PampGramCardScreenController: PampGramVisualPageController {
     private var addressField = UITextField()
 
     override func buildContent() {
-        let intro = self.makeLabel("Подменяет баланс в настоящем кошельке Telegram: карточка профиля, экран «Деньги», кнопки «Пополнить»/«Отправить», история и плашки в чате — всё локально. Дробные суммы можно писать через точку или запятую (0.1). Наклейки на карточку: в «Деньги» → «Коллекции» клеятся уникальные подарки с вашего профиля (настоящие и визуальные); раскладка только на этом устройстве.", size: 14.0, weight: .regular, color: self.secondaryColor)
+        let intro = self.makeLabel("Один локальный кошелёк GRAM: сумма ниже — это и чип баланса в профиле, и экран «Деньги», и списания «Пополнить»/«Отправить». Укажите сумму — подмена включится сама. Дробные через точку или запятую (0.1). Наклейки: «Деньги» → «Коллекции» (настоящие и визуальные подарки с профиля).", size: 14.0, weight: .regular, color: self.secondaryColor)
         self.stack.addArrangedSubview(intro)
 
         let switchRow = UIStackView(arrangedSubviews: [self.makeLabel("Подменять баланс", size: 16.0, weight: .regular, color: self.primaryColor), self.enableSwitch])
@@ -363,7 +363,15 @@ private final class PampGramCardScreenController: PampGramVisualPageController {
         } else {
             return
         }
+        // One wallet: writing a GRAM amount turns substitution on so Money + profile
+        // chip + spend paths all read the same balance immediately.
+        if nanos > 0 && !self.enableSwitch.isOn {
+            self.enableSwitch.isOn = true
+        }
         self.updateExtras { extras in
+            if nanos > 0 {
+                extras.cardEnabled = true
+            }
             extras.setBalanceNanos(nanos)
         }
     }
