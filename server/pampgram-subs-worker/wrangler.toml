@@ -5,7 +5,7 @@ compatibility_date = "2024-11-01"
 
 # Created by `wrangler kv namespace create SUBS` — paste the returned id below.
 kv_namespaces = [
-  { binding = "SUBS", id = "REPLACE_WITH_KV_NAMESPACE_ID" }
+  { binding = "SUBS", id = "5852c453201c4b7eb481289fbe12ee9e" }
 ]
 
 # ADMIN_TOKEN is a secret, not a var — set with:
