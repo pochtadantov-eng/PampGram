@@ -25127,7 +25127,7 @@ index b7c69492..5c701c02 100644
              }
              
 diff --git a/submodules/TelegramUI/Sources/TelegramRootController.swift b/submodules/TelegramUI/Sources/TelegramRootController.swift
-index 6a071291..b94ba9a9 100644
+index 6a071291..f3586167 100644
 --- a/submodules/TelegramUI/Sources/TelegramRootController.swift
 +++ b/submodules/TelegramUI/Sources/TelegramRootController.swift
 @@ -14,6 +14,10 @@ import AppBundle
@@ -25141,17 +25141,33 @@ index 6a071291..b94ba9a9 100644
  import WallpaperBackgroundNode
  import ChatPresentationInterfaceState
  import CameraScreen
-@@ -249,6 +253,65 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
+@@ -249,6 +253,81 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
          self.chatListController = chatListController
          self.accountSettingsController = accountSettingsController
          self.rootTabController = tabBarController
 +        let pampGramAccountKey = self.context.account.peerId.toInt64()
 +        PampGramVisualExtrasRuntime.shared.start(accountKey: pampGramAccountKey, postbox: self.context.account.postbox)
++        PampGramWalletCardStickersRuntime.shared.start(context: self.context)
 +        WalletContext.pampGramBalanceOverride = { walletAccountKey in
 +            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey)
 +        }
 +        WalletContext.pampGramAddressOverride = { walletAccountKey in
 +            return PampGramVisualExtrasRuntime.shared.fakeWalletAddress(accountKey: walletAccountKey)
++        }
++        WalletContext.pampGramProfileCollectibles = { walletAccountKey in
++            return PampGramWalletCardStickersRuntime.shared.collectibles(accountKey: walletAccountKey)
++        }
++        WalletContext.pampGramCardStickers = { walletAccountKey in
++            guard PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey) != nil else {
++                return nil
++            }
++            return PampGramWalletCardStickersRuntime.shared.stickers(accountKey: walletAccountKey)
++        }
++        WalletContext.pampGramSaveCardStickers = { [weak self] walletAccountKey, stickers in
++            guard let self else {
++                return
++            }
++            PampGramWalletCardStickersRuntime.shared.setStickers(stickers, accountKey: walletAccountKey, postbox: self.context.account.postbox)
 +        }
 +        WalletContext.pampGramTransactionsOverride = { walletAccountKey in
 +            let items = PampGramVisualExtrasRuntime.shared.walletTransactions(accountKey: walletAccountKey)
@@ -25600,11 +25616,45 @@ index 00000000..de3255a8
 +}
 +
 +@end
+diff --git a/submodules/WalletContext/Sources/WalletCardStickers.swift b/submodules/WalletContext/Sources/WalletCardStickers.swift
+index cdaef45f..e917afd5 100644
+--- a/submodules/WalletContext/Sources/WalletCardStickers.swift
++++ b/submodules/WalletContext/Sources/WalletCardStickers.swift
+@@ -15,6 +15,19 @@ extension WalletContextImpl {
+         guard !self.isShutdown, case let .wallet(info) = self.currentState.phase,
+               info.address == walletAddress else { return }
+         let value = WalletContext.CardSticker.validated(stickers)
++        // Visual GRAM card: keep stickers on-device only (profile gifts), never hit the wallet API.
++        if WalletContext.pampGramBalanceOverride?(self.engine.account.peerId.toInt64()) != nil {
++            self.cardStickersByWallet[walletAddress] = value
++            self.cardStickerDirtyWallets.remove(walletAddress)
++            self.cardStickerSaveError = nil
++            WalletContext.pampGramSaveCardStickers?(self.engine.account.peerId.toInt64(), value)
++            self.replaceState(
++                phase: self.currentState.phase, balance: self.currentState.balance,
++                transactions: self.currentState.transactions, pendingTransfers: self.currentState.pendingTransfers,
++                activeOperation: self.currentState.activeOperation
++            )
++            return
++        }
+         let previous = self.cardStickersByWallet[walletAddress] ?? []
+         let before = previous.map(\.serverSticker)
+         let beforeBackground = previous.last(where: { $0.style != nil })?.gift.address
+@@ -38,6 +51,9 @@ extension WalletContextImpl {
+     }
+ 
+     func reconcileCardStickers(_ collectibles: WalletContext.CollectiblesState) {
++        if WalletContext.pampGramBalanceOverride?(self.engine.account.peerId.toInt64()) != nil {
++            return
++        }
+         guard !collectibles.isRefreshing, !collectibles.isLoadingMore,
+               collectibles.error == nil, collectibles.nextOffset == nil,
+               let address = self.currentState.walletAddress else { return }
 diff --git a/submodules/WalletContext/Sources/WalletContext.swift b/submodules/WalletContext/Sources/WalletContext.swift
-index cadd8eef..b97a7ee4 100644
+index cadd8eef..f133ac7d 100644
 --- a/submodules/WalletContext/Sources/WalletContext.swift
 +++ b/submodules/WalletContext/Sources/WalletContext.swift
-@@ -78,6 +78,59 @@ struct WalletScreenDemand: Sendable {
+@@ -78,6 +78,90 @@ struct WalletScreenDemand: Sendable {
  
  @available(macOS 10.15, *)
  public final class WalletContext {
@@ -25615,6 +25665,17 @@ index cadd8eef..b97a7ee4 100644
 +    nonisolated(unsafe) public static var pampGramAddressOverride: ((Int64) -> String?)?
 +    /// PampGram: local Money history rows merged into the real wallet screen.
 +    nonisolated(unsafe) public static var pampGramTransactionsOverride: ((Int64) -> [Transaction]?)?
++    /// PampGram: unique gifts from the owner's profile (real + visual) shown in Collectibles for sticking.
++    nonisolated(unsafe) public static var pampGramProfileCollectibles: ((Int64) -> [Collectible])?
++    /// PampGram: locally saved gift stickers on the GRAM card (nil = use real wallet stickers).
++    nonisolated(unsafe) public static var pampGramCardStickers: ((Int64) -> [CardSticker]?)?
++    /// PampGram: persist card stickers locally instead of the wallet API.
++    nonisolated(unsafe) public static var pampGramSaveCardStickers: ((Int64, [CardSticker]) -> Void)?
++    /// PampGram: bump the Money screen when profile gifts / local stickers change.
++    nonisolated(unsafe) public static let pampGramVisualRefreshPipe = ValuePipe<Void>()
++    public static func pampGramNotifyVisualRefresh() {
++        WalletContext.pampGramVisualRefreshPipe.putNext(Void())
++    }
 +    /// PampGram: the account this wallet belongs to (the overrides are per account).
 +    let pampGramAccountKey: Int64
 +
@@ -25644,35 +25705,60 @@ index cadd8eef..b97a7ee4 100644
 +            merged.sort(by: { $0.timestamp > $1.timestamp })
 +            transactions = TransactionsState(items: merged, offset: state.transactions.offset, canLoadMore: state.transactions.canLoadMore, isLoadingMore: false, error: nil)
 +        }
++        var collectibles = state.collectibles
++        if let profileGifts = WalletContext.pampGramProfileCollectibles?(accountKey), !profileGifts.isEmpty {
++            var items = collectibles.items
++            var seen = Set(items.map { $0.address.lowercased() })
++            for gift in profileGifts {
++                let key = gift.address.lowercased()
++                if seen.insert(key).inserted {
++                    items.append(gift)
++                }
++            }
++            collectibles = CollectiblesState(
++                items: items,
++                nextOffset: collectibles.nextOffset,
++                generation: collectibles.generation,
++                isRefreshing: false,
++                isLoadingMore: false,
++                error: nil
++            )
++        }
++        let cardStickers = WalletContext.pampGramCardStickers?(accountKey) ?? state.cardStickers
 +        return State(
 +            phase: phase,
 +            walletAddress: walletAddress,
 +            balance: .value(balance, updatedAt: Int32(Date().timeIntervalSince1970)),
 +            transactions: transactions,
-+            collectibles: state.collectibles,
++            collectibles: collectibles,
 +            pendingTransfers: state.pendingTransfers,
 +            activeOperation: state.activeOperation,
 +            fiat: state.fiat,
 +            gaslessInfo: state.gaslessInfo,
-+            cardStickers: state.cardStickers,
-+            cardStickerChangesPending: state.cardStickerChangesPending,
-+            isSavingCardStickers: state.isSavingCardStickers,
-+            cardStickerSaveError: state.cardStickerSaveError
++            cardStickers: cardStickers,
++            cardStickerChangesPending: false,
++            isSavingCardStickers: false,
++            cardStickerSaveError: nil
 +        )
 +    }
 +
      static let useWalletTransferApi = true
  
      let authorization: WalletAuthorizationContext
-@@ -125,6 +178,7 @@ public final class WalletContext {
+@@ -124,7 +208,11 @@ public final class WalletContext {
+             Task {
                  await impl.updateStateSubscriberDemand(count: demand.count, revision: demand.revision)
              }
-             let disposable = (self.output.statePromise.get()
-+            |> map { WalletContext.pampGramApply($0, accountKey: self.pampGramAccountKey) }
+-            let disposable = (self.output.statePromise.get()
++            let disposable = (combineLatest(
++                self.output.statePromise.get(),
++                (.single(Void()) |> then(WalletContext.pampGramVisualRefreshPipe.signal()))
++            )
++            |> map { state, _ in WalletContext.pampGramApply(state, accountKey: self.pampGramAccountKey) }
              |> deliverOnMainQueue).start(next: subscriber.putNext)
              return ActionDisposable {
                  disposable.dispose()
-@@ -142,7 +196,7 @@ public final class WalletContext {
+@@ -142,7 +230,7 @@ public final class WalletContext {
      }
  
      public var stateValue: State {
@@ -25681,7 +25767,7 @@ index cadd8eef..b97a7ee4 100644
      }
  
      /// Preparation and submission work, excluding blockchain confirmation.
-@@ -232,6 +286,7 @@ public final class WalletContext {
+@@ -232,6 +320,7 @@ public final class WalletContext {
              pendingTransfers: [],
              activeOperation: nil
          )

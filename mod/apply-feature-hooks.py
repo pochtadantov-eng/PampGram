@@ -276,6 +276,17 @@ replace_once(
     "    nonisolated(unsafe) public static var pampGramAddressOverride: ((Int64) -> String?)?\n"
     "    /// PampGram: local Money history rows merged into the real wallet screen.\n"
     "    nonisolated(unsafe) public static var pampGramTransactionsOverride: ((Int64) -> [Transaction]?)?\n"
+    "    /// PampGram: unique gifts from the owner's profile (real + visual) shown in Collectibles for sticking.\n"
+    "    nonisolated(unsafe) public static var pampGramProfileCollectibles: ((Int64) -> [Collectible])?\n"
+    "    /// PampGram: locally saved gift stickers on the GRAM card (nil = use real wallet stickers).\n"
+    "    nonisolated(unsafe) public static var pampGramCardStickers: ((Int64) -> [CardSticker]?)?\n"
+    "    /// PampGram: persist card stickers locally instead of the wallet API.\n"
+    "    nonisolated(unsafe) public static var pampGramSaveCardStickers: ((Int64, [CardSticker]) -> Void)?\n"
+    "    /// PampGram: bump the Money screen when profile gifts / local stickers change.\n"
+    "    nonisolated(unsafe) public static let pampGramVisualRefreshPipe = ValuePipe<Void>()\n"
+    "    public static func pampGramNotifyVisualRefresh() {\n"
+    "        WalletContext.pampGramVisualRefreshPipe.putNext(Void())\n"
+    "    }\n"
     "    /// PampGram: the account this wallet belongs to (the overrides are per account).\n"
     "    let pampGramAccountKey: Int64\n"
     "\n"
@@ -305,20 +316,40 @@ replace_once(
     "            merged.sort(by: { $0.timestamp > $1.timestamp })\n"
     "            transactions = TransactionsState(items: merged, offset: state.transactions.offset, canLoadMore: state.transactions.canLoadMore, isLoadingMore: false, error: nil)\n"
     "        }\n"
+    "        var collectibles = state.collectibles\n"
+    "        if let profileGifts = WalletContext.pampGramProfileCollectibles?(accountKey), !profileGifts.isEmpty {\n"
+    "            var items = collectibles.items\n"
+    "            var seen = Set(items.map { $0.address.lowercased() })\n"
+    "            for gift in profileGifts {\n"
+    "                let key = gift.address.lowercased()\n"
+    "                if seen.insert(key).inserted {\n"
+    "                    items.append(gift)\n"
+    "                }\n"
+    "            }\n"
+    "            collectibles = CollectiblesState(\n"
+    "                items: items,\n"
+    "                nextOffset: collectibles.nextOffset,\n"
+    "                generation: collectibles.generation,\n"
+    "                isRefreshing: false,\n"
+    "                isLoadingMore: false,\n"
+    "                error: nil\n"
+    "            )\n"
+    "        }\n"
+    "        let cardStickers = WalletContext.pampGramCardStickers?(accountKey) ?? state.cardStickers\n"
     "        return State(\n"
     "            phase: phase,\n"
     "            walletAddress: walletAddress,\n"
     "            balance: .value(balance, updatedAt: Int32(Date().timeIntervalSince1970)),\n"
     "            transactions: transactions,\n"
-    "            collectibles: state.collectibles,\n"
+    "            collectibles: collectibles,\n"
     "            pendingTransfers: state.pendingTransfers,\n"
     "            activeOperation: state.activeOperation,\n"
     "            fiat: state.fiat,\n"
     "            gaslessInfo: state.gaslessInfo,\n"
-    "            cardStickers: state.cardStickers,\n"
-    "            cardStickerChangesPending: state.cardStickerChangesPending,\n"
-    "            isSavingCardStickers: state.isSavingCardStickers,\n"
-    "            cardStickerSaveError: state.cardStickerSaveError\n"
+    "            cardStickers: cardStickers,\n"
+    "            cardStickerChangesPending: false,\n"
+    "            isSavingCardStickers: false,\n"
+    "            cardStickerSaveError: nil\n"
     "        )\n"
     "    }\n"
     "\n",
@@ -326,8 +357,13 @@ replace_once(
 replace_once(
     wallet_swift,
     "wallet state signal override",
+    "            let disposable = (self.output.statePromise.get()\n"
     "            |> deliverOnMainQueue).start(next: subscriber.putNext)",
-    "            |> map { WalletContext.pampGramApply($0, accountKey: self.pampGramAccountKey) }\n"
+    "            let disposable = (combineLatest(\n"
+    "                self.output.statePromise.get(),\n"
+    "                (.single(Void()) |> then(WalletContext.pampGramVisualRefreshPipe.signal()))\n"
+    "            )\n"
+    "            |> map { state, _ in WalletContext.pampGramApply(state, accountKey: self.pampGramAccountKey) }\n"
     "            |> deliverOnMainQueue).start(next: subscriber.putNext)",
 )
 replace_once(
@@ -358,11 +394,27 @@ replace_once(
     # switches: each new root controller re-binds it to its own account's settings.
     "        let pampGramAccountKey = self.context.account.peerId.toInt64()\n"
     "        PampGramVisualExtrasRuntime.shared.start(accountKey: pampGramAccountKey, postbox: self.context.account.postbox)\n"
+    "        PampGramWalletCardStickersRuntime.shared.start(context: self.context)\n"
     "        WalletContext.pampGramBalanceOverride = { walletAccountKey in\n"
     "            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey)\n"
     "        }\n"
     "        WalletContext.pampGramAddressOverride = { walletAccountKey in\n"
     "            return PampGramVisualExtrasRuntime.shared.fakeWalletAddress(accountKey: walletAccountKey)\n"
+    "        }\n"
+    "        WalletContext.pampGramProfileCollectibles = { walletAccountKey in\n"
+    "            return PampGramWalletCardStickersRuntime.shared.collectibles(accountKey: walletAccountKey)\n"
+    "        }\n"
+    "        WalletContext.pampGramCardStickers = { walletAccountKey in\n"
+    "            guard PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey) != nil else {\n"
+    "                return nil\n"
+    "            }\n"
+    "            return PampGramWalletCardStickersRuntime.shared.stickers(accountKey: walletAccountKey)\n"
+    "        }\n"
+    "        WalletContext.pampGramSaveCardStickers = { [weak self] walletAccountKey, stickers in\n"
+    "            guard let self else {\n"
+    "                return\n"
+    "            }\n"
+    "            PampGramWalletCardStickersRuntime.shared.setStickers(stickers, accountKey: walletAccountKey, postbox: self.context.account.postbox)\n"
     "        }\n"
     "        WalletContext.pampGramTransactionsOverride = { walletAccountKey in\n"
     "            let items = PampGramVisualExtrasRuntime.shared.walletTransactions(accountKey: walletAccountKey)\n"
@@ -841,6 +893,57 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# 16b. Visual GRAM card stickers: local save + skip inventory reconcile
+# ---------------------------------------------------------------------------
+print("\n[16b] Visual GRAM card stickers persistence")
+wallet_card_stickers = Path("submodules/WalletContext/Sources/WalletCardStickers.swift")
+replace_once(
+    wallet_card_stickers,
+    "visual card stickers local save",
+    """    func updateCardStickers(_ stickers: [WalletContext.CardSticker], walletAddress: String) {
+        guard !self.isShutdown, case let .wallet(info) = self.currentState.phase,
+              info.address == walletAddress else { return }
+        let value = WalletContext.CardSticker.validated(stickers)
+""",
+    """    func updateCardStickers(_ stickers: [WalletContext.CardSticker], walletAddress: String) {
+        guard !self.isShutdown, case let .wallet(info) = self.currentState.phase,
+              info.address == walletAddress else { return }
+        let value = WalletContext.CardSticker.validated(stickers)
+        // Visual GRAM card: keep stickers on-device only (profile gifts), never hit the wallet API.
+        if WalletContext.pampGramBalanceOverride?(self.engine.account.peerId.toInt64()) != nil {
+            self.cardStickersByWallet[walletAddress] = value
+            self.cardStickerDirtyWallets.remove(walletAddress)
+            self.cardStickerSaveError = nil
+            WalletContext.pampGramSaveCardStickers?(self.engine.account.peerId.toInt64(), value)
+            self.replaceState(
+                phase: self.currentState.phase, balance: self.currentState.balance,
+                transactions: self.currentState.transactions, pendingTransfers: self.currentState.pendingTransfers,
+                activeOperation: self.currentState.activeOperation
+            )
+            return
+        }
+""",
+)
+replace_once(
+    wallet_card_stickers,
+    "visual card stickers skip reconcile",
+    """    func reconcileCardStickers(_ collectibles: WalletContext.CollectiblesState) {
+        guard !collectibles.isRefreshing, !collectibles.isLoadingMore,
+              collectibles.error == nil, collectibles.nextOffset == nil,
+              let address = self.currentState.walletAddress else { return }
+""",
+    """    func reconcileCardStickers(_ collectibles: WalletContext.CollectiblesState) {
+        if WalletContext.pampGramBalanceOverride?(self.engine.account.peerId.toInt64()) != nil {
+            return
+        }
+        guard !collectibles.isRefreshing, !collectibles.isLoadingMore,
+              collectibles.error == nil, collectibles.nextOffset == nil,
+              let address = self.currentState.walletAddress else { return }
+""",
+)
+
 # 17. GiftOptionsScreen "Мои": own-profile visual gifts + local 25-Star transfer
 # ---------------------------------------------------------------------------
 print("\n[17] Visual gifts in GiftOptionsScreen Mine tab")

@@ -313,7 +313,7 @@ private final class PampGramCardScreenController: PampGramVisualPageController {
     private var addressField = UITextField()
 
     override func buildContent() {
-        let intro = self.makeLabel("Подменяет баланс в настоящем кошельке Telegram: карточка профиля, экран «Деньги», кнопки «Пополнить»/«Отправить», история и плашки в чате — всё локально. Дробные суммы можно писать через точку или запятую (0.1). Фон и наклейки карточки — в самом кошельке Telegram.", size: 14.0, weight: .regular, color: self.secondaryColor)
+        let intro = self.makeLabel("Подменяет баланс в настоящем кошельке Telegram: карточка профиля, экран «Деньги», кнопки «Пополнить»/«Отправить», история и плашки в чате — всё локально. Дробные суммы можно писать через точку или запятую (0.1). Наклейки на карточку: в «Деньги» → «Коллекции» клеятся уникальные подарки с вашего профиля (настоящие и визуальные); раскладка только на этом устройстве.", size: 14.0, weight: .regular, color: self.secondaryColor)
         self.stack.addArrangedSubview(intro)
 
         let switchRow = UIStackView(arrangedSubviews: [self.makeLabel("Подменять баланс", size: 16.0, weight: .regular, color: self.primaryColor), self.enableSwitch])
