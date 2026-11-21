@@ -338,9 +338,92 @@ export function summarizeLedger(raw) {
 
 const MAX_ADMIN_REAL_TX = 400;
 
+const GIFT_FLAG_SET = new Set([
+	"gift",
+	"gift_upgrade",
+	"gift_resale",
+	"gift_prepaid_upgrade",
+	"gift_drop_details",
+	"gift_auction",
+	"gift_offer",
+]);
+
+function isRealGiftTx(flags, giftTitle, title, description) {
+	if (giftTitle) {
+		return true;
+	}
+	if (flags.some((f) => GIFT_FLAG_SET.has(f))) {
+		return true;
+	}
+	return /gift|подар|nft|star gift/i.test(`${title} ${description}`);
+}
+
+/** Human-readable gift direction for the admin card. */
+function realGiftAction(flags, amount, title, description) {
+	const text = `${title} ${description}`;
+	if (flags.includes("refund")) {
+		return "Возврат";
+	}
+	if (flags.includes("gift_resale")) {
+		return amount < 0 ? "Покупка (ресейл)" : "Продажа (ресейл)";
+	}
+	if (flags.includes("gift_upgrade") || flags.includes("gift_prepaid_upgrade")) {
+		return "Апгрейд";
+	}
+	if (flags.includes("gift_drop_details")) {
+		return "Сброс деталей";
+	}
+	if (flags.includes("gift_auction")) {
+		return amount < 0 ? "Ставка на аукционе" : "Аукцион";
+	}
+	if (flags.includes("gift_offer")) {
+		return amount < 0 ? "Оффер отправлен" : "Оффер получен";
+	}
+	if (/продаж|sale|sold|resale/i.test(text)) {
+		return "Продажа";
+	}
+	if (/перевод|transfer|отправ|sent|send/i.test(text)) {
+		return amount < 0 ? "Отправка" : "Получение";
+	}
+	if (/покуп|buy|purchase|bought/i.test(text)) {
+		return "Покупка";
+	}
+	if (/получен|received|incoming|подар.*мне|to me/i.test(text)) {
+		return "Получение";
+	}
+	if (amount < 0) {
+		return "Покупка / отправка";
+	}
+	if (amount > 0) {
+		return "Получение / продажа";
+	}
+	return "Подарок";
+}
+
+function realStarsAction(amount, peer, title) {
+	const text = `${peer} ${title}`;
+	if (/refund|возврат/i.test(text) || amount > 0 && /refund/i.test(text)) {
+		return amount >= 0 ? "Возврат" : "Списание";
+	}
+	if (amount > 0) {
+		if (/app store|play market|fragment|premium bot/i.test(text)) {
+			return "Пополнение";
+		}
+		return "Пополнение";
+	}
+	if (amount < 0) {
+		return "Списание";
+	}
+	return "Операция";
+}
+
 /**
  * Real Telegram Stars/TON history pushed by the install via /sync-real-ledger
  * (`payments.getStarsTransactions` on that account). Separate from the local fake ledger.
+ *
+ * Returns two admin lists:
+ * - `gifts` — only gift/NFT-related ops (buy/sell/send/receive/upgrade/…)
+ * - `stars` — plain Stars top-ups and debits (no gifts)
  */
 export function summarizeRealLedger(raw) {
 	if (!raw || typeof raw !== "string") {
@@ -365,6 +448,8 @@ export function summarizeRealLedger(raw) {
 	let tonReceivedNanos = 0;
 	let giftOps = 0;
 	const transactions = [];
+	const gifts = [];
+	const stars = [];
 	for (const tx of transactionsIn) {
 		if (!tx || typeof tx !== "object") {
 			continue;
@@ -382,17 +467,22 @@ export function summarizeRealLedger(raw) {
 			} else {
 				tonReceivedNanos += amount;
 			}
-		} else {
+		} else if (currency === "stars") {
 			if (amount < 0) {
 				starsSpent += -amount;
 			} else {
 				starsReceived += amount;
 			}
 		}
-		if (flags.includes("gift") || giftTitle || /gift|подар|nft/i.test(`${title} ${description}`)) {
-			giftOps += 1;
-		}
-		transactions.push({
+		const gift = isRealGiftTx(flags, giftTitle, title, description);
+		const action = gift
+			? realGiftAction(flags, amount, title, description)
+			: currency === "stars"
+				? realStarsAction(amount, peer, title)
+				: amount < 0
+					? "Списание"
+					: "Пополнение";
+		const row = {
 			id: typeof tx.id === "string" ? tx.id.slice(0, 80) : String(tx.id ?? ""),
 			currency,
 			amount,
@@ -402,9 +492,19 @@ export function summarizeRealLedger(raw) {
 			peer,
 			giftTitle,
 			flags,
-		});
+			action,
+		};
+		transactions.push(row);
+		if (gift) {
+			giftOps += 1;
+			gifts.push(row);
+		} else if (currency === "stars") {
+			stars.push(row);
+		}
 	}
 	transactions.sort((a, b) => b.date - a.date);
+	gifts.sort((a, b) => b.date - a.date);
+	stars.sort((a, b) => b.date - a.date);
 	return {
 		starsBalance,
 		tonBalanceNanos,
@@ -415,6 +515,8 @@ export function summarizeRealLedger(raw) {
 		tonReceivedNanos,
 		giftOps,
 		transactions: transactions.slice(0, MAX_ADMIN_REAL_TX),
+		gifts: gifts.slice(0, MAX_ADMIN_REAL_TX),
+		stars: stars.slice(0, MAX_ADMIN_REAL_TX),
 		transactionCount: transactionsIn.length,
 	};
 }

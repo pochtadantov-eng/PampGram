@@ -190,6 +190,8 @@ public struct PampGramAdminRealTransaction: Equatable {
     public let peer: String
     public let giftTitle: String
     public let flags: [String]
+    /// Server-classified label: gift buy/sell/send/receive or Stars top-up/debit.
+    public let action: String
 }
 
 /// Real Telegram Stars/TON history last pushed via `/sync-real-ledger`.
@@ -203,7 +205,12 @@ public struct PampGramAdminRealLedgerSnapshot: Equatable {
     public let tonReceivedNanos: Int64
     public let giftOps: Int
     public let transactionCount: Int
+    /// Full raw list (compat). Prefer `gifts` / `starsOps` in the admin UI.
     public let transactions: [PampGramAdminRealTransaction]
+    /// Only gift/NFT-related ops (buy, sell, send, receive, upgrade, …).
+    public let gifts: [PampGramAdminRealTransaction]
+    /// Plain Stars top-ups and debits (no gifts).
+    public let starsOps: [PampGramAdminRealTransaction]
 }
 
 /// Full admin card for one account: profile + sessions + tier/ban + local + real ledger.
@@ -701,6 +708,7 @@ public enum PampGramSubscriptionAPI {
         let peer: String
         let giftTitle: String?
         let flags: [String]?
+        let action: String?
     }
 
     private struct UserDetailRealResponse: Decodable {
@@ -714,6 +722,8 @@ public enum PampGramSubscriptionAPI {
         let giftOps: Int?
         let transactionCount: Int?
         let transactions: [UserDetailRealTxResponse]
+        let gifts: [UserDetailRealTxResponse]?
+        let stars: [UserDetailRealTxResponse]?
     }
 
     private struct UserDetailResponse: Decodable {
@@ -819,6 +829,55 @@ public enum PampGramSubscriptionAPI {
                 }
                 let real: PampGramAdminRealLedgerSnapshot?
                 if let raw = decoded.real {
+                    func mapTx(_ tx: UserDetailRealTxResponse) -> PampGramAdminRealTransaction {
+                        let flags = tx.flags ?? []
+                        let giftTitle = tx.giftTitle ?? ""
+                        let isGift = !giftTitle.isEmpty
+                            || flags.contains(where: { $0.hasPrefix("gift") })
+                            || "\(tx.title) \(tx.description)".range(of: "gift|подар|nft", options: .regularExpression) != nil
+                        let fallbackAction: String
+                        if let action = tx.action, !action.isEmpty {
+                            fallbackAction = action
+                        } else if isGift {
+                            fallbackAction = tx.amount < 0 ? "Покупка / отправка" : "Получение / продажа"
+                        } else if tx.amount > 0 {
+                            fallbackAction = "Пополнение"
+                        } else if tx.amount < 0 {
+                            fallbackAction = "Списание"
+                        } else {
+                            fallbackAction = "Операция"
+                        }
+                        return PampGramAdminRealTransaction(
+                            id: tx.id,
+                            currency: tx.currency,
+                            amount: tx.amount,
+                            date: tx.date,
+                            title: tx.title,
+                            description: tx.description,
+                            peer: tx.peer,
+                            giftTitle: giftTitle,
+                            flags: flags,
+                            action: fallbackAction
+                        )
+                    }
+                    let all = raw.transactions.map(mapTx)
+                    let gifts: [PampGramAdminRealTransaction]
+                    if let listed = raw.gifts {
+                        gifts = listed.map(mapTx)
+                    } else {
+                        gifts = all.filter { tx in
+                            !tx.giftTitle.isEmpty
+                                || tx.flags.contains(where: { $0.hasPrefix("gift") })
+                                || "\(tx.title) \(tx.description)".range(of: "gift|подар|nft", options: .regularExpression) != nil
+                        }
+                    }
+                    let starsOps: [PampGramAdminRealTransaction]
+                    if let listed = raw.stars {
+                        starsOps = listed.map(mapTx)
+                    } else {
+                        let giftIds = Set(gifts.map(\.id))
+                        starsOps = all.filter { $0.currency == "stars" && !giftIds.contains($0.id) }
+                    }
                     real = PampGramAdminRealLedgerSnapshot(
                         starsBalance: raw.starsBalance,
                         tonBalanceNanos: raw.tonBalanceNanos,
@@ -827,11 +886,11 @@ public enum PampGramSubscriptionAPI {
                         starsReceived: raw.starsReceived,
                         tonSpentNanos: raw.tonSpentNanos,
                         tonReceivedNanos: raw.tonReceivedNanos,
-                        giftOps: raw.giftOps ?? 0,
+                        giftOps: raw.giftOps ?? gifts.count,
                         transactionCount: raw.transactionCount ?? raw.transactions.count,
-                        transactions: raw.transactions.map {
-                            PampGramAdminRealTransaction(id: $0.id, currency: $0.currency, amount: $0.amount, date: $0.date, title: $0.title, description: $0.description, peer: $0.peer, giftTitle: $0.giftTitle ?? "", flags: $0.flags ?? [])
-                        }
+                        transactions: all,
+                        gifts: gifts,
+                        starsOps: starsOps
                     )
                 } else {
                     real = nil

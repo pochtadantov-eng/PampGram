@@ -196,6 +196,12 @@ test("/user-detail returns profile, ban, tier and ledger totals for the admin", 
 	assert.equal(afterReal.real.giftOps, 1);
 	assert.equal(afterReal.real.transactions[0].title, "Top up");
 	assert.equal(afterReal.real.transactions.find((tx) => tx.id === "tx1").giftTitle, "Lol Pop");
+	assert.equal(afterReal.real.gifts.length, 1);
+	assert.equal(afterReal.real.gifts[0].id, "tx1");
+	assert.equal(afterReal.real.gifts[0].action, "Покупка / отправка");
+	assert.equal(afterReal.real.stars.length, 1);
+	assert.equal(afterReal.real.stars[0].id, "tx2");
+	assert.equal(afterReal.real.stars[0].action, "Пополнение");
 
 	const list = (await call(env, "POST", "/users-list", { token: "admin-token" })).json;
 	const row = list.users.find((user) => user.id === "88");
