@@ -841,7 +841,279 @@ replace_once(
 )
 
 # ---------------------------------------------------------------------------
+# 17. GiftOptionsScreen "Мои": own-profile visual gifts + local 25-Star transfer
+# ---------------------------------------------------------------------------
+print("\n[17] Visual gifts in GiftOptionsScreen Mine tab")
+
+gift_options_build = Path("submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD")
+_go_build = gift_options_build.read_text()
+_pgk = '"//submodules/TelegramUI/Components/PampGram/PhantomGiftKit"'
+if _pgk not in _go_build:
+    _anchor = '"//submodules/TelegramUI/Components/PampGram/PampGramCore",'
+    if _anchor not in _go_build:
+        print("FAIL [GiftOptionsScreen BUILD PhantomGiftKit]: PampGramCore dep missing", file=sys.stderr)
+        sys.exit(1)
+    _idx = _go_build.index(_anchor) + len(_anchor)
+    gift_options_build.write_text(_go_build[:_idx] + "\n        " + _pgk + "," + _go_build[_idx:])
+    print("  OK: GiftOptionsScreen BUILD PhantomGiftKit")
+else:
+    print("  SKIP: GiftOptionsScreen BUILD PhantomGiftKit (already present)")
+
+gift_options_swift = Path(
+    "submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift"
+)
+_gos = gift_options_swift.read_text()
+if "import PhantomGiftKit\n" not in _gos:
+    if "import PampGramCore\n" not in _gos:
+        print("FAIL [GiftOptionsScreen import PhantomGiftKit]: PampGramCore import missing", file=sys.stderr)
+        sys.exit(1)
+    _idx = _gos.index("import PampGramCore\n") + len("import PampGramCore\n")
+    gift_options_swift.write_text(_gos[:_idx] + "import PhantomGiftKit\n" + _gos[_idx:])
+    print("  OK: GiftOptionsScreen import PhantomGiftKit")
+else:
+    print("  SKIP: GiftOptionsScreen import PhantomGiftKit (already present)")
+
+# Signal first so the merge below can reference pampGramProfileGifts.
+replace_once(
+    gift_options_swift,
+    "Mine tab watches visual profile gifts",
+    """                availableProducts,
+                context.engine.payments.cachedStarGifts(),
+                self.starGiftsContext.state
+            ).start(next: { [weak self] peer, disallowedGifts, availableProducts, starGifts, profileGiftsState in
+""",
+    """                availableProducts,
+                context.engine.payments.cachedStarGifts(),
+                self.starGiftsContext.state,
+                // Own-profile visual gifts — the same list the profile grid shows after
+                // "Подарок мне" / a self-send — so the "Мои" tab can transfer them for ⭐25.
+                PampGramPhantomGiftStore.resolvedProfileGiftsSignal(context: context)
+            ).start(next: { [weak self] peer, disallowedGifts, availableProducts, starGifts, profileGiftsState, pampGramProfileGifts in
+""",
+)
+replace_once(
+    gift_options_swift,
+    "Mine tab merges own-profile visual gifts",
+    """                        self.transferStarGifts = profileGiftsState.filteredGifts.compactMap { gift in
+                            if case .unique = gift.gift {
+                                return gift
+                            } else {
+                                return nil
+                            }
+                        }
+""",
+    """                        var transferGifts = profileGiftsState.filteredGifts.compactMap { gift -> ProfileGiftsContext.State.StarGift? in
+                            if case .unique = gift.gift {
+                                return gift
+                            } else {
+                                return nil
+                            }
+                        }
+                        var seenSlugs = Set(transferGifts.compactMap { gift -> String? in
+                            if case let .unique(unique) = gift.gift {
+                                return unique.slug
+                            }
+                            return nil
+                        })
+                        for phantom in pampGramProfileGifts {
+                            guard case let .unique(unique) = phantom.gift else {
+                                continue
+                            }
+                            if seenSlugs.contains(unique.slug) {
+                                continue
+                            }
+                            seenSlugs.insert(unique.slug)
+                            transferGifts.append(phantom)
+                        }
+                        self.transferStarGifts = transferGifts
+""",
+)
+replace_once(
+    gift_options_swift,
+    "Mine tab transferGift allows visual gifts",
+    """            guard let gift = self.state?.transferStarGifts?.first(where: { gift in
+                if case let .unique(gift) = gift.gift, gift.slug == transferGift.slug {
+                    return true
+                } else {
+                    return false
+                }
+            }), let reference = gift.reference else {
+                return
+            }
+""",
+    """            guard let gift = self.state?.transferStarGifts?.first(where: { gift in
+                if case let .unique(gift) = gift.gift, gift.slug == transferGift.slug {
+                    return true
+                } else {
+                    return false
+                }
+            }) else {
+                return
+            }
+            // Visual gifts from the own profile have no server reference — transfer them
+            // locally for the same 25-Star fee as "Передать" on the profile card.
+            let pampGramIsPhantomGift = gift.reference == nil
+            let reference = gift.reference
+""",
+)
+replace_once(
+    gift_options_swift,
+    "Mine tab transfer alert uses 25-Star visual fee",
+    """            let alertController = giftTransferAlertController(
+                context: context,
+                gift: transferGift,
+                peer: peer,
+                transferStars: gift.transferStars ?? 0,
+                navigationController: mainController.navigationController as? NavigationController,
+                commit: { [weak self, weak mainController] in
+                    let proceed: (Bool) -> Void = { waitForTopUp in
+                        var errorImpl: ((TransferStarGiftError) -> Void)?
+                        var completedImpl: (() -> Void)?
+                        
+                        if waitForTopUp, let starsContext = context.starsContext {
+                            let _ = (starsContext.onUpdate
+                            |> deliverOnMainQueue).start(next: {
+                                let _ = (context.engine.payments.transferStarGift(prepaid: gift.transferStars == 0, reference: reference, peerId: peer.id)
+                                |> deliverOnMainQueue).start(error: { error in
+                                    errorImpl?(error)
+                                }, completed: {
+                                    completedImpl?()
+                                })
+                            })
+                        } else {
+                            let _ = (context.engine.payments.transferStarGift(prepaid: gift.transferStars == 0, reference: reference, peerId: peer.id)
+                            |> deliverOnMainQueue).start(error: { error in
+                                errorImpl?(error)
+                            }, completed: {
+                                completedImpl?()
+                            })
+                        }
+""",
+    """            let pampGramTransferStars: Int64 = pampGramIsPhantomGift ? PampGramPhantomGiftManager.transferFeeStars : (gift.transferStars ?? 0)
+            if pampGramIsPhantomGift {
+                PampGramPhantomGiftManager.markPhantomTransfer(slug: transferGift.slug)
+            }
+            let alertController = giftTransferAlertController(
+                context: context,
+                gift: transferGift,
+                peer: peer,
+                transferStars: pampGramTransferStars,
+                navigationController: mainController.navigationController as? NavigationController,
+                commit: { [weak self, weak mainController] in
+                    let proceed: (Bool) -> Void = { waitForTopUp in
+                        var errorImpl: ((TransferStarGiftError) -> Void)?
+                        var completedImpl: (() -> Void)?
+                        
+                        if pampGramIsPhantomGift {
+                            let _ = (PampGramPhantomGiftManager.sendUniqueGiftToPeer(context: context, uniqueGift: transferGift, peerId: peer.id)
+                            |> deliverOnMainQueue).start(next: { success in
+                                if success {
+                                    completedImpl?()
+                                } else {
+                                    errorImpl?(.generic)
+                                }
+                            })
+                        } else if let reference {
+                            if waitForTopUp, let starsContext = context.starsContext {
+                                let _ = (starsContext.onUpdate
+                                |> deliverOnMainQueue).start(next: {
+                                    let _ = (context.engine.payments.transferStarGift(prepaid: gift.transferStars == 0, reference: reference, peerId: peer.id)
+                                    |> deliverOnMainQueue).start(error: { error in
+                                        errorImpl?(error)
+                                    }, completed: {
+                                        completedImpl?()
+                                    })
+                                })
+                            } else {
+                                let _ = (context.engine.payments.transferStarGift(prepaid: gift.transferStars == 0, reference: reference, peerId: peer.id)
+                                |> deliverOnMainQueue).start(error: { error in
+                                    errorImpl?(error)
+                                }, completed: {
+                                    completedImpl?()
+                                })
+                            }
+                        } else {
+                            errorImpl?(.generic)
+                        }
+""",
+)
+replace_once(
+    gift_options_swift,
+    "Mine tab skips real Stars check for visual gifts",
+    """                    if let self, let transferStars = gift.transferStars, transferStars > 0, let starsContext = context.starsContext, let starsState = self.starsState {
+                        if starsState.balance < StarsAmount(value: transferStars, nanos: 0) {
+                            let _ = (self.optionsPromise.get()
+                            |> filter { $0 != nil }
+                            |> take(1)
+                            |> deliverOnMainQueue).startStandalone(next: { [weak mainController] options in
+                                let purchaseController = context.sharedContext.makeStarsPurchaseScreen(
+                                    context: context,
+                                    starsContext: starsContext,
+                                    options: options ?? [],
+                                    purpose: .transferStarGift(requiredStars: transferStars),
+                                    targetPeerId: nil,
+                                    customTheme: nil,
+                                    completion: { stars in
+                                        starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
+                                        proceed(true)
+                                    }
+                                )
+                                mainController?.push(purchaseController)
+                            })
+                        } else {
+                            proceed(false)
+                        }
+                    } else {
+                        proceed(false)
+                    }
+""",
+    """                    if pampGramIsPhantomGift {
+                        let _ = (PampGramPhantomGiftManager.canAffordTransferFee(context: context)
+                        |> deliverOnMainQueue).startStandalone(next: { [weak mainController] canAfford in
+                            if canAfford {
+                                proceed(false)
+                            } else {
+                                let alertController = textAlertController(
+                                    context: context,
+                                    title: "Недостаточно Stars",
+                                    text: "Передача подарка стоит \\(PampGramPhantomGiftManager.transferFeeStars) ⭐.",
+                                    actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]
+                                )
+                                mainController?.present(alertController, in: .window(.root))
+                            }
+                        })
+                    } else if let self, let transferStars = gift.transferStars, transferStars > 0, let starsContext = context.starsContext, let starsState = self.starsState {
+                        if starsState.balance < StarsAmount(value: transferStars, nanos: 0) {
+                            let _ = (self.optionsPromise.get()
+                            |> filter { $0 != nil }
+                            |> take(1)
+                            |> deliverOnMainQueue).startStandalone(next: { [weak mainController] options in
+                                let purchaseController = context.sharedContext.makeStarsPurchaseScreen(
+                                    context: context,
+                                    starsContext: starsContext,
+                                    options: options ?? [],
+                                    purpose: .transferStarGift(requiredStars: transferStars),
+                                    targetPeerId: nil,
+                                    customTheme: nil,
+                                    completion: { stars in
+                                        starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
+                                        proceed(true)
+                                    }
+                                )
+                                mainController?.push(purchaseController)
+                            })
+                        } else {
+                            proceed(false)
+                        }
+                    } else {
+                        proceed(false)
+                    }
+""",
+)
+
+# ---------------------------------------------------------------------------
 print("\nPampGram: feature hooks done.")
 print("  ACTIVE: ChatTimeMachine, VideoMessageSaver, FakeBadge, FakeSubscribers, FakeDeletedAccount")
 print("  CONTEXT MENU ONLY: FakeForward, FakeReactions, FakeActivity, InvisibleMessage, ReactionSpammer,")
 print("    FakeSystemMessages, FakePaymentReceipt, FakeIncomingCall, FakeScreenshotNotification, VisualWallet")
+print("  MINE TAB: visual gifts from own profile transfer for ⭐25")

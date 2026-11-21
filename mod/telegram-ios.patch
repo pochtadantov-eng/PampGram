@@ -1,5 +1,5 @@
 diff --git a/Telegram/BUILD b/Telegram/BUILD
-index 1ac8279be..7f1669618 100644
+index 1ac8279b..7f166961 100644
 --- a/Telegram/BUILD
 +++ b/Telegram/BUILD
 @@ -327,18 +327,15 @@ filegroup(
@@ -16359,7 +16359,7 @@ literal 0
 HcmV?d00001
 
 diff --git a/Telegram/Telegram-iOS/Telegram.icon/Assets/Oval.svg b/Telegram/Telegram-iOS/Telegram.icon/Assets/Oval.svg
-index c3e47858d..cfdf9be7d 100644
+index c3e47858..cfdf9be7 100644
 --- a/Telegram/Telegram-iOS/Telegram.icon/Assets/Oval.svg
 +++ b/Telegram/Telegram-iOS/Telegram.icon/Assets/Oval.svg
 @@ -2,6 +2,6 @@
@@ -16372,7 +16372,7 @@ index c3e47858d..cfdf9be7d 100644
  </svg>
 \ No newline at end of file
 diff --git a/Telegram/Telegram-iOS/Telegram.icon/Assets/Plane.svg b/Telegram/Telegram-iOS/Telegram.icon/Assets/Plane.svg
-index e475bcfde..420ca2299 100644
+index e475bcfd..420ca229 100644
 --- a/Telegram/Telegram-iOS/Telegram.icon/Assets/Plane.svg
 +++ b/Telegram/Telegram-iOS/Telegram.icon/Assets/Plane.svg
 @@ -2,6 +2,138 @@
@@ -16517,7 +16517,7 @@ index e475bcfde..420ca2299 100644
  </svg>
 \ No newline at end of file
 diff --git a/Telegram/Telegram-iOS/Telegram.icon/icon.json b/Telegram/Telegram-iOS/Telegram.icon/icon.json
-index b1143f634..143b2a014 100644
+index b1143f63..143b2a01 100644
 --- a/Telegram/Telegram-iOS/Telegram.icon/icon.json
 +++ b/Telegram/Telegram-iOS/Telegram.icon/icon.json
 @@ -51,15 +51,15 @@
@@ -16540,7 +16540,7 @@ index b1143f634..143b2a014 100644
              }
            ],
 diff --git a/submodules/AccountContext/BUILD b/submodules/AccountContext/BUILD
-index 56b5c34fe..e0ab0a02e 100644
+index 56b5c34f..e0ab0a02 100644
 --- a/submodules/AccountContext/BUILD
 +++ b/submodules/AccountContext/BUILD
 @@ -28,6 +28,7 @@ swift_library(
@@ -16552,7 +16552,7 @@ index 56b5c34fe..e0ab0a02e 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/AccountContext/Sources/AccountContext.swift b/submodules/AccountContext/Sources/AccountContext.swift
-index b6d2c1998..f157c3934 100644
+index b6d2c199..f157c393 100644
 --- a/submodules/AccountContext/Sources/AccountContext.swift
 +++ b/submodules/AccountContext/Sources/AccountContext.swift
 @@ -5,6 +5,7 @@ import TelegramCore
@@ -16651,7 +16651,7 @@ index b6d2c1998..f157c3934 100644
      func makePremiumBoostLevelsController(context: AccountContext, peerId: EnginePeer.Id, subject: BoostSubject, boostStatus: ChannelBoostStatus, myBoostStatus: MyBoostStatus, forceDark: Bool, openStats: (() -> Void)?) -> ViewController
      func makeStickerPackScreen(context: AccountContext, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)?, mainStickerPack: StickerPackReference, stickerPacks: [StickerPackReference], loadedStickerPacks: [LoadedStickerPack], actionTitle: String?, isEditing: Bool, expandIfNeeded: Bool, parentNavigationController: NavigationController?, sendSticker: ((FileMediaReference, UIView?, CGRect?) -> Bool)?, actionPerformed: (([StickerPackScreenActionResult]) -> Void)?) -> ViewController
 diff --git a/submodules/AuthorizationUI/Sources/AuthorizationSequenceController.swift b/submodules/AuthorizationUI/Sources/AuthorizationSequenceController.swift
-index d3c142b27..f2af65e99 100644
+index d3c142b2..f2af65e9 100644
 --- a/submodules/AuthorizationUI/Sources/AuthorizationSequenceController.swift
 +++ b/submodules/AuthorizationUI/Sources/AuthorizationSequenceController.swift
 @@ -194,6 +194,28 @@ public final class AuthorizationSequenceController: NavigationController, ASAuth
@@ -16684,7 +16684,7 @@ index d3c142b27..f2af65e99 100644
                  guard let self else {
                      return
 diff --git a/submodules/AuthorizationUI/Sources/AuthorizationSequencePhoneEntryController.swift b/submodules/AuthorizationUI/Sources/AuthorizationSequencePhoneEntryController.swift
-index 9f9d88664..a440547ee 100644
+index 9f9d8866..a440547e 100644
 --- a/submodules/AuthorizationUI/Sources/AuthorizationSequencePhoneEntryController.swift
 +++ b/submodules/AuthorizationUI/Sources/AuthorizationSequencePhoneEntryController.swift
 @@ -57,6 +57,7 @@ public final class AuthorizationSequencePhoneEntryController: ViewController, MF
@@ -16734,7 +16734,7 @@ index 9f9d88664..a440547ee 100644
          self.back()
      }
 diff --git a/submodules/CallListUI/BUILD b/submodules/CallListUI/BUILD
-index 252db13ea..4b498b112 100644
+index 252db13e..4b498b11 100644
 --- a/submodules/CallListUI/BUILD
 +++ b/submodules/CallListUI/BUILD
 @@ -39,6 +39,7 @@ swift_library(
@@ -16746,7 +16746,7 @@ index 252db13ea..4b498b112 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/CallListUI/Sources/CallListCallItem.swift b/submodules/CallListUI/Sources/CallListCallItem.swift
-index b6137dade..c8e437eff 100644
+index b6137dad..c8e437ef 100644
 --- a/submodules/CallListUI/Sources/CallListCallItem.swift
 +++ b/submodules/CallListUI/Sources/CallListCallItem.swift
 @@ -12,6 +12,7 @@ import TelegramStringFormatting
@@ -16779,7 +16779,7 @@ index b6137dade..c8e437eff 100644
                  if conferenceAvatars.count > 1 {
                      var peersString = ""
 diff --git a/submodules/GalleryData/Sources/GalleryData.swift b/submodules/GalleryData/Sources/GalleryData.swift
-index b9274cc23..221a3c8e4 100644
+index b9274cc2..221a3c8e 100644
 --- a/submodules/GalleryData/Sources/GalleryData.swift
 +++ b/submodules/GalleryData/Sources/GalleryData.swift
 @@ -320,7 +320,7 @@ public func chatMessageGalleryControllerData(
@@ -16809,7 +16809,7 @@ index b9274cc23..221a3c8e4 100644
                  |> map { [navigationController] startState, isInChatLocationHistory in
                      var openChatLocation = chatLocation ?? .peer(id: message.id.peerId)
 diff --git a/submodules/GalleryUI/BUILD b/submodules/GalleryUI/BUILD
-index 0116b0616..77e986780 100644
+index 0116b061..77e98678 100644
 --- a/submodules/GalleryUI/BUILD
 +++ b/submodules/GalleryUI/BUILD
 @@ -77,6 +77,7 @@ swift_library(
@@ -16821,7 +16821,7 @@ index 0116b0616..77e986780 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/GalleryUI/Sources/GalleryController.swift b/submodules/GalleryUI/Sources/GalleryController.swift
-index c565b7c6c..3a001c485 100644
+index c565b7c6..3a001c48 100644
 --- a/submodules/GalleryUI/Sources/GalleryController.swift
 +++ b/submodules/GalleryUI/Sources/GalleryController.swift
 @@ -17,6 +17,7 @@ import ScreenCaptureDetection
@@ -16871,7 +16871,7 @@ index c565b7c6c..3a001c485 100644
                      content = SystemVideoContent(userLocation: .peer(message.id.peerId), url: embedUrl, imageReference: .webPage(webPage: WebpageReference(webpage), media: image), dimensions: webpageContent.embedSize?.cgSize ?? CGSize(width: 640.0, height: 640.0), duration: webpageContent.duration.flatMap(Double.init) ?? 0.0)
                  }
 diff --git a/submodules/LiveLocationManager/BUILD b/submodules/LiveLocationManager/BUILD
-index 47b328632..7daad0044 100644
+index 47b32863..7daad004 100644
 --- a/submodules/LiveLocationManager/BUILD
 +++ b/submodules/LiveLocationManager/BUILD
 @@ -14,6 +14,7 @@ swift_library(
@@ -16883,7 +16883,7 @@ index 47b328632..7daad0044 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/LiveLocationManager/Sources/LiveLocationManager.swift b/submodules/LiveLocationManager/Sources/LiveLocationManager.swift
-index 4187f3b49..b036df0b9 100644
+index 4187f3b4..b036df0b 100644
 --- a/submodules/LiveLocationManager/Sources/LiveLocationManager.swift
 +++ b/submodules/LiveLocationManager/Sources/LiveLocationManager.swift
 @@ -4,12 +4,20 @@ import SwiftSignalKit
@@ -16943,7 +16943,7 @@ index 4187f3b49..b036df0b9 100644
          let remainingIds = Atomic<Set<EngineMessage.Id>>(value: Set(ids.keys))
          for id in ids.keys {
 diff --git a/submodules/LocationUI/BUILD b/submodules/LocationUI/BUILD
-index 39d33fd6d..f5bac660a 100644
+index 39d33fd6..f5bac660 100644
 --- a/submodules/LocationUI/BUILD
 +++ b/submodules/LocationUI/BUILD
 @@ -61,6 +61,7 @@ swift_library(
@@ -16955,7 +16955,7 @@ index 39d33fd6d..f5bac660a 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/LocationUI/Sources/LocationPickerController.swift b/submodules/LocationUI/Sources/LocationPickerController.swift
-index 506cc8273..87621f906 100644
+index 506cc827..87621f90 100644
 --- a/submodules/LocationUI/Sources/LocationPickerController.swift
 +++ b/submodules/LocationUI/Sources/LocationPickerController.swift
 @@ -12,6 +12,7 @@ import PresentationDataUtils
@@ -17048,7 +17048,7 @@ index 506cc8273..87621f906 100644
                  )
                  strongSelf.presentInGlobalOverlay(controller)
 diff --git a/submodules/PromptUI/Sources/PromptController.swift b/submodules/PromptUI/Sources/PromptController.swift
-index 27f583cee..f02baa484 100644
+index 27f583ce..f02baa48 100644
 --- a/submodules/PromptUI/Sources/PromptController.swift
 +++ b/submodules/PromptUI/Sources/PromptController.swift
 @@ -211,6 +211,8 @@ public func promptController(
@@ -17070,7 +17070,7 @@ index 27f583cee..f02baa484 100644
                  emptyLineHandling: .notAllowed,
                  isInitiallyFocused: true,
 diff --git a/submodules/TabBarUI/Sources/TabBarController.swift b/submodules/TabBarUI/Sources/TabBarController.swift
-index 086859672..51d28518e 100644
+index 08685967..51d28518 100644
 --- a/submodules/TabBarUI/Sources/TabBarController.swift
 +++ b/submodules/TabBarUI/Sources/TabBarController.swift
 @@ -137,6 +137,7 @@ open class TabBarControllerImpl: ViewController, TabBarController {
@@ -17093,7 +17093,7 @@ index 086859672..51d28518e 100644
                      strongSelf.debugTapCounter.1 = 0
                      
 diff --git a/submodules/TelegramCallsUI/BUILD b/submodules/TelegramCallsUI/BUILD
-index 56178cf9e..8c6ebf90a 100644
+index 56178cf9..8c6ebf90 100644
 --- a/submodules/TelegramCallsUI/BUILD
 +++ b/submodules/TelegramCallsUI/BUILD
 @@ -89,6 +89,7 @@ swift_library(
@@ -17105,7 +17105,7 @@ index 56178cf9e..8c6ebf90a 100644
          "//submodules/TemporaryCachedPeerDataManager:TemporaryCachedPeerDataManager",
          "//submodules/PeerInfoAvatarListNode:PeerInfoAvatarListNode",
 diff --git a/submodules/TelegramCallsUI/Sources/PresentationCall.swift b/submodules/TelegramCallsUI/Sources/PresentationCall.swift
-index bca040089..57274eaa7 100644
+index bca04008..57274eaa 100644
 --- a/submodules/TelegramCallsUI/Sources/PresentationCall.swift
 +++ b/submodules/TelegramCallsUI/Sources/PresentationCall.swift
 @@ -14,6 +14,9 @@ import AccountContext
@@ -17200,7 +17200,7 @@ index bca040089..57274eaa7 100644
                  // No conference shares this call's audio context, so the next call may retire it
                  // (stop its device) instead of waiting for this object to be released; see
 diff --git a/submodules/TelegramCore/BUILD b/submodules/TelegramCore/BUILD
-index 23e4e285e..b8c7cbd5d 100644
+index 23e4e285..b8c7cbd5 100644
 --- a/submodules/TelegramCore/BUILD
 +++ b/submodules/TelegramCore/BUILD
 @@ -30,6 +30,7 @@ swift_library(
@@ -17212,7 +17212,7 @@ index 23e4e285e..b8c7cbd5d 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramCore/Sources/Account/Account.swift b/submodules/TelegramCore/Sources/Account/Account.swift
-index 510cb7918..e045e9ed4 100644
+index 510cb791..e045e9ed 100644
 --- a/submodules/TelegramCore/Sources/Account/Account.swift
 +++ b/submodules/TelegramCore/Sources/Account/Account.swift
 @@ -1281,6 +1281,9 @@ public class Account {
@@ -17235,7 +17235,7 @@ index 510cb7918..e045e9ed4 100644
          // iOS only for now: the Rust engine is the macOS default, and its online keepalive cadence
          // (pings every 1-2 s while the account is in front) has not been measured there.
 diff --git a/submodules/TelegramCore/Sources/Account/AccountManager.swift b/submodules/TelegramCore/Sources/Account/AccountManager.swift
-index c3c37c555..91526d377 100644
+index c3c37c55..91526d37 100644
 --- a/submodules/TelegramCore/Sources/Account/AccountManager.swift
 +++ b/submodules/TelegramCore/Sources/Account/AccountManager.swift
 @@ -3,6 +3,7 @@ import Postbox
@@ -17257,7 +17257,7 @@ index c3c37c555..91526d377 100644
      declareEncodable(OutgoingChatContextResultMessageAttribute.self, f: { OutgoingChatContextResultMessageAttribute(decoder: $0) })
      declareEncodable(HttpReferenceMediaResource.self, f: { HttpReferenceMediaResource(decoder: $0) })
 diff --git a/submodules/TelegramCore/Sources/Network/FetchV2.swift b/submodules/TelegramCore/Sources/Network/FetchV2.swift
-index c916f267d..8378fac3e 100644
+index c916f267..8378fac3 100644
 --- a/submodules/TelegramCore/Sources/Network/FetchV2.swift
 +++ b/submodules/TelegramCore/Sources/Network/FetchV2.swift
 @@ -4,6 +4,7 @@ import SwiftSignalKit
@@ -17400,7 +17400,7 @@ index c916f267d..8378fac3e 100644
      }
  }
 diff --git a/submodules/TelegramCore/Sources/Network/MultipartUpload.swift b/submodules/TelegramCore/Sources/Network/MultipartUpload.swift
-index c9ae018ca..0daf42750 100644
+index c9ae018c..0daf4275 100644
 --- a/submodules/TelegramCore/Sources/Network/MultipartUpload.swift
 +++ b/submodules/TelegramCore/Sources/Network/MultipartUpload.swift
 @@ -5,6 +5,7 @@ import SwiftSignalKit
@@ -17439,7 +17439,7 @@ index c9ae018ca..0daf42750 100644
              if encrypt {
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift b/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift
 new file mode 100644
-index 000000000..106ebf870
+index 00000000..106ebf87
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramDeletedMessageCapture.swift
 @@ -0,0 +1,178 @@
@@ -17623,7 +17623,7 @@ index 000000000..106ebf870
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramIncomingAutoSave.swift b/submodules/TelegramCore/Sources/PampGram/PampGramIncomingAutoSave.swift
 new file mode 100644
-index 000000000..b9dac73dd
+index 00000000..b9dac73d
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramIncomingAutoSave.swift
 @@ -0,0 +1,153 @@
@@ -17782,7 +17782,7 @@ index 000000000..b9dac73dd
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift b/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift
 new file mode 100644
-index 000000000..dfde7d363
+index 00000000..dfde7d36
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramModerationHook.swift
 @@ -0,0 +1,78 @@
@@ -17866,7 +17866,7 @@ index 000000000..dfde7d363
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift b/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift
 new file mode 100644
-index 000000000..185deb150
+index 00000000..185deb15
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramSecretMediaPrefetch.swift
 @@ -0,0 +1,57 @@
@@ -17929,7 +17929,7 @@ index 000000000..185deb150
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift b/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
 new file mode 100644
-index 000000000..52cb036d2
+index 00000000..52cb036d
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
 @@ -0,0 +1,234 @@
@@ -18169,7 +18169,7 @@ index 000000000..52cb036d2
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramWornStatusKeeper.swift b/submodules/TelegramCore/Sources/PampGram/PampGramWornStatusKeeper.swift
 new file mode 100644
-index 000000000..34ca877a9
+index 00000000..34ca877a
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramWornStatusKeeper.swift
 @@ -0,0 +1,42 @@
@@ -18217,7 +18217,7 @@ index 000000000..34ca877a9
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGramBotAuthorization.swift b/submodules/TelegramCore/Sources/PampGramBotAuthorization.swift
 new file mode 100644
-index 000000000..661a44fab
+index 00000000..661a44fa
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGramBotAuthorization.swift
 @@ -0,0 +1,48 @@
@@ -18270,7 +18270,7 @@ index 000000000..661a44fab
 +    }
 +}
 diff --git a/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift b/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift
-index b4d7bb4b1..307841d56 100644
+index b4d7bb4b..307841d5 100644
 --- a/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift
 +++ b/submodules/TelegramCore/Sources/PendingMessages/EnqueueMessage.swift
 @@ -3,6 +3,7 @@ import Postbox
@@ -18293,7 +18293,7 @@ index b4d7bb4b1..307841d56 100644
       * If it is a support account, mark messages as read here as they are
       * not marked as read when chat is opened.
 diff --git a/submodules/TelegramCore/Sources/State/ManagedAccountPresence.swift b/submodules/TelegramCore/Sources/State/ManagedAccountPresence.swift
-index 7256668bf..2518f2fe1 100644
+index 7256668b..2518f2fe 100644
 --- a/submodules/TelegramCore/Sources/State/ManagedAccountPresence.swift
 +++ b/submodules/TelegramCore/Sources/State/ManagedAccountPresence.swift
 @@ -3,6 +3,7 @@ internal import TelegramApi
@@ -18397,7 +18397,7 @@ index 7256668bf..2518f2fe1 100644
      }
      
 diff --git a/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift b/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift
-index e8e08874b..0df40af2e 100644
+index e8e08874..0df40af2 100644
 --- a/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift
 +++ b/submodules/TelegramCore/Sources/State/ManagedLocalInputActivities.swift
 @@ -3,6 +3,7 @@ import Postbox
@@ -18426,7 +18426,7 @@ index e8e08874b..0df40af2e 100644
              if peerId == accountPeerId {
                  return .complete()
 diff --git a/submodules/TelegramCore/Sources/State/ManagedSynchronizeViewStoriesOperations.swift b/submodules/TelegramCore/Sources/State/ManagedSynchronizeViewStoriesOperations.swift
-index e38c0f96c..372e85d16 100644
+index e38c0f96..372e85d1 100644
 --- a/submodules/TelegramCore/Sources/State/ManagedSynchronizeViewStoriesOperations.swift
 +++ b/submodules/TelegramCore/Sources/State/ManagedSynchronizeViewStoriesOperations.swift
 @@ -3,6 +3,7 @@ import Postbox
@@ -18455,7 +18455,7 @@ index e38c0f96c..372e85d16 100644
                                  return .complete()
 diff --git a/submodules/TelegramCore/Sources/State/PampGramGhostHelpers.swift b/submodules/TelegramCore/Sources/State/PampGramGhostHelpers.swift
 new file mode 100644
-index 000000000..22aa1593c
+index 00000000..22aa1593
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/State/PampGramGhostHelpers.swift
 @@ -0,0 +1,113 @@
@@ -18573,7 +18573,7 @@ index 000000000..22aa1593c
 +    return true
 +}
 diff --git a/submodules/TelegramCore/Sources/State/Sync/StateReplay+Messages.swift b/submodules/TelegramCore/Sources/State/Sync/StateReplay+Messages.swift
-index cf1ab15d9..c4692c790 100644
+index cf1ab15d..c4692c79 100644
 --- a/submodules/TelegramCore/Sources/State/Sync/StateReplay+Messages.swift
 +++ b/submodules/TelegramCore/Sources/State/Sync/StateReplay+Messages.swift
 @@ -274,6 +274,11 @@ extension ReplayContext {
@@ -18620,7 +18620,7 @@ index cf1ab15d9..c4692c790 100644
          transaction.deleteMessagesInRange(peerId: id.peerId, namespace: id.namespace, minId: 1, maxId: id.id, forEachMedia: { media in
              addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
 diff --git a/submodules/TelegramCore/Sources/State/Sync/StateReplay.swift b/submodules/TelegramCore/Sources/State/Sync/StateReplay.swift
-index 4ca07602e..cac7308fa 100644
+index 4ca07602..cac7308f 100644
 --- a/submodules/TelegramCore/Sources/State/Sync/StateReplay.swift
 +++ b/submodules/TelegramCore/Sources/State/Sync/StateReplay.swift
 @@ -597,6 +597,14 @@ final class ReplayContext {
@@ -18639,7 +18639,7 @@ index 4ca07602e..cac7308fa 100644
          self.applyForumTopicListResets()
          self.applyMessageThreadStatsDifferences()
 diff --git a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
-index b2e65895c..8b30d8467 100644
+index b2e65895..8b30d846 100644
 --- a/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
 +++ b/submodules/TelegramCore/Sources/State/SynchronizePeerReadState.swift
 @@ -2,6 +2,7 @@ import Foundation
@@ -18697,7 +18697,7 @@ index b2e65895c..8b30d8467 100644
          // Decide whether a request is needed before looking the peer up: inputSecretChat goes
          // through loadedPeerWithId, which never emits when the peer row is missing and fails
 diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift b/submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift
-index 25aa6980d..221208255 100644
+index 25aa6980..22120825 100644
 --- a/submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift
 +++ b/submodules/TelegramCore/Sources/TelegramEngine/Messages/DeleteMessagesInteractively.swift
 @@ -3,6 +3,7 @@ import Postbox
@@ -18795,7 +18795,7 @@ index 25aa6980d..221208255 100644
              if type == .scheduledMessages {
                  _internal_clearHistory(transaction: transaction, mediaBox: postbox.mediaBox, peerId: peerId, threadId: threadId, namespaces: .just(Namespaces.Message.allScheduled))
 diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Messages/SparseMessageList.swift b/submodules/TelegramCore/Sources/TelegramEngine/Messages/SparseMessageList.swift
-index 42128ff49..2a75ceab7 100644
+index 42128ff4..2a75ceab 100644
 --- a/submodules/TelegramCore/Sources/TelegramEngine/Messages/SparseMessageList.swift
 +++ b/submodules/TelegramCore/Sources/TelegramEngine/Messages/SparseMessageList.swift
 @@ -915,7 +915,7 @@ public final class SparseMessageCalendar {
@@ -18808,7 +18808,7 @@ index 42128ff49..2a75ceab7 100644
              })
          }
 diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift b/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift
-index 21020ed0a..d85039dec 100644
+index 21020ed0..d85039de 100644
 --- a/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift
 +++ b/submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift
 @@ -273,7 +273,7 @@ public extension TelegramEngine {
@@ -18821,7 +18821,7 @@ index 21020ed0a..d85039dec 100644
  
          public func clearAuthorHistory(peerId: PeerId, memberId: PeerId) -> Signal<Void, NoError> {
 diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Payments/StarGifts.swift b/submodules/TelegramCore/Sources/TelegramEngine/Payments/StarGifts.swift
-index 7a4f486fe..f32e722a6 100644
+index 7a4f486f..f32e722a 100644
 --- a/submodules/TelegramCore/Sources/TelegramEngine/Payments/StarGifts.swift
 +++ b/submodules/TelegramCore/Sources/TelegramEngine/Payments/StarGifts.swift
 @@ -3486,7 +3486,18 @@ public final class CraftGiftsContext {
@@ -18854,7 +18854,7 @@ index 7a4f486fe..f32e722a6 100644
              let disposable = MetaDisposable()
              self.impl.with { impl in
 diff --git a/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift b/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
-index aa11e5220..5d044de02 100644
+index aa11e522..5d044de0 100644
 --- a/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
 +++ b/submodules/TelegramCore/Sources/TelegramEngine/Peers/TogglePeerChatPinned.swift
 @@ -1,6 +1,7 @@
@@ -18905,7 +18905,7 @@ index aa11e5220..5d044de02 100644
              if count > limitCount, itemIds.firstIndex(of: itemId) == nil {
                  return .limitExceeded(count: sameKind.count, limit: limitCount)
 diff --git a/submodules/TelegramCore/Sources/UpdatePeers.swift b/submodules/TelegramCore/Sources/UpdatePeers.swift
-index d90af5f2c..865dab0e7 100644
+index d90af5f2..865dab0e 100644
 --- a/submodules/TelegramCore/Sources/UpdatePeers.swift
 +++ b/submodules/TelegramCore/Sources/UpdatePeers.swift
 @@ -1,6 +1,7 @@
@@ -18927,7 +18927,7 @@ index d90af5f2c..865dab0e7 100644
              case let .user(userData):
                  let (flags, flags2, storiesMaxId) = (userData.flags, userData.flags2, userData.storiesMaxId)
 diff --git a/submodules/TelegramUI/BUILD b/submodules/TelegramUI/BUILD
-index 116004c3e..676f3b79f 100644
+index 116004c3..676f3b79 100644
 --- a/submodules/TelegramUI/BUILD
 +++ b/submodules/TelegramUI/BUILD
 @@ -207,6 +207,9 @@ swift_library(
@@ -18941,7 +18941,7 @@ index 116004c3e..676f3b79f 100644
          "//submodules/ShareItems/Impl:ShareItemsImpl",
          "//submodules/SettingsUI:SettingsUI",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD
-index 22010ec13..d1a9edce8 100644
+index 22010ec1..d1a9edce 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/BUILD
 @@ -55,6 +55,7 @@ swift_library(
@@ -18953,7 +18953,7 @@ index 22010ec13..d1a9edce8 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
-index 61befa168..79c9767a0 100644
+index 61befa16..79c9767a 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift
 @@ -5,6 +5,7 @@ import AsyncDisplayKit
@@ -18992,7 +18992,7 @@ index 61befa168..79c9767a0 100644
                  innerImageSize = imageSize
              }
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
-index 860250c30..45320c638 100644
+index 860250c3..45320c63 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/BUILD
 @@ -99,6 +99,7 @@ swift_library(
@@ -19004,7 +19004,7 @@ index 860250c30..45320c638 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
-index 50540f7af..dbf21c667 100644
+index 50540f7a..dbf21c66 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift
 @@ -8,6 +8,7 @@ import TelegramCore
@@ -19147,7 +19147,7 @@ index 50540f7af..dbf21c667 100644
          // every content frame still use the full `backgroundFrame`. Two pixels further out than a bubble's, the stroke
          // lines up with the edges of media around it.
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageDateAndStatusNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageDateAndStatusNode/BUILD
-index 7324e7563..ff22d98ce 100644
+index 7324e756..ff22d98c 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageDateAndStatusNode/BUILD
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageDateAndStatusNode/BUILD
 @@ -18,6 +18,7 @@ swift_library(
@@ -19159,7 +19159,7 @@ index 7324e7563..ff22d98ce 100644
          "//submodules/AppBundle",
          "//submodules/TelegramStringFormatting",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageDateAndStatusNode/Sources/StringForMessageTimestampStatus.swift b/submodules/TelegramUI/Components/Chat/ChatMessageDateAndStatusNode/Sources/StringForMessageTimestampStatus.swift
-index bf71cb207..5278d5ed0 100644
+index bf71cb20..5278d5ed 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageDateAndStatusNode/Sources/StringForMessageTimestampStatus.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageDateAndStatusNode/Sources/StringForMessageTimestampStatus.swift
 @@ -6,6 +6,7 @@ import TelegramStringFormatting
@@ -19182,7 +19182,7 @@ index bf71cb207..5278d5ed0 100644
      var displayFullDate = false
      if case .full = format, timestamp > 100000 {
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/BUILD
-index 599add528..cb7b188ea 100644
+index 599add52..cb7b188e 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/BUILD
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/BUILD
 @@ -40,6 +40,7 @@ swift_library(
@@ -19194,7 +19194,7 @@ index 599add528..cb7b188ea 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift
-index 7882119b0..4a9a04317 100644
+index 7882119b..4a9a0431 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveInstantVideoNode/Sources/ChatMessageInteractiveInstantVideoNode.swift
 @@ -17,6 +17,7 @@ import AudioTranscriptionButtonComponent
@@ -19225,7 +19225,7 @@ index 7882119b0..4a9a04317 100644
                          strongSelf.playbackStatusDisposable.set((updatedPlaybackStatus
                          |> deliverOnMainQueue).startStrict(next: { status in
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD
-index 2e865e2f9..e582bb17f 100644
+index 2e865e2f..e582bb17 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/BUILD
 @@ -45,6 +45,7 @@ swift_library(
@@ -19237,7 +19237,7 @@ index 2e865e2f9..e582bb17f 100644
      ],
      visibility = [
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
-index 48c8b520d..05fe1f377 100644
+index 48c8b520..05fe1f37 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
 @@ -10,6 +10,7 @@ import TelegramUIPreferences
@@ -19301,7 +19301,7 @@ index 48c8b520d..05fe1f377 100644
              if let attribute = message.autoclearAttribute {
                  if let countdownBeginTime = attribute.countdownBeginTime {
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/BUILD
-index 2997c5e45..a3769a38d 100644
+index 2997c5e4..a3769a38 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/BUILD
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/BUILD
 @@ -38,6 +38,7 @@ swift_library(
@@ -19313,7 +19313,7 @@ index 2997c5e45..a3769a38d 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift
-index 3a92b46e5..eab151409 100644
+index 3a92b46e..eab15140 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageDateHeader.swift
 @@ -1027,12 +1027,20 @@ public final class ChatMessageAvatarHeader: ListViewItemHeader {
@@ -19466,7 +19466,7 @@ index 3a92b46e5..eab151409 100644
              } else if let peer = self.peer?._asPeer() {
                  if peer.id.isVerificationCodes {
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
-index 46d9a7f57..752c6a8da 100644
+index 46d9a7f5..752c6a8d 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageItemImpl/Sources/ChatMessageItemImpl.swift
 @@ -17,6 +17,8 @@ import ChatMessageItemView
@@ -19520,7 +19520,7 @@ index 46d9a7f57..752c6a8da 100644
              }
          }
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD
-index 9498ab749..10d645266 100644
+index 9498ab74..10d64526 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/BUILD
 @@ -39,6 +39,7 @@ swift_library(
@@ -19532,7 +19532,7 @@ index 9498ab749..10d645266 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
-index de115ffd7..8e03f0c3e 100644
+index de115ffd..8e03f0c3 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift
 @@ -7,6 +7,7 @@ import TelegramCore
@@ -19571,7 +19571,7 @@ index de115ffd7..8e03f0c3e 100644
              let arguments = TransformImageArguments(corners: ImageCorners(), imageSize: imageSize, boundingSize: imageSize, intrinsicInsets: UIEdgeInsets(top: innerImageInset, left: innerImageInset, bottom: innerImageInset, right: innerImageInset))
              
 diff --git a/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift b/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift
-index 82a2fed21..5bd9d96d5 100644
+index 82a2fed2..5bd9d96d 100644
 --- a/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift
 +++ b/submodules/TelegramUI/Components/ChatControllerInteraction/Sources/ChatControllerInteraction.swift
 @@ -213,6 +213,15 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol
@@ -19611,30 +19611,32 @@ index 82a2fed21..5bd9d96d5 100644
      
      deinit {
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
-index 1820be66b..4590ccc65 100644
+index 1820be66..a6267acf 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/BUILD
-@@ -48,6 +48,7 @@ swift_library(
+@@ -48,6 +48,8 @@ swift_library(
          "//submodules/TelegramUI/Components/AlertComponent",
          "//submodules/TelegramUI/Components/AlertComponent/AlertTransferHeaderComponent",
          "//submodules/TelegramUI/Components/AvatarComponent",
 +        "//submodules/TelegramUI/Components/PampGram/PampGramCore",
++        "//submodules/TelegramUI/Components/PampGram/PhantomGiftKit",
      ],
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-index b8743ba4d..ae4549b7c 100644
+index b8743ba4..4adc9c93 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift
-@@ -28,6 +28,7 @@ import GiftViewScreen
+@@ -28,6 +28,8 @@ import GiftViewScreen
  import UndoUI
  import EdgeEffect
  import GlassBarButtonComponent
 +import PampGramCore
++import PhantomGiftKit
  
  final class GiftOptionsScreenComponent: Component {
      typealias EnvironmentType = ViewControllerComponentContainer.Environment
-@@ -135,7 +136,8 @@ final class GiftOptionsScreenComponent: Component {
+@@ -135,7 +137,8 @@ final class GiftOptionsScreenComponent: Component {
          case resale
          case stars(Int64)
          case transfer
@@ -19644,7 +19646,7 @@ index b8743ba4d..ae4549b7c 100644
          init(rawValue: Int64) {
              switch rawValue {
              case 0:
-@@ -148,11 +150,13 @@ final class GiftOptionsScreenComponent: Component {
+@@ -148,11 +151,13 @@ final class GiftOptionsScreenComponent: Component {
                  self = .transfer
              case -4:
                  self = .resale
@@ -19659,7 +19661,7 @@ index b8743ba4d..ae4549b7c 100644
          public var rawValue: Int64 {
              switch self {
              case .all:
-@@ -165,6 +169,8 @@ final class GiftOptionsScreenComponent: Component {
+@@ -165,6 +170,8 @@ final class GiftOptionsScreenComponent: Component {
                  return -3
              case .resale:
                  return -4
@@ -19668,7 +19670,7 @@ index b8743ba4d..ae4549b7c 100644
              case let .stars(stars):
                  return stars
              }
-@@ -235,7 +241,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -235,7 +242,7 @@ final class GiftOptionsScreenComponent: Component {
                          }
                          let filteredGifts: [StarGift] = sortedGifts.filter {
                              switch self.starsFilter {
@@ -19677,7 +19679,7 @@ index b8743ba4d..ae4549b7c 100644
                                  return true
                              case .limited:
                                  if case let .generic(gift) = $0 {
-@@ -278,6 +284,36 @@ final class GiftOptionsScreenComponent: Component {
+@@ -278,6 +285,36 @@ final class GiftOptionsScreenComponent: Component {
          private var isUpdating: Bool = false
          
          private var starsStateDisposable: Disposable?
@@ -19714,7 +19716,7 @@ index b8743ba4d..ae4549b7c 100644
          private var starsState: StarsContext.State?
          
          private let optionsPromise = Promise<[StarsTopUpOption]?>(nil)
-@@ -344,6 +380,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -344,6 +381,7 @@ final class GiftOptionsScreenComponent: Component {
          deinit {
              self.starsStateDisposable?.dispose()
              self.auctionDisposable.dispose()
@@ -19722,7 +19724,7 @@ index b8743ba4d..ae4549b7c 100644
          }
  
          func scrollToTop() {
-@@ -359,11 +396,12 @@ final class GiftOptionsScreenComponent: Component {
+@@ -359,11 +397,12 @@ final class GiftOptionsScreenComponent: Component {
              guard let component = self.component, let environment = self.environment else {
                  return
              }
@@ -19736,7 +19738,7 @@ index b8743ba4d..ae4549b7c 100644
              if let controller = environment.controller() as? GiftOptionsScreen {
                  let mainController: ViewController
                  if let parentController = controller.parentController() {
-@@ -535,7 +573,8 @@ final class GiftOptionsScreenComponent: Component {
+@@ -535,7 +574,8 @@ final class GiftOptionsScreenComponent: Component {
                                  let storeController = component.context.sharedContext.makeGiftStoreController(
                                      context: component.context,
                                      peerId: component.peerId,
@@ -19746,7 +19748,7 @@ index b8743ba4d..ae4549b7c 100644
                                  )
                                  mainController.push(storeController)
                              } else {
-@@ -559,6 +598,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -559,6 +599,7 @@ final class GiftOptionsScreenComponent: Component {
                                  context: component.context,
                                  peerId: component.peerId,
                                  subject: .starGift(gift, forceUnique),
@@ -19754,8 +19756,20 @@ index b8743ba4d..ae4549b7c 100644
                                  completion: component.completion
                              )
                              mainController.push(giftController)
-@@ -894,7 +934,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -889,12 +930,18 @@ final class GiftOptionsScreenComponent: Component {
+                 } else {
+                     return false
+                 }
+-            }), let reference = gift.reference else {
++            }) else {
+                 return
              }
++            // Visual gifts from the own profile have no server reference — transfer them
++            // locally for the same 25-Star fee as "Передать" on the profile card.
++            // Visual gifts from the own profile have no server reference — transfer them
++            // locally for the same 25-Star fee as "Передать" on the profile card.
++            let pampGramIsPhantomGift = gift.reference == nil
++            let reference = gift.reference
              
              let currentTime = Int32(CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970)
 -            if let canTransferDate = gift.canTransferDate, currentTime < canTransferDate {
@@ -19763,7 +19777,94 @@ index b8743ba4d..ae4549b7c 100644
                  let dateString = stringForFullDate(timestamp: canTransferDate, strings: environment.strings, dateTimeFormat: environment.dateTimeFormat)
                  let alertController = textAlertController(
                      context: component.context,
-@@ -1089,6 +1129,31 @@ final class GiftOptionsScreenComponent: Component {
+@@ -920,34 +967,51 @@ final class GiftOptionsScreenComponent: Component {
+             let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+             
+             var dismissAlertImpl: (() -> Void)?
++            let pampGramTransferStars: Int64 = pampGramIsPhantomGift ? PampGramPhantomGiftManager.transferFeeStars : (gift.transferStars ?? 0)
++            if pampGramIsPhantomGift {
++                PampGramPhantomGiftManager.markPhantomTransfer(slug: transferGift.slug)
++            }
+             let alertController = giftTransferAlertController(
+                 context: context,
+                 gift: transferGift,
+                 peer: peer,
+-                transferStars: gift.transferStars ?? 0,
++                transferStars: pampGramTransferStars,
+                 navigationController: mainController.navigationController as? NavigationController,
+                 commit: { [weak self, weak mainController] in
+                     let proceed: (Bool) -> Void = { waitForTopUp in
+                         var errorImpl: ((TransferStarGiftError) -> Void)?
+                         var completedImpl: (() -> Void)?
+                         
+-                        if waitForTopUp, let starsContext = context.starsContext {
+-                            let _ = (starsContext.onUpdate
+-                            |> deliverOnMainQueue).start(next: {
++                        if pampGramIsPhantomGift {
++                            let _ = (PampGramPhantomGiftManager.sendUniqueGiftToPeer(context: context, uniqueGift: transferGift, peerId: peer.id)
++                            |> deliverOnMainQueue).start(next: { success in
++                                if success {
++                                    completedImpl?()
++                                } else {
++                                    errorImpl?(.generic)
++                                }
++                            })
++                        } else if let reference {
++                            if waitForTopUp, let starsContext = context.starsContext {
++                                let _ = (starsContext.onUpdate
++                                |> deliverOnMainQueue).start(next: {
++                                    let _ = (context.engine.payments.transferStarGift(prepaid: gift.transferStars == 0, reference: reference, peerId: peer.id)
++                                    |> deliverOnMainQueue).start(error: { error in
++                                        errorImpl?(error)
++                                    }, completed: {
++                                        completedImpl?()
++                                    })
++                                })
++                            } else {
+                                 let _ = (context.engine.payments.transferStarGift(prepaid: gift.transferStars == 0, reference: reference, peerId: peer.id)
+                                 |> deliverOnMainQueue).start(error: { error in
+                                     errorImpl?(error)
+                                 }, completed: {
+                                     completedImpl?()
+                                 })
+-                            })
++                            }
+                         } else {
+-                            let _ = (context.engine.payments.transferStarGift(prepaid: gift.transferStars == 0, reference: reference, peerId: peer.id)
+-                            |> deliverOnMainQueue).start(error: { error in
+-                                errorImpl?(error)
+-                            }, completed: {
+-                                completedImpl?()
+-                            })
++                            errorImpl?(.generic)
+                         }
+                         
+                         guard let controller = mainController, let navigationController = controller.navigationController as? NavigationController else {
+@@ -1038,7 +1102,22 @@ final class GiftOptionsScreenComponent: Component {
+                         }
+                     }
+                     
+-                    if let self, let transferStars = gift.transferStars, transferStars > 0, let starsContext = context.starsContext, let starsState = self.starsState {
++                    if pampGramIsPhantomGift {
++                        let _ = (PampGramPhantomGiftManager.canAffordTransferFee(context: context)
++                        |> deliverOnMainQueue).startStandalone(next: { [weak mainController] canAfford in
++                            if canAfford {
++                                proceed(false)
++                            } else {
++                                let alertController = textAlertController(
++                                    context: context,
++                                    title: "Недостаточно Stars",
++                                    text: "Передача подарка стоит \(PampGramPhantomGiftManager.transferFeeStars) ⭐.",
++                                    actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]
++                                )
++                                mainController?.present(alertController, in: .window(.root))
++                            }
++                        })
++                    } else if let self, let transferStars = gift.transferStars, transferStars > 0, let starsContext = context.starsContext, let starsState = self.starsState {
+                         if starsState.balance < StarsAmount(value: transferStars, nanos: 0) {
+                             let _ = (self.optionsPromise.get()
+                             |> filter { $0 != nil }
+@@ -1089,6 +1168,31 @@ final class GiftOptionsScreenComponent: Component {
              self.appliedStarsFilter = self.starsFilter
              
              if self.component == nil {
@@ -19795,7 +19896,7 @@ index b8743ba4d..ae4549b7c 100644
                  self.starsStateDisposable = (component.starsContext.state
                  |> deliverOnMainQueue).start(next: { [weak self] state in
                      guard let self else {
-@@ -1315,7 +1380,21 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1315,7 +1419,21 @@ final class GiftOptionsScreenComponent: Component {
                  containerSize: availableSize
              )
              
@@ -19818,7 +19919,7 @@ index b8743ba4d..ae4549b7c 100644
              let smallLabelFont = Font.regular(11.0)
              let labelFont = Font.semibold(14.0)
              let balanceText = tonAmountAttributedString(formattedBalance, integralFont: labelFont, fractionalFont: smallLabelFont, color: theme.actionSheet.primaryTextColor, decimalSeparator: environment.dateTimeFormat.decimalSeparator)
-@@ -1575,6 +1654,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1575,6 +1693,7 @@ final class GiftOptionsScreenComponent: Component {
                                                      context: component.context,
                                                      peerId: component.peerId,
                                                      subject: .premium(product),
@@ -19826,7 +19927,7 @@ index b8743ba4d..ae4549b7c 100644
                                                      completion: component.completion
                                                  )
                                                  mainController.push(giftController)
-@@ -1749,7 +1829,14 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1749,7 +1868,14 @@ final class GiftOptionsScreenComponent: Component {
                          title: strings.Gift_Options_Gift_Filter_Collectibles
                      ))
                  }
@@ -19842,8 +19943,54 @@ index b8743ba4d..ae4549b7c 100644
                  let tabSelectorSize = self.tabSelector.update(
                      transition: transition,
                      component: AnyComponent(TabSelectorComponent(
+@@ -1887,8 +2013,11 @@ final class GiftOptionsScreenComponent: Component {
+                 ),
+                 availableProducts,
+                 context.engine.payments.cachedStarGifts(),
+-                self.starGiftsContext.state
+-            ).start(next: { [weak self] peer, disallowedGifts, availableProducts, starGifts, profileGiftsState in
++                self.starGiftsContext.state,
++                // Own-profile visual gifts — the same list the profile grid shows after
++                // "Подарок мне" / a self-send — so the "Мои" tab can transfer them for ⭐25.
++                PampGramPhantomGiftStore.resolvedProfileGiftsSignal(context: context)
++            ).start(next: { [weak self] peer, disallowedGifts, availableProducts, starGifts, profileGiftsState, pampGramProfileGifts in
+                 guard let self else {
+                     return
+                 }
+@@ -1955,13 +2084,30 @@ final class GiftOptionsScreenComponent: Component {
+                     
+                     if let disallowedGifts, disallowedGifts.contains(.unique) {
+                     } else {
+-                        self.transferStarGifts = profileGiftsState.filteredGifts.compactMap { gift in
++                        var transferGifts = profileGiftsState.filteredGifts.compactMap { gift -> ProfileGiftsContext.State.StarGift? in
+                             if case .unique = gift.gift {
+                                 return gift
+                             } else {
+                                 return nil
+                             }
+                         }
++                        var seenSlugs = Set(transferGifts.compactMap { gift -> String? in
++                            if case let .unique(unique) = gift.gift {
++                                return unique.slug
++                            }
++                            return nil
++                        })
++                        for phantom in pampGramProfileGifts {
++                            guard case let .unique(unique) = phantom.gift else {
++                                continue
++                            }
++                            if seenSlugs.contains(unique.slug) {
++                                continue
++                            }
++                            seenSlugs.insert(unique.slug)
++                            transferGifts.append(phantom)
++                        }
++                        self.transferStarGifts = transferGifts
+                     }
+                 }
+                 
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD
-index 2852a5f3f..421367b31 100644
+index 2852a5f3..421367b3 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/BUILD
 @@ -54,6 +54,8 @@ swift_library(
@@ -19856,7 +20003,7 @@ index 2852a5f3f..421367b31 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
-index e1624f68a..2221b34d0 100644
+index e1624f68..2221b34d 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftSetupScreen/Sources/GiftSetupScreen.swift
 @@ -40,6 +40,8 @@ import GlassBarButtonComponent
@@ -20327,7 +20474,7 @@ index e1624f68a..2221b34d0 100644
 +    navigationController.setViewControllers(controllers, animated: true)
 +}
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
-index 9eedd1221..c74361a1f 100644
+index 9eedd122..c74361a1 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/BUILD
 @@ -50,6 +50,7 @@ swift_library(
@@ -20339,7 +20486,7 @@ index 9eedd1221..c74361a1f 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
-index c8ac35278..50e4d0f4b 100644
+index c8ac3527..50e4d0f4 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/BalanceComponent.swift
 @@ -6,6 +6,7 @@ import SwiftSignalKit
@@ -20401,7 +20548,7 @@ index c8ac35278..50e4d0f4b 100644
              } else {
                  rawString = presentationData.strings.Stars_Purchase_Balance + "\n" + starsBalanceString
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
-index 3b38b6d9c..1d0974181 100644
+index 3b38b6d9..1d097418 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift
 @@ -29,6 +29,7 @@ import GiftLoadingShimmerView
@@ -20528,7 +20675,7 @@ index 3b38b6d9c..1d0974181 100644
          
          self.navigationItem.backBarButtonItem = UIBarButtonItem(title: self.context.sharedContext.currentPresentationData.with { $0 }.strings.Common_Back, style: .plain, target: nil, action: nil)
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
-index 90f2380a2..665c8e960 100644
+index 90f2380a..665c8e96 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/BUILD
 @@ -79,6 +79,9 @@ swift_library(
@@ -20542,7 +20689,7 @@ index 90f2380a2..665c8e960 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift
-index d39329251..2bdd71f23 100644
+index d3932925..2bdd71f2 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftAuctionViewScreen.swift
 @@ -28,6 +28,7 @@ import UndoUI
@@ -20574,7 +20721,7 @@ index d39329251..2bdd71f23 100644
              controller.push(storeController)
          }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift
-index 4b12ab98e..63aa90b26 100644
+index 4b12ab98..63aa90b2 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftValueScreen.swift
 @@ -25,6 +25,7 @@ import ContextUI
@@ -20596,7 +20743,7 @@ index 4b12ab98e..63aa90b26 100644
              controller.push(storeController)
          }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
-index 91c2a2b6e..5ee233c3e 100644
+index 91c2a2b6..5ee233c3 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewBuyGift.swift
 @@ -8,6 +8,10 @@ import PresentationDataUtils
@@ -20773,7 +20920,7 @@ index 91c2a2b6e..5ee233c3e 100644
 +    })
  }
 diff --git a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
-index a960aed34..53f57b055 100644
+index a960aed3..53f57b05 100644
 --- a/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 +++ b/submodules/TelegramUI/Components/Gifts/GiftViewScreen/Sources/GiftViewScreen.swift
 @@ -5,6 +5,8 @@ import AsyncDisplayKit
@@ -21217,7 +21364,7 @@ index a960aed34..53f57b055 100644
          self.togglePinnedToTop = togglePinnedToTop
          self.shareStory = shareStory
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/BUILD
-index 2138f7c7e..a7c9e49b9 100644
+index 2138f7c7..a7c9e49b 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/BUILD
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/BUILD
 @@ -26,6 +26,7 @@ swift_library(
@@ -21229,7 +21376,7 @@ index 2138f7c7e..a7c9e49b9 100644
      ],
      visibility = [
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/Sources/PeerInfoGiftsCoverComponent.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/Sources/PeerInfoGiftsCoverComponent.swift
-index c934a5cbd..a5e5d4391 100644
+index c934a5cb..a5e5d439 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/Sources/PeerInfoGiftsCoverComponent.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoCoverComponent/Sources/PeerInfoGiftsCoverComponent.swift
 @@ -14,6 +14,7 @@ import LokiRng
@@ -21270,7 +21417,7 @@ index c934a5cbd..a5e5d4391 100644
                              if case let .unique(uniqueGift) = gift.gift {
                                  return uniqueGift.id != giftStatusId
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
-index bd33bb7ff..0b5598e07 100644
+index bd33bb7f..0b5598e0 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
 @@ -151,6 +151,10 @@ swift_library(
@@ -21285,7 +21432,7 @@ index bd33bb7ff..0b5598e07 100644
          "//submodules/TelegramUI/Components/TextLoadingEffect",
          "//submodules/TelegramUI/Components/TextProcessingScreen",
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift
-index bf245d2c7..61c713739 100644
+index bf245d2c..61c71373 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift
 @@ -72,8 +72,9 @@ final class PeerInfoScreenDisclosureItem: PeerInfoScreenItem {
@@ -21336,7 +21483,7 @@ index bf245d2c7..61c713739 100644
          guard let item = item as? PeerInfoScreenDisclosureItem else {
              return 10.0
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift
-index 880fc9905..11e2977c4 100644
+index 880fc990..11e2977c 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift
 @@ -9,6 +9,7 @@ import TelegramPresentationData
@@ -21389,7 +21536,7 @@ index 880fc9905..11e2977c4 100644
                          }
                      }
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift
-index 7751e79ea..4a014e6bd 100644
+index 7751e79e..4a014e6b 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift
 @@ -44,6 +44,7 @@ import PlainButtonComponent
@@ -21553,7 +21700,7 @@ index 7751e79ea..4a014e6bd 100644
                          ))
                      },
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
-index 08e627e3f..f3fcdbb1c 100644
+index 08e627e3..f3fcdbb1 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoProfileItems.swift
 @@ -16,6 +16,9 @@ import WebUI
@@ -21730,7 +21877,7 @@ index 08e627e3f..f3fcdbb1c 100644
                              items[.peerMembers]!.append(PeerInfoScreenDisclosureItem(id: ItemAdmins, label: .text("\(adminCount == 0 ? "" : "\(presentationStringsFormattedNumber(adminCount, presentationData.dateTimeFormat.groupingSeparator))")"), text: presentationData.strings.GroupInfo_Administrators, icon: PresentationResourcesSettings.admins, action: {
                                  interaction.openParticipantsSection(.admins)
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
-index 463ab663d..d29d43a28 100644
+index 463ab663..d29d43a2 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 @@ -121,6 +121,7 @@ import UrlWhitelist
@@ -21863,7 +22010,7 @@ index 463ab663d..d29d43a28 100644
              
              let paneAreaExpansionDistance: CGFloat = 32.0
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
-index bb4136186..217c38bc3 100644
+index bb413618..217c38bc 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenSettingsActions.swift
 @@ -18,6 +18,7 @@ import PasswordSetupUI
@@ -21888,7 +22035,7 @@ index bb4136186..217c38bc3 100644
              guard let controller = self.controller, !controller.presentAccountFrozenInfoIfNeeded() else {
                  return
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
-index 8e3f9d250..b18ee0a96 100644
+index 8e3f9d25..b18ee0a9 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoSettingsItems.swift
 @@ -13,6 +13,8 @@ import DeviceAccess
@@ -22033,7 +22180,7 @@ index 8e3f9d250..b18ee0a96 100644
      var username = ""
      if let addressName = data.peer?.addressName, !addressName.isEmpty {
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
-index 7092fe13b..73d1e82fe 100644
+index 7092fe13..73d1e82f 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/BUILD
 @@ -60,6 +60,7 @@ swift_library(
@@ -22045,7 +22192,7 @@ index 7092fe13b..73d1e82fe 100644
          "//submodules/TelegramUI/Components/MediaGrid",
      ],
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
-index d0ff157c1..237b76726 100644
+index d0ff157c..237b7672 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/GiftsListView.swift
 @@ -26,6 +26,7 @@ import UndoUI
@@ -22216,7 +22363,7 @@ index d0ff157c1..237b76726 100644
                                              if case let .unique(uniqueGift) = product.gift {
                                                  title = "\(uniqueGift.title) #\(formatCollectibleNumber(uniqueGift.number, dateTimeFormat: params.presentationData.dateTimeFormat))"
 diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
-index 7a4fcdffd..9734d7d8d 100644
+index 7a4fcdff..9734d7d8 100644
 --- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
 +++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoGiftsPaneNode.swift
 @@ -36,6 +36,7 @@ import TextFormat
@@ -22442,7 +22589,7 @@ index 7a4fcdffd..9734d7d8d 100644
                              }, withdraw: { reference, password in
                                  return profileGifts.withdrawStarGift(reference: reference, keepOnProfile: false, password: password)
 diff --git a/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift b/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift
-index 217bab3b9..9818ba61f 100644
+index 217bab3b..9818ba61 100644
 --- a/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift
 +++ b/submodules/TelegramUI/Components/Settings/CollectibleItemInfoScreen/Sources/CollectibleItemInfoScreen.swift
 @@ -747,7 +747,19 @@ public class CollectibleItemInfoScreen: ViewControllerComponentContainer {
@@ -22467,7 +22614,7 @@ index 217bab3b9..9818ba61f 100644
      }
      
 diff --git a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD b/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD
-index d3e5547d2..47f9b9933 100644
+index d3e5547d..47f9b993 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD
 +++ b/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/BUILD
 @@ -23,6 +23,7 @@ swift_library(
@@ -22479,7 +22626,7 @@ index d3e5547d2..47f9b9933 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/Sources/StarsBalanceOverlayComponent.swift b/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/Sources/StarsBalanceOverlayComponent.swift
-index bc8f90430..dc453cad8 100644
+index bc8f9043..dc453cad 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/Sources/StarsBalanceOverlayComponent.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsBalanceOverlayComponent/Sources/StarsBalanceOverlayComponent.swift
 @@ -12,6 +12,7 @@ import MultilineTextWithEntitiesComponent
@@ -22552,7 +22699,7 @@ index bc8f90430..dc453cad8 100644
                  rawString = presentationData.strings.StarsBalance_YourBalance(balanceString).string
              } else {
 diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
-index b1e85960e..4a6ef7995 100644
+index b1e85960..4a6ef799 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/BUILD
 @@ -21,6 +21,8 @@ swift_library(
@@ -22565,7 +22712,7 @@ index b1e85960e..4a6ef7995 100644
          "//submodules/ItemListUI",
          "//submodules/TelegramStringFormatting",
 diff --git a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
-index 88f7bb964..0c643af05 100644
+index 88f7bb96..0c643af0 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsPurchaseScreen/Sources/StarsPurchaseScreen.swift
 @@ -25,16 +25,21 @@ import PremiumStarComponent
@@ -22811,7 +22958,7 @@ index 88f7bb964..0c643af05 100644
          image: UIImage(bundleImageName: "Peer Info/PremiumIcon"),
          colors: [
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
-index 53a80f329..107d009f0 100644
+index 53a80f32..107d009f 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/BUILD
 @@ -54,6 +54,9 @@ swift_library(
@@ -22825,7 +22972,7 @@ index 53a80f329..107d009f0 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsStatisticsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsStatisticsScreen.swift
-index c2eb95ff9..a2895d21d 100644
+index c2eb95ff..a2895d21 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsStatisticsScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsStatisticsScreen.swift
 @@ -694,12 +694,14 @@ final class StarsStatisticsScreenComponent: Component {
@@ -22870,7 +23017,7 @@ index c2eb95ff9..a2895d21d 100644
                              component.openTransaction(transaction)
                          }
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsListPanelComponent.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsListPanelComponent.swift
-index 9912e8308..0b574b473 100644
+index 9912e830..0b574b47 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsListPanelComponent.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsListPanelComponent.swift
 @@ -18,6 +18,7 @@ import PhotoResources
@@ -23007,7 +23154,7 @@ index 9912e8308..0b574b473 100644
              self.environment = environment
              self.listBackgroundView.tintColor = environment.theme.list.itemBlocksBackgroundColor
 diff --git a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
-index b4a03995a..8e64c5fc9 100644
+index b4a03995..8e64c5fc 100644
 --- a/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 +++ b/submodules/TelegramUI/Components/Stars/StarsTransactionsScreen/Sources/StarsTransactionsScreen.swift
 @@ -26,6 +26,8 @@ import StarsWithdrawalScreen
@@ -23265,7 +23412,7 @@ index b4a03995a..8e64c5fc9 100644
          }
          
 diff --git a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/BUILD b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/BUILD
-index d33cffa1e..9a7ab776e 100644
+index d33cffa1..9a7ab776 100644
 --- a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/BUILD
 @@ -119,6 +119,7 @@ swift_library(
@@ -23277,7 +23424,7 @@ index d33cffa1e..9a7ab776e 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemContentComponent.swift b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemContentComponent.swift
-index aa9b4c1d9..070e5f96d 100644
+index aa9b4c1d..070e5f96 100644
 --- a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemContentComponent.swift
 +++ b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemContentComponent.swift
 @@ -4,6 +4,7 @@ import Display
@@ -23307,7 +23454,7 @@ index aa9b4c1d9..070e5f96d 100644
                          transition: transition
                      )
 diff --git a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemSetContainerComponent.swift b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemSetContainerComponent.swift
-index 5a230b1f2..84b4e303f 100644
+index 5a230b1f..84b4e303 100644
 --- a/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemSetContainerComponent.swift
 +++ b/submodules/TelegramUI/Components/Stories/StoryContainerScreen/Sources/StoryItemSetContainerComponent.swift
 @@ -45,6 +45,7 @@ import SliderContextItem
@@ -23333,7 +23480,7 @@ index 5a230b1f2..84b4e303f 100644
                          items.append(.action(ContextMenuActionItem(text: saveText, icon: { theme in
                              return generateTintedImage(image: UIImage(bundleImageName: accountUser.isPremium ? "Chat/Context Menu/Download" : "Chat/Context Menu/DownloadLocked"), color: theme.contextMenu.primaryColor)
 diff --git a/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/BUILD b/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/BUILD
-index ca6ec768f..02257dd1b 100644
+index ca6ec768..02257dd1 100644
 --- a/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/BUILD
 @@ -7,6 +7,7 @@ swift_library(
@@ -23345,7 +23492,7 @@ index ca6ec768f..02257dd1b 100644
          "//submodules/Components/ViewControllerComponent",
          "//submodules/Display",
 diff --git a/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/Sources/PeerWalletScreen.swift b/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/Sources/PeerWalletScreen.swift
-index 5317a9e79..261b90d04 100644
+index 5317a9e7..261b90d0 100644
 --- a/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/Sources/PeerWalletScreen.swift
 +++ b/submodules/TelegramUI/Components/Wallet/PeerWalletScreen/Sources/PeerWalletScreen.swift
 @@ -2,6 +2,7 @@ import Foundation
@@ -23369,7 +23516,7 @@ index 5317a9e79..261b90d04 100644
              let previous = self.card
              self.card = card
 diff --git a/submodules/TelegramUI/Components/Wallet/WalletCollectibleScreen/Sources/WalletCollectibleScreen.swift b/submodules/TelegramUI/Components/Wallet/WalletCollectibleScreen/Sources/WalletCollectibleScreen.swift
-index 27555f85d..717736145 100644
+index 27555f85..71773614 100644
 --- a/submodules/TelegramUI/Components/Wallet/WalletCollectibleScreen/Sources/WalletCollectibleScreen.swift
 +++ b/submodules/TelegramUI/Components/Wallet/WalletCollectibleScreen/Sources/WalletCollectibleScreen.swift
 @@ -803,7 +803,7 @@ private final class WalletCollectibleContentComponent: Component {
@@ -23382,7 +23529,7 @@ index 27555f85d..717736145 100644
                  dismiss()
                  navigationController.pushViewController(storeController)
 diff --git a/submodules/TelegramUI/Components/Wallet/WalletScreen/BUILD b/submodules/TelegramUI/Components/Wallet/WalletScreen/BUILD
-index 490861400..7251bad62 100644
+index 49086140..7251bad6 100644
 --- a/submodules/TelegramUI/Components/Wallet/WalletScreen/BUILD
 +++ b/submodules/TelegramUI/Components/Wallet/WalletScreen/BUILD
 @@ -17,6 +17,7 @@ swift_library(
@@ -23394,7 +23541,7 @@ index 490861400..7251bad62 100644
          "//submodules/TelegramNotices",
          "//submodules/TooltipUI",
 diff --git a/submodules/TelegramUI/Components/Wallet/WalletScreen/Sources/WalletScreen.swift b/submodules/TelegramUI/Components/Wallet/WalletScreen/Sources/WalletScreen.swift
-index cdda30da8..ba089cf46 100644
+index cdda30da..ba089cf4 100644
 --- a/submodules/TelegramUI/Components/Wallet/WalletScreen/Sources/WalletScreen.swift
 +++ b/submodules/TelegramUI/Components/Wallet/WalletScreen/Sources/WalletScreen.swift
 @@ -29,6 +29,7 @@ import MultilineTextComponent
@@ -23428,7 +23575,7 @@ index cdda30da8..ba089cf46 100644
                    let controller = self.environment?.controller(),
                    self.walletAddress != nil,
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 080872b20..8d0fa4c0d 100644
+index 080872b2..8d0fa4c0 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -10,6 +10,9 @@ import DeviceAccess
@@ -23589,7 +23736,7 @@ index 080872b20..8d0fa4c0d 100644
  
      deinit {
 diff --git a/submodules/TelegramUI/Sources/AppDelegate.swift b/submodules/TelegramUI/Sources/AppDelegate.swift
-index cf304286a..4f21fcd7c 100644
+index cf304286..4f21fcd7 100644
 --- a/submodules/TelegramUI/Sources/AppDelegate.swift
 +++ b/submodules/TelegramUI/Sources/AppDelegate.swift
 @@ -41,6 +41,7 @@ import DeviceProximity
@@ -23667,7 +23814,7 @@ index cf304286a..4f21fcd7c 100644
              let url = context.url
              if let buildConfig = self.buildConfig, url.scheme == "tg" || url.scheme == "ton" || url.scheme == buildConfig.appSpecificUrlScheme || WalletContext.isTonConnectUrl(url.absoluteString) {
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
-index 060906390..a330196a1 100644
+index 06090639..a330196a 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerLoadDisplayNode.swift
 @@ -128,6 +128,8 @@ import GlobalControlPanelsContext
@@ -23710,7 +23857,7 @@ index 060906390..a330196a1 100644
                  if "".isEmpty {
                      hasDisabledContent = false
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
-index 89e8d45b9..c0ca159d7 100644
+index 89e8d45b..c0ca159d 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerMediaRecording.swift
 @@ -42,6 +42,8 @@ import RaiseToListen
@@ -23866,7 +24013,7 @@ index 89e8d45b9..c0ca159d7 100644
              |> deliverOnMainQueue).startStandalone(next: { [weak self] _ in
                  if let strongSelf = self, strongSelf.presentationInterfaceState.subject != .scheduledMessages {
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
-index 5bf77c1bb..0761f6efc 100644
+index 5bf77c1b..0761f6ef 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenMessageContextMenu.swift
 @@ -18,6 +18,7 @@ import TopMessageReactions
@@ -23890,7 +24037,7 @@ index 5bf77c1bb..0761f6efc 100644
                  controller.dismissed = { [weak self] in
                      self?.canReadHistory.set(true)
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
-index e1e8b94b0..83bfc0bb2 100644
+index e1e8b94b..83bfc0bb 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
 @@ -33,6 +33,8 @@ import InstantPageUI
@@ -23978,7 +24125,7 @@ index e1e8b94b0..83bfc0bb2 100644
              items.append(.action(ContextMenuActionItem(text: strings.CreateTopic_EditTitle, icon: { theme in
                  return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Edit"), color: theme.contextMenu.primaryColor)
 diff --git a/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift b/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift
-index a1a8f61d0..8d28620cc 100644
+index a1a8f61d..8d28620c 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatMessageDisplaySendMessageOptions.swift
 @@ -12,6 +12,8 @@ import TopMessageReactions
@@ -24059,7 +24206,7 @@ index a1a8f61d0..8d28620cc 100644
          return
      }
 diff --git a/submodules/TelegramUI/Sources/ChatController.swift b/submodules/TelegramUI/Sources/ChatController.swift
-index f32b3c164..a93f23926 100644
+index f32b3c16..a93f2392 100644
 --- a/submodules/TelegramUI/Sources/ChatController.swift
 +++ b/submodules/TelegramUI/Sources/ChatController.swift
 @@ -54,6 +54,8 @@ import StatisticsUI
@@ -24254,7 +24401,7 @@ index f32b3c164..a93f23926 100644
          |> deliverOnMainQueue).startStandalone(next: { [weak self] shouldDivert in
              guard let self else {
 diff --git a/submodules/TelegramUI/Sources/ChatControllerNode.swift b/submodules/TelegramUI/Sources/ChatControllerNode.swift
-index 7846cdd09..9de29c5cf 100644
+index 7846cdd0..9de29c5c 100644
 --- a/submodules/TelegramUI/Sources/ChatControllerNode.swift
 +++ b/submodules/TelegramUI/Sources/ChatControllerNode.swift
 @@ -14,6 +14,8 @@ import TelegramNotices
@@ -24316,7 +24463,7 @@ index 7846cdd09..9de29c5cf 100644
              self.interfaceInteraction?.editMessage()
          } else {
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
-index e9c504df0..0c96e9ee6 100644
+index e9c504df..0c96e9ee 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateContextMenus.swift
 @@ -1,6 +1,8 @@
@@ -24525,7 +24672,7 @@ index e9c504df0..0c96e9ee6 100644
          return .single(ContextController.Items(content: .list([])))
      }
 diff --git a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift b/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift
-index d1e42986e..bbed536cd 100644
+index d1e42986..bbed536c 100644
 --- a/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift
 +++ b/submodules/TelegramUI/Sources/ChatInterfaceStateInputPanels.swift
 @@ -12,6 +12,7 @@ import ChatTextInputPanelNode
@@ -24548,7 +24695,7 @@ index d1e42986e..bbed536cd 100644
                      if let currentPanel = (currentPanel as? ChatChannelSubscriberInputPanelNode) ?? (currentSecondaryPanel as? ChatChannelSubscriberInputPanelNode) {
                          return (currentPanel, nil)
 diff --git a/submodules/TelegramUI/Sources/NavigateToChatController.swift b/submodules/TelegramUI/Sources/NavigateToChatController.swift
-index c6f1fc31c..adee72922 100644
+index c6f1fc31..adee7292 100644
 --- a/submodules/TelegramUI/Sources/NavigateToChatController.swift
 +++ b/submodules/TelegramUI/Sources/NavigateToChatController.swift
 @@ -20,17 +20,35 @@ import SavedMessagesScreen
@@ -24618,7 +24765,7 @@ index c6f1fc31c..adee72922 100644
                  var chatListController: ChatListControllerImpl?
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 new file mode 100644
-index 000000000..dccd1407f
+index 00000000..dccd1407
 --- /dev/null
 +++ b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 @@ -0,0 +1,234 @@
@@ -24858,7 +25005,7 @@ index 000000000..dccd1407f
 +}
 \ No newline at end of file
 diff --git a/submodules/TelegramUI/Sources/SharedAccountContext.swift b/submodules/TelegramUI/Sources/SharedAccountContext.swift
-index be2822e73..b8c54ce06 100644
+index be2822e7..b8c54ce0 100644
 --- a/submodules/TelegramUI/Sources/SharedAccountContext.swift
 +++ b/submodules/TelegramUI/Sources/SharedAccountContext.swift
 @@ -13,6 +13,7 @@ import TelegramAudio
@@ -24890,7 +25037,7 @@ index be2822e73..b8c54ce06 100644
      }
      
 diff --git a/submodules/TelegramUI/Sources/SharedMediaPlayer.swift b/submodules/TelegramUI/Sources/SharedMediaPlayer.swift
-index 740fdbcb7..bcbd35abe 100644
+index 740fdbcb..bcbd35ab 100644
 --- a/submodules/TelegramUI/Sources/SharedMediaPlayer.swift
 +++ b/submodules/TelegramUI/Sources/SharedMediaPlayer.swift
 @@ -9,6 +9,7 @@ import AccountContext
@@ -24911,7 +25058,7 @@ index 740fdbcb7..bcbd35abe 100644
                                              })
                                              strongSelf.playbackItem = .instantVideo(videoNode)
 diff --git a/submodules/TelegramUI/Sources/SharedWakeupManager.swift b/submodules/TelegramUI/Sources/SharedWakeupManager.swift
-index b7c69492d..5c701c023 100644
+index b7c69492..5c701c02 100644
 --- a/submodules/TelegramUI/Sources/SharedWakeupManager.swift
 +++ b/submodules/TelegramUI/Sources/SharedWakeupManager.swift
 @@ -9,6 +9,7 @@ import AccountContext
@@ -24980,7 +25127,7 @@ index b7c69492d..5c701c023 100644
              }
              
 diff --git a/submodules/TelegramUI/Sources/TelegramRootController.swift b/submodules/TelegramUI/Sources/TelegramRootController.swift
-index 6a0712917..b94ba9a96 100644
+index 6a071291..b94ba9a9 100644
 --- a/submodules/TelegramUI/Sources/TelegramRootController.swift
 +++ b/submodules/TelegramUI/Sources/TelegramRootController.swift
 @@ -14,6 +14,10 @@ import AppBundle
@@ -25062,7 +25209,7 @@ index 6a0712917..b94ba9a96 100644
          
 diff --git a/submodules/TelegramVoip/Sources/PampGramCallRecording.swift b/submodules/TelegramVoip/Sources/PampGramCallRecording.swift
 new file mode 100644
-index 000000000..9c2548afd
+index 00000000..9c2548af
 --- /dev/null
 +++ b/submodules/TelegramVoip/Sources/PampGramCallRecording.swift
 @@ -0,0 +1,16 @@
@@ -25083,7 +25230,7 @@ index 000000000..9c2548afd
 +    }
 +}
 diff --git a/submodules/TgVoipWebrtc/PublicHeaders/TgVoipWebrtc/OngoingCallThreadLocalContext.h b/submodules/TgVoipWebrtc/PublicHeaders/TgVoipWebrtc/OngoingCallThreadLocalContext.h
-index 2863b7a2d..12f097e37 100644
+index 2863b7a2..12f097e3 100644
 --- a/submodules/TgVoipWebrtc/PublicHeaders/TgVoipWebrtc/OngoingCallThreadLocalContext.h
 +++ b/submodules/TgVoipWebrtc/PublicHeaders/TgVoipWebrtc/OngoingCallThreadLocalContext.h
 @@ -78,6 +78,14 @@
@@ -25102,7 +25249,7 @@ index 2863b7a2d..12f097e37 100644
  
  @property (nonatomic, readonly) uint8_t reflectorId;
 diff --git a/submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm b/submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm
-index 689486683..a190481a2 100644
+index 68948668..a190481a 100644
 --- a/submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm
 +++ b/submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm
 @@ -2,6 +2,7 @@
@@ -25164,7 +25311,7 @@ index 689486683..a190481a2 100644
  
 diff --git a/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.h b/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.h
 new file mode 100644
-index 000000000..a5b6c0de7
+index 00000000..a5b6c0de
 --- /dev/null
 +++ b/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.h
 @@ -0,0 +1,21 @@
@@ -25191,7 +25338,7 @@ index 000000000..a5b6c0de7
 +#endif
 diff --git a/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.mm b/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.mm
 new file mode 100644
-index 000000000..de3255a82
+index 00000000..de3255a8
 --- /dev/null
 +++ b/submodules/TgVoipWebrtc/Sources/PampGramCallRecorder.mm
 @@ -0,0 +1,258 @@
@@ -25454,7 +25601,7 @@ index 000000000..de3255a82
 +
 +@end
 diff --git a/submodules/WalletContext/Sources/WalletContext.swift b/submodules/WalletContext/Sources/WalletContext.swift
-index cadd8eef7..b97a7ee4a 100644
+index cadd8eef..b97a7ee4 100644
 --- a/submodules/WalletContext/Sources/WalletContext.swift
 +++ b/submodules/WalletContext/Sources/WalletContext.swift
 @@ -78,6 +78,59 @@ struct WalletScreenDemand: Sendable {
@@ -25543,7 +25690,7 @@ index cadd8eef7..b97a7ee4a 100644
          let output = WalletContextOutput(
              initialState: initialState,
 diff --git a/submodules/WebPBinding/Sources/UIImage+WebP.m b/submodules/WebPBinding/Sources/UIImage+WebP.m
-index cb63b0066..9a4410169 100644
+index cb63b006..9a441016 100644
 --- a/submodules/WebPBinding/Sources/UIImage+WebP.m
 +++ b/submodules/WebPBinding/Sources/UIImage+WebP.m
 @@ -9,34 +9,61 @@
@@ -25622,7 +25769,7 @@ index cb63b0066..9a4410169 100644
          for (int x = 0; x < targetContextSize.width; x++) {
              uint32_t *color = ((uint32_t *)&targetMemory[y * targetBytesPerRow + x * 4]);
 diff --git a/submodules/WebUI/BUILD b/submodules/WebUI/BUILD
-index bb2ff38b3..ad3916703 100644
+index bb2ff38b..ad391670 100644
 --- a/submodules/WebUI/BUILD
 +++ b/submodules/WebUI/BUILD
 @@ -13,6 +13,7 @@ swift_library(
@@ -25634,7 +25781,7 @@ index bb2ff38b3..ad3916703 100644
          "//submodules/TelegramPresentationData:TelegramPresentationData",
          "//submodules/PresentationDataUtils:PresentationDataUtils",
 diff --git a/submodules/WebUI/Sources/WebAppController.swift b/submodules/WebUI/Sources/WebAppController.swift
-index 0c8a6f75c..016871616 100644
+index 0c8a6f75..01687161 100644
 --- a/submodules/WebUI/Sources/WebAppController.swift
 +++ b/submodules/WebUI/Sources/WebAppController.swift
 @@ -8,6 +8,7 @@ import SwiftSignalKit
