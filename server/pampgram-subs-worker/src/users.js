@@ -186,7 +186,19 @@ export async function importLegacyUsers(env) {
 	return imported;
 }
 
-const MAX_ADMIN_LEDGER_OPS = 120;
+// Local ledger is capped at 2000 ops on device; return the whole synced journal to the admin.
+const MAX_ADMIN_LEDGER_OPS = 2000;
+
+const GIFT_OP_TITLES = new Set([
+	"Покупка подарка",
+	"Подарок мне",
+	"Улучшение подарка",
+	"Продажа подарка",
+	"Передача подарка",
+	"Комиссия за передачу",
+	"Продажа на маркете",
+	"Подарок Premium",
+]);
 
 function ledgerField(value) {
 	if (value && typeof value === "object" && typeof value.value === "string") {
@@ -195,9 +207,22 @@ function ledgerField(value) {
 	return typeof value === "string" ? value : "";
 }
 
+function ledgerGiftId(value) {
+	if (value === null || value === undefined || value === "") {
+		return null;
+	}
+	const n = Number(value);
+	return Number.isFinite(n) ? n : null;
+}
+
+function isGiftOperation(title, giftId) {
+	return giftId !== null || GIFT_OP_TITLES.has(title);
+}
+
 /**
- * Turns the opaque ledgersync:<id> JSON (fake Stars/TON + local operations) into totals and a
- * recent ops list the admin panel can show. Returns null when nothing useful is stored.
+ * Turns the opaque ledgersync:<id> JSON (fake Stars/TON + local operations) into totals and the
+ * full ops list the admin panel can show — including NFT/gift rows (giftId + gift name in
+ * details). Returns null when nothing useful is stored.
  */
 export function summarizeLedger(raw) {
 	if (!raw || typeof raw !== "string") {
@@ -214,12 +239,20 @@ export function summarizeLedger(raw) {
 	}
 	const starsBalance = Number(payload.starsBalance) || 0;
 	const tonBalanceNanos = Number(payload.tonBalanceNanos) || 0;
+	const rublesBalanceKopecks = Number(payload.rublesBalanceKopecks) || 0;
 	const operationsIn = Array.isArray(payload.operations) ? payload.operations : [];
 	let starsSpent = 0;
 	let starsReceived = 0;
 	let tonSpentNanos = 0;
 	let tonReceivedNanos = 0;
+	let rublesSpent = 0;
+	let rublesReceived = 0;
+	let nftReceived = 0;
+	let nftBought = 0;
+	let nftSold = 0;
+	let nftTransferred = 0;
 	const operations = [];
+	const nfts = [];
 	for (const op of operationsIn) {
 		if (!op || typeof op !== "object") {
 			continue;
@@ -227,6 +260,9 @@ export function summarizeLedger(raw) {
 		const currency = ledgerField(op.currency);
 		const kind = ledgerField(op.kind);
 		const amount = Number(op.amount) || 0;
+		const title = typeof op.title === "string" ? op.title.slice(0, 120) : "";
+		const details = typeof op.details === "string" ? op.details.slice(0, 200) : "";
+		const giftId = ledgerGiftId(op.giftId);
 		if (currency === "stars") {
 			if (amount < 0) {
 				starsSpent += -amount;
@@ -239,25 +275,62 @@ export function summarizeLedger(raw) {
 			} else {
 				tonReceivedNanos += amount;
 			}
+		} else if (currency === "rubles") {
+			if (amount < 0) {
+				rublesSpent += -amount;
+			} else {
+				rublesReceived += amount;
+			}
 		}
-		operations.push({
+		const row = {
 			id: Number(op.id) || 0,
 			currency,
 			kind,
 			amount,
 			date: Number(op.date) || 0,
-			title: typeof op.title === "string" ? op.title.slice(0, 120) : "",
-			details: typeof op.details === "string" ? op.details.slice(0, 200) : "",
-		});
+			title,
+			details,
+			giftId,
+			isGift: isGiftOperation(title, giftId),
+		};
+		operations.push(row);
+		if (row.isGift) {
+			if (title === "Подарок мне") {
+				nftReceived += 1;
+			} else if (title === "Покупка подарка" || title === "Улучшение подарка") {
+				nftBought += 1;
+			} else if (title === "Продажа подарка" || title === "Продажа на маркете") {
+				nftSold += 1;
+			} else if (title === "Передача подарка") {
+				nftTransferred += 1;
+			}
+			nfts.push({
+				name: details || title || "Gift",
+				action: title || kind,
+				currency,
+				amount,
+				date: row.date,
+				giftId,
+			});
+		}
 	}
 	operations.sort((a, b) => b.date - a.date || b.id - a.id);
+	nfts.sort((a, b) => b.date - a.date);
 	return {
 		starsBalance,
 		tonBalanceNanos,
+		rublesBalanceKopecks,
 		starsSpent,
 		starsReceived,
 		tonSpentNanos,
 		tonReceivedNanos,
+		rublesSpent,
+		rublesReceived,
+		nftReceived,
+		nftBought,
+		nftSold,
+		nftTransferred,
+		nfts: nfts.slice(0, MAX_ADMIN_LEDGER_OPS),
 		operations: operations.slice(0, MAX_ADMIN_LEDGER_OPS),
 		operationCount: operationsIn.length,
 	};

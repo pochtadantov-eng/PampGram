@@ -136,7 +136,7 @@ public struct PampGramUserSummary: Codable, Equatable {
 }
 
 /// One local ledger row as the admin `/user-detail` endpoint returns it (plain strings, no
-/// PeerId) — enough to show spend/credit history without needing Telegram peer resolution.
+/// PeerId) — enough to show spend/credit/NFT history without needing Telegram peer resolution.
 public struct PampGramAdminLedgerOperation: Equatable {
     public let id: Int64
     public let currency: String
@@ -145,16 +145,36 @@ public struct PampGramAdminLedgerOperation: Equatable {
     public let date: Int32
     public let title: String
     public let details: String
+    public let giftId: Int64?
+    public let isGift: Bool
 }
 
-/// Aggregated fake Stars/TON state last pushed by that install via `/sync-ledger`.
+/// One NFT/gift event derived from a ledger row (name = gift title from `details`).
+public struct PampGramAdminNftEvent: Equatable {
+    public let name: String
+    public let action: String
+    public let currency: String
+    public let amount: Int64
+    public let date: Int32
+    public let giftId: Int64?
+}
+
+/// Aggregated fake Stars/TON/rubles + NFT state last pushed by that install via `/sync-ledger`.
 public struct PampGramAdminLedgerSnapshot: Equatable {
     public let starsBalance: Int64
     public let tonBalanceNanos: Int64
+    public let rublesBalanceKopecks: Int64
     public let starsSpent: Int64
     public let starsReceived: Int64
     public let tonSpentNanos: Int64
     public let tonReceivedNanos: Int64
+    public let rublesSpent: Int64
+    public let rublesReceived: Int64
+    public let nftReceived: Int
+    public let nftBought: Int
+    public let nftSold: Int
+    public let nftTransferred: Int
+    public let nfts: [PampGramAdminNftEvent]
     public let operationCount: Int
     public let operations: [PampGramAdminLedgerOperation]
 }
@@ -577,15 +597,34 @@ public enum PampGramSubscriptionAPI {
         let date: Int32
         let title: String
         let details: String
+        let giftId: Int64?
+        let isGift: Bool?
+    }
+
+    private struct UserDetailNftResponse: Decodable {
+        let name: String
+        let action: String
+        let currency: String
+        let amount: Int64
+        let date: Int32
+        let giftId: Int64?
     }
 
     private struct UserDetailLedgerResponse: Decodable {
         let starsBalance: Int64
         let tonBalanceNanos: Int64
+        let rublesBalanceKopecks: Int64?
         let starsSpent: Int64
         let starsReceived: Int64
         let tonSpentNanos: Int64
         let tonReceivedNanos: Int64
+        let rublesSpent: Int64?
+        let rublesReceived: Int64?
+        let nftReceived: Int?
+        let nftBought: Int?
+        let nftSold: Int?
+        let nftTransferred: Int?
+        let nfts: [UserDetailNftResponse]?
         let operationCount: Int?
         let operations: [UserDetailLedgerOpResponse]
     }
@@ -668,13 +707,23 @@ public enum PampGramSubscriptionAPI {
                     ledger = PampGramAdminLedgerSnapshot(
                         starsBalance: raw.starsBalance,
                         tonBalanceNanos: raw.tonBalanceNanos,
+                        rublesBalanceKopecks: raw.rublesBalanceKopecks ?? 0,
                         starsSpent: raw.starsSpent,
                         starsReceived: raw.starsReceived,
                         tonSpentNanos: raw.tonSpentNanos,
                         tonReceivedNanos: raw.tonReceivedNanos,
+                        rublesSpent: raw.rublesSpent ?? 0,
+                        rublesReceived: raw.rublesReceived ?? 0,
+                        nftReceived: raw.nftReceived ?? 0,
+                        nftBought: raw.nftBought ?? 0,
+                        nftSold: raw.nftSold ?? 0,
+                        nftTransferred: raw.nftTransferred ?? 0,
+                        nfts: (raw.nfts ?? []).map {
+                            PampGramAdminNftEvent(name: $0.name, action: $0.action, currency: $0.currency, amount: $0.amount, date: $0.date, giftId: $0.giftId)
+                        },
                         operationCount: raw.operationCount ?? raw.operations.count,
                         operations: raw.operations.map {
-                            PampGramAdminLedgerOperation(id: $0.id, currency: $0.currency, kind: $0.kind, amount: $0.amount, date: $0.date, title: $0.title, details: $0.details)
+                            PampGramAdminLedgerOperation(id: $0.id, currency: $0.currency, kind: $0.kind, amount: $0.amount, date: $0.date, title: $0.title, details: $0.details, giftId: $0.giftId, isGift: $0.isGift ?? ($0.giftId != nil))
                         }
                     )
                 } else {

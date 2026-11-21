@@ -143,6 +143,9 @@ test("/user-detail returns profile, ban, tier and ledger totals for the admin", 
 				{ id: 2, currency: { value: "stars" }, kind: { value: "purchase" }, amount: -100, date: 200, title: "Покупка" },
 				{ id: 3, currency: { value: "ton" }, kind: { value: "credit" }, amount: 3_000_000_000, date: 300, title: "Зачисление" },
 				{ id: 4, currency: { value: "ton" }, kind: { value: "debit" }, amount: -500_000_000, date: 400, title: "Списание" },
+				{ id: 5, currency: { value: "stars" }, kind: { value: "topUp" }, amount: 25, date: 500, title: "Подарок мне", details: "Lol Pop #42", giftId: 777 },
+				{ id: 6, currency: { value: "stars" }, kind: { value: "purchase" }, amount: -250, date: 600, title: "Покупка подарка", details: "Delicious Cake", giftId: 778 },
+				{ id: 7, currency: { value: "stars" }, kind: { value: "sale" }, amount: 180, date: 700, title: "Продажа подарка", details: "Delicious Cake", giftId: 778 },
 			],
 		})
 	);
@@ -159,11 +162,17 @@ test("/user-detail returns profile, ban, tier and ledger totals for the admin", 
 	assert.equal(json.full.reason, "abuse");
 	assert.equal(json.sessions.length, 2);
 	assert.equal(json.ledger.starsBalance, 900);
-	assert.equal(json.ledger.starsReceived, 1000);
-	assert.equal(json.ledger.starsSpent, 100);
+	assert.equal(json.ledger.starsReceived, 1205);
+	assert.equal(json.ledger.starsSpent, 350);
 	assert.equal(json.ledger.tonReceivedNanos, 3_000_000_000);
 	assert.equal(json.ledger.tonSpentNanos, 500_000_000);
-	assert.equal(json.ledger.operations[0].title, "Списание");
+	assert.equal(json.ledger.nftReceived, 1);
+	assert.equal(json.ledger.nftBought, 1);
+	assert.equal(json.ledger.nftSold, 1);
+	assert.equal(json.ledger.nfts[0].name, "Delicious Cake");
+	assert.equal(json.ledger.operations[0].title, "Продажа подарка");
+	assert.equal(json.ledger.operations[0].isGift, true);
+	assert.equal(json.ledger.operations[0].giftId, 778);
 
 	const list = (await call(env, "POST", "/users-list", { token: "admin-token" })).json;
 	const row = list.users.find((user) => user.id === "88");

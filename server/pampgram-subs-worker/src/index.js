@@ -150,10 +150,13 @@
  *     -> { "id", "username", "name", "appVersion", "appBuild", "firstSeen", "lastSeen",
  *          "sessions": [<ms>, ...], "tier", "tierChangedAt", "expiresAt",
  *          "full", "sections",
- *          "ledger": { starsBalance, tonBalanceNanos, starsSpent, starsReceived,
- *                      tonSpentNanos, tonReceivedNanos, operationCount, operations: [...] } | null }
+ *          "ledger": { starsBalance, tonBalanceNanos, rubles…, starsSpent/Received,
+ *                      tonSpent/Received, rublesSpent/Received,
+ *                      nftReceived/Bought/Sold/Transferred, nfts: [...],
+ *                      operationCount, operations: [...] } | null }
  *     Admin-only. One card for managing a person: who they are, when they opened the mod,
- *     PRO/STANDARD, ban state, and the last pushed fake Stars/TON ledger (balances + ops).
+ *     PRO/STANDARD, ban state, and the last pushed ledger — full ops including NFT/gift
+ *     rows (gift name in details, giftId when present).
  *
  *   POST /generate-key
  *     body: { "token": "<ADMIN_TOKEN>", "tier": "pro" | "standard",
