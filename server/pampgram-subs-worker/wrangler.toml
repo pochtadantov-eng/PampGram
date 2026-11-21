@@ -1,4 +1,5 @@
-name = "pampgram-subs"
+# Must match the live Worker name (app baseURL: https://pampgram.pochtadantov.workers.dev).
+name = "pampgram"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
 
