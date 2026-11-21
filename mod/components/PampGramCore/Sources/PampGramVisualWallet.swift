@@ -201,7 +201,7 @@ public enum PampGramVisualWallet {
         }
         extras.setBalanceNanos(next.partialValue)
         state.visualExtras = extras
-        PampGramProfileVisualStore.set(transaction: transaction, state)
+        PampGramProfileVisualStore.update(transaction: transaction) { _ in state }
         let tx = PampGramVisualWalletTx(
             kind: kind,
             amountNanos: signed,
