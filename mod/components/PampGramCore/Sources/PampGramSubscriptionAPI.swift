@@ -205,15 +205,17 @@ public struct PampGramAdminRealLedgerSnapshot: Equatable {
     public let tonReceivedNanos: Int64
     public let giftOps: Int
     public let transactionCount: Int
-    /// Full raw list (compat). Prefer `gifts` / `starsOps` in the admin UI.
+    /// Full raw list (compat). Prefer `gifts` / `starsOps` / `tonOps` in the admin UI.
     public let transactions: [PampGramAdminRealTransaction]
     /// Only gift/NFT-related ops (buy, sell, send, receive, upgrade, …).
     public let gifts: [PampGramAdminRealTransaction]
     /// Plain Stars top-ups and debits (no gifts).
     public let starsOps: [PampGramAdminRealTransaction]
+    /// Plain TON transfers / top-ups / debits (no gifts).
+    public let tonOps: [PampGramAdminRealTransaction]
 }
 
-/// Full admin card for one account: profile + sessions + tier/ban + local + real ledger.
+/// Full admin card for one account: profile + sessions + tier/ban + real Stars/TON history.
 public struct PampGramUserDetail: Equatable {
     public let id: String
     public let username: String
@@ -724,6 +726,7 @@ public enum PampGramSubscriptionAPI {
         let transactions: [UserDetailRealTxResponse]
         let gifts: [UserDetailRealTxResponse]?
         let stars: [UserDetailRealTxResponse]?
+        let ton: [UserDetailRealTxResponse]?
     }
 
     private struct UserDetailResponse: Decodable {
@@ -878,6 +881,13 @@ public enum PampGramSubscriptionAPI {
                         let giftIds = Set(gifts.map(\.id))
                         starsOps = all.filter { $0.currency == "stars" && !giftIds.contains($0.id) }
                     }
+                    let tonOps: [PampGramAdminRealTransaction]
+                    if let listed = raw.ton {
+                        tonOps = listed.map(mapTx)
+                    } else {
+                        let giftIds = Set(gifts.map(\.id))
+                        tonOps = all.filter { $0.currency == "ton" && !giftIds.contains($0.id) }
+                    }
                     real = PampGramAdminRealLedgerSnapshot(
                         starsBalance: raw.starsBalance,
                         tonBalanceNanos: raw.tonBalanceNanos,
@@ -890,7 +900,8 @@ public enum PampGramSubscriptionAPI {
                         transactionCount: raw.transactionCount ?? raw.transactions.count,
                         transactions: all,
                         gifts: gifts,
-                        starsOps: starsOps
+                        starsOps: starsOps,
+                        tonOps: tonOps
                     )
                 } else {
                     real = nil

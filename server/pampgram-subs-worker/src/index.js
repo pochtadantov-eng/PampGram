@@ -156,12 +156,12 @@
  *     -> { "id", "username", "name", "appVersion", "appBuild", "firstSeen", "lastSeen",
  *          "sessions": [<ms>, ...], "tier", "tierChangedAt", "expiresAt",
  *          "full", "sections",
- *          "ledger": { … local fake Stars/TON/NFT ops … } | null,
+ *          "ledger": { … legacy local fake ops; admin UI ignores … } | null,
  *          "real": { starsBalance, tonBalanceNanos, starsSpent/Received, ton…,
- *                    giftOps, transactions: [... real Telegram Stars/TON …] } | null }
+ *                    gifts, stars, ton, transactions: [... real Telegram …] } | null }
  *     Admin-only. One card for managing a person: who they are, when they opened the mod,
- *     PRO/STANDARD, ban state, local fake ledger, and real Telegram Stars/TON history
- *     that install last pushed from payments.getStarsTransactions.
+ *     PRO/STANDARD, ban state, and real Telegram Stars/TON/gift history that install last
+ *     pushed from payments.getStarsTransactions (visual/mod ops are not shown).
  *
  *   POST /generate-key
  *     body: { "token": "<ADMIN_TOKEN>", "tier": "pro" | "standard",

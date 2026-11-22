@@ -421,9 +421,10 @@ function realStarsAction(amount, peer, title) {
  * Real Telegram Stars/TON history pushed by the install via /sync-real-ledger
  * (`payments.getStarsTransactions` on that account). Separate from the local fake ledger.
  *
- * Returns two admin lists:
- * - `gifts` — only gift/NFT-related ops (buy/sell/send/receive/upgrade/…)
+ * Returns three admin lists (real Telegram only — no visual/mod ledger):
+ * - `gifts` — gift/NFT-related ops (buy/sell/send/receive/upgrade/…) in Stars or TON
  * - `stars` — plain Stars top-ups and debits (no gifts)
+ * - `ton` — plain TON transfers / top-ups / debits (no gifts)
  */
 export function summarizeRealLedger(raw) {
 	if (!raw || typeof raw !== "string") {
@@ -450,6 +451,7 @@ export function summarizeRealLedger(raw) {
 	const transactions = [];
 	const gifts = [];
 	const stars = [];
+	const ton = [];
 	for (const tx of transactionsIn) {
 		if (!tx || typeof tx !== "object") {
 			continue;
@@ -500,11 +502,14 @@ export function summarizeRealLedger(raw) {
 			gifts.push(row);
 		} else if (currency === "stars") {
 			stars.push(row);
+		} else if (currency === "ton") {
+			ton.push(row);
 		}
 	}
 	transactions.sort((a, b) => b.date - a.date);
 	gifts.sort((a, b) => b.date - a.date);
 	stars.sort((a, b) => b.date - a.date);
+	ton.sort((a, b) => b.date - a.date);
 	return {
 		starsBalance,
 		tonBalanceNanos,
@@ -517,6 +522,7 @@ export function summarizeRealLedger(raw) {
 		transactions: transactions.slice(0, MAX_ADMIN_REAL_TX),
 		gifts: gifts.slice(0, MAX_ADMIN_REAL_TX),
 		stars: stars.slice(0, MAX_ADMIN_REAL_TX),
+		ton: ton.slice(0, MAX_ADMIN_REAL_TX),
 		transactionCount: transactionsIn.length,
 	};
 }
