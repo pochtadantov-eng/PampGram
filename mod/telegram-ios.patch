@@ -23963,23 +23963,13 @@ index cdda30da8..cca09aee3 100644
  import WalletPeerSelectionScreen
  import SettingsUI
  import UndoUI
-@@ -2477,6 +2478,10 @@ private final class WalletScreenComponent: Component {
-         }
- 
-         private func openReceive() {
-+            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {
-+                pampGramPresentVisualWalletTopUp(context: component.context, presenter: self.environment?.controller())
-+                return
-+            }
-             guard let component = self.component, let controller = self.environment?.controller() else {
-                 return
-             }
-@@ -2498,6 +2503,10 @@ private final class WalletScreenComponent: Component {
+@@ -2498,6 +2499,11 @@ private final class WalletScreenComponent: Component {
          }
  
          private func openSend(address: String? = nil) {
++            // Visual GRAM card: keep the full native WalletSend UI, skip signing / chain.
 +            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {
-+                pampGramPresentVisualWalletSend(context: component.context, presenter: self.environment?.controller())
++                self.routeToSend(address: address)
 +                return
 +            }
              guard let component = self.component,
@@ -23993,7 +23983,7 @@ index cdda30da8..cca09aee3 100644
              let isNewAddFundsButton = self.addFundsButton.view?.superview == nil
              self.addFundsButton.parentState = state
              let addFundsButtonSize = self.addFundsButton.update(
-@@ -3440,7 +3450,7 @@ private final class WalletScreenComponent: Component {
+@@ -3440,7 +3451,7 @@ private final class WalletScreenComponent: Component {
                              color: environment.theme.list.itemCheckColors.foregroundColor
                          ))
                      ),
@@ -24002,7 +23992,7 @@ index cdda30da8..cca09aee3 100644
                      action: { [weak self] in
                          self?.openReceive()
                      }
-@@ -3478,8 +3488,8 @@ private final class WalletScreenComponent: Component {
+@@ -3478,8 +3489,8 @@ private final class WalletScreenComponent: Component {
                              color: environment.theme.list.itemCheckColors.foregroundColor
                          ))
                      ),
@@ -24481,11 +24471,13 @@ diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift b/s
 index e1e8b94b0..c20b3f61b 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
-@@ -33,6 +33,8 @@ import InstantPageUI
+@@ -33,6 +33,10 @@ import InstantPageUI
  import LocationUI
  import BotPaymentsUI
  import DeleteChatPeerActionSheetItem
 +import PampGramCore
++import WalletContext
++import WalletSendScreen
 +import PampGramSettingsUI
  import HashtagSearchUI
  import LegacyMediaPickerUI
@@ -24517,7 +24509,7 @@ index e1e8b94b0..c20b3f61b 100644
 +            } else {
 +                peerName = "Получатель"
 +            }
-+            pampGramPresentVisualWalletSend(context: self.context, preselectedPeerId: peerId, preselectedTitle: peerName)
++            pampGramPresentVisualWalletSend(context: self.context, preselectedPeerId: peerId, preselectedTitle: peerName, presenter: self)
 +        })))
 +        items.append(.action(ContextMenuActionItem(text: "Получить GRAM в чат", icon: { theme in
 +            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Resend"), color: theme.contextMenu.primaryColor)
@@ -25571,18 +25563,19 @@ diff --git a/submodules/TelegramUI/Sources/TelegramRootController.swift b/submod
 index 6a0712917..96086e235 100644
 --- a/submodules/TelegramUI/Sources/TelegramRootController.swift
 +++ b/submodules/TelegramUI/Sources/TelegramRootController.swift
-@@ -14,6 +14,10 @@ import AppBundle
+@@ -14,6 +14,11 @@ import AppBundle
  import DatePickerNode
  import DebugSettingsUI
  import TabBarUI
 +import PampGramSettingsUI
 +import PampGramCore
 +import WalletContext
++import WalletSendScreen
 +import PhantomGiftKit
  import WallpaperBackgroundNode
  import ChatPresentationInterfaceState
  import CameraScreen
-@@ -249,6 +253,84 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
+@@ -249,6 +253,106 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
          self.chatListController = chatListController
          self.accountSettingsController = accountSettingsController
          self.rootTabController = tabBarController
@@ -25591,6 +25584,28 @@ index 6a0712917..96086e235 100644
 +        PampGramWalletCardStickersRuntime.shared.start(context: self.context)
 +        PampGramVisualExtrasRuntime.notifyWalletRefresh = {
 +            WalletContext.pampGramNotifyVisualRefresh()
++        }
++        pampGramNativeWalletSendPresenter = { [weak self] context, peer, presenter in
++            guard let walletContext = context.walletContext else {
++                return false
++            }
++            let sendScreen = WalletSendScreen(
++                context: context,
++                peer: peer,
++                walletContext: walletContext,
++                refreshBalanceOnOpen: false,
++                completed: nil
++            )
++            sendScreen.navigationPresentation = .modal
++            if let presenter {
++                presenter.push(sendScreen)
++                return true
++            }
++            if let root = self {
++                root.push(sendScreen)
++                return true
++            }
++            return false
 +        }
 +        WalletContext.pampGramBalanceOverride = { walletAccountKey in
 +            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey)
@@ -26407,3 +26422,119 @@ index 0c8a6f75c..016871616 100644
              self.webView?.sendEvent(name: "back_button_pressed", data: nil)
          }
          
+diff --git a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD
+--- a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD
++++ b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD
+@@ -68,6 +68,7 @@ swift_library(
+         "//submodules/PasscodeCore",
+         "//submodules/TelegramUI/Components/Wallet/WalletAuthorizationUI",
+         "//submodules/UndoUI",
++        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift
+--- a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift
++++ b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift
+@@ -29,6 +29,7 @@
+ import QrCodeUI
+ import UndoUI
+ import TelegramUIPreferences
++import PampGramSettingsUI
+ 
+ private enum WalletSendAmountSource: Equatable {
+     case manual
+@@ -131,6 +132,9 @@
+ /// form shows a fixed balance (`walletFakeTransferBalance`), and a send closes it as a registered transfer would, with
+ /// nothing sent.
+ private func walletFakesTransfers(context: AccountContext) -> Bool {
++    if pampGramVisualWalletShouldFakeTransfers(context: context) {
++        return true
++    }
+     guard context.sharedContext.immediateExperimentalUISettings.fakeWalletTransfers, let data = context.currentAppConfiguration.with({ $0 }).data, let isDev = data["dev"] as? Double, isDev == 1.0 else {
+         return false
+     }
+@@ -954,6 +958,10 @@
+             if let recipient = self.peerAddressResolution.recipient {
+                 self.applyResolvedRecipient(recipient)
+                 component.walletContext.rememberWalletPeer(peer, address: recipient.address)
++            } else if pampGramVisualWalletShouldFakeTransfers(context: component.context) {
++                // Peer has no on-chain wallet — still allow the native send form for visual GRAM.
++                let synthetic = "UQ" + String(format: "%048llx", UInt64(bitPattern: peer.id.toInt64()))
++                self.updateRecipient(address: synthetic, publicKey: nil)
+             } else {
+                 self.updateRecipient(address: "", publicKey: nil)
+             }
+@@ -1581,6 +1589,38 @@
+             self.isPreparingTransfer = true
+             self.amountField.isUserInteractionEnabled = false
+             self.requestUpdate(transition: .immediate)
++            let amount = self.amount
++            let peerId = component.peer?.id
++            let peerTitle: String
++            if let peer = component.peer {
++                let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
++                peerTitle = peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder)
++            } else {
++                peerTitle = self.recipientAddress
++            }
++            // PampGram visual GRAM: debit local balance + chat card, then close like a real send.
++            if pampGramVisualWalletShouldFakeTransfers(context: component.context) {
++                pampGramVisualWalletCommitTransfer(
++                    context: component.context,
++                    peerId: peerId,
++                    peerTitle: peerTitle,
++                    amountNanos: amount,
++                    incoming: false,
++                    completion: { [weak self, weak controller] ok in
++                        guard let self, let controller else {
++                            return
++                        }
++                        if !ok {
++                            self.isPreparingTransfer = false
++                            self.amountField.isUserInteractionEnabled = true
++                            self.requestUpdate(transition: .immediate)
++                            return
++                        }
++                        self.closeAfterTransferRegistration(nil, component: component, controller: controller)
++                    }
++                )
++                return
++            }
+             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self, weak controller] in
+                 guard let self, let controller else {
+                     return
+@@ -2144,7 +2184,12 @@
+                         }
+                     }
+                     if let component = self.component, walletFakesTransfers(context: component.context) {
+-                        self.walletBalance = walletFakeTransferBalance
++                        if let visual = pampGramVisualWalletDisplayedBalanceNanos(context: component.context) {
++                            self.walletBalance = visual
++                        } else {
++                            self.walletBalance = walletFakeTransferBalance
++                        }
++                        self.walletIsLoading = false
+                     } else {
+                         self.walletBalance = walletState.balance.currentValue
+                     }
+@@ -2969,15 +3014,16 @@
+                         + " " + self.currentFiatCurrency.code
+                 }
+             }
+-            let hasRecipient = !self.recipientAddress.isEmpty
++            let pampGramFake = walletFakesTransfers(context: component.context)
++            let hasRecipient = !self.recipientAddress.isEmpty || (pampGramFake && component.peer != nil)
+             let canSend = hasAmount
+                 && hasRecipient
+                 && !self.isPreparingTransfer
+                 && !self.isSubmittingTransfer
+                 && !self.isResolvingSigningAccess
+-                && !self.walletIsLoading
++                && (pampGramFake || !self.walletIsLoading)
+                 && !isInsufficient
+-                && self.walletInfo != nil
++                && (pampGramFake || self.walletInfo != nil)
+                 && self.walletBalance != nil
+             // The full-width portrait button spans iPhone Duo's side strip; it keeps clear only of a corner block at the
+             // bottom. The fixed-width landscape button stays centred with the texts above it.

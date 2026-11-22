@@ -9,6 +9,11 @@ import PromptUI
 import UndoUI
 import PampGramCore
 
+
+/// Wired from TelegramRootController: presents the native WalletSendScreen for visual GRAM.
+/// Returns true when the native screen was pushed; false falls back to prompts.
+public var pampGramNativeWalletSendPresenter: ((AccountContext, EnginePeer, ViewController?) -> Bool)?
+
 // MARK: - Public entry points
 
 /// Visual «Пополнить»: asks for a GRAM amount and credits the card + history.
@@ -47,20 +52,28 @@ public func pampGramPresentVisualWalletTopUp(context: AccountContext, presenter:
     ), in: .window(.root))
 }
 
-/// Visual «Отправить»: uses the current chat peer when given, otherwise asks for @username.
+/// Visual «Отправить»: opens the native Telegram WalletSend UI when possible (visual GRAM card).
+/// Falls back to prompts only if the wallet context is unavailable.
 public func pampGramPresentVisualWalletSend(context: AccountContext, preselectedPeerId: EnginePeer.Id? = nil, preselectedTitle: String? = nil, presenter: ViewController? = nil) {
-    if let peerId = preselectedPeerId {
-        let title = preselectedTitle ?? "Получатель"
-        if preselectedTitle == nil {
-            let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
-            |> deliverOnMainQueue).startStandalone(next: { peer in
-                let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-                let resolved = peer?.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder) ?? title
-                pampGramPresentVisualWalletSendAmount(context: context, peerId: peerId, peerTitle: resolved, presenter: presenter)
-            })
-        } else {
-            pampGramPresentVisualWalletSendAmount(context: context, peerId: peerId, peerTitle: title, presenter: presenter)
+    func openNative(peer: EnginePeer) {
+        if let present = pampGramNativeWalletSendPresenter, present(context, peer, presenter) {
+            return
         }
+        // Fallback: amount prompt (no WalletSendScreen available in this process).
+        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+        let title = peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder)
+        pampGramPresentVisualWalletSendAmount(context: context, peerId: peer.id, peerTitle: title, presenter: presenter)
+    }
+
+    if let peerId = preselectedPeerId {
+        let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
+        |> deliverOnMainQueue).startStandalone(next: { peer in
+            guard let peer else {
+                pampGramVisualWalletToast(context: context, text: "Получатель не найден")
+                return
+            }
+            openNative(peer: peer)
+        })
         return
     }
     guard let top = pampGramVisualWalletTopController(context: context, preferred: presenter) else {
@@ -77,12 +90,19 @@ public func pampGramPresentVisualWalletSend(context: AccountContext, preselected
             guard let value else {
                 return
             }
-            pampGramVisualWalletResolvePeer(context: context, query: value, completion: { peerId, title in
+            pampGramVisualWalletResolvePeer(context: context, query: value, completion: { peerId, _ in
                 guard let peerId else {
                     pampGramVisualWalletToast(context: context, text: "Получатель не найден")
                     return
                 }
-                pampGramPresentVisualWalletSendAmount(context: context, peerId: peerId, peerTitle: title)
+                let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
+                |> deliverOnMainQueue).startStandalone(next: { peer in
+                    guard let peer else {
+                        pampGramVisualWalletToast(context: context, text: "Получатель не найден")
+                        return
+                    }
+                    openNative(peer: peer)
+                })
             })
         }
     ), in: .window(.root))
@@ -200,6 +220,50 @@ public func pampGramVisualWalletIsActive(context: AccountContext) -> Bool {
     return PampGramVisualExtrasRuntime.shared.isCardEnabled(accountKey: context.account.peerId.toInt64())
 }
 
+/// Drives Telegram's built-in `walletFakesTransfers` path so Money/Send keep the full native UI
+/// while amounts hit the local GRAM card instead of the chain.
+public func pampGramVisualWalletShouldFakeTransfers(context: AccountContext) -> Bool {
+    return pampGramVisualWalletIsActive(context: context)
+}
+
+/// Balance the native WalletSend form should show while the visual card is on.
+public func pampGramVisualWalletDisplayedBalanceNanos(context: AccountContext) -> Int64? {
+    return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: context.account.peerId.toInt64())
+}
+
+/// Commits a visual send/receive from the native WalletSendScreen. Calls `completion(true)` after
+/// the local balance is updated (and a chat card is inserted when `peerId` is set).
+public func pampGramVisualWalletCommitTransfer(
+    context: AccountContext,
+    peerId: EnginePeer.Id?,
+    peerTitle: String,
+    amountNanos: Int64,
+    incoming: Bool,
+    completion: @escaping (Bool) -> Void
+) {
+    let kind: PampGramVisualWalletTx.Kind = incoming ? .receive : .send
+    let _ = (context.account.postbox.transaction { transaction -> PampGramVisualWalletTx? in
+        return PampGramVisualWallet.apply(
+            transaction: transaction,
+            kind: kind,
+            amountNanos: amountNanos,
+            peerId: peerId,
+            peerTitle: peerTitle
+        )
+    }
+    |> deliverOnMainQueue).startStandalone(next: { tx in
+        guard let tx else {
+            completion(false)
+            return
+        }
+        if let peerId {
+            pampGramInsertVisualGramTransfer(context: context, peerId: peerId, peerTitle: peerTitle, tx: tx, incoming: incoming)
+        }
+        PampGramVisualExtrasRuntime.notifyWalletRefresh?()
+        completion(true)
+    })
+}
+
 // MARK: - Send / receive core
 
 private func pampGramVisualWalletPerformSend(
@@ -227,6 +291,7 @@ private func pampGramVisualWalletPerformSend(
         pampGramInsertVisualGramTransfer(context: context, peerId: peerId, peerTitle: peerTitle, tx: tx, incoming: incoming)
         let label = incoming ? "Получено" : "Отправлено"
         pampGramVisualWalletToast(context: context, text: "\(label) \(PampGramVisualWallet.formatGrams(abs(tx.amountNanos))) GRAM")
+        PampGramVisualExtrasRuntime.notifyWalletRefresh?()
     })
 }
 
