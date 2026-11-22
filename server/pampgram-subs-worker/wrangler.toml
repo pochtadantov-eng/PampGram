@@ -1,12 +1,22 @@
-name = "pampgram-subs"
+# Must match the live Worker name (app baseURL: https://pampgram.pochtadantov.workers.dev).
+name = "pampgram"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
 
 # Created by `wrangler kv namespace create SUBS` — paste the returned id below.
 kv_namespaces = [
-  { binding = "SUBS", id = "REPLACE_WITH_KV_NAMESPACE_ID" }
+  { binding = "SUBS", id = "5852c453201c4b7eb481289fbe12ee9e" }
 ]
 
 # ADMIN_TOKEN is a secret, not a var — set with:
 #   wrangler secret put ADMIN_TOKEN
 # Never put it in this file.
+
+# --- Telegram bot (see README, "Бот") ---
+# BOT_TOKEN and WEBHOOK_SECRET are secrets, set by setup-bot.sh (never in this file).
+[vars]
+ADMIN_TG_IDS = "8557314630"
+
+# Expires "come verify in DM" requests nobody answered.
+[triggers]
+crons = ["*/10 * * * *"]

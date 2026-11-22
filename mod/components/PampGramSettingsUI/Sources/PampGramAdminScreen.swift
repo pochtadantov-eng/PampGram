@@ -23,7 +23,7 @@ private func parseDurationHours(_ raw: String) -> Double? {
     if let plainHours = Double(value.replacingOccurrences(of: ",", with: ".")), plainHours > 0 {
         return plainHours
     }
-    guard let regex = try? NSRegularExpression(pattern: "(\\d+(?:[.,]\\d+)?)\\s*(д|ч)") else {
+    guard let regex = try? NSRegularExpression(pattern: "(\\d+(?:[.,]\\d+)?)\\s*(д|ч|м)") else {
         return nil
     }
     let nsRange = NSRange(value.startIndex..., in: value)
@@ -37,7 +37,13 @@ private func parseDurationHours(_ raw: String) -> Double? {
             return
         }
         matched = true
-        totalHours += value[unitRange] == "д" ? number * 24 : number
+        if value[unitRange] == "д" {
+            totalHours += number * 24
+        } else if value[unitRange] == "ч" {
+            totalHours += number
+        } else {
+            totalHours += number / 60
+        }
     }
     return matched && totalHours > 0 ? totalHours : nil
 }
@@ -45,15 +51,19 @@ private func parseDurationHours(_ raw: String) -> Double? {
 /// The inverse of `parseDurationHours`, for tooltips — "27" becomes "1д 3ч", "24" becomes "1д",
 /// "3" becomes "3ч".
 private func formatDurationHours(_ hours: Double) -> String {
-    let totalHours = max(1, Int((hours * 60).rounded()) / 60)
-    let days = totalHours / 24
-    let remainingHours = totalHours % 24
+    let totalMinutes = max(1, Int((hours * 60).rounded()))
+    let days = totalMinutes / 1440
+    let remainingHours = (totalMinutes % 1440) / 60
+    let minutes = totalMinutes % 60
     var parts: [String] = []
     if days > 0 {
         parts.append("\(days)д")
     }
-    if remainingHours > 0 || parts.isEmpty {
+    if remainingHours > 0 {
         parts.append("\(remainingHours)ч")
+    }
+    if minutes > 0 {
+        parts.append("\(minutes)мин")
     }
     return parts.joined(separator: " ")
 }
@@ -63,17 +73,23 @@ private final class PampGramAdminArguments {
     let grantSubscription: () -> Void
     let openUsersList: () -> Void
     let generateKey: () -> Void
+    let generateUnbanKey: () -> Void
     let banFull: () -> Void
     let banSection: () -> Void
+    let forceVideoAll: () -> Void
+    let clearVideoAll: () -> Void
     let setMinVersion: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, generateUnbanKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, forceVideoAll: @escaping () -> Void, clearVideoAll: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
         self.openUsersList = openUsersList
         self.generateKey = generateKey
+        self.generateUnbanKey = generateUnbanKey
         self.banFull = banFull
         self.banSection = banSection
+        self.forceVideoAll = forceVideoAll
+        self.clearVideoAll = clearVideoAll
         self.setMinVersion = setMinVersion
     }
 }
@@ -104,12 +120,18 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
 
     case keysHeader(String)
     case generateKeyAction(String, Bool)
+    case generateUnbanKeyAction(String, Bool)
     case keysFooter(String)
 
     case banHeader(String)
     case banFullAction(String, Bool)
     case banSectionAction(String, Bool)
     case banFooter(String)
+
+    case videoHeader(String)
+    case videoForceAllAction(String, Bool)
+    case videoClearAllAction(String, Bool)
+    case videoFooter(String)
 
     case versionHeader(String)
     case versionRow(String, String)
@@ -119,7 +141,7 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         switch self {
         case .aboutText:
             return PampGramAdminSection.about.rawValue
-        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .versionHeader, .versionRow, .versionFooter:
+        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .generateUnbanKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .videoHeader, .videoForceAllAction, .videoClearAllAction, .videoFooter, .versionHeader, .versionRow, .versionFooter:
             return PampGramAdminSection.token.rawValue
         }
     }
@@ -146,22 +168,32 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 8
         case .generateKeyAction:
             return 9
-        case .keysFooter:
+        case .generateUnbanKeyAction:
             return 10
-        case .banHeader:
+        case .keysFooter:
             return 11
-        case .banFullAction:
+        case .banHeader:
             return 12
-        case .banSectionAction:
+        case .banFullAction:
             return 13
-        case .banFooter:
+        case .banSectionAction:
             return 14
-        case .versionHeader:
+        case .banFooter:
             return 15
-        case .versionRow:
+        case .videoHeader:
             return 16
-        case .versionFooter:
+        case .videoForceAllAction:
             return 17
+        case .videoClearAllAction:
+            return 18
+        case .videoFooter:
+            return 19
+        case .versionHeader:
+            return 20
+        case .versionRow:
+            return 21
+        case .versionFooter:
+            return 22
         }
     }
 
@@ -187,6 +219,8 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return lhsText == rhsText
         case let (.generateKeyAction(lhsTitle, lhsEnabled), .generateKeyAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.generateUnbanKeyAction(lhsTitle, lhsEnabled), .generateUnbanKeyAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.keysFooter(lhsText), .keysFooter(rhsText)):
             return lhsText == rhsText
         case let (.banHeader(lhsText), .banHeader(rhsText)):
@@ -196,6 +230,14 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let (.banSectionAction(lhsTitle, lhsEnabled), .banSectionAction(rhsTitle, rhsEnabled)):
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.banFooter(lhsText), .banFooter(rhsText)):
+            return lhsText == rhsText
+        case let (.videoHeader(lhsText), .videoHeader(rhsText)):
+            return lhsText == rhsText
+        case let (.videoForceAllAction(lhsTitle, lhsEnabled), .videoForceAllAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.videoClearAllAction(lhsTitle, lhsEnabled), .videoClearAllAction(rhsTitle, rhsEnabled)):
+            return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
+        case let (.videoFooter(lhsText), .videoFooter(rhsText)):
             return lhsText == rhsText
         case let (.versionHeader(lhsText), .versionHeader(rhsText)):
             return lhsText == rhsText
@@ -215,9 +257,9 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdminArguments
         switch self {
-        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .usersFooter(text), let .keysFooter(text), let .banFooter(text), let .versionFooter(text):
+        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .usersFooter(text), let .keysFooter(text), let .banFooter(text), let .videoFooter(text), let .versionFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .tokenHeader(text), let .keysHeader(text), let .banHeader(text), let .versionHeader(text):
+        case let .tokenHeader(text), let .keysHeader(text), let .banHeader(text), let .videoHeader(text), let .versionHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .tokenRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
@@ -239,6 +281,10 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.generateKey()
             })
+        case let .generateUnbanKeyAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.generateUnbanKey()
+            })
         case let .banFullAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.banFull()
@@ -246,6 +292,14 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
         case let .banSectionAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.banSection()
+            })
+        case let .videoForceAllAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.forceVideoAll()
+            })
+        case let .videoClearAllAction(title, enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .destructive : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.clearVideoAll()
             })
         }
     }
@@ -344,48 +398,44 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
     let showDurationChoice: (String, @escaping (Double?) -> Void) -> Void = { subtitle, completion in
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
         let sheet = ActionSheetController(presentationData: presentationData)
-        sheet.setItemGroups([
-            ActionSheetItemGroup(items: [
-                ActionSheetTextItem(title: subtitle),
-                ActionSheetButtonItem(title: "Навсегда", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(nil)
-                }),
-                ActionSheetButtonItem(title: "1 час", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(1)
-                }),
-                ActionSheetButtonItem(title: "24 часа", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(24)
-                }),
-                ActionSheetButtonItem(title: "7 дней", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(7 * 24)
-                }),
-                ActionSheetButtonItem(title: "30 дней", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    completion(30 * 24)
-                }),
-                ActionSheetButtonItem(title: "Свой срок…", color: .accent, action: { [weak sheet] in
-                    sheet?.dismissAnimated()
-                    presentControllerImpl?(promptController(
-                        context: context,
-                        text: "Свой срок",
-                        subtitle: "Например «3д 12ч», «5д» или «18ч»",
-                        value: "",
-                        placeholder: "3д 12ч",
-                        characterLimit: 32,
-                        apply: { value in
-                            guard let hours = parseDurationHours(value ?? "") else {
-                                presentTooltipImpl?("Не разобрал срок — попробуй, например, «3д 12ч».")
-                                return
-                            }
-                            completion(hours)
+        // Presets: 1–5 minutes, 1 day, 1 month (30 days), forever. Any other length is "Свой срок…".
+        var presets: [(String, Double?)] = []
+        let minuteTitles = ["1 минута", "2 минуты", "3 минуты", "4 минуты", "5 минут"]
+        for (index, title) in minuteTitles.enumerated() {
+            presets.append((title, Double(index + 1) / 60.0))
+        }
+        presets.append(("1 день", 24.0))
+        presets.append(("1 месяц", 30.0 * 24.0))
+        presets.append(("Навсегда", nil))
+        var durationItems: [ActionSheetItem] = [ActionSheetTextItem(title: subtitle)]
+        for preset in presets {
+            durationItems.append(ActionSheetButtonItem(title: preset.0, color: .accent, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                completion(preset.1)
+            }))
+        }
+        durationItems.append(
+            ActionSheetButtonItem(title: "Свой срок…", color: .accent, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Свой срок",
+                    subtitle: "Например «3д 12ч», «5д», «18ч» или «30м»",
+                    value: "",
+                    placeholder: "3д 12ч",
+                    characterLimit: 32,
+                    apply: { value in
+                        guard let hours = parseDurationHours(value ?? "") else {
+                            presentTooltipImpl?("Не разобрал срок — попробуй, например, «3д 12ч».")
+                            return
                         }
-                    ))
-                })
-            ]),
+                        completion(hours)
+                    }
+                ))
+            })
+        )
+        sheet.setItemGroups([
+            ActionSheetItemGroup(items: durationItems),
             ActionSheetItemGroup(items: [
                 ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
                     sheet?.dismissAnimated()
@@ -563,6 +613,18 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                 showKeyTierChoice(adminToken)
             }
         },
+        generateUnbanKey: {
+            requireAdminToken { adminToken in
+                PampGramSubscriptionAPI.generateUnbanKey(adminToken: adminToken) { key in
+                    guard let key else {
+                        presentTooltipImpl?("Не получилось — проверь токен и сервер.")
+                        return
+                    }
+                    UIPasteboard.general.string = key
+                    presentTooltipImpl?("Ключ разбана скопирован: \(key)")
+                }
+            }
+        },
         banFull: {
             requireAdminToken { adminToken in
                 presentControllerImpl?(promptController(
@@ -618,6 +680,34 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                         }
                     }
                 ))
+            }
+        },
+        forceVideoAll: {
+            requireAdminToken { adminToken in
+                presentControllerImpl?(promptController(
+                    context: context,
+                    text: "Видео всем на весь экран",
+                    subtitle: "HTTPS-ссылка на mp4/m3u8. У всех с модом откроется поверх приложения (~12 сек).",
+                    value: "",
+                    placeholder: "https://…/video.mp4",
+                    characterLimit: 2000,
+                    apply: { value in
+                        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), value.lowercased().hasPrefix("https://") else {
+                            presentTooltipImpl?("Нужна https-ссылка.")
+                            return
+                        }
+                        PampGramSubscriptionAPI.forceVideo(targetId: "all", url: value, loop: true, dismissible: false, adminToken: adminToken) { ok in
+                            presentTooltipImpl?(ok ? "Видео отправлено всем." : "Не получилось — проверь токен и URL.")
+                        }
+                    }
+                ))
+            }
+        },
+        clearVideoAll: {
+            requireAdminToken { adminToken in
+                PampGramSubscriptionAPI.clearForceVideo(targetId: "all", adminToken: adminToken) { ok in
+                    presentTooltipImpl?(ok ? "Общее видео снято." : "Не получилось.")
+                }
             }
         },
         setMinVersion: {
@@ -676,14 +766,19 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .grantAction("Выдать подписку", adminToken != nil),
             .grantFooter("Меняет тариф человека на всех его устройствах. Для PRO можно выбрать срок (часы или дни) или выдать навсегда. Это, «Пользователи» и ключи ниже — единственные функции PampGram, которые обращаются к серверу, а не хранят всё локально."),
             .usersAction("Пользователи", adminToken != nil),
-            .usersFooter("Все аккаунты, которые PampGram знает — открывали мод или были забанены: тариф, когда сервер видел их в последний раз, и статус бана. Отсюда же снимаются баны."),
+            .usersFooter("Все, кто заходил в мод: ник, версия, PRO/STANDARD, бан, заходы. В карточке — одна история настоящих операций (подарки / Stars / TON)."),
             .keysHeader("КЛЮЧИ АКТИВАЦИИ"),
             .generateKeyAction("Сгенерировать ключ", adminToken != nil),
-            .keysFooter("Одноразовый ключ для продажи мода: копируется в буфер сразу после генерации. Активирует все функции мода на первом аккаунте, который его введёт — все следующие попытки с тем же ключом отклоняются. Для PRO можно выбрать срок (часы или дни) — он начинает отсчитываться с момента активации, а не с момента генерации ключа."),
+            .generateUnbanKeyAction("Сгенерировать ключ разбана", adminToken != nil),
+            .keysFooter("Обычный ключ — одноразовая активация тарифа (PRO/STANDARD). Ключ разбана — единственный способ, которым забаненный сам снимет полный бан с экрана блокировки (обычный ключ бан не снимает). Оба копируются в буфер сразу после генерации."),
             .banHeader("ДОСТУП"),
             .banFullAction("Забанить полностью", adminToken != nil),
             .banSectionAction("Забанить раздел", adminToken != nil),
-            .banFooter("Забаненный видит вместо раздела (или всего PampGram, если бан полный) закрытый замок и причину, которую ты укажешь. Разбанить — в разделе «Пользователи» выше."),
+            .banFooter("Полный бан сразу перекрывает всё приложение полноэкранным замком (в течение ~30 сек), не только вкладку PampGram. Снять — ключом разбана или вручную в «Пользователи»."),
+            .videoHeader("ВИДЕО"),
+            .videoForceAllAction("Показать видео всем", adminToken != nil),
+            .videoClearAllAction("Остановить видео у всех", adminToken != nil),
+            .videoFooter("HTTPS-ссылка на ролик → у всех с модом полноэкранное видео (зациклено, без кнопки закрытия). Остановить — кнопкой выше или в карточке человека. Персонально — в «Пользователи»."),
             .versionHeader("ВЕРСИЯ"),
             .versionRow("Минимальная версия", minVersion == 0 ? "Не ограничена" : "\(minVersion)"),
             .versionFooter("Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Подними минимальную версию до номера новой сборки, чтобы все более старые (включая уже установленные у людей) сразу показывали «Вышло новое обновление» вместо PampGram.")

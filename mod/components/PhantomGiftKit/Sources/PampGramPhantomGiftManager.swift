@@ -545,7 +545,7 @@ public enum PampGramPhantomGiftManager {
         |> mapToSignal { result -> Signal<ProfileGiftsContext.State.StarGift, UpgradeError> in
             switch result {
             case let .success(upgraded):
-                return .single(upgraded.asProfileGift(fromPeer: nil))
+                return .single(upgraded.asProfileGift(fromPeer: nil, accountPeerId: context.account.peerId))
             case let .failure(error):
                 return .fail(error)
             }
@@ -616,7 +616,7 @@ public enum PampGramPhantomGiftManager {
             owner: uniqueGift.owner,
             attributes: uniqueGift.attributes,
             availability: uniqueGift.availability,
-            giftAddress: uniqueGift.giftAddress,
+            giftAddress: nil,
             resellAmounts: nil,
             resellForTonOnly: false,
             releasedBy: uniqueGift.releasedBy,
@@ -626,7 +626,7 @@ public enum PampGramPhantomGiftManager {
             flags: uniqueGift.flags,
             themePeerId: uniqueGift.themePeerId,
             peerColor: uniqueGift.peerColor,
-            hostPeerId: uniqueGift.hostPeerId,
+            hostPeerId: nil,
             minOfferStars: uniqueGift.minOfferStars,
             craftChancePermille: uniqueGift.craftChancePermille
         ))

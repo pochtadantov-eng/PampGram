@@ -160,9 +160,10 @@ public enum PampGramPhantomGiftStore {
             return combineLatest(peerSignals)
             |> map { resolved -> [ProfileGiftsContext.State.StarGift] in
                 let peersById = Dictionary(uniqueKeysWithValues: resolved)
+                let accountPeerId = context.account.peerId
                 return gifts.map { gift in
                     let fromPeer: EnginePeer? = gift.fromPeerId.flatMap { peersById[$0] ?? nil }
-                    return gift.asProfileGift(fromPeer: fromPeer)
+                    return gift.asProfileGift(fromPeer: fromPeer, accountPeerId: accountPeerId)
                 }
             }
         }

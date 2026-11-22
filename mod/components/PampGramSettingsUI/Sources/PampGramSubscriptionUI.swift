@@ -37,14 +37,18 @@ func pampGramPresentRedeemKeyFlow(context: AccountContext, presentController: @e
                 return
             }
             let accountId = context.account.peerId.id._internalGetInt64Value()
-            PampGramSubscriptionAPI.redeemKey(userId: accountId, key: key) { status in
-                guard let status else {
+            PampGramSubscriptionAPI.redeemKey(userId: accountId, key: key) { result in
+                switch result {
+                case .failed:
                     presentTooltip("Ключ не подошёл — проверь, что он введён верно и ещё не использован.")
-                    return
+                case .unbanned:
+                    presentTooltip("Бан снят.")
+                    PampGramAccessGate.shared.refreshNow()
+                case let .granted(status):
+                    let durationText = status.expiresAt.map { " (\(pampGramFormatSubscriptionExpiry($0)))" } ?? ""
+                    presentTooltip("Активировано: тариф \(status.tier == .pro ? "PRO" : "STANDARD")\(durationText).")
+                    onActivated?(status)
                 }
-                let durationText = status.expiresAt.map { " (\(pampGramFormatSubscriptionExpiry($0)))" } ?? ""
-                presentTooltip("Активировано: тариф \(status.tier == .pro ? "PRO" : "STANDARD")\(durationText).")
-                onActivated?(status)
             }
         }
     ))

@@ -327,6 +327,9 @@ public struct PampGramProfileVisualState: Codable, Equatable {
     public var anonymousNumberPurchasedAt: Int32
     public var anonymousNumberPriceTonNanos: Int64
     public var anonymousNumberPriceUsdCents: Int64
+    /// JSON of `PampGramVisualExtras` (verification badge, GRAM card, visual usernames) — kept
+    /// as one string so this struct's memberwise init and every existing call site stay as is.
+    public var extras: String
 
     public static var `default`: PampGramProfileVisualState {
         return PampGramProfileVisualState(
@@ -337,11 +340,12 @@ public struct PampGramProfileVisualState: Codable, Equatable {
             anonymousNumber: "+888 0000 0000",
             anonymousNumberPurchasedAt: Int32(Date().timeIntervalSince1970),
             anonymousNumberPriceTonNanos: 0,
-            anonymousNumberPriceUsdCents: 0
+            anonymousNumberPriceUsdCents: 0,
+            extras: ""
         )
     }
 
-    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64, anonymousNumberPriceUsdCents: Int64) {
+    public init(ratingEnabled: Bool, ratingValue: Int64, ratingPoints: Int64, anonymousNumberEnabled: Bool, anonymousNumber: String, anonymousNumberPurchasedAt: Int32, anonymousNumberPriceTonNanos: Int64, anonymousNumberPriceUsdCents: Int64, extras: String = "") {
         self.ratingEnabled = ratingEnabled
         self.ratingValue = ratingValue
         self.ratingPoints = ratingPoints
@@ -350,6 +354,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumberPurchasedAt = anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = anonymousNumberPriceTonNanos
         self.anonymousNumberPriceUsdCents = anonymousNumberPriceUsdCents
+        self.extras = extras
     }
 
     public init(from decoder: Decoder) throws {
@@ -363,6 +368,7 @@ public struct PampGramProfileVisualState: Codable, Equatable {
         self.anonymousNumberPurchasedAt = try container.decodeIfPresent(Int32.self, forKey: .anonymousNumberPurchasedAt) ?? defaults.anonymousNumberPurchasedAt
         self.anonymousNumberPriceTonNanos = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceTonNanos) ?? defaults.anonymousNumberPriceTonNanos
         self.anonymousNumberPriceUsdCents = try container.decodeIfPresent(Int64.self, forKey: .anonymousNumberPriceUsdCents) ?? defaults.anonymousNumberPriceUsdCents
+        self.extras = try container.decodeIfPresent(String.self, forKey: .extras) ?? defaults.extras
     }
 }
 

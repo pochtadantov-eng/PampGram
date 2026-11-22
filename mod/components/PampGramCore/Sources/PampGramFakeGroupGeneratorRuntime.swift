@@ -1,8 +1,4 @@
 import Foundation
-import Postbox
-import TelegramCore
-import SwiftSignalKit
-import AccountContext
 
 /// «Генератор фейк-группы» — создаёт целый фейковый групповой чат с участниками,
 /// аватарками, сообщениями и медиа. Не настоящая группа Telegram — визуальная копия,

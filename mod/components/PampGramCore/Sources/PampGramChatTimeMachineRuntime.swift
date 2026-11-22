@@ -1,6 +1,5 @@
 import Foundation
 import Postbox
-import TelegramCore
 
 /// «Машина времени чата» — локально меняет отображаемый timestamp у любого сообщения.
 ///

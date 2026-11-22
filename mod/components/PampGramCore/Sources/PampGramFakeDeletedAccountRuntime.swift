@@ -43,7 +43,7 @@ public final class PampGramFakeDeletedAccountRuntime {
 
     private let lock = NSLock()
     private var enabledByAccount: [Int64: Bool] = [:]
-    private var startedAccounts: Set<Int64> = [:]
+    private var startedAccounts: Set<Int64> = []
     private var disposables: [Int64: Disposable] = [:]
 
     private init() {}

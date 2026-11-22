@@ -530,3 +530,66 @@ public func pampGramToggleVisualChatMessageSide(context: AccountContext, message
         })
     }.start()
 }
+
+// MARK: - Conversation generator
+
+/// "Генератор переписки": one prompt, replies separated by ";" — "я: текст" is yours, "он: текст"
+/// (or a bare line) is the other side's. Everything lands in the chat as local-only messages,
+/// spaced one second apart so they read as a live exchange ending now.
+public func pampGramPresentConversationGenerator(context: AccountContext, peerId: EnginePeer.Id) {
+    guard let controller = pampGramTopController(context: context) else {
+        return
+    }
+    controller.present(promptController(context: context, text: "Генератор переписки", subtitle: "Реплики через «;». «я: …» — ваша, «он: …» — собеседника.", value: "", placeholder: "он: Привет; я: Привет!; он: Как дела?", characterLimit: 2000, apply: { input in
+        guard let input = input else {
+            return
+        }
+        var lines: [(isMine: Bool, text: String)] = []
+        for part in input.split(whereSeparator: { $0 == ";" || $0 == "\n" }) {
+            let line = part.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty {
+                continue
+            }
+            let lowered = line.lowercased()
+            if lowered.hasPrefix("я:") {
+                lines.append((true, String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)))
+            } else if lowered.hasPrefix("он:") {
+                lines.append((false, String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)))
+            } else if lowered.hasPrefix("она:") {
+                lines.append((false, String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces)))
+            } else {
+                lines.append((false, line))
+            }
+        }
+        lines = lines.filter { !$0.text.isEmpty }
+        if lines.isEmpty {
+            return
+        }
+        let accountPeerId = context.account.peerId
+        let now = Int32(Date().timeIntervalSince1970)
+        let _ = context.account.postbox.transaction { transaction -> Void in
+            var timestamp = now - Int32(lines.count - 1)
+            for line in lines {
+                let storeMessage = StoreMessage(
+                    id: .Partial(peerId, Namespaces.Message.Local),
+                    customStableId: nil,
+                    globallyUniqueId: Int64.random(in: Int64.min ... Int64.max),
+                    groupingKey: nil,
+                    threadId: nil,
+                    timestamp: timestamp,
+                    flags: line.isMine ? StoreMessageFlags() : StoreMessageFlags.Incoming,
+                    tags: [],
+                    globalTags: [],
+                    localTags: [],
+                    forwardInfo: nil,
+                    authorId: line.isMine ? accountPeerId : peerId,
+                    text: line.text,
+                    attributes: [],
+                    media: []
+                )
+                let _ = transaction.addMessages([storeMessage], location: .Random)
+                timestamp += 1
+            }
+        }.start()
+    }), in: .window(.root))
+}

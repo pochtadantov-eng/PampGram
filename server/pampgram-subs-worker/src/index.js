@@ -46,6 +46,12 @@
  *                             local change and read back once by /fetch-ledger-sync on a fresh
  *                             install/reinstall so the local balance and history survive it.
  *                             Whole-value overwrite, not a diff — same posture as "min_version".
+ *   key "realsync:<id>"     -> "<JSON string>", real Telegram Stars/TON history this install
+ *                             last pushed via /sync-real-ledger (from payments.getStarsTransactions
+ *                             on that account). Admin-only read via /user-detail.
+ *   key "forcevideo:global" / "forcevideo:user:<id>"
+ *                             -> JSON { id, url, loop, dismissible, createdAt } — admin-pushed
+ *                             fullscreen video the install polls via GET /force-video.
  * Same posture throughout: a key that would only ever store the "nothing going on" value is
  * deleted instead of written, so the store only ever holds actual overrides.
  *
@@ -74,6 +80,12 @@
  *     the richer stored form itself instead of this route changing underneath every install.
  *     `sig` covers `id|full|sortedSections` — same forged-JSON defense as /status, here against
  *     spoofing "not banned".
+ *
+ *   GET  /access?id=<id>&nonce=<16-64 alphanumerics>
+ *     -> { "state": "active"|"none"|"expired"|"banned", "expiresAt", "now", "ttl", "nonce",
+ *          "reason", "tamper", "sig" }
+ *     The licence gate the app locks itself behind — see access.js (Ed25519-signed, replay-
+ *     proof via the nonce). POST /report-tamper { id, kind } feeds the tamper log there.
  *
  *   GET  /min-version
  *     -> { "minVersion": <integer>, "sig": "<hex>" }
@@ -124,18 +136,32 @@
  *     body: { "token": "<ADMIN_TOKEN>" }
  *     -> { "users": [{
  *            "id": "<id>", "tier": "standard"|"pro", "tierChangedAt": <ms>|null, "lastSeen": <ms>,
+ *            "username": "", "name": "", "appVersion": "", "firstSeen": <ms>, "sessionsCount": <n>,
  *            "full": {"reason":"<text>","at":<ms>}|null,
  *            "sections": { "<section>": {"reason":"<text>","at":<ms>} }
  *          }, ...], "total": <count> }
  *     Admin-only — backs the admin panel's "Пользователи" screen (which replaced the old,
  *     separate "Разбанить" screen and its now-removed /banned-list route: one merged list of
  *     every account PampGram knows about, banned or not, with tier and ban detail together).
- *     The account set is every id with a "seen:<id>", "ban:<id>", OR "sub:<id>" entry — union,
- *     not just "seen:", so an account banned before it ever opened the app, or one an admin
+ *     The account set is every id with a "seen:<id>", "ban:<id>", "sub:<id>", OR "u:<id>"
+ *     entry — union, so an account banned before it ever opened the app, or one an admin
  *     granted a tier to via /grant before it ever opened the app (or one that's never called
  *     /status for any other reason), still shows up instead of silently vanishing from this
- *     list; such an account reports `lastSeen: 0`. `total` is just `users.length`, sent
- *     separately so the client can show a count without counting the array itself.
+ *     list; such an account reports `lastSeen: 0`. Profile fields come from "u:<id>" when
+ *     present. `total` is just `users.length`, sent separately so the client can show a count
+ *     without counting the array itself.
+ *
+ *   POST /user-detail
+ *     body: { "token": "<ADMIN_TOKEN>", "id": <telegram account id> }
+ *     -> { "id", "username", "name", "appVersion", "appBuild", "firstSeen", "lastSeen",
+ *          "sessions": [<ms>, ...], "tier", "tierChangedAt", "expiresAt",
+ *          "full", "sections",
+ *          "ledger": { … legacy local fake ops; admin UI ignores … } | null,
+ *          "real": { starsBalance, tonBalanceNanos, starsSpent/Received, ton…,
+ *                    gifts, stars, ton, transactions: [... real Telegram …] } | null }
+ *     Admin-only. One card for managing a person: who they are, when they opened the mod,
+ *     PRO/STANDARD, ban state, and real Telegram Stars/TON/gift history that install last
+ *     pushed from payments.getStarsTransactions (visual/mod ops are not shown).
  *
  *   POST /generate-key
  *     body: { "token": "<ADMIN_TOKEN>", "tier": "pro" | "standard",
@@ -196,37 +222,53 @@
  *     device's own local ledger is still empty (a fresh install/reinstall, or an account that
  *     has genuinely never done anything yet — either way, restoring here is safe) — a device
  *     with existing local history never overwrites it from this.
+ *
+ *   POST /sync-real-ledger
+ *     body: { "id": <telegram account id>, "payload": "<JSON string>" }
+ *     -> { "ok": true }
+ *     Public. Same shape as /sync-ledger, but stores under "realsync:<id>" — the install's
+ *     real Telegram Stars/TON transactions (and balances) from payments.getStarsTransactions.
+ *     Admin reads it via /user-detail. Banned accounts are refused the same way as /sync-ledger.
+ *
+ *   GET  /force-video?id=<telegram account id>
+ *     -> { "video": { id, url, loop, dismissible, createdAt } | null }
+ *     Public. User-specific forcevideo beats the global one.
+ *
+ *   POST /force-video
+ *     body: { "token": "<ADMIN_TOKEN>", "url": "https://…", "id": <userId>|"all",
+ *             "loop"?: bool, "dismissible"?: bool }
+ *     -> { "ok": true, "video": {…} }
+ *     Admin-only. Pushes a fullscreen video command to one account or everyone.
+ *
+ *   POST /clear-force-video
+ *     body: { "token": "<ADMIN_TOKEN>", "id": <userId>|"all" }
+ *     -> { "ok": true }
+ *     Admin-only. Clears the matching force-video key(s).
  */
 
-const ALLOWED_TIERS = new Set(["standard", "pro"]);
-const ALLOWED_SECTIONS = new Set(["gifts", "messages", "ghost"]);
-// No 0/O/1/I/L — the whole point of a key is that a human reads it off a chat message and
-// (occasionally) types it by hand, so ambiguous-looking characters aren't worth the entropy.
-const KEY_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-
-function generateActivationKey() {
-	const groups = [];
-	for (let g = 0; g < 4; g++) {
-		const random = new Uint8Array(5);
-		crypto.getRandomValues(random);
-		let group = "";
-		for (let i = 0; i < 5; i++) {
-			group += KEY_ALPHABET[random[i] % KEY_ALPHABET.length];
-		}
-		groups.push(group);
-	}
-	return `PMP-${groups.join("-")}`;
-}
+import {
+	ALLOWED_TIERS,
+	ALLOWED_SECTIONS,
+	generateActivationKey,
+	isValidAccountId,
+	readSubscription,
+	writeSubscription,
+	normalizeBanEntry,
+	readBanRecord,
+	writeBanRecord,
+	listAllKeys,
+} from "./core.js";
+import { issueKey, issueUnbanKey, redeemKeyForAccount } from "./keys.js";
+import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSeen, confirmDaily } from "./access.js";
+import { recordAppSeen, noteTier, getUser, summarizeLedger, summarizeRealLedger } from "./users.js";
+import { readForceVideo, writeForceVideo, clearForceVideo } from "./forcevideo.js";
+import { handleWebhook, runScheduled } from "./bot/webhook.js";
 
 function jsonResponse(body, status = 200) {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: { "content-type": "application/json; charset=utf-8" },
 	});
-}
-
-function isValidAccountId(value) {
-	return typeof value === "string" && /^-?\d{1,20}$/.test(value);
 }
 
 // HMAC-SHA256 over a canonical pipe-joined string, hex-encoded — signs the three public,
@@ -243,57 +285,6 @@ async function hmacSign(env, message) {
 	return [...new Uint8Array(signature)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Reads "sub:<id>", resolving the legacy bare-string form and the JSON
-// { tier, expiresAt } form alike, and treating a past expiresAt as "standard, no expiry" —
-// nothing needs to actively sweep an expired entry for correctness, `/status` already reports
-// it right. `durationHours` may be fractional (an admin who mixes days and hours contributes a
-// float number of hours); `expiresAt` is always the exact resulting millisecond, never rounded.
-async function readSubscription(env, idString) {
-	const stored = await env.SUBS.get(`sub:${idString}`);
-	if (!stored) {
-		return { tier: "standard", expiresAt: null };
-	}
-	if (ALLOWED_TIERS.has(stored)) {
-		return { tier: stored, expiresAt: null };
-	}
-	try {
-		const parsed = JSON.parse(stored);
-		if (ALLOWED_TIERS.has(parsed.tier)) {
-			const expiresAt = typeof parsed.expiresAt === "number" ? parsed.expiresAt : null;
-			if (expiresAt !== null && expiresAt <= Date.now()) {
-				return { tier: "standard", expiresAt: null };
-			}
-			return { tier: parsed.tier, expiresAt };
-		}
-	} catch {
-		// Falls through to the "standard" default below — an unparseable value is treated the
-		// same as no value at all, never as an error surfaced to the caller.
-	}
-	return { tier: "standard", expiresAt: null };
-}
-
-// Writes "sub:<id>" for a grant starting now. `durationHours` of `null`/`0` is a permanent
-// grant (stored as the plain legacy string, so an old client reading it directly still works);
-// anything positive is stored with its own resolved `expiresAt`.
-async function writeSubscription(env, idString, tier, durationHours) {
-	if (tier === "standard") {
-		// Standard is the default for anything not in KV — deleting keeps the store from
-		// growing with entries that carry no information beyond "not overridden".
-		await env.SUBS.delete(`sub:${idString}`);
-		return null;
-	}
-	if (!durationHours || durationHours <= 0) {
-		await env.SUBS.put(`sub:${idString}`, tier);
-		return null;
-	}
-	// Rounded to a whole millisecond: durationHours can be fractional, and the client signs
-	// /status's response as a plain integer string — a fractional value here would make the
-	// two sides' canonical strings disagree and every legitimate response fail verification.
-	const expiresAt = Math.round(Date.now() + durationHours * 60 * 60 * 1000);
-	await env.SUBS.put(`sub:${idString}`, JSON.stringify({ tier, expiresAt }));
-	return expiresAt;
-}
-
 async function handleStatus(request, env, ctx) {
 	const url = new URL(request.url);
 	const id = url.searchParams.get("id");
@@ -302,7 +293,13 @@ async function handleStatus(request, env, ctx) {
 	}
 	const { tier, expiresAt } = await readSubscription(env, id);
 	// Fire-and-forget: never awaited, so a KV write here can't slow down or fail this response.
-	ctx.waitUntil(env.SUBS.put(`seen:${id}`, String(Date.now())));
+	const now = Date.now();
+	// Optional self-reported details (version, build, own username/name) for the admin's user
+	// list; unauthenticated like the rest of this route, so informational only. Throttled (see
+	// noteAppSeen) so the free daily KV write quota isn't spent on "last seen".
+	ctx.waitUntil(
+		noteAppSeen(env, id, { version: url.searchParams.get("v"), build: url.searchParams.get("b"), username: url.searchParams.get("u"), name: url.searchParams.get("n") }, now).catch(() => {})
+	);
 	const sig = await hmacSign(env, `${id}|${tier}|${expiresAt ?? "null"}`);
 	return jsonResponse({ tier, expiresAt, sig });
 }
@@ -334,56 +331,13 @@ async function handleGrant(request, env) {
 	await env.SUBS.put(`tier_changed:${idString}`, String(Date.now()));
 
 	const expiresAt = await writeSubscription(env, idString, tier, durationHours);
+	await noteTier(env, idString, tier).catch(() => {});
 
 	return jsonResponse({ ok: true, expiresAt });
 }
 
 function isAuthorized(token, env) {
 	return typeof token === "string" && token.length > 0 && token === env.ADMIN_TOKEN;
-}
-
-// A stored entry is either an old plain reason string or a {reason, at} object — see the
-// storage doc at the top of this file. Reading always normalizes to the latter so every caller
-// only ever deals with one shape; nothing ever rewrites an old row just for having read it.
-function normalizeBanEntry(value) {
-	if (typeof value === "string") {
-		return { reason: value, at: null };
-	}
-	if (value && typeof value === "object" && typeof value.reason === "string") {
-		return { reason: value.reason, at: Number.isInteger(value.at) ? value.at : null };
-	}
-	return null;
-}
-
-async function readBanRecord(env, idString) {
-	const stored = await env.SUBS.get(`ban:${idString}`);
-	if (!stored) {
-		return { full: null, sections: {} };
-	}
-	try {
-		const parsed = JSON.parse(stored);
-		const full = normalizeBanEntry(parsed.full);
-		const sections = {};
-		if (parsed.sections && typeof parsed.sections === "object") {
-			for (const [section, value] of Object.entries(parsed.sections)) {
-				const entry = normalizeBanEntry(value);
-				if (entry) {
-					sections[section] = entry;
-				}
-			}
-		}
-		return { full, sections };
-	} catch {
-		return { full: null, sections: {} };
-	}
-}
-
-async function writeBanRecord(env, idString, record) {
-	if (!record.full && Object.keys(record.sections).length === 0) {
-		await env.SUBS.delete(`ban:${idString}`);
-	} else {
-		await env.SUBS.put(`ban:${idString}`, JSON.stringify(record));
-	}
 }
 
 async function handleBanStatus(request, env) {
@@ -468,12 +422,14 @@ async function handleUnban(request, env) {
 
 	if (scope === "all") {
 		await env.SUBS.delete(`ban:${idString}`);
+		await clearTamper(env, idString);
 		return jsonResponse({ ok: true });
 	}
 
 	const record = await readBanRecord(env, idString);
 	if (scope === "full") {
 		record.full = null;
+		await clearTamper(env, idString);
 	} else {
 		delete record.sections[section];
 	}
@@ -516,22 +472,6 @@ async function handleSetMinVersion(request, env) {
 	return jsonResponse({ ok: true });
 }
 
-// KV's list() caps at 1000 keys per call — silently truncating a prefix scan would understate
-// exactly the count /users-list exists to report, so every full-prefix scan in this file loops
-// on the cursor instead of trusting a single call.
-async function listAllKeys(env, prefix) {
-	const keys = [];
-	let cursor;
-	for (;;) {
-		const page = await env.SUBS.list({ prefix, cursor });
-		keys.push(...page.keys);
-		if (page.list_complete) {
-			return keys;
-		}
-		cursor = page.cursor;
-	}
-}
-
 async function handleUsersList(request, env) {
 	let payload;
 	try {
@@ -544,11 +484,16 @@ async function handleUsersList(request, env) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
 
-	// Union of "seen:", "ban:", and "sub:" ids: an account banned before it ever opened the
-	// app, or one an admin granted a tier to via /grant before it ever opened the app, has no
-	// "seen:" entry, but still belongs on this list rather than silently disappearing from
-	// admin view.
-	const [seenKeys, banKeys, subKeys] = await Promise.all([listAllKeys(env, "seen:"), listAllKeys(env, "ban:"), listAllKeys(env, "sub:")]);
+	// Union of "seen:", "ban:", "sub:", and "u:" ids: an account banned before it ever opened
+	// the app, or one an admin granted a tier to via /grant before it ever opened the app, has
+	// no "seen:" entry, but still belongs on this list rather than silently disappearing from
+	// admin view. "u:" covers profiles the bot saw that never called /status.
+	const [seenKeys, banKeys, subKeys, userKeys] = await Promise.all([
+		listAllKeys(env, "seen:"),
+		listAllKeys(env, "ban:"),
+		listAllKeys(env, "sub:"),
+		listAllKeys(env, "u:"),
+	]);
 	const ids = new Set();
 	for (const key of seenKeys) {
 		ids.add(key.name.slice("seen:".length));
@@ -559,22 +504,34 @@ async function handleUsersList(request, env) {
 	for (const key of subKeys) {
 		ids.add(key.name.slice("sub:".length));
 	}
+	for (const key of userKeys) {
+		ids.add(key.name.slice("u:".length));
+	}
 
 	const users = await Promise.all(
 		Array.from(ids).map(async (idString) => {
-			const [lastSeenRaw, tierRaw, tierChangedRaw, banRecord] = await Promise.all([
+			const [lastSeenRaw, subscription, tierChangedRaw, banRecord, profile] = await Promise.all([
 				env.SUBS.get(`seen:${idString}`),
-				env.SUBS.get(`sub:${idString}`),
+				readSubscription(env, idString),
 				env.SUBS.get(`tier_changed:${idString}`),
 				readBanRecord(env, idString),
+				getUser(env, idString),
 			]);
-			const lastSeen = parseInt(lastSeenRaw, 10);
+			const lastSeenFromSeen = parseInt(lastSeenRaw, 10);
+			const lastSeen = Number.isInteger(lastSeenFromSeen)
+				? lastSeenFromSeen
+				: (profile?.lastSeen || 0);
 			const tierChangedAt = parseInt(tierChangedRaw, 10);
 			return {
 				id: idString,
-				tier: ALLOWED_TIERS.has(tierRaw) ? tierRaw : "standard",
-				tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : null,
-				lastSeen: Number.isInteger(lastSeen) ? lastSeen : 0,
+				tier: subscription.tier,
+				tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : (profile?.tierChangedAt ?? null),
+				lastSeen,
+				username: profile?.username || "",
+				name: profile?.name || "",
+				appVersion: profile?.appVersion || "",
+				firstSeen: profile?.firstSeen || 0,
+				sessionsCount: Array.isArray(profile?.sessions) ? profile.sessions.length : 0,
 				full: banRecord.full,
 				sections: banRecord.sections,
 			};
@@ -585,6 +542,55 @@ async function handleUsersList(request, env) {
 	return jsonResponse({ users, total: users.length });
 }
 
+async function handleUserDetail(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	if (!isAuthorized(payload?.token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+
+	const idString = payload?.id === undefined || payload?.id === null ? "" : String(payload.id);
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+
+	const [lastSeenRaw, subscription, tierChangedRaw, banRecord, profile, ledgerRaw, realRaw] = await Promise.all([
+		env.SUBS.get(`seen:${idString}`),
+		readSubscription(env, idString),
+		env.SUBS.get(`tier_changed:${idString}`),
+		readBanRecord(env, idString),
+		getUser(env, idString),
+		env.SUBS.get(`ledgersync:${idString}`),
+		env.SUBS.get(`realsync:${idString}`),
+	]);
+	const lastSeenFromSeen = parseInt(lastSeenRaw, 10);
+	const tierChangedAt = parseInt(tierChangedRaw, 10);
+	const lastSeen = Number.isInteger(lastSeenFromSeen) ? lastSeenFromSeen : (profile?.lastSeen || 0);
+
+	return jsonResponse({
+		id: idString,
+		username: profile?.username || "",
+		name: profile?.name || "",
+		appVersion: profile?.appVersion || "",
+		appBuild: profile?.appBuild || "",
+		firstSeen: profile?.firstSeen || 0,
+		lastSeen,
+		sessions: Array.isArray(profile?.sessions) ? profile.sessions.slice(-40) : [],
+		tier: subscription.tier,
+		tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : (profile?.tierChangedAt ?? null),
+		expiresAt: subscription.expiresAt,
+		full: banRecord.full,
+		sections: banRecord.sections,
+		ledger: summarizeLedger(ledgerRaw),
+		real: summarizeRealLedger(realRaw),
+	});
+}
+
 async function handleGenerateKey(request, env) {
 	let payload;
 	try {
@@ -593,11 +599,21 @@ async function handleGenerateKey(request, env) {
 		return jsonResponse({ error: "invalid json" }, 400);
 	}
 
-	const { token, tier, durationHours } = payload ?? {};
+	const { token, tier, durationHours, kind } = payload ?? {};
 
 	if (!isAuthorized(token, env)) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
+
+	// Unban keys: { kind: "unban" } — one-shot self-serve lift of a full ban. No tier.
+	if (kind === "unban") {
+		const key = await issueUnbanKey(env);
+		if (!key) {
+			return jsonResponse({ error: "could not generate key" }, 500);
+		}
+		return jsonResponse({ ok: true, key, kind: "unban" });
+	}
+
 	if (!ALLOWED_TIERS.has(tier)) {
 		return jsonResponse({ error: "invalid tier" }, 400);
 	}
@@ -605,22 +621,11 @@ async function handleGenerateKey(request, env) {
 		return jsonResponse({ error: "invalid durationHours" }, 400);
 	}
 
-	let key = null;
-	// Practically never collides (32^16 possibilities), but a fresh KV lookup is cheap enough
-	// to just check rather than trust the math.
-	for (let attempt = 0; attempt < 5 && !key; attempt++) {
-		const candidate = generateActivationKey();
-		const existing = await env.SUBS.get(`key:${candidate}`);
-		if (!existing) {
-			key = candidate;
-		}
-	}
+	const key = await issueKey(env, tier, durationHours);
 	if (!key) {
 		return jsonResponse({ error: "could not generate key" }, 500);
 	}
-
 	const hasDuration = typeof durationHours === "number" && durationHours > 0;
-	await env.SUBS.put(`key:${key}`, hasDuration ? JSON.stringify({ tier, durationHours }) : tier);
 	return jsonResponse({ ok: true, key, tier, durationHours: hasDuration ? durationHours : null });
 }
 
@@ -641,37 +646,17 @@ async function handleRedeemKey(request, env) {
 		return jsonResponse({ error: "invalid key" }, 400);
 	}
 
-	const normalizedKey = key.trim().toUpperCase();
-	const stored = await env.SUBS.get(`key:${normalizedKey}`);
-	let tier = null;
-	let durationHours = null;
-	if (ALLOWED_TIERS.has(stored)) {
-		tier = stored;
-	} else if (stored) {
-		try {
-			const parsed = JSON.parse(stored);
-			if (ALLOWED_TIERS.has(parsed.tier)) {
-				tier = parsed.tier;
-				durationHours = typeof parsed.durationHours === "number" ? parsed.durationHours : null;
-			}
-		} catch {
-			// tier stays null, falls through to the 404 below
+	const redeemed = await redeemKeyForAccount(env, idString, key);
+	if (!redeemed.ok) {
+		if (redeemed.banned) {
+			return jsonResponse({ error: "banned" }, 403);
 		}
-	}
-	if (!tier) {
 		return jsonResponse({ error: "key not found or already used" }, 404);
 	}
-
-	// One-time: gone the moment it's redeemed, so a second attempt with the same string —
-	// whether it's the same buyer trying again or someone else who saw it — fails the same
-	// way an unknown key would.
-	await env.SUBS.delete(`key:${normalizedKey}`);
-	if (tier === "pro") {
-		await env.SUBS.put(`tier_changed:${idString}`, String(Date.now()));
+	if (redeemed.unbanned) {
+		return jsonResponse({ ok: true, unbanned: true, tier: redeemed.tier, expiresAt: redeemed.expiresAt });
 	}
-	const expiresAt = await writeSubscription(env, idString, tier, durationHours);
-
-	return jsonResponse({ ok: true, tier, expiresAt });
+	return jsonResponse({ ok: true, tier: redeemed.tier, expiresAt: redeemed.expiresAt });
 }
 
 // A gift transfer body is opaque to this server — a base64 string the client produced by
@@ -767,11 +752,44 @@ async function handleSyncLedger(request, env) {
 		return jsonResponse({ error: "invalid payload" }, 400);
 	}
 
+	// A fully banned account's balance is frozen at zero: nothing is stored for it, and the
+	// attempt is logged as tamper activity (a compliant, locked app never pushes a ledger).
+	if ((await readBanRecord(env, idString)).full) {
+		await recordTamper(env, idString, "ledger_sync_while_banned");
+		return jsonResponse({ error: "banned" }, 403);
+	}
+
 	// Full-state overwrite, not a diff/merge — the client always pushes its complete current
 	// balance+history, so the stored copy is simply "whatever this device last pushed",
 	// exactly like `/set-min-version` replaces the whole value rather than patching it.
 	await env.SUBS.put(`ledgersync:${idString}`, ledgerPayload);
 
+	return jsonResponse({ ok: true });
+}
+
+async function handleSyncRealLedger(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+
+	const { id, payload: ledgerPayload } = payload ?? {};
+	const idString = typeof id === "number" ? String(id) : id;
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	if (typeof ledgerPayload !== "string" || ledgerPayload.length === 0 || ledgerPayload.length > MAX_LEDGER_SYNC_LENGTH) {
+		return jsonResponse({ error: "invalid payload" }, 400);
+	}
+
+	if ((await readBanRecord(env, idString)).full) {
+		await recordTamper(env, idString, "real_ledger_sync_while_banned");
+		return jsonResponse({ error: "banned" }, 403);
+	}
+
+	await env.SUBS.put(`realsync:${idString}`, ledgerPayload);
 	return jsonResponse({ ok: true });
 }
 
@@ -782,16 +800,105 @@ async function handleFetchLedgerSync(request, env) {
 		return jsonResponse({ error: "invalid id" }, 400);
 	}
 
+	// Nothing to restore for a banned account (its stored balance is wiped on escalation too).
+	if ((await readBanRecord(env, id)).full) {
+		return jsonResponse({ payload: null });
+	}
 	const stored = await env.SUBS.get(`ledgersync:${id}`);
 	return jsonResponse({ payload: stored ?? null });
+}
+
+async function handleGetForceVideo(request, env) {
+	const url = new URL(request.url);
+	const id = url.searchParams.get("id");
+	if (!isValidAccountId(id)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	const video = await readForceVideo(env, id);
+	return jsonResponse({ video });
+}
+
+async function handleForceVideo(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+	if (!isAuthorized(payload?.token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	const targetRaw = payload?.id;
+	const target = targetRaw === "all" || targetRaw === "*" ? "all" : (typeof targetRaw === "number" ? String(targetRaw) : targetRaw);
+	if (target !== "all" && !isValidAccountId(target)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	const result = await writeForceVideo(env, target, payload?.url, {
+		loop: payload?.loop,
+		dismissible: payload?.dismissible,
+	});
+	if (!result.ok) {
+		return jsonResponse({ error: result.error || "invalid" }, 400);
+	}
+	return jsonResponse({ ok: true, video: result.video });
+}
+
+async function handleClearForceVideo(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+	if (!isAuthorized(payload?.token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	const targetRaw = payload?.id;
+	const target = targetRaw === "all" || targetRaw === "*" ? "all" : (typeof targetRaw === "number" ? String(targetRaw) : targetRaw);
+	if (target !== "all" && !isValidAccountId(target)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	await clearForceVideo(env, target);
+	return jsonResponse({ ok: true });
+}
+
+async function handleConfirmDaily(request, env) {
+	let payload;
+	try {
+		payload = await request.json();
+	} catch {
+		return jsonResponse({ error: "invalid json" }, 400);
+	}
+	const { id, token } = payload ?? {};
+	if (!isAuthorized(token, env)) {
+		return jsonResponse({ error: "unauthorized" }, 401);
+	}
+	const idString = typeof id === "number" ? String(id) : id;
+	if (!isValidAccountId(idString)) {
+		return jsonResponse({ error: "invalid id" }, 400);
+	}
+	await confirmDaily(env, idString);
+	return jsonResponse({ ok: true });
 }
 
 export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
 
+		if (request.method === "POST" && url.pathname === "/tg") {
+			return handleWebhook(request, env);
+		}
 		if (request.method === "GET" && url.pathname === "/status") {
 			return handleStatus(request, env, ctx);
+		}
+		if (request.method === "GET" && url.pathname === "/access") {
+			return handleAccess(request, env, ctx);
+		}
+		if (request.method === "POST" && url.pathname === "/report-tamper") {
+			return handleReportTamper(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/confirm-daily") {
+			return handleConfirmDaily(request, env);
 		}
 		if (request.method === "GET" && url.pathname === "/ban-status") {
 			return handleBanStatus(request, env);
@@ -814,6 +921,9 @@ export default {
 		if (request.method === "POST" && url.pathname === "/users-list") {
 			return handleUsersList(request, env);
 		}
+		if (request.method === "POST" && url.pathname === "/user-detail") {
+			return handleUserDetail(request, env);
+		}
 		if (request.method === "POST" && url.pathname === "/generate-key") {
 			return handleGenerateKey(request, env);
 		}
@@ -829,9 +939,26 @@ export default {
 		if (request.method === "POST" && url.pathname === "/sync-ledger") {
 			return handleSyncLedger(request, env);
 		}
+		if (request.method === "POST" && url.pathname === "/sync-real-ledger") {
+			return handleSyncRealLedger(request, env);
+		}
 		if (request.method === "GET" && url.pathname === "/fetch-ledger-sync") {
 			return handleFetchLedgerSync(request, env);
 		}
+		if (request.method === "GET" && url.pathname === "/force-video") {
+			return handleGetForceVideo(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/force-video") {
+			return handleForceVideo(request, env);
+		}
+		if (request.method === "POST" && url.pathname === "/clear-force-video") {
+			return handleClearForceVideo(request, env);
+		}
 		return jsonResponse({ error: "not found" }, 404);
+	},
+
+	// Cron (see wrangler.toml): expires verification requests nobody answered.
+	async scheduled(event, env, ctx) {
+		ctx.waitUntil(runScheduled(env));
 	},
 };

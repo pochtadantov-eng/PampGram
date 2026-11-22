@@ -90,7 +90,8 @@ public struct PampGramBanEntry: Codable, Equatable {
 /// about at all (has ever called `/status`, or has ever been banned even if it hasn't), its
 /// current tier and when that was last changed, when it was last seen, and its full ban
 /// picture. Replaces the old separate "Разбанить" list — this is the one merged source for
-/// both ban management and subscription info.
+/// both ban management and subscription info. Profile fields (`username`/`name`/`appVersion`/
+/// `firstSeen`/`sessionsCount`) come from the server's `u:<id>` profile when present.
 public struct PampGramUserSummary: Codable, Equatable {
     public let id: String
     public let tier: PampGramSubscriptionTier
@@ -98,14 +99,24 @@ public struct PampGramUserSummary: Codable, Equatable {
     public let lastSeen: Int64
     public let full: PampGramBanEntry?
     public let sections: [String: PampGramBanEntry]
+    public let username: String
+    public let name: String
+    public let appVersion: String
+    public let firstSeen: Int64
+    public let sessionsCount: Int
 
-    public init(id: String, tier: PampGramSubscriptionTier, tierChangedAt: Int64?, lastSeen: Int64, full: PampGramBanEntry?, sections: [String: PampGramBanEntry]) {
+    public init(id: String, tier: PampGramSubscriptionTier, tierChangedAt: Int64?, lastSeen: Int64, full: PampGramBanEntry?, sections: [String: PampGramBanEntry], username: String = "", name: String = "", appVersion: String = "", firstSeen: Int64 = 0, sessionsCount: Int = 0) {
         self.id = id
         self.tier = tier
         self.tierChangedAt = tierChangedAt
         self.lastSeen = lastSeen
         self.full = full
         self.sections = sections
+        self.username = username
+        self.name = name
+        self.appVersion = appVersion
+        self.firstSeen = firstSeen
+        self.sessionsCount = sessionsCount
     }
 
     /// Everything this account is currently banned from, as (section, reason) pairs — `nil`
@@ -121,6 +132,155 @@ public struct PampGramUserSummary: Codable, Equatable {
             }
         }
         return result
+    }
+}
+
+/// One local ledger row as the admin `/user-detail` endpoint returns it (plain strings, no
+/// PeerId) — enough to show spend/credit/NFT history without needing Telegram peer resolution.
+public struct PampGramAdminLedgerOperation: Equatable {
+    public let id: Int64
+    public let currency: String
+    public let kind: String
+    public let amount: Int64
+    public let date: Int32
+    public let title: String
+    public let details: String
+    public let giftId: Int64?
+    public let isGift: Bool
+}
+
+/// One NFT/gift event derived from a ledger row (name = gift title from `details`).
+public struct PampGramAdminNftEvent: Equatable {
+    public let name: String
+    public let action: String
+    public let currency: String
+    public let amount: Int64
+    public let date: Int32
+    public let giftId: Int64?
+}
+
+/// Aggregated fake Stars/TON/rubles + NFT state last pushed by that install via `/sync-ledger`.
+public struct PampGramAdminLedgerSnapshot: Equatable {
+    public let starsBalance: Int64
+    public let tonBalanceNanos: Int64
+    public let rublesBalanceKopecks: Int64
+    public let starsSpent: Int64
+    public let starsReceived: Int64
+    public let tonSpentNanos: Int64
+    public let tonReceivedNanos: Int64
+    public let rublesSpent: Int64
+    public let rublesReceived: Int64
+    public let nftReceived: Int
+    public let nftBought: Int
+    public let nftSold: Int
+    public let nftTransferred: Int
+    public let nfts: [PampGramAdminNftEvent]
+    public let operationCount: Int
+    public let operations: [PampGramAdminLedgerOperation]
+}
+
+/// One real Telegram Stars/TON transaction as `/user-detail` returns it.
+public struct PampGramAdminRealTransaction: Equatable {
+    public let id: String
+    public let currency: String
+    public let amount: Int64
+    public let date: Int32
+    public let title: String
+    public let description: String
+    public let peer: String
+    public let giftTitle: String
+    public let flags: [String]
+    /// Server-classified label: gift buy/sell/send/receive or Stars top-up/debit.
+    public let action: String
+}
+
+/// Real Telegram Stars/TON history last pushed via `/sync-real-ledger`.
+public struct PampGramAdminRealLedgerSnapshot: Equatable {
+    public let starsBalance: Int64
+    public let tonBalanceNanos: Int64
+    public let updatedAt: Int64
+    public let starsSpent: Int64
+    public let starsReceived: Int64
+    public let tonSpentNanos: Int64
+    public let tonReceivedNanos: Int64
+    public let giftOps: Int
+    public let transactionCount: Int
+    /// Full raw list (compat). Prefer `gifts` / `starsOps` / `tonOps` in the admin UI.
+    public let transactions: [PampGramAdminRealTransaction]
+    /// Only gift/NFT-related ops (buy, sell, send, receive, upgrade, …).
+    public let gifts: [PampGramAdminRealTransaction]
+    /// Plain Stars top-ups and debits (no gifts).
+    public let starsOps: [PampGramAdminRealTransaction]
+    /// Plain TON transfers / top-ups / debits (no gifts).
+    public let tonOps: [PampGramAdminRealTransaction]
+}
+
+/// Full admin card for one account: profile + sessions + tier/ban + real Stars/TON history.
+public struct PampGramUserDetail: Equatable {
+    public let id: String
+    public let username: String
+    public let name: String
+    public let appVersion: String
+    public let appBuild: String
+    public let firstSeen: Int64
+    public let lastSeen: Int64
+    public let sessions: [Int64]
+    public let tier: PampGramSubscriptionTier
+    public let tierChangedAt: Int64?
+    public let expiresAt: Int64?
+    public let full: PampGramBanEntry?
+    public let sections: [String: PampGramBanEntry]
+    public let ledger: PampGramAdminLedgerSnapshot?
+    public let real: PampGramAdminRealLedgerSnapshot?
+
+    public init(
+        id: String,
+        username: String,
+        name: String,
+        appVersion: String,
+        appBuild: String,
+        firstSeen: Int64,
+        lastSeen: Int64,
+        sessions: [Int64],
+        tier: PampGramSubscriptionTier,
+        tierChangedAt: Int64?,
+        expiresAt: Int64?,
+        full: PampGramBanEntry?,
+        sections: [String: PampGramBanEntry],
+        ledger: PampGramAdminLedgerSnapshot?,
+        real: PampGramAdminRealLedgerSnapshot?
+    ) {
+        self.id = id
+        self.username = username
+        self.name = name
+        self.appVersion = appVersion
+        self.appBuild = appBuild
+        self.firstSeen = firstSeen
+        self.lastSeen = lastSeen
+        self.sessions = sessions
+        self.tier = tier
+        self.tierChangedAt = tierChangedAt
+        self.expiresAt = expiresAt
+        self.full = full
+        self.sections = sections
+        self.ledger = ledger
+        self.real = real
+    }
+
+    public var summary: PampGramUserSummary {
+        PampGramUserSummary(
+            id: self.id,
+            tier: self.tier,
+            tierChangedAt: self.tierChangedAt,
+            lastSeen: self.lastSeen,
+            full: self.full,
+            sections: self.sections,
+            username: self.username,
+            name: self.name,
+            appVersion: self.appVersion,
+            firstSeen: self.firstSeen,
+            sessionsCount: self.sessions.count
+        )
     }
 }
 
@@ -179,7 +339,7 @@ public enum PampGramSubscriptionAPI {
     /// `min_version` (see `fetchMinVersion`/`setMinVersion`) — a build below that number shows
     /// "update required" instead of opening PampGram. Nothing reads this from the server; it's
     /// baked into the binary at compile time, same as `adminAccountId`.
-    public static let currentBuildVersion: Int = 3
+    public static let currentBuildVersion: Int = 4
 
     private struct StatusResponse: Decodable {
         let tier: String
@@ -197,6 +357,40 @@ public enum PampGramSubscriptionAPI {
         let durationHours: Double?
     }
 
+    private static let telemetryLock = NSLock()
+    private static var telemetryVersion: String?
+    private static var telemetryProfiles: [Int64: (username: String, name: String)] = [:]
+
+    /// Self-reported details sent along with every `/status` call so the admin's bot can show
+    /// which version each account runs and who it is. Informational only (the route is public),
+    /// never a basis for access. Set once at startup from `AccountContextImpl`.
+    public static func setTelemetry(version: String, userId: Int64, username: String?, name: String?) {
+        telemetryLock.lock()
+        telemetryVersion = version
+        telemetryProfiles[userId] = (username ?? "", name ?? "")
+        telemetryLock.unlock()
+    }
+
+    private static func telemetryQuery(userId: Int64) -> String {
+        telemetryLock.lock()
+        let version = telemetryVersion
+        let profile = telemetryProfiles[userId]
+        telemetryLock.unlock()
+
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        func item(_ key: String, _ value: String?) -> String {
+            guard let value, !value.isEmpty, let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
+                return ""
+            }
+            return "&\(key)=\(encoded)"
+        }
+        var query = item("v", version.map { $0.hasPrefix("v") ? String($0.dropFirst()) : $0 })
+        query += item("b", Bundle.main.infoDictionary?["CFBundleVersion"] as? String)
+        query += item("u", profile?.username)
+        query += item("n", profile?.name)
+        return query
+    }
+
     /// Live-ish (one-shot per subscription) read of `userId`'s tier and, for a time-limited
     /// grant or redeemed key, when it runs out. Never fails outward: any network problem, bad
     /// response, or the baseURL placeholder still being unfilled all resolve to
@@ -209,7 +403,7 @@ public enum PampGramSubscriptionAPI {
             return .single(PampGramSubscriptionStatus(tier: .pro, expiresAt: nil))
         }
         return Signal { subscriber in
-            guard let url = URL(string: "\(baseURL)/status?id=\(userId)") else {
+            guard let url = URL(string: "\(baseURL)/status?id=\(userId)\(telemetryQuery(userId: userId))") else {
                 subscriber.putNext(PampGramSubscriptionStatus(tier: .standard, expiresAt: nil))
                 subscriber.putCompletion()
                 return EmptyDisposable
@@ -448,12 +642,109 @@ public enum PampGramSubscriptionAPI {
         let tier: String
         let tierChangedAt: Int64?
         let lastSeen: Int64
+        let username: String?
+        let name: String?
+        let appVersion: String?
+        let firstSeen: Int64?
+        let sessionsCount: Int?
         let full: UsersListBanEntryResponse?
         let sections: [String: UsersListBanEntryResponse]
     }
 
     private struct UsersListResponse: Decodable {
         let users: [UsersListUserResponse]
+    }
+
+    private struct UserDetailRequestBody: Encodable {
+        let token: String
+        let id: Int64
+    }
+
+    private struct UserDetailLedgerOpResponse: Decodable {
+        let id: Int64
+        let currency: String
+        let kind: String
+        let amount: Int64
+        let date: Int32
+        let title: String
+        let details: String
+        let giftId: Int64?
+        let isGift: Bool?
+    }
+
+    private struct UserDetailNftResponse: Decodable {
+        let name: String
+        let action: String
+        let currency: String
+        let amount: Int64
+        let date: Int32
+        let giftId: Int64?
+    }
+
+    private struct UserDetailLedgerResponse: Decodable {
+        let starsBalance: Int64
+        let tonBalanceNanos: Int64
+        let rublesBalanceKopecks: Int64?
+        let starsSpent: Int64
+        let starsReceived: Int64
+        let tonSpentNanos: Int64
+        let tonReceivedNanos: Int64
+        let rublesSpent: Int64?
+        let rublesReceived: Int64?
+        let nftReceived: Int?
+        let nftBought: Int?
+        let nftSold: Int?
+        let nftTransferred: Int?
+        let nfts: [UserDetailNftResponse]?
+        let operationCount: Int?
+        let operations: [UserDetailLedgerOpResponse]
+    }
+
+    private struct UserDetailRealTxResponse: Decodable {
+        let id: String
+        let currency: String
+        let amount: Int64
+        let date: Int32
+        let title: String
+        let description: String
+        let peer: String
+        let giftTitle: String?
+        let flags: [String]?
+        let action: String?
+    }
+
+    private struct UserDetailRealResponse: Decodable {
+        let starsBalance: Int64
+        let tonBalanceNanos: Int64
+        let updatedAt: Int64?
+        let starsSpent: Int64
+        let starsReceived: Int64
+        let tonSpentNanos: Int64
+        let tonReceivedNanos: Int64
+        let giftOps: Int?
+        let transactionCount: Int?
+        let transactions: [UserDetailRealTxResponse]
+        let gifts: [UserDetailRealTxResponse]?
+        let stars: [UserDetailRealTxResponse]?
+        let ton: [UserDetailRealTxResponse]?
+    }
+
+    private struct UserDetailResponse: Decodable {
+        let id: String
+        let username: String?
+        let name: String?
+        let appVersion: String?
+        let appBuild: String?
+        let firstSeen: Int64?
+        let lastSeen: Int64
+        let sessions: [Int64]?
+        let tier: String
+        let tierChangedAt: Int64?
+        let expiresAt: Int64?
+        let full: UsersListBanEntryResponse?
+        let sections: [String: UsersListBanEntryResponse]?
+        let ledger: UserDetailLedgerResponse?
+        let real: UserDetailRealResponse?
     }
 
     /// Admin-only: every account PampGram's server knows about — has ever opened the app, has
@@ -482,7 +773,12 @@ public enum PampGramSubscriptionAPI {
                         tierChangedAt: user.tierChangedAt,
                         lastSeen: user.lastSeen,
                         full: user.full.map { PampGramBanEntry(reason: $0.reason, at: $0.at) },
-                        sections: user.sections.mapValues { PampGramBanEntry(reason: $0.reason, at: $0.at) }
+                        sections: user.sections.mapValues { PampGramBanEntry(reason: $0.reason, at: $0.at) },
+                        username: user.username ?? "",
+                        name: user.name ?? "",
+                        appVersion: user.appVersion ?? "",
+                        firstSeen: user.firstSeen ?? 0,
+                        sessionsCount: user.sessionsCount ?? 0
                     )
                 }
             }
@@ -492,15 +788,159 @@ public enum PampGramSubscriptionAPI {
         }.resume()
     }
 
+    /// Admin-only: one person's card — profile, sessions, PRO/STANDARD, bans, and the last
+    /// synced Stars/TON ledger (balances + recent operations).
+    public static func fetchUserDetail(userId: Int64, adminToken: String, completion: @escaping (PampGramUserDetail?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/user-detail") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(UserDetailRequestBody(token: adminToken, id: userId))
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            var detail: PampGramUserDetail?
+            if let data, let decoded = try? JSONDecoder().decode(UserDetailResponse.self, from: data) {
+                let ledger: PampGramAdminLedgerSnapshot?
+                if let raw = decoded.ledger {
+                    ledger = PampGramAdminLedgerSnapshot(
+                        starsBalance: raw.starsBalance,
+                        tonBalanceNanos: raw.tonBalanceNanos,
+                        rublesBalanceKopecks: raw.rublesBalanceKopecks ?? 0,
+                        starsSpent: raw.starsSpent,
+                        starsReceived: raw.starsReceived,
+                        tonSpentNanos: raw.tonSpentNanos,
+                        tonReceivedNanos: raw.tonReceivedNanos,
+                        rublesSpent: raw.rublesSpent ?? 0,
+                        rublesReceived: raw.rublesReceived ?? 0,
+                        nftReceived: raw.nftReceived ?? 0,
+                        nftBought: raw.nftBought ?? 0,
+                        nftSold: raw.nftSold ?? 0,
+                        nftTransferred: raw.nftTransferred ?? 0,
+                        nfts: (raw.nfts ?? []).map {
+                            PampGramAdminNftEvent(name: $0.name, action: $0.action, currency: $0.currency, amount: $0.amount, date: $0.date, giftId: $0.giftId)
+                        },
+                        operationCount: raw.operationCount ?? raw.operations.count,
+                        operations: raw.operations.map {
+                            PampGramAdminLedgerOperation(id: $0.id, currency: $0.currency, kind: $0.kind, amount: $0.amount, date: $0.date, title: $0.title, details: $0.details, giftId: $0.giftId, isGift: $0.isGift ?? ($0.giftId != nil))
+                        }
+                    )
+                } else {
+                    ledger = nil
+                }
+                let real: PampGramAdminRealLedgerSnapshot?
+                if let raw = decoded.real {
+                    func mapTx(_ tx: UserDetailRealTxResponse) -> PampGramAdminRealTransaction {
+                        let flags = tx.flags ?? []
+                        let giftTitle = tx.giftTitle ?? ""
+                        let isGift = !giftTitle.isEmpty
+                            || flags.contains(where: { $0.hasPrefix("gift") })
+                            || "\(tx.title) \(tx.description)".range(of: "gift|подар|nft", options: .regularExpression) != nil
+                        let fallbackAction: String
+                        if let action = tx.action, !action.isEmpty {
+                            fallbackAction = action
+                        } else if isGift {
+                            fallbackAction = tx.amount < 0 ? "Покупка / отправка" : "Получение / продажа"
+                        } else if tx.amount > 0 {
+                            fallbackAction = "Пополнение"
+                        } else if tx.amount < 0 {
+                            fallbackAction = "Списание"
+                        } else {
+                            fallbackAction = "Операция"
+                        }
+                        return PampGramAdminRealTransaction(
+                            id: tx.id,
+                            currency: tx.currency,
+                            amount: tx.amount,
+                            date: tx.date,
+                            title: tx.title,
+                            description: tx.description,
+                            peer: tx.peer,
+                            giftTitle: giftTitle,
+                            flags: flags,
+                            action: fallbackAction
+                        )
+                    }
+                    let all = raw.transactions.map(mapTx)
+                    let gifts: [PampGramAdminRealTransaction]
+                    if let listed = raw.gifts {
+                        gifts = listed.map(mapTx)
+                    } else {
+                        gifts = all.filter { tx in
+                            !tx.giftTitle.isEmpty
+                                || tx.flags.contains(where: { $0.hasPrefix("gift") })
+                                || "\(tx.title) \(tx.description)".range(of: "gift|подар|nft", options: .regularExpression) != nil
+                        }
+                    }
+                    let starsOps: [PampGramAdminRealTransaction]
+                    if let listed = raw.stars {
+                        starsOps = listed.map(mapTx)
+                    } else {
+                        let giftIds = Set(gifts.map(\.id))
+                        starsOps = all.filter { $0.currency == "stars" && !giftIds.contains($0.id) }
+                    }
+                    let tonOps: [PampGramAdminRealTransaction]
+                    if let listed = raw.ton {
+                        tonOps = listed.map(mapTx)
+                    } else {
+                        let giftIds = Set(gifts.map(\.id))
+                        tonOps = all.filter { $0.currency == "ton" && !giftIds.contains($0.id) }
+                    }
+                    real = PampGramAdminRealLedgerSnapshot(
+                        starsBalance: raw.starsBalance,
+                        tonBalanceNanos: raw.tonBalanceNanos,
+                        updatedAt: raw.updatedAt ?? 0,
+                        starsSpent: raw.starsSpent,
+                        starsReceived: raw.starsReceived,
+                        tonSpentNanos: raw.tonSpentNanos,
+                        tonReceivedNanos: raw.tonReceivedNanos,
+                        giftOps: raw.giftOps ?? gifts.count,
+                        transactionCount: raw.transactionCount ?? raw.transactions.count,
+                        transactions: all,
+                        gifts: gifts,
+                        starsOps: starsOps,
+                        tonOps: tonOps
+                    )
+                } else {
+                    real = nil
+                }
+                detail = PampGramUserDetail(
+                    id: decoded.id,
+                    username: decoded.username ?? "",
+                    name: decoded.name ?? "",
+                    appVersion: decoded.appVersion ?? "",
+                    appBuild: decoded.appBuild ?? "",
+                    firstSeen: decoded.firstSeen ?? 0,
+                    lastSeen: decoded.lastSeen,
+                    sessions: decoded.sessions ?? [],
+                    tier: PampGramSubscriptionTier(rawValue: decoded.tier) ?? .standard,
+                    tierChangedAt: decoded.tierChangedAt,
+                    expiresAt: decoded.expiresAt,
+                    full: decoded.full.map { PampGramBanEntry(reason: $0.reason, at: $0.at) },
+                    sections: (decoded.sections ?? [:]).mapValues { PampGramBanEntry(reason: $0.reason, at: $0.at) },
+                    ledger: ledger,
+                    real: real
+                )
+            }
+            DispatchQueue.main.async {
+                completion(detail)
+            }
+        }.resume()
+    }
+
     private struct GenerateKeyRequestBody: Encodable {
         let token: String
-        let tier: String
+        let tier: String?
         let durationHours: Double?
+        let kind: String?
     }
 
     private struct GenerateKeyResponse: Decodable {
         let ok: Bool
         let key: String?
+        let kind: String?
     }
 
     /// Admin-only: mints one fresh, unused activation key for `tier`, either permanent
@@ -519,7 +959,30 @@ public enum PampGramSubscriptionAPI {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: tier.rawValue, durationHours: durationHours))
+        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: tier.rawValue, durationHours: durationHours, kind: nil))
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            var key: String?
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(GenerateKeyResponse.self, from: data) {
+                key = decoded.key
+            }
+            DispatchQueue.main.async {
+                completion(key)
+            }
+        }.resume()
+    }
+
+    /// Admin-only: one-shot unban key. The banned account enters it on the fullscreen lock;
+    /// a normal PRO/STANDARD key cannot lift a ban.
+    public static func generateUnbanKey(adminToken: String, completion: @escaping (String?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/generate-key") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(GenerateKeyRequestBody(token: adminToken, tier: nil, durationHours: nil, kind: "unban"))
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             var key: String?
@@ -541,19 +1004,22 @@ public enum PampGramSubscriptionAPI {
         let ok: Bool
         let tier: String?
         let expiresAt: Double?
+        let unbanned: Bool?
     }
 
-    /// Not admin-only — this is the buyer-facing half of the key system, called from any
-    /// install once its owner has a key someone generated for them. Grants that key's tier
-    /// (and, if the key was minted with a duration, an expiry starting now) to `userId` (this
-    /// device's own account, always) exactly like an admin's `grantTier` would, and the key is
-    /// gone the moment the server accepts it — a second redemption attempt with the same
-    /// string, from this device or any other, fails exactly like an unknown key would.
-    /// `completion` reports the granted status on success, `nil` on any failure (network, an
-    /// already-used/unknown key, or a malformed response).
-    public static func redeemKey(userId: Int64, key: String, completion: @escaping (PampGramSubscriptionStatus?) -> Void) {
+    /// Result of redeeming any key (licence or unban).
+    public enum PampGramRedeemResult {
+        case granted(PampGramSubscriptionStatus)
+        case unbanned
+        case failed
+    }
+
+    /// Not admin-only — buyer-facing half of the key system. Accepts a normal licence key
+    /// (grants tier) or an unban key (lifts a full ban). A normal key while fully banned fails
+    /// on the server and does not consume the key.
+    public static func redeemKey(userId: Int64, key: String, completion: @escaping (PampGramRedeemResult) -> Void) {
         guard let url = URL(string: "\(baseURL)/redeem-key") else {
-            completion(nil)
+            completion(.failed)
             return
         }
         var request = URLRequest(url: url)
@@ -562,14 +1028,70 @@ public enum PampGramSubscriptionAPI {
         request.httpBody = try? JSONEncoder().encode(RedeemKeyRequestBody(id: userId, key: key))
 
         URLSession.shared.dataTask(with: request) { data, response, error in
-            var status: PampGramSubscriptionStatus?
-            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(RedeemKeyResponse.self, from: data), let tierRaw = decoded.tier, let tier = PampGramSubscriptionTier(rawValue: tierRaw) {
-                let expiresAt = decoded.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000) }
-                status = PampGramSubscriptionStatus(tier: tier, expiresAt: expiresAt)
+            var result: PampGramRedeemResult = .failed
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, let decoded = try? JSONDecoder().decode(RedeemKeyResponse.self, from: data), decoded.ok {
+                if decoded.unbanned == true {
+                    result = .unbanned
+                } else if let tierRaw = decoded.tier, let tier = PampGramSubscriptionTier(rawValue: tierRaw) {
+                    let expiresAt = decoded.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000) }
+                    result = .granted(PampGramSubscriptionStatus(tier: tier, expiresAt: expiresAt))
+                }
             }
             DispatchQueue.main.async {
-                completion(status)
+                completion(result)
             }
+        }.resume()
+    }
+
+    /// `/access`'s raw, UNVERIFIED answer — `PampGramAccessGate` checks the Ed25519 signature
+    /// (and that `nonce` is the one it sent) before believing any of it. `reason` is display
+    /// text only and is not covered by the signature.
+    public struct PampGramAccessResponse: Decodable {
+        public let state: String
+        public let expiresAt: Int64?
+        public let now: Int64
+        public let ttl: Int64
+        public let nonce: String
+        public let reason: String?
+        public let sig: String
+    }
+
+    /// One `/access` round trip for `userId`. `nonce` is a fresh random string the server signs
+    /// into its answer, so a recorded answer can't be replayed later. Any network/HTTP/decode
+    /// problem completes with `nil` — the caller treats that as "no answer", never as "allowed".
+    public static func fetchAccess(userId: Int64, nonce: String, completion: @escaping (PampGramAccessResponse?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/access?id=\(userId)&nonce=\(nonce)\(telemetryQuery(userId: userId))") else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.timeoutInterval = 15.0
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            var decoded: PampGramAccessResponse?
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data {
+                decoded = try? JSONDecoder().decode(PampGramAccessResponse.self, from: data)
+            }
+            completion(decoded)
+        }.resume()
+    }
+
+    private struct ReportTamperRequestBody: Encodable {
+        let id: Int64
+        let kind: String
+    }
+
+    /// Fire-and-forget: tells the server this device saw activity on a locked account (see
+    /// `PampGramAccessGate`). The server only ever escalates an account that is already banned.
+    public static func reportTamper(userId: Int64, kind: String) {
+        guard let url = URL(string: "\(baseURL)/report-tamper") else {
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(ReportTamperRequestBody(id: userId, kind: kind))
+        URLSession.shared.dataTask(with: request) { _, _, _ in
         }.resume()
     }
 
@@ -596,6 +1118,120 @@ public enum PampGramSubscriptionAPI {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(SyncLedgerRequestBody(id: id, payload: payloadString))
 
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    /// Pushes this account's real Telegram Stars/TON history (from
+    /// `payments.getStarsTransactions` on-device) for the admin card. Same body shape as
+    /// `syncLedger`, stored under `realsync:<id>` on the server.
+    public static func syncRealLedger(id: Int64, payload: Data, completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: "\(baseURL)/sync-real-ledger"), let payloadString = String(data: payload, encoding: .utf8) else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(SyncLedgerRequestBody(id: id, payload: payloadString))
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    /// Admin-pushed fullscreen video command (from GET/POST `/force-video`).
+    public struct PampGramForceVideoCommand: Equatable {
+        public let id: String
+        public let url: String
+        public let loop: Bool
+        public let dismissible: Bool
+        public let createdAt: Int64
+    }
+
+    private struct ForceVideoBodyResponse: Decodable {
+        let id: String
+        let url: String
+        let loop: Bool?
+        let dismissible: Bool?
+        let createdAt: Int64?
+    }
+
+    private struct ForceVideoGetResponse: Decodable {
+        let video: ForceVideoBodyResponse?
+    }
+
+    private struct ForceVideoPostRequest: Encodable {
+        let token: String
+        let url: String
+        let id: String
+        let loop: Bool
+        let dismissible: Bool
+    }
+
+    private struct ClearForceVideoRequest: Encodable {
+        let token: String
+        let id: String
+    }
+
+    /// Public poll: active force-video for this account (user-specific beats global).
+    public static func fetchForceVideo(userId: Int64, completion: @escaping (PampGramForceVideoCommand?) -> Void) {
+        guard let url = URL(string: "\(baseURL)/force-video?id=\(userId)") else {
+            completion(nil)
+            return
+        }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            var result: PampGramForceVideoCommand?
+            if let data, let decoded = try? JSONDecoder().decode(ForceVideoGetResponse.self, from: data), let video = decoded.video {
+                result = PampGramForceVideoCommand(
+                    id: video.id,
+                    url: video.url,
+                    loop: video.loop ?? true,
+                    dismissible: video.dismissible ?? false,
+                    createdAt: video.createdAt ?? 0
+                )
+            }
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }.resume()
+    }
+
+    /// Admin: push fullscreen video to one account (`"\(userId)"`) or everyone (`"all"`).
+    public static func forceVideo(targetId: String, url: String, loop: Bool, dismissible: Bool, adminToken: String, completion: @escaping (Bool) -> Void) {
+        guard let endpoint = URL(string: "\(baseURL)/force-video") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(ForceVideoPostRequest(token: adminToken, url: url, id: targetId, loop: loop, dismissible: dismissible))
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }.resume()
+    }
+
+    /// Admin: clear force-video for one account or `"all"` (global).
+    public static func clearForceVideo(targetId: String, adminToken: String, completion: @escaping (Bool) -> Void) {
+        guard let endpoint = URL(string: "\(baseURL)/clear-force-video") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(ClearForceVideoRequest(token: adminToken, id: targetId))
         URLSession.shared.dataTask(with: request) { _, response, error in
             let ok = error == nil && (response as? HTTPURLResponse)?.statusCode == 200
             DispatchQueue.main.async {

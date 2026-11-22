@@ -779,7 +779,7 @@ private final class PampGramFakePortalsScreen: ViewController {
 
     override func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
         super.containerLayoutUpdated(layout, transition: transition)
-        let top = (layout.statusBarHeight ?? 0.0) + (self.navigationHeight ?? 44.0)
+        let top = self.navigationLayout(layout: layout).navigationFrame.maxY
         self.contentView?.frame = CGRect(x: 0, y: top, width: layout.size.width, height: layout.size.height - top)
     }
 }

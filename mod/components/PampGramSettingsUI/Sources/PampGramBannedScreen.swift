@@ -10,7 +10,7 @@ import PhantomGiftKit
 /// Same contact `PampGramUpdateRequiredScreen.swift` already messages for "update required" —
 /// reused here so "написать мне" on the ban screen reaches the same person, one real contact
 /// behind every "contact us" button in the mod, not several different ones.
-private let pampGramBanContactUsername = "Claps228"
+private let pampGramBanContactUsername = "Claps555"
 
 /// The screen a banned account sees instead of a gated section (or the whole hub, for a full
 /// ban) — styled as a short personal note from the admin (not a generic "ACCESS DENIED" panel),
@@ -273,8 +273,10 @@ public func pampGramGateFullAccess(context: AccountContext, onAllowed: @escaping
             pampGramPresentUpdateRequiredScreen(context: context)
         } else if !isChannelSubscribed {
             pampGramPresentFrozenScreen(context: context)
-        } else if let reason = status.full {
-            pampGramPresentBannedScreen(context: context, reason: reason)
+        } else if status.full != nil {
+            // Full ban: don't show a dismissible letter — force the signed /access gate so the
+            // whole-app overlay appears and only an unban key / admin unban can clear it.
+            PampGramAccessGate.shared.refreshNow()
         } else {
             onAllowed()
         }
@@ -299,5 +301,19 @@ public func pampGramGateTier(context: AccountContext, push: @escaping (ViewContr
         } else {
             push(pampGramSubscriptionController(context: context))
         }
+    })
+}
+
+/// Opens PampGram's gifts section from outside the settings tree (triple tap on the bottom
+/// "Chats" tab, see apply-feature-hooks.py): same tier and ban checks as tapping "Подарки" in the
+/// hub, then the gifts settings pushed onto the app's own navigation stack.
+public func pampGramOpenGiftsFromTabBar(context: AccountContext, navigationController: NavigationController) {
+    let push: (ViewController) -> Void = { [weak navigationController] controller in
+        navigationController?.pushViewController(controller)
+    }
+    pampGramGateTier(context: context, push: push, openReal: {
+        pampGramGateSection(context: context, section: .gifts, openReal: {
+            push(pampGramGiftsSettingsController(context: context))
+        })
     })
 }

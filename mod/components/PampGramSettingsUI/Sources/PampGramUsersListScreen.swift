@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Display
 import SwiftSignalKit
 import Postbox
@@ -128,12 +129,12 @@ private enum PampGramUsersListEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(
                 presentationData: presentationData,
                 systemStyle: .glass,
-                title: "ID \(user.id)",
+                title: pampGramUnresolvedUserTitle(user),
                 label: user.tier == .pro ? "PRO" : "STANDARD",
                 additionalDetailLabel: pampGramRowSubtitle(user),
                 sectionId: self.section,
                 style: .blocks,
-                disclosureStyle: .none,
+                disclosureStyle: .arrow,
                 action: {
                     arguments.openUser(user, nil)
                 }
@@ -181,7 +182,24 @@ private func pampGramBanSummaryShort(_ user: PampGramUserSummary) -> String {
 /// Ban summary plus last-seen, for the row subtitle — both status lines the row has room for
 /// without a third slot.
 private func pampGramRowSubtitle(_ user: PampGramUserSummary) -> String {
-    return "\(pampGramBanSummaryShort(user)) · был(а) \(pampGramFormatLastSeen(user.lastSeen))"
+    var parts: [String] = [pampGramBanSummaryShort(user), "был(а) \(pampGramFormatLastSeen(user.lastSeen))"]
+    if user.sessionsCount > 0 {
+        parts.append("заходов \(user.sessionsCount)")
+    }
+    if !user.appVersion.isEmpty {
+        parts.append("v\(user.appVersion)")
+    }
+    return parts.joined(separator: " · ")
+}
+
+private func pampGramUnresolvedUserTitle(_ user: PampGramUserSummary) -> String {
+    if !user.username.isEmpty {
+        return "@\(user.username)"
+    }
+    if !user.name.isEmpty {
+        return "\(user.name) · ID \(user.id)"
+    }
+    return "ID \(user.id)"
 }
 
 private func pampGramUsersListEntries(users: [PampGramUserSummary], peers: [String: EnginePeer]) -> [PampGramUsersListEntry] {
@@ -287,6 +305,17 @@ public func pampGramUsersListController(context: AccountContext) -> ViewControll
                         reload()
                     }
                 }))
+                buttons.append(ActionSheetButtonItem(title: "Ключ разбана (скопировать)", color: .accent, action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    PampGramSubscriptionAPI.generateUnbanKey(adminToken: adminToken) { key in
+                        guard let key else {
+                            presentTooltipImpl?("Не получилось сгенерировать ключ.")
+                            return
+                        }
+                        UIPasteboard.general.string = key
+                        presentTooltipImpl?("Ключ разбана скопирован: \(key)")
+                    }
+                }))
             }
             for section in PampGramBanSection.allCases {
                 if let entry = user.sections[section.rawValue] {
@@ -355,16 +384,29 @@ public func pampGramUsersListController(context: AccountContext) -> ViewControll
         }
     }
 
+    var pushControllerImpl: ((ViewController) -> Void)?
+
     let openUser: (PampGramUserSummary, EnginePeer?) -> Void = { user, peer in
+        guard let userId = Int64(user.id) else {
+            return
+        }
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
         let sheet = ActionSheetController(presentationData: presentationData)
         let titleText: String
         if let peer {
             titleText = peer.addressName.map { "@\($0)" } ?? peer.compactDisplayTitle
+        } else if !user.username.isEmpty {
+            titleText = "@\(user.username)"
         } else {
             titleText = "ID \(user.id)"
         }
-        var buttons: [ActionSheetItem] = [ActionSheetTextItem(title: titleText)]
+        var buttons: [ActionSheetItem] = [
+            ActionSheetTextItem(title: titleText),
+            ActionSheetButtonItem(title: "Карточка пользователя", color: .accent, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+                pushControllerImpl?(pampGramUserDetailController(context: context, userId: userId, seed: user))
+            })
+        ]
         if let peer {
             buttons.append(ActionSheetButtonItem(title: "Открыть профиль", color: .accent, action: { [weak sheet] in
                 sheet?.dismissAnimated()
@@ -390,30 +432,8 @@ public func pampGramUsersListController(context: AccountContext) -> ViewControll
         presentControllerImpl?(sheet)
     }
 
-    let lookupAndOpen: (Int64, EnginePeer?) -> Void = { userId, knownPeer in
-        let _ = (combineLatest(
-            PampGramSubscriptionAPI.fetchTier(userId: userId),
-            PampGramSubscriptionAPI.fetchBanStatus(userId: userId)
-        )
-        |> deliverOnMainQueue).start(next: { tier, banStatus in
-            let summary = PampGramUserSummary(
-                id: "\(userId)",
-                tier: tier,
-                tierChangedAt: nil,
-                lastSeen: 0,
-                full: banStatus.full.map { PampGramBanEntry(reason: $0, at: nil) },
-                sections: banStatus.sections.mapValues { PampGramBanEntry(reason: $0, at: nil) }
-            )
-            if let knownPeer {
-                openUser(summary, knownPeer)
-            } else {
-                let peerId = PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(userId))
-                let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
-                |> deliverOnMainQueue).start(next: { resolvedPeer in
-                    openUser(summary, resolvedPeer)
-                })
-            }
-        })
+    let lookupAndOpen: (Int64, EnginePeer?) -> Void = { userId, _ in
+        pushControllerImpl?(pampGramUserDetailController(context: context, userId: userId, seed: nil))
     }
 
     let arguments = PampGramUsersListArguments(
@@ -478,6 +498,9 @@ public func pampGramUsersListController(context: AccountContext) -> ViewControll
     let controller = ItemListController(context: context, state: signal)
     presentControllerImpl = { [weak controller] c in
         controller?.present(c, in: .window(.root))
+    }
+    pushControllerImpl = { [weak controller] c in
+        (controller?.navigationController as? NavigationController)?.pushViewController(c)
     }
     presentTooltipImpl = { [weak controller] text in
         guard let controller else {

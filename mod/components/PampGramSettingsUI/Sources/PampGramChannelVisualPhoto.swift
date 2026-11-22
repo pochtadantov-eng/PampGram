@@ -79,7 +79,7 @@ public class PampGramChannelVisualPhotoController: ViewController {
 
         super.init(navigationBarPresentationData: NavigationBarPresentationData(
             theme: NavigationBarTheme(rootControllerTheme: self.presentationData.theme),
-            strings: NavigationBarStrings(back: self.presentationData.strings.Common_Back, close: self.presentationData.strings.Common_Close)
+            strings: NavigationBarStrings(presentationStrings: self.presentationData.strings)
         ))
     }
 
@@ -182,7 +182,6 @@ public class PampGramChannelVisualPhotoController: ViewController {
         button.setTitleColor(.white, for: .normal)
         button.layer.cornerRadius = 12
         button.layer.masksToBounds = true
-        button.contentEdgeInsets = UIEdgeInsets(top: 14, left: 20, bottom: 14, right: 20)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
         button.addTarget(self, action: #selector(self.buttonTapped(_:)), for: .touchUpInside)
@@ -259,7 +258,7 @@ private class PampGramChannelVisualPhotosListController: ViewController {
 
         super.init(navigationBarPresentationData: NavigationBarPresentationData(
             theme: NavigationBarTheme(rootControllerTheme: self.presentationData.theme),
-            strings: NavigationBarStrings(back: self.presentationData.strings.Common_Back, close: self.presentationData.strings.Common_Close)
+            strings: NavigationBarStrings(presentationStrings: self.presentationData.strings)
         ))
     }
 

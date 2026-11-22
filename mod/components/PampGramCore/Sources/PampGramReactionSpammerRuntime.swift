@@ -1,51 +1,7 @@
 import Foundation
 import Postbox
-import TelegramCore
 import SwiftSignalKit
-import AccountContext
 
-/// "Спам реакциями" — быстро ставит и снимает реакцию на сообщение в цикле.
-///
-/// У собеседника телефон непрерывно вибрирует от уведомлений о реакциях — каждый тогл
-/// (поставить → снять → поставить) генерирует отдельный пуш. Интервал по умолчанию 1 секунда.
-///
-/// Паттерн аналогичен `PampGramFakeActivityRuntime`: таймер на `Queue.mainQueue()`,
-/// управление через `start`/`stop`/`isActive`.
-///
-/// ⚠️ Агрессивная функция: Telegram может ограничить аккаунт при чрезмерном использовании.
-/// Рекомендуется не держать спаммер включённым долго.
-///
-/// Integration points (в патче):
-///
-/// 1. Контекстное меню сообщения — пункт «Спам реакциями 💣»:
-///    ```swift
-///    items.append(.action(ContextMenuActionItem(
-///        text: PampGramReactionSpammerRuntime.shared.isActive(messageId: message.id)
-///            ? "Стоп спам реакциями"
-///            : "Спам реакциями 💣",
-///        icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Reactions"), color: theme.contextMenu.primaryColor) },
-///        action: { c, _ in
-///            c?.dismiss(completion: {
-///                if PampGramReactionSpammerRuntime.shared.isActive(messageId: message.id) {
-///                    PampGramReactionSpammerRuntime.shared.stop(messageId: message.id)
-///                } else {
-///                    // Показать пикер эмодзи, затем:
-///                    PampGramReactionSpammerRuntime.shared.start(
-///                        context: context,
-///                        messageId: message.id,
-///                        peerId: message.id.peerId,
-///                        reaction: "🔥"
-///                    )
-///                }
-///            })
-///        }
-///    )))
-///    ```
-///
-/// 2. При выходе из чата — остановить все спаммеры для этого peer:
-///    ```swift
-///    PampGramReactionSpammerRuntime.shared.stopAll(forPeerId: peerId)
-///    ```
 public final class PampGramReactionSpammerRuntime {
     public static let shared = PampGramReactionSpammerRuntime()
 
@@ -59,35 +15,31 @@ public final class PampGramReactionSpammerRuntime {
     private let lock = NSLock()
     private var spammers: [MessageId: ActiveSpammer] = [:]
 
+    /// Injected by AccountContext startup (has TelegramCore access).
+    /// Toggles a reaction on/off for a message. `reaction` nil = remove.
+    public var toggleReactionHandler: ((_ messageId: MessageId, _ reaction: String?) -> Void)?
+
     private init() {}
 
-    /// Начать спам реакцией на сообщение.
-    /// `interval` — период тогла в секундах (по умолчанию 1.0).
-    public func start(context: AccountContext, messageId: MessageId, peerId: PeerId, reaction: String, interval: Double = 1.0) {
+    public func start(messageId: MessageId, peerId: PeerId, reaction: String, interval: Double = 1.0) {
         stop(messageId: messageId)
 
         var isSet = false
 
-        let toggleReaction: () -> Void = {
-            let reactionValue: MessageReaction.Reaction = .builtin(reaction)
+        let toggle: () -> Void = { [weak self] in
+            guard let self else { return }
             if isSet {
-                let _ = context.engine.messages.setMessageReaction(
-                    id: messageId,
-                    reaction: nil
-                ).startStandalone()
+                self.toggleReactionHandler?(messageId, nil)
             } else {
-                let _ = context.engine.messages.setMessageReaction(
-                    id: messageId,
-                    reaction: reactionValue
-                ).startStandalone()
+                self.toggleReactionHandler?(messageId, reaction)
             }
             isSet = !isSet
         }
 
-        toggleReaction()
+        toggle()
 
         let timer = SwiftSignalKit.Timer(timeout: interval, repeat: true, completion: {
-            toggleReaction()
+            toggle()
         }, queue: Queue.mainQueue())
         timer.start()
 

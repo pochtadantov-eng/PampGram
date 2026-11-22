@@ -17,6 +17,7 @@ swift_library(
         "//submodules/Display",
         "//submodules/AsyncDisplayKit",
         "//submodules/TelegramPresentationData",
+        "//submodules/WalletContext",
         "//submodules/TelegramUI/Components/PampGram/PampGramCore",
     ],
     visibility = [

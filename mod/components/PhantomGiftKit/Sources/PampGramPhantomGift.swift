@@ -160,7 +160,9 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
     /// calling a real, network-backed `ProfileGiftsContext` method. `fromPeer` is resolved by
     /// the caller (`PampGramPhantomGiftStore.resolvedProfileGiftsSignal`) from `fromPeerId` —
     /// this type only stores an id, never a full `EnginePeer`.
-    public func asProfileGift(fromPeer: EnginePeer?) -> ProfileGiftsContext.State.StarGift {
+    /// - Parameter accountPeerId: when set, craft (anvil) is offered only if this gift lives on
+    ///   that account's own profile — never on someone else's gift grid.
+    public func asProfileGift(fromPeer: EnginePeer?, reference: StarGiftReference? = nil, accountPeerId: EnginePeer.Id? = nil) -> ProfileGiftsContext.State.StarGift {
         // A local market listing (`marketPrice`) never touches the stored `self.gift` — only
         // this projection, the one GiftViewScreen actually reads `resellAmounts` off of, so
         // listing/unlisting flips the real "Продать"/"Снять с продажи" button and green
@@ -197,12 +199,24 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             // and the "С моим именем" switch starts on — the stock flow, free of charge.
             upgradeStars = genericGift.upgradeStars
         }
-        if let marketPrice = self.marketPrice, case let .unique(uniqueGift) = gift {
-            gift = .unique(Self.withResellListing(uniqueGift, price: marketPrice))
+        if case let .unique(uniqueGift) = gift {
+            if let marketPrice = self.marketPrice {
+                gift = .unique(Self.withResellListing(uniqueGift, price: marketPrice))
+            } else {
+                // Owned (not listed) visual unique: never show TON diamond / blockchain copy,
+                // even if the stored payload still carries market leftovers.
+                gift = .unique(Self.withoutBlockchainMarkers(uniqueGift, resellForTonOnly: false))
+            }
+        }
+        // Crafting: Telegram's anvil shows when canCraftAt is set. Only own-profile unique
+        // visual gifts get it — never gifts shown on another peer's profile.
+        var canCraftAt: Int32?
+        if case .unique = gift, let accountPeerId, self.peerId == accountPeerId {
+            canCraftAt = 0
         }
         return ProfileGiftsContext.State.StarGift(
             gift: gift,
-            reference: nil,
+            reference: reference,
             fromPeer: fromPeer,
             date: self.date,
             text: projectedText,
@@ -226,37 +240,14 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             dropOriginalDetailsStars: nil,
             number: self.number,
             isRefunded: false,
-            canCraftAt: nil
+            canCraftAt: canCraftAt
         )
     }
 
-    private static func withAttributes(_ uniqueGift: StarGift.UniqueGift, attributes: [StarGift.UniqueGift.Attribute]) -> StarGift.UniqueGift {
-        return StarGift.UniqueGift(
-            id: uniqueGift.id,
-            giftId: uniqueGift.giftId,
-            title: uniqueGift.title,
-            number: uniqueGift.number,
-            slug: uniqueGift.slug,
-            owner: uniqueGift.owner,
-            attributes: attributes,
-            availability: uniqueGift.availability,
-            giftAddress: uniqueGift.giftAddress,
-            resellAmounts: uniqueGift.resellAmounts,
-            resellForTonOnly: uniqueGift.resellForTonOnly,
-            releasedBy: uniqueGift.releasedBy,
-            valueAmount: uniqueGift.valueAmount,
-            valueCurrency: uniqueGift.valueCurrency,
-            valueUsdAmount: uniqueGift.valueUsdAmount,
-            flags: uniqueGift.flags,
-            themePeerId: uniqueGift.themePeerId,
-            peerColor: uniqueGift.peerColor,
-            hostPeerId: uniqueGift.hostPeerId,
-            minOfferStars: uniqueGift.minOfferStars,
-            craftChancePermille: uniqueGift.craftChancePermille
-        )
-    }
-
-    private static func withResellListing(_ uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> StarGift.UniqueGift {
+    /// Drop TON-blockchain markers that a real market unique may still carry. Visual gifts
+    /// must never show the diamond badge or "in TON Blockchain" copy — including ones saved
+    /// before `fakedOwnership` started stripping these fields.
+    private static func withoutBlockchainMarkers(_ uniqueGift: StarGift.UniqueGift, resellForTonOnly: Bool? = nil) -> StarGift.UniqueGift {
         return StarGift.UniqueGift(
             id: uniqueGift.id,
             giftId: uniqueGift.giftId,
@@ -266,9 +257,9 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             owner: uniqueGift.owner,
             attributes: uniqueGift.attributes,
             availability: uniqueGift.availability,
-            giftAddress: uniqueGift.giftAddress,
-            resellAmounts: [price],
-            resellForTonOnly: price.currency == .ton,
+            giftAddress: nil,
+            resellAmounts: uniqueGift.resellAmounts,
+            resellForTonOnly: resellForTonOnly ?? false,
             releasedBy: uniqueGift.releasedBy,
             valueAmount: uniqueGift.valueAmount,
             valueCurrency: uniqueGift.valueCurrency,
@@ -276,9 +267,43 @@ public struct PampGramPhantomGift: Codable, Equatable, Identifiable {
             flags: uniqueGift.flags,
             themePeerId: uniqueGift.themePeerId,
             peerColor: uniqueGift.peerColor,
-            hostPeerId: uniqueGift.hostPeerId,
+            hostPeerId: nil,
             minOfferStars: uniqueGift.minOfferStars,
             craftChancePermille: uniqueGift.craftChancePermille
         )
+    }
+
+    private static func withAttributes(_ uniqueGift: StarGift.UniqueGift, attributes: [StarGift.UniqueGift.Attribute]) -> StarGift.UniqueGift {
+        let cleaned = Self.withoutBlockchainMarkers(uniqueGift, resellForTonOnly: uniqueGift.resellForTonOnly)
+        return StarGift.UniqueGift(
+            id: cleaned.id,
+            giftId: cleaned.giftId,
+            title: cleaned.title,
+            number: cleaned.number,
+            slug: cleaned.slug,
+            owner: cleaned.owner,
+            attributes: attributes,
+            availability: cleaned.availability,
+            giftAddress: nil,
+            resellAmounts: cleaned.resellAmounts,
+            resellForTonOnly: cleaned.resellForTonOnly,
+            releasedBy: cleaned.releasedBy,
+            valueAmount: cleaned.valueAmount,
+            valueCurrency: cleaned.valueCurrency,
+            valueUsdAmount: cleaned.valueUsdAmount,
+            flags: cleaned.flags,
+            themePeerId: cleaned.themePeerId,
+            peerColor: cleaned.peerColor,
+            hostPeerId: nil,
+            minOfferStars: cleaned.minOfferStars,
+            craftChancePermille: cleaned.craftChancePermille
+        )
+    }
+
+    private static func withResellListing(_ uniqueGift: StarGift.UniqueGift, price: CurrencyAmount) -> StarGift.UniqueGift {
+        // Local market may list in TON — that diamond is intentional for the listing.
+        // Still never claim a real TON gift address / host.
+        let cleaned = Self.withoutBlockchainMarkers(uniqueGift, resellForTonOnly: price.currency == .ton)
+        return cleaned.withResellAmounts([price])
     }
 }

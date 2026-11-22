@@ -1,38 +1,7 @@
 import Foundation
 import Postbox
-import TelegramCore
 import SwiftSignalKit
-import AccountContext
 
-/// «Генератор платёжных чеков» — создаёт реалистичные чеки об оплате Stars, TON, Premium.
-///
-/// Выглядит как настоящий чек от @StarsBot / системы платежей Telegram:
-/// «Вы успешно перевели 50 000 Stars» с деталями транзакции, хешем, датой.
-/// Локально — ничего никуда не отправляется.
-///
-/// Integration point (в патче):
-///
-/// 1. Контекстное меню чата → «Фейк чек»:
-///
-///    ```swift
-///    items.append(.action(ContextMenuActionItem(
-///        text: "Фейк чек",
-///        icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Reactions"), color: theme.contextMenu.primaryColor) },
-///        action: { c, _ in
-///            c?.dismiss(completion: {
-///                // Показать выбор типа чека и суммы, затем:
-///                PampGramFakePaymentReceiptRuntime.shared.generateReceipt(
-///                    context: context,
-///                    peerId: peerId,
-///                    type: .starsTransfer(amount: 50000)
-///                )
-///            })
-///        }
-///    )))
-///    ```
-///
-/// 2. Чек вставляется как локальное сообщение с форматированным текстом, имитирующим
-///    настоящий платёжный чек Telegram.
 public final class PampGramFakePaymentReceiptRuntime {
     public static let shared = PampGramFakePaymentReceiptRuntime()
 
@@ -43,30 +12,13 @@ public final class PampGramFakePaymentReceiptRuntime {
         case giftPurchase(name: String, stars: Int64)
     }
 
+    public var enqueueMessageHandler: ((_ peerId: PeerId, _ text: String) -> Void)?
+
     private init() {}
 
-    /// Генерирует фейковый платёжный чек и вставляет в чат как локальное сообщение.
-    public func generateReceipt(context: AccountContext, peerId: PeerId, type: ReceiptType) {
+    public func generateReceipt(peerId: PeerId, type: ReceiptType) {
         let text = formatReceipt(type: type)
-
-        let _ = enqueueMessages(
-            account: context.account,
-            peerId: peerId,
-            messages: [
-                .message(
-                    text: text,
-                    attributes: [],
-                    inlineStickers: [:],
-                    mediaReference: nil,
-                    threadId: nil,
-                    replyToMessageId: nil,
-                    replyToStoryId: nil,
-                    localGroupingKey: nil,
-                    correlationId: nil,
-                    bubbleUpEmojiOrStickersets: []
-                )
-            ]
-        ).start()
+        enqueueMessageHandler?(peerId, text)
     }
 
     private func formatReceipt(type: ReceiptType) -> String {

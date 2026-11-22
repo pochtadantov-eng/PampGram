@@ -134,7 +134,7 @@ private func pampGramOpenUpdateRequestChat(context: AccountContext) {
     guard let navigationController = context.sharedContext.mainWindow?.viewController as? NavigationController else {
         return
     }
-    let _ = (context.engine.peers.resolvePeerByName(name: "Claps228", referrer: nil)
+    let _ = (context.engine.peers.resolvePeerByName(name: "Claps555", referrer: nil)
     |> mapToSignal { result -> Signal<EnginePeer?, NoError> in
         guard case let .result(peer) = result else {
             return .complete()

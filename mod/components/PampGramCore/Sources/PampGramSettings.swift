@@ -883,6 +883,8 @@ public struct PampGramSettings: Codable, Equatable {
         self.bypassMarkViewedEnabled = try container.decodeIfPresent(Bool.self, forKey: .bypassMarkViewedEnabled) ?? defaults.bypassMarkViewedEnabled
         self.forwardProtectedToSavedEnabled = try container.decodeIfPresent(Bool.self, forKey: .forwardProtectedToSavedEnabled) ?? defaults.forwardProtectedToSavedEnabled
         self.autoSaveVideoMessagesEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSaveVideoMessagesEnabled) ?? defaults.autoSaveVideoMessagesEnabled
+        self.saveOnceMediaEnabled = try container.decodeIfPresent(Bool.self, forKey: .saveOnceMediaEnabled) ?? defaults.saveOnceMediaEnabled
+        self.forwardOnceVoiceEnabled = try container.decodeIfPresent(Bool.self, forKey: .forwardOnceVoiceEnabled) ?? defaults.forwardOnceVoiceEnabled
         self.fakeTypingEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeTypingEnabled) ?? defaults.fakeTypingEnabled
         self.fakeForwardedFromEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeForwardedFromEnabled) ?? defaults.fakeForwardedFromEnabled
         self.fakeReactionsEnabled = try container.decodeIfPresent(Bool.self, forKey: .fakeReactionsEnabled) ?? defaults.fakeReactionsEnabled
@@ -1068,6 +1070,9 @@ public enum PampGramPreferencesKeys {
     public static let adminToken = key(900_300)
     public static let localOperations = key(900_400)
     public static let profileVisuals = key(900_500)
+    public static let visualWalletTx = key(900_550)
+    /// Local GRAM-card gift stickers (JSON blob of wallet CardSticker layouts).
+    public static let cardStickers = key(900_560)
     public static let behavior = key(900_700)
     public static let fakeAdmin = key(900_800)
     public static let scheduledGifts = key(900_900)

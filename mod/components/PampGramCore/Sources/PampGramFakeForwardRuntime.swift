@@ -1,8 +1,6 @@
 import Foundation
 import Postbox
-import TelegramCore
 import SwiftSignalKit
-import AccountContext
 
 /// "Фейк пересылка от..." — локально помечает любое сообщение как пересланное от выбранного
 /// пользователя или канала. На скриншоте выглядит неотличимо от настоящей пересылки.
