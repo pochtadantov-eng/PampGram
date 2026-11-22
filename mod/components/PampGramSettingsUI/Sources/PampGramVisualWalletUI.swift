@@ -197,7 +197,7 @@ public func pampGramPresentVisualWalletTxDetail(context: AccountContext, tx: Pam
 
 /// True when «Карточка GRAM» is on for this account — WalletScreen send/top-up should stay visual.
 public func pampGramVisualWalletIsActive(context: AccountContext) -> Bool {
-    return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: context.account.peerId.toInt64()) != nil
+    return PampGramVisualExtrasRuntime.shared.isCardEnabled(accountKey: context.account.peerId.toInt64())
 }
 
 // MARK: - Send / receive core

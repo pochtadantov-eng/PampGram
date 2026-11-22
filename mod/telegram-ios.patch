@@ -22302,7 +22302,7 @@ index 463ab663d..d39e68cb6 100644
 +            // PampGram: own visual GRAM wallet is one thing — open the same Money screen
 +            // («Деньги») from the profile chip, not a separate public PeerWallet card.
 +            if peer.id == self.context.account.peerId,
-+               PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: self.context.account.peerId.toInt64()) != nil {
++               PampGramVisualExtrasRuntime.shared.isCardEnabled(accountKey: self.context.account.peerId.toInt64()) {
 +                guard WalletConfiguration.with(appConfiguration: self.context.currentAppConfiguration.with { $0 }).isAvailable else {
 +                    self.openSettings(section: .wallet)
 +                    return
@@ -25602,7 +25602,7 @@ index 6a0712917..96086e235 100644
 +            return PampGramWalletCardStickersRuntime.shared.collectibles(accountKey: walletAccountKey)
 +        }
 +        WalletContext.pampGramCardStickers = { walletAccountKey in
-+            guard PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey) != nil else {
++            guard PampGramVisualExtrasRuntime.shared.isCardEnabled(accountKey: walletAccountKey) else {
 +                return nil
 +            }
 +            return PampGramWalletCardStickersRuntime.shared.stickers(accountKey: walletAccountKey)
