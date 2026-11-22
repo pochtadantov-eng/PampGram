@@ -182,22 +182,14 @@ public final class PampGramVisualExtrasRuntime {
         return result
     }
 
-    /// Whether «Карточка GRAM» is on (stickers / visual send-receive / address). Does **not**
-    /// imply a fake balance on Money or the profile chip — those stay real.
+    /// Whether «Карточка GRAM» is on (stickers / visual send-receive / address / balance override).
     public func isCardEnabled(accountKey: Int64) -> Bool {
         return self.extras(accountKey: accountKey).cardEnabled
     }
 
-    /// Formerly returned the typed GRAM amount for Money + profile. Always `nil` now: entering
-    /// a sum in «Карточка GRAM» must not replace the real wallet balance anywhere in the UI.
-    /// Internal card balance still lives in extras for visual send/top-up accounting.
+    /// Fake GRAM balance in nanograms when "Карточка GRAM" is on — same value on Money and
+    /// the profile chip. `nil` means show Telegram's real wallet balance.
     public func fakeBalanceNanos(accountKey: Int64) -> Int64? {
-        let _ = accountKey
-        return nil
-    }
-
-    /// Nanograms tracked for visual send/top-up when the card is on (not shown as Money/profile balance).
-    public func internalCardBalanceNanos(accountKey: Int64) -> Int64? {
         let extras = self.extras(accountKey: accountKey)
         if !extras.cardEnabled {
             return nil

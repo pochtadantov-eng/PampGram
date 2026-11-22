@@ -309,22 +309,31 @@ private final class PampGramBadgeScreenController: PampGramVisualPageController 
 
 private final class PampGramCardScreenController: PampGramVisualPageController {
     private let enableSwitch = UISwitch()
+    private var balanceField = UITextField()
     private var addressField = UITextField()
 
     override func buildContent() {
-        let intro = self.makeLabel("Карточка GRAM: наклейки и визуальные «Пополнить»/«Отправить» в чатах. Баланс в профиле и во вкладке «Деньги» больше не подменяется — там остаётся настоящий кошелёк Telegram. Наклейки: «Деньги» → «Коллекции» (настоящие и визуальные подарки с профиля).", size: 14.0, weight: .regular, color: self.secondaryColor)
+        let intro = self.makeLabel("Один локальный кошелёк GRAM: сумма ниже — это и чип баланса в профиле, и экран «Деньги», и визуальные «Пополнить»/«Отправить». Укажите сумму — подмена включится сама. Дробные через точку или запятую (0.1). Наклейки: «Деньги» → «Коллекции» (настоящие и визуальные подарки с профиля).", size: 14.0, weight: .regular, color: self.secondaryColor)
         self.stack.addArrangedSubview(intro)
 
-        let switchRow = UIStackView(arrangedSubviews: [self.makeLabel("Карточка включена", size: 16.0, weight: .regular, color: self.primaryColor), self.enableSwitch])
+        let switchRow = UIStackView(arrangedSubviews: [self.makeLabel("Подменять баланс", size: 16.0, weight: .regular, color: self.primaryColor), self.enableSwitch])
         switchRow.axis = .horizontal
         switchRow.alignment = .center
         self.enableSwitch.addTarget(self, action: #selector(self.switchChanged), for: .valueChanged)
+        self.balanceField = self.makeField(placeholder: "Баланс GRAM (например 0.1)", keyboard: .decimalPad)
+        self.balanceField.addTarget(self, action: #selector(self.balanceChanged(_:)), for: .editingChanged)
         self.addressField = self.makeField(placeholder: "Адрес кошелька (необязательно)", keyboard: .asciiCapable)
         self.addressField.addTarget(self, action: #selector(self.addressChanged(_:)), for: .editingChanged)
-        self.stack.addArrangedSubview(self.makePanel(title: "Карточка GRAM", content: [switchRow, self.addressField]))
+        self.stack.addArrangedSubview(self.makePanel(title: "Баланс GRAM", content: [switchRow, self.balanceField, self.addressField]))
 
         self.loadExtras { [weak self] extras in
             self?.enableSwitch.isOn = extras.cardEnabled
+            let nanos = extras.resolvedBalanceNanos()
+            if nanos > 0 {
+                self?.balanceField.text = PampGramVisualWallet.formatGrams(nanos).replacingOccurrences(of: ",", with: ".")
+            } else {
+                self?.balanceField.text = ""
+            }
             self?.addressField.text = extras.cardAddress
         }
     }
@@ -340,6 +349,30 @@ private final class PampGramCardScreenController: PampGramVisualPageController {
         let value = self.enableSwitch.isOn
         self.updateExtras { extras in
             extras.cardEnabled = value
+        }
+    }
+
+    @objc private func balanceChanged(_ field: UITextField) {
+        let raw = (field.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        let nanos: Int64
+        if raw.isEmpty {
+            nanos = 0
+        } else if let value = Double(raw), value.isFinite, value >= 0.0 {
+            nanos = PampGramVisualWallet.nanos(fromGrams: value)
+        } else {
+            return
+        }
+        // One wallet: writing a GRAM amount turns substitution on so Money + profile
+        // chip + spend paths all read the same balance immediately.
+        if nanos > 0 && !self.enableSwitch.isOn {
+            self.enableSwitch.isOn = true
+        }
+        self.updateExtras { extras in
+            if nanos > 0 {
+                extras.cardEnabled = true
+            }
+            extras.setBalanceNanos(nanos)
         }
     }
 }
