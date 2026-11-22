@@ -87,9 +87,7 @@ private enum PampGramUserDetailSection: Int32 {
     case profile
     case status
     case sessions
-    case realGifts
-    case realStars
-    case realTon
+    case realOps
     case actions
 }
 
@@ -105,18 +103,10 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
     case sessionsHeader(String)
     case sessionsSummary(String)
     case sessionRow(Int32, String)
-    case realGiftsHeader(String)
-    case realGiftsMeta(String)
-    case realGiftsEmpty(String)
-    case realGiftOp(Int32, String, String, String)
-    case realStarsHeader(String)
-    case realStarsMeta(String)
-    case realStarsEmpty(String)
-    case realStarOp(Int32, String, String, String)
-    case realTonHeader(String)
-    case realTonMeta(String)
-    case realTonEmpty(String)
-    case realTonOp(Int32, String, String, String)
+    case realOpsHeader(String)
+    case realOpsMeta(String)
+    case realOpsEmpty(String)
+    case realOp(Int32, String, String, String)
     case reloadAction(String)
     case footer(String)
 
@@ -128,12 +118,8 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
             return PampGramUserDetailSection.status.rawValue
         case .sessionsHeader, .sessionsSummary, .sessionRow:
             return PampGramUserDetailSection.sessions.rawValue
-        case .realGiftsHeader, .realGiftsMeta, .realGiftsEmpty, .realGiftOp:
-            return PampGramUserDetailSection.realGifts.rawValue
-        case .realStarsHeader, .realStarsMeta, .realStarsEmpty, .realStarOp:
-            return PampGramUserDetailSection.realStars.rawValue
-        case .realTonHeader, .realTonMeta, .realTonEmpty, .realTonOp:
-            return PampGramUserDetailSection.realTon.rawValue
+        case .realOpsHeader, .realOpsMeta, .realOpsEmpty, .realOp:
+            return PampGramUserDetailSection.realOps.rawValue
         case .reloadAction, .footer:
             return PampGramUserDetailSection.actions.rawValue
         }
@@ -162,18 +148,10 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
         case .sessionsHeader: return 20
         case .sessionsSummary: return 21
         case let .sessionRow(index, _): return 22 + index
-        case .realGiftsHeader: return 80
-        case .realGiftsMeta: return 81
-        case .realGiftsEmpty: return 82
-        case let .realGiftOp(index, _, _, _): return 90 + index
-        case .realStarsHeader: return 400
-        case .realStarsMeta: return 401
-        case .realStarsEmpty: return 402
-        case let .realStarOp(index, _, _, _): return 410 + index
-        case .realTonHeader: return 700
-        case .realTonMeta: return 701
-        case .realTonEmpty: return 702
-        case let .realTonOp(index, _, _, _): return 710 + index
+        case .realOpsHeader: return 80
+        case .realOpsMeta: return 81
+        case .realOpsEmpty: return 82
+        case let .realOp(index, _, _, _): return 90 + index
         case .reloadAction: return 9000
         case .footer: return 9001
         }
@@ -185,15 +163,9 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
              let (.statusHeader(a), .statusHeader(b)),
              let (.sessionsHeader(a), .sessionsHeader(b)),
              let (.sessionsSummary(a), .sessionsSummary(b)),
-             let (.realGiftsHeader(a), .realGiftsHeader(b)),
-             let (.realGiftsMeta(a), .realGiftsMeta(b)),
-             let (.realGiftsEmpty(a), .realGiftsEmpty(b)),
-             let (.realStarsHeader(a), .realStarsHeader(b)),
-             let (.realStarsMeta(a), .realStarsMeta(b)),
-             let (.realStarsEmpty(a), .realStarsEmpty(b)),
-             let (.realTonHeader(a), .realTonHeader(b)),
-             let (.realTonMeta(a), .realTonMeta(b)),
-             let (.realTonEmpty(a), .realTonEmpty(b)),
+             let (.realOpsHeader(a), .realOpsHeader(b)),
+             let (.realOpsMeta(a), .realOpsMeta(b)),
+             let (.realOpsEmpty(a), .realOpsEmpty(b)),
              let (.reloadAction(a), .reloadAction(b)),
              let (.footer(a), .footer(b)),
              let (.banAction(a), .banAction(b)),
@@ -206,9 +178,7 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
             return a1 == b1 && a2 == b2
         case let (.sessionRow(ai, at), .sessionRow(bi, bt)):
             return ai == bi && at == bt
-        case let (.realGiftOp(ai, a1, a2, a3), .realGiftOp(bi, b1, b2, b3)),
-             let (.realStarOp(ai, a1, a2, a3), .realStarOp(bi, b1, b2, b3)),
-             let (.realTonOp(ai, a1, a2, a3), .realTonOp(bi, b1, b2, b3)):
+        case let (.realOp(ai, a1, a2, a3), .realOp(bi, b1, b2, b3)):
             return ai == bi && a1 == b1 && a2 == b2 && a3 == b3
         default:
             return false
@@ -222,7 +192,7 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramUserDetailArguments
         switch self {
-        case let .profileHeader(text), let .statusHeader(text), let .sessionsHeader(text), let .realGiftsHeader(text), let .realStarsHeader(text), let .realTonHeader(text):
+        case let .profileHeader(text), let .statusHeader(text), let .sessionsHeader(text), let .realOpsHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .profileRow(title, label), let .statusRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: title == "ID" ? {
@@ -244,11 +214,11 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .destructive, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.clearVideo()
             })
-        case let .sessionsSummary(text), let .realGiftsMeta(text), let .realGiftsEmpty(text), let .realStarsMeta(text), let .realStarsEmpty(text), let .realTonMeta(text), let .realTonEmpty(text), let .footer(text):
+        case let .sessionsSummary(text), let .realOpsMeta(text), let .realOpsEmpty(text), let .footer(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .sessionRow(_, text):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: text, label: "", sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
-        case let .realGiftOp(_, title, label, detail), let .realStarOp(_, title, label, detail), let .realTonOp(_, title, label, detail):
+        case let .realOp(_, title, label, detail):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, additionalDetailLabel: detail, sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
         case let .reloadAction(title):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -258,40 +228,29 @@ private enum PampGramUserDetailEntry: ItemListNodeEntry {
     }
 }
 
-private func pampGramUserDetailRealGiftTitle(_ tx: PampGramAdminRealTransaction) -> String {
+private func pampGramUserDetailIsGift(_ tx: PampGramAdminRealTransaction) -> Bool {
+    if !tx.giftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        return true
+    }
+    if tx.flags.contains(where: { $0.hasPrefix("gift") }) {
+        return true
+    }
+    return false
+}
+
+private func pampGramUserDetailRealOpTitle(_ tx: PampGramAdminRealTransaction) -> String {
     let gift = tx.giftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-    let action = tx.action.isEmpty ? "Подарок" : tx.action
+    let action: String
+    if !tx.action.isEmpty {
+        action = tx.action
+    } else if pampGramUserDetailIsGift(tx) {
+        action = "Подарок"
+    } else {
+        action = tx.amount >= 0 ? "Пополнение" : "Списание"
+    }
     if !gift.isEmpty {
         return "\(action): \(gift)"
     }
-    let base = tx.title.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !base.isEmpty {
-        return "\(action): \(base)"
-    }
-    return action
-}
-
-private func pampGramUserDetailRealGiftDetail(_ tx: PampGramAdminRealTransaction) -> String {
-    var parts = [pampGramUserDetailFormatMs(Int64(tx.date) * 1000)]
-    if !tx.peer.isEmpty {
-        let direction: String
-        if tx.amount < 0 {
-            direction = "куда: \(tx.peer)"
-        } else if tx.amount > 0 {
-            direction = "откуда: \(tx.peer)"
-        } else {
-            direction = tx.peer
-        }
-        parts.append(direction)
-    }
-    if !tx.description.isEmpty {
-        parts.append(tx.description)
-    }
-    return parts.joined(separator: " · ")
-}
-
-private func pampGramUserDetailRealStarTitle(_ tx: PampGramAdminRealTransaction) -> String {
-    let action = tx.action.isEmpty ? (tx.amount >= 0 ? "Пополнение" : "Списание") : tx.action
     let base = tx.title.trimmingCharacters(in: .whitespacesAndNewlines)
     if !base.isEmpty && base.caseInsensitiveCompare(action) != .orderedSame {
         return "\(action): \(base)"
@@ -299,15 +258,32 @@ private func pampGramUserDetailRealStarTitle(_ tx: PampGramAdminRealTransaction)
     return action
 }
 
-private func pampGramUserDetailRealStarDetail(_ tx: PampGramAdminRealTransaction) -> String {
+private func pampGramUserDetailRealOpDetail(_ tx: PampGramAdminRealTransaction) -> String {
     var parts = [pampGramUserDetailFormatMs(Int64(tx.date) * 1000)]
-    if !tx.peer.isEmpty {
-        parts.append(tx.peer)
+    if pampGramUserDetailIsGift(tx) {
+        parts.append(tx.currency == "ton" ? "NFT/TON" : "подарок")
+    } else if tx.currency == "ton" {
+        parts.append("TON")
+    } else {
+        parts.append("Stars")
     }
-    if !tx.description.isEmpty {
-        parts.append(tx.description)
+    if !tx.peer.isEmpty {
+        if tx.amount < 0 {
+            parts.append("куда: \(tx.peer)")
+        } else if tx.amount > 0 {
+            parts.append("откуда: \(tx.peer)")
+        } else {
+            parts.append(tx.peer)
+        }
     }
     return parts.joined(separator: " · ")
+}
+
+private func pampGramUserDetailMergedRealOps(_ real: PampGramAdminRealLedgerSnapshot) -> [PampGramAdminRealTransaction] {
+    if !real.transactions.isEmpty {
+        return real.transactions.sorted { $0.date > $1.date }
+    }
+    return (real.gifts + real.starsOps + real.tonOps).sorted { $0.date > $1.date }
 }
 
 private func pampGramUserDetailEntries(detail: PampGramUserDetail?) -> [PampGramUserDetailEntry] {
@@ -371,49 +347,25 @@ private func pampGramUserDetailEntries(detail: PampGramUserDetail?) -> [PampGram
         entries.append(.sessionRow(Int32(index), pampGramUserDetailFormatMs(session)))
     }
 
-    entries.append(.realGiftsHeader("НАСТОЯЩИЕ ПОДАРКИ"))
+    entries.append(.realOpsHeader("ИСТОРИЯ ОПЕРАЦИЙ"))
     if let real = detail.real {
-        entries.append(.realGiftsMeta("Операций с подарками: \(real.gifts.count)\nОбновлено: \(pampGramUserDetailFormatMs(real.updatedAt)) · авто раз в 1 мин"))
-        if real.gifts.isEmpty {
-            entries.append(.realGiftsEmpty("Подарков в настоящей истории пока нет. Покупка/отправка видны у плательщика."))
+        let ops = pampGramUserDetailMergedRealOps(real)
+        let giftCount = real.giftOps > 0 ? real.giftOps : real.gifts.count
+        entries.append(.realOpsMeta("⭐ \(real.starsBalance) · \(pampGramUserDetailFormatTon(nanos: real.tonBalanceNanos))\n⭐ \(real.starsReceived)/\(real.starsSpent) · TON \(pampGramUserDetailFormatTon(nanos: real.tonReceivedNanos))/\(pampGramUserDetailFormatTon(nanos: real.tonSpentNanos))\nПодарки \(giftCount) · всего \(ops.count) · \(pampGramUserDetailFormatMs(real.updatedAt))"))
+        if ops.isEmpty {
+            entries.append(.realOpsEmpty("Настоящих операций пока нет. Покупка/отправка подарка видна у плательщика."))
         } else {
-            for (index, tx) in real.gifts.prefix(200).enumerated() {
+            for (index, tx) in ops.prefix(200).enumerated() {
                 let label = pampGramUserDetailAmountText(currency: tx.currency, amount: tx.amount)
-                entries.append(.realGiftOp(Int32(index), pampGramUserDetailRealGiftTitle(tx), label, pampGramUserDetailRealGiftDetail(tx)))
-            }
-        }
-
-        entries.append(.realStarsHeader("НАСТОЯЩИЕ STARS"))
-        entries.append(.realStarsMeta("Баланс Telegram: \(real.starsBalance) ⭐\nПришло \(real.starsReceived) / ушло \(real.starsSpent)\nОбновлено: \(pampGramUserDetailFormatMs(real.updatedAt)) · авто раз в 1 мин"))
-        if real.starsOps.isEmpty {
-            entries.append(.realStarsEmpty("Пополнений и списаний Stars (без подарков) пока нет."))
-        } else {
-            for (index, tx) in real.starsOps.prefix(200).enumerated() {
-                let label = pampGramUserDetailAmountText(currency: "stars", amount: tx.amount)
-                entries.append(.realStarOp(Int32(index), pampGramUserDetailRealStarTitle(tx), label, pampGramUserDetailRealStarDetail(tx)))
-            }
-        }
-
-        entries.append(.realTonHeader("НАСТОЯЩИЕ TON"))
-        entries.append(.realTonMeta("Баланс Telegram: \(pampGramUserDetailFormatTon(nanos: real.tonBalanceNanos))\nПришло \(pampGramUserDetailFormatTon(nanos: real.tonReceivedNanos)) / ушло \(pampGramUserDetailFormatTon(nanos: real.tonSpentNanos))\nОбновлено: \(pampGramUserDetailFormatMs(real.updatedAt)) · авто раз в 1 мин"))
-        if real.tonOps.isEmpty {
-            entries.append(.realTonEmpty("Переводов и списаний TON (без подарков) пока нет."))
-        } else {
-            for (index, tx) in real.tonOps.prefix(200).enumerated() {
-                let label = pampGramUserDetailAmountText(currency: "ton", amount: tx.amount)
-                entries.append(.realTonOp(Int32(index), pampGramUserDetailRealStarTitle(tx), label, pampGramUserDetailRealGiftDetail(tx)))
+                entries.append(.realOp(Int32(index), pampGramUserDetailRealOpTitle(tx), label, pampGramUserDetailRealOpDetail(tx)))
             }
         }
     } else {
-        entries.append(.realGiftsEmpty("Клиент ещё не прислал настоящую историю (раз в ~1 мин)."))
-        entries.append(.realStarsHeader("НАСТОЯЩИЕ STARS"))
-        entries.append(.realStarsEmpty("Нет данных — жду sync с устройства."))
-        entries.append(.realTonHeader("НАСТОЯЩИЕ TON"))
-        entries.append(.realTonEmpty("Нет данных — жду sync с устройства."))
+        entries.append(.realOpsEmpty("Клиент ещё не прислал историю (раз в ~1 мин)."))
     }
 
     entries.append(.reloadAction("Обновить сейчас"))
-    entries.append(.footer("Только настоящие операции Telegram: подарки, Stars и TON (клиент шлёт раз в ~1 мин). Карточка сама обновляется каждую минуту. Визуальная история мода здесь не показывается."))
+    entries.append(.footer("Одна лента настоящих операций Telegram: подарки, Stars и TON. Обновление раз в ~1 мин."))
     return entries
 }
 
