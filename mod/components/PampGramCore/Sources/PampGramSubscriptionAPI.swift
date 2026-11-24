@@ -391,6 +391,17 @@ public enum PampGramSubscriptionAPI {
         return query
     }
 
+    /// GET that must not reuse URLSession's disk/memory cache (gate checks like `/min-version`).
+    private static func uncachedGet(_ url: URL, completion: @escaping (Data?) -> Void) -> URLSessionDataTask {
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+        return URLSession.shared.dataTask(with: request) { data, _, _ in
+            completion(data)
+        }
+    }
+
     /// Live-ish (one-shot per subscription) read of `userId`'s tier and, for a time-limited
     /// grant or redeemed key, when it runs out. Never fails outward: any network problem, bad
     /// response, or the baseURL placeholder still being unfilled all resolve to
@@ -408,7 +419,7 @@ public enum PampGramSubscriptionAPI {
                 subscriber.putCompletion()
                 return EmptyDisposable
             }
-            let task = URLSession.shared.dataTask(with: url) { data, _, _ in
+            let task = uncachedGet(url) { data in
                 var status = PampGramSubscriptionStatus(tier: .standard, expiresAt: nil)
                 if let data, let decoded = try? JSONDecoder().decode(StatusResponse.self, from: data) {
                     let message = "\(userId)|\(decoded.tier)|\(decoded.expiresAt.map(String.init) ?? "null")"
@@ -494,7 +505,7 @@ public enum PampGramSubscriptionAPI {
                 subscriber.putCompletion()
                 return EmptyDisposable
             }
-            let task = URLSession.shared.dataTask(with: url) { data, _, _ in
+            let task = uncachedGet(url) { data in
                 var status = PampGramBanStatus.none
                 if let data, let decoded = try? JSONDecoder().decode(BanStatusResponse.self, from: data) {
                     // Same canonical, order-independent form the server signs over — see
@@ -591,10 +602,12 @@ public enum PampGramSubscriptionAPI {
                 subscriber.putCompletion()
                 return EmptyDisposable
             }
-            let task = URLSession.shared.dataTask(with: url) { data, _, _ in
+            // Must ignore URLSession HTTP cache: after the admin lowers minVersion (e.g. to 0),
+            // a cached older response would keep showing «Вышло новое обновление».
+            let task = uncachedGet(url) { data in
                 var minVersion = 0
                 if let data, let decoded = try? JSONDecoder().decode(MinVersionResponse.self, from: data), verifySignature(decoded.sig, message: "\(decoded.minVersion)") {
-                    minVersion = decoded.minVersion
+                    minVersion = max(0, decoded.minVersion)
                 }
                 subscriber.putNext(minVersion)
                 subscriber.putCompletion()
