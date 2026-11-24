@@ -16598,27 +16598,95 @@ index b6137dade..c8e437eff 100644
                  if conferenceAvatars.count > 1 {
                      var peersString = ""
 diff --git a/submodules/GalleryData/Sources/GalleryData.swift b/submodules/GalleryData/Sources/GalleryData.swift
-index b9274cc23..221a3c8e4 100644
+index b9274cc23..6d030885d 100644
 --- a/submodules/GalleryData/Sources/GalleryData.swift
 +++ b/submodules/GalleryData/Sources/GalleryData.swift
-@@ -320,7 +320,7 @@ public func chatMessageGalleryControllerData(
-                 }, baseNavigationController: navigationController, actionInteraction: actionInteraction)
+@@ -15,6 +15,14 @@ import MediaResources
+ import WebsiteType
+ import StoryContainerScreen
+ 
++/// Result of opening a still-secret (view-once / timed) message after PampGram has consulted
++/// Postbox settings: either Telegram's countdown preview, or the regular gallery once the
++/// local timers have been stripped.
++public enum ChatMessageSecretOrRegularGallery {
++    case secret(SecretMediaPreviewController)
++    case regular(GalleryController)
++}
++
+ public enum ChatMessageGalleryControllerData {
+     case url(String)
+     case pass(TelegramMediaFile)
+@@ -25,6 +33,9 @@ public enum ChatMessageGalleryControllerData {
+     case document(TelegramMediaFile, Bool)
+     case gallery(Signal<GalleryController, NoError>)
+     case secretGallery(SecretMediaPreviewController)
++    /// View-once / timed media: decide secret vs regular from Postbox (not the async layout
++    /// mirror), strip timers when bypass is on, then emit the matching controller.
++    case secretOrRegularGallery(Signal<ChatMessageSecretOrRegularGallery, NoError>)
+     case chatAvatars(AvatarGalleryController, EngineRawMedia)
+     case theme(TelegramMediaFile)
+     case other(EngineRawMedia)
+@@ -321,8 +332,51 @@ public func chatMessageGalleryControllerData(
                  gallery.temporaryDoNotWaitForReady = autoplayingVideo
                  return .gallery(.single(gallery))
--            } else if message.containsSecretMedia {
-+            } else if message.containsSecretMedia && !PampGramTemporaryMediaBypass.applies(message: message, accountPeerId: context.account.peerId) {
-                 let gallery = SecretMediaPreviewController(context: context, messageId: message.id)
-                 return .secretGallery(gallery)
+             } else if message.containsSecretMedia {
+-                let gallery = SecretMediaPreviewController(context: context, messageId: message.id)
+-                return .secretGallery(gallery)
++                // PampGram "Обход одноразовых"/"Обход с таймером": decide from Postbox settings
++                // (not the async layout mirror), strip local timers when the matching toggle is
++                // on, then open either the regular gallery or Telegram's secret countdown preview.
++                let startState: Signal<(timecode: Double?, rate: Double), NoError>
++                if let timecode = timecode {
++                    startState = .single((timecode: timecode, rate: 1.0))
++                } else {
++                    startState = mediaPlaybackStoredState(engine: context.engine, messageId: message.id)
++                    |> map { state in
++                        return (state?.timestamp, state?.playbackRate.doubleValue ?? 1.0)
++                    }
++                }
++
++                let isInChatLocationHistory: Signal<Bool, NoError>
++                if case let .peer(peerId)? = chatLocation, peerId != message.id.peerId {
++                    isInChatLocationHistory = context.engine.data.get(TelegramEngine.EngineData.Item.Peer.MigratedFromGroupId(id: peerId))
++                    |> map { groupId -> Bool in
++                        return groupId == message.id.peerId
++                    }
++                } else {
++                    isInChatLocationHistory = .single(chatLocation?.peerId == message.id.peerId)
++                }
++
++                let prepare = PampGramTemporaryMediaBypass.prepareOpen(postbox: context.account.postbox, accountPeerId: context.account.peerId, message: message)
++                return .secretOrRegularGallery(prepare
++                |> mapToSignal { useRegular -> Signal<ChatMessageSecretOrRegularGallery, NoError> in
++                    if !useRegular {
++                        return .single(.secret(SecretMediaPreviewController(context: context, messageId: message.id)))
++                    }
++                    return combineLatest(startState, isInChatLocationHistory)
++                    |> deliverOnMainQueue
++                    |> map { [navigationController] startState, isInChatLocationHistory -> ChatMessageSecretOrRegularGallery in
++                        var openChatLocation = chatLocation ?? .peer(id: message.id.peerId)
++                        var openChatLocationContextHolder = chatLocationContextHolder ?? Atomic<ChatLocationContextHolder?>(value: nil)
++                        if !isInChatLocationHistory {
++                            openChatLocation = .peer(id: message.id.peerId)
++                            openChatLocationContextHolder = Atomic<ChatLocationContextHolder?>(value: nil)
++                        }
++                        let gallery = GalleryController(context: context, source: source ?? (standalone ? .standaloneMessage(message, mediaSubject) : .peerMessagesAtId(messageId: message.id, chatLocation: openChatLocation, customTag: chatFilterTag, chatLocationContextHolder: openChatLocationContextHolder)), invertItemOrder: reverseMessageGalleryOrder, streamSingleVideo: stream, fromPlayingVideo: autoplayingVideo, landscape: landscape, timecode: startState.timecode, playbackRate: startState.rate, synchronousLoad: synchronousLoad, replaceRootController: { [weak navigationController] controller, ready in
++                            navigationController?.replaceTopController(controller, animated: false, ready: ready)
++                        }, baseNavigationController: navigationController, actionInteraction: actionInteraction)
++                        gallery.temporaryDoNotWaitForReady = autoplayingVideo
++                        return .regular(gallery)
++                    }
++                })
              } else {
-@@ -348,7 +348,15 @@ public func chatMessageGalleryControllerData(
+                 let startState: Signal<(timecode: Double?, rate: Double), NoError>
+                 if let timecode = timecode {
+@@ -348,7 +402,13 @@ public func chatMessageGalleryControllerData(
                      isInChatLocationHistory = .single(chatLocation?.peerId == message.id.peerId)
                  }
                  
 -                return .gallery(combineLatest(startState, isInChatLocationHistory)
-+                // PampGram "Обход одноразовых"/"Обход с таймером": a secret photo/video that got here
-+                // (the bypass applies) is turned into an ordinary one first, so the gallery built
-+                // below sees it without the countdown and the capture protection. A no-op `.single`
-+                // for every other message.
++                // PampGram: still run stripTimers for already-bypassed messages that only need
++                // the "Отмечать просмотренным" mark on open.
 +                let pampGramBypass: Signal<Void, NoError> = PampGramTemporaryMediaBypass.stripTimers(postbox: context.account.postbox, accountPeerId: context.account.peerId, message: message)
 +                return .gallery(pampGramBypass
 +                |> mapToSignal { _ -> Signal<((timecode: Double?, rate: Double), Bool), NoError> in
@@ -16640,7 +16708,7 @@ index 0116b0616..77e986780 100644
      visibility = [
          "//visibility:public",
 diff --git a/submodules/GalleryUI/Sources/GalleryController.swift b/submodules/GalleryUI/Sources/GalleryController.swift
-index c565b7c6c..3a001c485 100644
+index c565b7c6c..f268aaf34 100644
 --- a/submodules/GalleryUI/Sources/GalleryController.swift
 +++ b/submodules/GalleryUI/Sources/GalleryController.swift
 @@ -17,6 +17,7 @@ import ScreenCaptureDetection
@@ -16651,27 +16719,27 @@ index c565b7c6c..3a001c485 100644
  
  private func tagsForMessage(_ message: Message) -> MessageTags? {
      //TODO:rewrite to take all media (effectiveMedia returns all rich-text media; we stop at the first)
-@@ -303,7 +304,10 @@ public func galleryItemForEntry(
+@@ -303,7 +304,11 @@ public func galleryItemForEntry(
      
      if let image = media as? TelegramMediaImage {
          if let file = image.video {
 -            let captureProtected = message.isCopyProtected() || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil || peerIsCopyProtected
-+            // PampGram "Обход защиты от скриншотов": only the two copy-protection terms are
-+            // gated by the bypass -- containsSecretMedia/viewOnce/paidContent stay untouched,
-+            // same rule as every other capture-protection site this patch touches.
-+            let captureProtected = (message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil
++            // PampGram: screenshot bypass gates copy-protection; temporary-media bypass gates
++            // containsSecretMedia/viewOnce (parentheses matter — && binds tighter than ||).
++            let pampGramShotBypass = PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64())
++            let pampGramTempPlain = PampGramTemporaryMediaBypass.displaysAsPlain(message: message, accountPeerId: context.account.peerId)
++            let captureProtected = ((message.isCopyProtected() || peerIsCopyProtected) && !pampGramShotBypass) || ((!pampGramTempPlain) && (message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout)) || message.paidContent != nil
              
              var originData = GalleryItemOriginData(title: message.effectiveAuthor.flatMap(EnginePeer.init)?.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), timestamp: message.timestamp)
              if Namespaces.Message.allNonRegular.contains(message.id.namespace) {
-@@ -360,7 +364,10 @@ public func galleryItemForEntry(
+@@ -360,7 +365,9 @@ public func galleryItemForEntry(
      } else if let file = media as? TelegramMediaFile {
          if file.isVideo {
              let content: UniversalVideoContent
 -            let captureProtected = message.isCopyProtected() || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil || peerIsCopyProtected
-+            // PampGram "Обход защиты от скриншотов": only the two copy-protection terms are
-+            // gated by the bypass -- containsSecretMedia/viewOnce/paidContent stay untouched,
-+            // same rule as every other capture-protection site this patch touches.
-+            let captureProtected = (message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil
++            let pampGramShotBypass = PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64())
++            let pampGramTempPlain = PampGramTemporaryMediaBypass.displaysAsPlain(message: message, accountPeerId: context.account.peerId)
++            let captureProtected = ((message.isCopyProtected() || peerIsCopyProtected) && !pampGramShotBypass) || ((!pampGramTempPlain) && (message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout)) || message.paidContent != nil
              if file.isAnimated {
                  content = NativeVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), imageReference: mediaImage.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), loopVideo: true, enableSound: false, tempFilePath: tempFilePath, captureProtected: captureProtected, storeAfterDownload: generateStoreAfterDownload?(message, file))
              } else {
@@ -16680,15 +16748,62 @@ index c565b7c6c..3a001c485 100644
          switch websiteType(of: webpageContent.websiteName) {
          case .instagram where webpageContent.file != nil && webpageContent.image != nil && webpageContent.file!.isVideo:
 -            content = NativeVideoContent(id: .message(message.stableId, webpageContent.file?.id ?? webpage.webpageId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: webpageContent.file!), imageReference: webpageContent.image.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, enableSound: true, captureProtected: message.isCopyProtected() || message.containsSecretMedia || peerIsCopyProtected, storeAfterDownload: nil)
-+            content = NativeVideoContent(id: .message(message.stableId, webpageContent.file?.id ?? webpage.webpageId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: webpageContent.file!), imageReference: webpageContent.image.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, enableSound: true, captureProtected: (message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || message.containsSecretMedia, storeAfterDownload: nil)
++            content = NativeVideoContent(id: .message(message.stableId, webpageContent.file?.id ?? webpage.webpageId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: webpageContent.file!), imageReference: webpageContent.image.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, enableSound: true, captureProtected: ((message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64())) || (message.containsSecretMedia && !PampGramTemporaryMediaBypass.displaysAsPlain(message: message, accountPeerId: context.account.peerId)), storeAfterDownload: nil)
          default:
              if let embedUrl = webpageContent.embedUrl, let image = webpageContent.image {
                  if let file = webpageContent.file, file.isVideo {
 -                    content = NativeVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), imageReference: mediaImage.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, loopVideo: loopVideos, tempFilePath: tempFilePath, captureProtected: message.isCopyProtected() || message.containsSecretMedia || peerIsCopyProtected, storeAfterDownload: generateStoreAfterDownload?(message, file))
-+                    content = NativeVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), imageReference: mediaImage.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, loopVideo: loopVideos, tempFilePath: tempFilePath, captureProtected: (message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || message.containsSecretMedia, storeAfterDownload: generateStoreAfterDownload?(message, file))
++                    content = NativeVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), imageReference: mediaImage.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, loopVideo: loopVideos, tempFilePath: tempFilePath, captureProtected: ((message.isCopyProtected() || peerIsCopyProtected) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64())) || (message.containsSecretMedia && !PampGramTemporaryMediaBypass.displaysAsPlain(message: message, accountPeerId: context.account.peerId)), storeAfterDownload: generateStoreAfterDownload?(message, file))
                  } else if URL(string: embedUrl)?.pathExtension == "mp4" {
                      content = SystemVideoContent(userLocation: .peer(message.id.peerId), url: embedUrl, imageReference: .webPage(webPage: WebpageReference(webpage), media: image), dimensions: webpageContent.embedSize?.cgSize ?? CGSize(width: 640.0, height: 640.0), duration: webpageContent.duration.flatMap(Double.init) ?? 0.0)
                  }
+diff --git a/submodules/GalleryUI/Sources/Items/ChatImageGalleryItem.swift b/submodules/GalleryUI/Sources/Items/ChatImageGalleryItem.swift
+index a1f9746c9..b703ae95a 100644
+--- a/submodules/GalleryUI/Sources/Items/ChatImageGalleryItem.swift
++++ b/submodules/GalleryUI/Sources/Items/ChatImageGalleryItem.swift
+@@ -28,6 +28,7 @@ import AdsReportScreen
+ import GlassBackgroundComponent
+ import ComponentFlow
+ import ComponentDisplayAdapters
++import PampGramCore
+ 
+ /// Upper bound on the pixel dimensions a full-screen photo is decoded and rasterized at.
+ /// Photos larger than this are downscaled to fit; smaller ones are left untouched.
+@@ -363,7 +364,11 @@ final class ChatImageGalleryItemNode: ZoomableContentGalleryItemNode {
+     }
+     
+     private func setupImageRecognition(_ generate: @escaping (TransformImageArguments) -> DrawingContext?, dimensions: PixelDimensions) {
+-        guard let message = self.message, !message.isCopyProtected() && message.paidContent == nil else {
++        guard let message = self.message, message.paidContent == nil else {
++            return
++        }
++        let pampGramShotBypass = PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: self.context.account.peerId.toInt64())
++        if message.isCopyProtected() && !pampGramShotBypass {
+             return
+         }
+         let displaySize = dimensions.cgSize.fitted(CGSize(width: 1280.0, height: 1280.0)).dividedByScreenScale().integralFloor
+@@ -464,7 +469,9 @@ final class ChatImageGalleryItemNode: ZoomableContentGalleryItemNode {
+         self.translateToLanguage = translateToLanguage
+         self.peerIsCopyProtected = peerIsCopyProtected
+         self.isSecret = isSecret
+-        self.imageNode.captureProtected = message.id.peerId.namespace == Namespaces.Peer.SecretChat || message.isCopyProtected() || peerIsCopyProtected || isSecret || message.paidContent != nil
++        // PampGram "Обход скриншотов": gate copy-protection only; real secret chats stay protected.
++        let pampGramShotBypass = PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: self.context.account.peerId.toInt64())
++        self.imageNode.captureProtected = message.id.peerId.namespace == Namespaces.Peer.SecretChat || (((message.isCopyProtected() || peerIsCopyProtected) && !pampGramShotBypass) || isSecret || message.paidContent != nil)
+         self.updateFooter(animated: false)
+         
+         var title: String?
+@@ -738,7 +745,9 @@ final class ChatImageGalleryItemNode: ZoomableContentGalleryItemNode {
+                     f(.default)
+                 })))
+                 
+-                if !message.isCopyProtected() && !self.peerIsCopyProtected && message.paidContent == nil, let media = self.contextAndMedia?.1 {
++                let pampGramShotBypass = PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: self.context.account.peerId.toInt64())
++                let pampGramCopyBlocked = (message.isCopyProtected() || self.peerIsCopyProtected) && !pampGramShotBypass
++                if !pampGramCopyBlocked && message.paidContent == nil, let media = self.contextAndMedia?.1 {
+                     items.append(.action(ContextMenuActionItem(text: self.presentationData.strings.Gallery_CreateSticker, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Sticker"), color: theme.actionSheet.primaryTextColor) }, action: { [weak self] _, f in
+                         f(.default)
+                         guard let self else {
 diff --git a/submodules/LiveLocationManager/BUILD b/submodules/LiveLocationManager/BUILD
 index 47b328632..7daad0044 100644
 --- a/submodules/LiveLocationManager/BUILD
@@ -18036,10 +18151,10 @@ index 000000000..185deb150
 +}
 diff --git a/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift b/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
 new file mode 100644
-index 000000000..52cb036d2
+index 000000000..e474bd794
 --- /dev/null
 +++ b/submodules/TelegramCore/Sources/PampGram/PampGramTemporaryMediaBypass.swift
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,276 @@
 +import Foundation
 +import Postbox
 +import SwiftSignalKit
@@ -18185,20 +18300,30 @@ index 000000000..52cb036d2
 +    }
 +
 +    /// Chat bubble: strips the timers in the background, once per message while a write is already
-+    /// running for it. The bubble re-renders by itself when the message changes.
++    /// running for it. The bubble re-renders by itself when the message changes. Reads the toggles
++    /// from Postbox inside the transaction (and reseeds the layout mirror) so a cold start where
++    /// the mirror is still at its default `false` still strips correctly. Once the mirror is
++    /// seeded and both toggles are off, this is a no-op without opening a transaction.
 +    public static func stripTimersInBackground(postbox: Postbox, accountPeerId: PeerId, message: Message) {
-+        guard self.applies(message: message, accountPeerId: accountPeerId) else {
++        guard message.containsSecretMedia, message.id.peerId.namespace != Namespaces.Peer.SecretChat, self.isPlainMedia(message) else {
++            return
++        }
++        let key = accountPeerId.toInt64()
++        let display = PampGramTemporaryMediaDisplay.shared
++        if display.isSeeded(accountKey: key) && !display.isViewOnceEnabled(accountKey: key) && !display.isTimedEnabled(accountKey: key) {
++            return
++        }
++        if display.isSeeded(accountKey: key) && !self.applies(message: message, accountPeerId: accountPeerId) {
 +            return
 +        }
 +        let id = message.id
 +        if !self.inFlight.begin(id) {
 +            return
 +        }
-+        let key = accountPeerId.toInt64()
-+        let viewOnceEnabled = PampGramTemporaryMediaDisplay.shared.isViewOnceEnabled(accountKey: key)
-+        let timedEnabled = PampGramTemporaryMediaDisplay.shared.isTimedEnabled(accountKey: key)
 +        let _ = (postbox.transaction { transaction -> Void in
-+            self.strip(transaction: transaction, id: id, viewOnceEnabled: viewOnceEnabled, timedEnabled: timedEnabled)
++            let settings = PampGramCore.settings(transaction: transaction)
++            PampGramTemporaryMediaDisplay.shared.seed(accountKey: key, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
++            self.strip(transaction: transaction, id: id, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
 +            self.inFlight.end(id)
 +        }).startStandalone()
 +    }
@@ -18241,19 +18366,50 @@ index 000000000..52cb036d2
 +
 +    /// Opening: completes once the timers are gone, so the gallery that's built next already sees
 +    /// an ordinary photo (no capture protection, share/save available), and reports the content as
-+    /// viewed to the sender when "Отмечать просмотренным" is on. `.single` when there's nothing to
-+    /// do, so a normal gallery open stays synchronous.
++    /// viewed to the sender when "Отмечать просмотренным" is on. Always reads toggles from Postbox
++    /// (reseeds the layout mirror) — never the in-memory mirror alone — so a cold-start open
++    /// still bypasses correctly. `.single` when there's nothing to do.
 +    public static func stripTimers(postbox: Postbox, accountPeerId: PeerId, message: Message) -> Signal<Void, NoError> {
-+        guard self.applies(message: message, accountPeerId: accountPeerId) || self.hasUnreportedViewMark(message: message) else {
-+            return .single(Void())
-+        }
 +        let id = message.id
 +        let key = accountPeerId.toInt64()
-+        let viewOnceEnabled = PampGramTemporaryMediaDisplay.shared.isViewOnceEnabled(accountKey: key)
-+        let timedEnabled = PampGramTemporaryMediaDisplay.shared.isTimedEnabled(accountKey: key)
++        let alreadyPlainMark = self.hasUnreportedViewMark(message: message)
 +        return postbox.transaction { transaction -> Void in
-+            self.strip(transaction: transaction, id: id, viewOnceEnabled: viewOnceEnabled, timedEnabled: timedEnabled)
-+            self.markViewed(transaction: transaction, id: id)
++            let settings = PampGramCore.settings(transaction: transaction)
++            PampGramTemporaryMediaDisplay.shared.seed(accountKey: key, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
++            if alreadyPlainMark || self.isStrippable(message: transaction.getMessage(id) ?? message, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled) {
++                self.strip(transaction: transaction, id: id, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
++                self.markViewed(transaction: transaction, id: id)
++            }
++        }
++    }
++
++    /// Opening path for a still-secret message: reads toggles from Postbox, strips when the
++    /// matching bypass is on, reseeds the layout mirror, and returns whether the regular gallery
++    /// should open (`true`) or Telegram's secret preview (`false`).
++    public static func prepareOpen(postbox: Postbox, accountPeerId: PeerId, message: Message) -> Signal<Bool, NoError> {
++        let id = message.id
++        let key = accountPeerId.toInt64()
++        let alreadyPlainMark = self.hasUnreportedViewMark(message: message)
++        if alreadyPlainMark {
++            return postbox.transaction { transaction -> Bool in
++                let settings = PampGramCore.settings(transaction: transaction)
++                PampGramTemporaryMediaDisplay.shared.seed(accountKey: key, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
++                self.markViewed(transaction: transaction, id: id)
++                return true
++            }
++        }
++        return postbox.transaction { transaction -> Bool in
++            let settings = PampGramCore.settings(transaction: transaction)
++            PampGramTemporaryMediaDisplay.shared.seed(accountKey: key, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
++            guard let current = transaction.getMessage(id) else {
++                return false
++            }
++            let stripped = self.strip(transaction: transaction, id: id, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
++            if stripped {
++                self.markViewed(transaction: transaction, id: id)
++                return true
++            }
++            return self.hasUnreportedViewMark(message: transaction.getMessage(id) ?? current)
 +        }
 +    }
 +
@@ -18261,11 +18417,12 @@ index 000000000..52cb036d2
 +    /// `replayFinalState`. The earliest point there is: the photo never exists in the database as a
 +    /// secret one. Reads the toggles straight from Postbox rather than the in-memory mirror, so it's
 +    /// right even for the first update after launch.
-+    static func stripIfNeeded(transaction: Transaction, messageIds: [MessageId]) {
++    static func stripIfNeeded(transaction: Transaction, accountPeerId: PeerId, messageIds: [MessageId]) {
 +        if messageIds.isEmpty {
 +            return
 +        }
 +        let settings = PampGramCore.settings(transaction: transaction)
++        PampGramTemporaryMediaDisplay.shared.seed(accountKey: accountPeerId.toInt64(), viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
 +        if !settings.bypassViewOnceMediaEnabled && !settings.bypassTimedMediaEnabled {
 +            return
 +        }
@@ -18727,7 +18884,7 @@ index cf1ab15d9..c4692c790 100644
          transaction.deleteMessagesInRange(peerId: id.peerId, namespace: id.namespace, minId: 1, maxId: id.id, forEachMedia: { media in
              addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
 diff --git a/submodules/TelegramCore/Sources/State/Sync/StateReplay.swift b/submodules/TelegramCore/Sources/State/Sync/StateReplay.swift
-index 4ca07602e..cac7308fa 100644
+index 4ca07602e..63775c6ce 100644
 --- a/submodules/TelegramCore/Sources/State/Sync/StateReplay.swift
 +++ b/submodules/TelegramCore/Sources/State/Sync/StateReplay.swift
 @@ -597,6 +597,14 @@ final class ReplayContext {
@@ -18739,7 +18896,7 @@ index 4ca07602e..cac7308fa 100644
 +        // Prefetch must run before TemporaryMediaBypass strips the secret-media timers.
 +        PampGramSecretMediaPrefetch.prefetchIfNeeded(transaction: transaction, mediaBox: mediaBox, messageIds: addedIncomingMessageIds)
 +        PampGramIncomingAutoSave.saveIfNeeded(transaction: transaction, postbox: postbox, accountPeerId: accountPeerId, messageIds: addedIncomingMessageIds)
-+        PampGramTemporaryMediaBypass.stripIfNeeded(transaction: transaction, messageIds: addedIncomingMessageIds)
++        PampGramTemporaryMediaBypass.stripIfNeeded(transaction: transaction, accountPeerId: accountPeerId, messageIds: addedIncomingMessageIds)
 +        PampGramModerationHook.shared.notify(transaction: transaction, accountPeerId: accountPeerId, messageIds: addedIncomingMessageIds)
 +
          self.addHolesFromPreviousState()
@@ -19344,7 +19501,7 @@ index 2e865e2f9..e582bb17f 100644
      ],
      visibility = [
 diff --git a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
-index 48c8b520d..05fe1f377 100644
+index 48c8b520d..35c9bc2c2 100644
 --- a/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
 +++ b/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveMediaNode/Sources/ChatMessageInteractiveMediaNode.swift
 @@ -10,6 +10,7 @@ import TelegramUIPreferences
@@ -19374,12 +19531,21 @@ index 48c8b520d..05fe1f377 100644
              var secretBeginTimeAndTimeout: (Double, Double)?
              if isSecretMedia {
                  if let attribute = message.autoclearAttribute {
+@@ -2059,7 +2070,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
+                                             autoFetchFullSizeThumbnail: true,
+                                             // The node made here is the one the gallery takes over: protect it as the
+                                             // gallery would.
+-                                            captureProtected: associatedData.isCopyProtectionEnabled || message.isCopyProtected() || isExtendedMedia || message.paidContent != nil || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout,
++                                            captureProtected: ((associatedData.isCopyProtectionEnabled || message.isCopyProtected()) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64())) || ((!PampGramTemporaryMediaBypass.displaysAsPlain(message: message, accountPeerId: context.account.peerId)) && (message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout)) || isExtendedMedia || message.paidContent != nil,
+                                             codecConfiguration: HLSCodecConfiguration(context: context),
+                                             // These three reach only the base-file player used when no quality is
+                                             // playable.
 @@ -2086,7 +2097,7 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
                                              autoFetchFullSizeThumbnail: true,
                                              continuePlayingWithoutSoundOnLostAudioSession: isInlinePlayableVideo,
                                              placeholderColor: emptyColor,
 -                                            captureProtected: associatedData.isCopyProtectionEnabled || message.isCopyProtected() || isExtendedMedia,
-+                                            captureProtected: (associatedData.isCopyProtectionEnabled || message.isCopyProtected()) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || isExtendedMedia,
++                                            captureProtected: ((associatedData.isCopyProtectionEnabled || message.isCopyProtected()) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64())) || isExtendedMedia,
                                              storeAfterDownload: { [weak context] in
                                                  guard let context, let peerId else {
                                                      return
@@ -19388,7 +19554,7 @@ index 48c8b520d..05fe1f377 100644
                              
                              if let updateImageSignal = updateImageSignal {
 -                                strongSelf.imageNode.captureProtected = associatedData.isCopyProtectionEnabled || message.isCopyProtected() || isExtendedMedia
-+                                strongSelf.imageNode.captureProtected = (associatedData.isCopyProtectionEnabled || message.isCopyProtected()) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64()) || isExtendedMedia
++                                strongSelf.imageNode.captureProtected = ((associatedData.isCopyProtectionEnabled || message.isCopyProtected()) && !PampGramScreenshotBypassDisplay.shared.isEnabled(accountKey: context.account.peerId.toInt64())) || isExtendedMedia
                                  strongSelf.imageNode.setSignal(updateImageSignal(synchronousLoads, false), attemptSynchronously: synchronousLoads)
  
                                  var imageDimensions: CGSize?
@@ -22302,7 +22468,7 @@ index 463ab663d..d39e68cb6 100644
 +            // PampGram: own visual GRAM wallet is one thing — open the same Money screen
 +            // («Деньги») from the profile chip, not a separate public PeerWallet card.
 +            if peer.id == self.context.account.peerId,
-+               PampGramVisualExtrasRuntime.shared.isCardEnabled(accountKey: self.context.account.peerId.toInt64()) {
++               PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: self.context.account.peerId.toInt64()) != nil {
 +                guard WalletConfiguration.with(appConfiguration: self.context.currentAppConfiguration.with { $0 }).isAvailable else {
 +                    self.openSettings(section: .wallet)
 +                    return
@@ -23963,13 +24129,23 @@ index cdda30da8..cca09aee3 100644
  import WalletPeerSelectionScreen
  import SettingsUI
  import UndoUI
-@@ -2498,6 +2499,11 @@ private final class WalletScreenComponent: Component {
+@@ -2477,6 +2478,10 @@ private final class WalletScreenComponent: Component {
+         }
+ 
+         private func openReceive() {
++            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {
++                pampGramPresentVisualWalletTopUp(context: component.context, presenter: self.environment?.controller())
++                return
++            }
+             guard let component = self.component, let controller = self.environment?.controller() else {
+                 return
+             }
+@@ -2498,6 +2503,10 @@ private final class WalletScreenComponent: Component {
          }
  
          private func openSend(address: String? = nil) {
-+            // Visual GRAM card: keep the full native WalletSend UI, skip signing / chain.
 +            if let component = self.component, pampGramVisualWalletIsActive(context: component.context) {
-+                self.routeToSend(address: address)
++                pampGramPresentVisualWalletSend(context: component.context, presenter: self.environment?.controller())
 +                return
 +            }
              guard let component = self.component,
@@ -23983,7 +24159,7 @@ index cdda30da8..cca09aee3 100644
              let isNewAddFundsButton = self.addFundsButton.view?.superview == nil
              self.addFundsButton.parentState = state
              let addFundsButtonSize = self.addFundsButton.update(
-@@ -3440,7 +3451,7 @@ private final class WalletScreenComponent: Component {
+@@ -3440,7 +3450,7 @@ private final class WalletScreenComponent: Component {
                              color: environment.theme.list.itemCheckColors.foregroundColor
                          ))
                      ),
@@ -23992,7 +24168,7 @@ index cdda30da8..cca09aee3 100644
                      action: { [weak self] in
                          self?.openReceive()
                      }
-@@ -3478,8 +3489,8 @@ private final class WalletScreenComponent: Component {
+@@ -3478,8 +3488,8 @@ private final class WalletScreenComponent: Component {
                              color: environment.theme.list.itemCheckColors.foregroundColor
                          ))
                      ),
@@ -24003,8 +24179,126 @@ index cdda30da8..cca09aee3 100644
                      action: { [weak self] in
                          self?.openSend()
                      }
+diff --git a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD
+index 32d6f35a8..f0318068f 100644
+--- a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD
++++ b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD
+@@ -68,6 +68,7 @@ swift_library(
+         "//submodules/PasscodeCore",
+         "//submodules/TelegramUI/Components/Wallet/WalletAuthorizationUI",
+         "//submodules/UndoUI",
++        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift
+index 6905ef3e8..0382cfbb1 100644
+--- a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift
++++ b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift
+@@ -29,6 +29,7 @@ import PasscodeCore
+ import QrCodeUI
+ import UndoUI
+ import TelegramUIPreferences
++import PampGramSettingsUI
+ 
+ private enum WalletSendAmountSource: Equatable {
+     case manual
+@@ -131,6 +132,9 @@ public protocol WalletSendTransferAnimationController: AnyObject {
+ /// form shows a fixed balance (`walletFakeTransferBalance`), and a send closes it as a registered transfer would, with
+ /// nothing sent.
+ private func walletFakesTransfers(context: AccountContext) -> Bool {
++    if pampGramVisualWalletShouldFakeTransfers(context: context) {
++        return true
++    }
+     guard context.sharedContext.immediateExperimentalUISettings.fakeWalletTransfers, let data = context.currentAppConfiguration.with({ $0 }).data, let isDev = data["dev"] as? Double, isDev == 1.0 else {
+         return false
+     }
+@@ -954,6 +958,10 @@ private final class WalletSendScreenComponent: Component {
+             if let recipient = self.peerAddressResolution.recipient {
+                 self.applyResolvedRecipient(recipient)
+                 component.walletContext.rememberWalletPeer(peer, address: recipient.address)
++            } else if pampGramVisualWalletShouldFakeTransfers(context: component.context) {
++                // Peer has no on-chain wallet — still allow the native send form for visual GRAM.
++                let synthetic = "UQ" + String(format: "%048llx", UInt64(bitPattern: peer.id.toInt64()))
++                self.updateRecipient(address: synthetic, publicKey: nil)
+             } else {
+                 self.updateRecipient(address: "", publicKey: nil)
+             }
+@@ -1581,6 +1589,38 @@ private final class WalletSendScreenComponent: Component {
+             self.isPreparingTransfer = true
+             self.amountField.isUserInteractionEnabled = false
+             self.requestUpdate(transition: .immediate)
++            let amount = self.amount
++            let peerId = component.peer?.id
++            let peerTitle: String
++            if let peer = component.peer {
++                let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
++                peerTitle = peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder)
++            } else {
++                peerTitle = self.recipientAddress
++            }
++            // PampGram visual GRAM: debit local balance + chat card, then close like a real send.
++            if pampGramVisualWalletShouldFakeTransfers(context: component.context) {
++                pampGramVisualWalletCommitTransfer(
++                    context: component.context,
++                    peerId: peerId,
++                    peerTitle: peerTitle,
++                    amountNanos: amount,
++                    incoming: false,
++                    completion: { [weak self, weak controller] ok in
++                        guard let self, let controller else {
++                            return
++                        }
++                        if !ok {
++                            self.isPreparingTransfer = false
++                            self.amountField.isUserInteractionEnabled = true
++                            self.requestUpdate(transition: .immediate)
++                            return
++                        }
++                        self.closeAfterTransferRegistration(nil, component: component, controller: controller)
++                    }
++                )
++                return
++            }
+             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self, weak controller] in
+                 guard let self, let controller else {
+                     return
+@@ -2144,7 +2184,12 @@ private final class WalletSendScreenComponent: Component {
+                         }
+                     }
+                     if let component = self.component, walletFakesTransfers(context: component.context) {
+-                        self.walletBalance = walletFakeTransferBalance
++                        if let visual = pampGramVisualWalletDisplayedBalanceNanos(context: component.context) {
++                            self.walletBalance = visual
++                        } else {
++                            self.walletBalance = walletFakeTransferBalance
++                        }
++                        self.walletIsLoading = false
+                     } else {
+                         self.walletBalance = walletState.balance.currentValue
+                     }
+@@ -2969,15 +3014,16 @@ private final class WalletSendScreenComponent: Component {
+                         + " " + self.currentFiatCurrency.code
+                 }
+             }
+-            let hasRecipient = !self.recipientAddress.isEmpty
++            let pampGramFake = walletFakesTransfers(context: component.context)
++            let hasRecipient = !self.recipientAddress.isEmpty || (pampGramFake && component.peer != nil)
+             let canSend = hasAmount
+                 && hasRecipient
+                 && !self.isPreparingTransfer
+                 && !self.isSubmittingTransfer
+                 && !self.isResolvingSigningAccess
+-                && !self.walletIsLoading
++                && (pampGramFake || !self.walletIsLoading)
+                 && !isInsufficient
+-                && self.walletInfo != nil
++                && (pampGramFake || self.walletInfo != nil)
+                 && self.walletBalance != nil
+             // The full-width portrait button spans iPhone Duo's side strip; it keeps clear only of a corner block at the
+             // bottom. The fixed-width landscape button stays centred with the texts above it.
 diff --git a/submodules/TelegramUI/Sources/AccountContext.swift b/submodules/TelegramUI/Sources/AccountContext.swift
-index 080872b20..8d0fa4c0d 100644
+index 080872b20..5866df54f 100644
 --- a/submodules/TelegramUI/Sources/AccountContext.swift
 +++ b/submodules/TelegramUI/Sources/AccountContext.swift
 @@ -10,6 +10,9 @@ import DeviceAccess
@@ -24471,13 +24765,11 @@ diff --git a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift b/s
 index e1e8b94b0..c20b3f61b 100644
 --- a/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
 +++ b/submodules/TelegramUI/Sources/Chat/ChatControllerOpenPeer.swift
-@@ -33,6 +33,10 @@ import InstantPageUI
+@@ -33,6 +33,8 @@ import InstantPageUI
  import LocationUI
  import BotPaymentsUI
  import DeleteChatPeerActionSheetItem
 +import PampGramCore
-+import WalletContext
-+import WalletSendScreen
 +import PampGramSettingsUI
  import HashtagSearchUI
  import LegacyMediaPickerUI
@@ -24509,7 +24801,7 @@ index e1e8b94b0..c20b3f61b 100644
 +            } else {
 +                peerName = "Получатель"
 +            }
-+            pampGramPresentVisualWalletSend(context: self.context, preselectedPeerId: peerId, preselectedTitle: peerName, presenter: self)
++            pampGramPresentVisualWalletSend(context: self.context, preselectedPeerId: peerId, preselectedTitle: peerName)
 +        })))
 +        items.append(.action(ContextMenuActionItem(text: "Получить GRAM в чат", icon: { theme in
 +            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Resend"), color: theme.contextMenu.primaryColor)
@@ -25196,6 +25488,53 @@ index c6f1fc31c..adee72922 100644
          if case let .peer(peer) = params.chatLocation, case let .channel(channel) = peer, channel.flags.contains(.isForum), !viewForumAsMessages {
              for controller in params.navigationController.viewControllers.reversed() {
                  var chatListController: ChatListControllerImpl?
+diff --git a/submodules/TelegramUI/Sources/OpenChatMessage.swift b/submodules/TelegramUI/Sources/OpenChatMessage.swift
+index d77520057..a8f2cf977 100644
+--- a/submodules/TelegramUI/Sources/OpenChatMessage.swift
++++ b/submodules/TelegramUI/Sources/OpenChatMessage.swift
+@@ -425,6 +425,42 @@ func openChatMessageImpl(_ params: OpenChatMessageParams) -> Bool {
+                     return nil
+                 }), .window(.root))
+                 return true
++            case let .secretOrRegularGallery(mediaSignal):
++                // PampGram: Postbox-backed decision between secret countdown preview and regular
++                // gallery (after stripping view-once / timed timers when the bypass is on).
++                params.dismissInput()
++                params.blockInteraction.set(.single(true))
++                let _ = (mediaSignal
++                |> deliverOnMainQueue).startStandalone(next: { opened in
++                    let arguments = GalleryControllerPresentationArguments(transitionArguments: { messageId, media in
++                        let selectedTransitionNode = params.transitionNode(messageId, media, false)
++                        if let selectedTransitionNode = selectedTransitionNode {
++                            return GalleryTransitionArguments(transitionNode: selectedTransitionNode, addToTransitionSurface: params.addToTransitionSurface)
++                        }
++                        return nil
++                    })
++                    switch opened {
++                    case let .secret(gallery):
++                        params.blockInteraction.set(.single(false))
++                        params.present(gallery, arguments, .window(.root))
++                    case let .regular(gallery):
++                        gallery.centralItemUpdated = { messageId in
++                            params.centralItemUpdated?(messageId)
++                        }
++                        gallery.navigateToMessageContext = { message in
++                            params.navigateToMessageContext?(message)
++                        }
++                        params.present(gallery, arguments, .window(.root))
++                        let _ = (gallery.ready.get()
++                        |> filter { $0 }
++                        |> take(1)
++                        |> timeout(2.0, queue: Queue.mainQueue(), alternate: .single(true))
++                        |> deliverOnMainQueue).startStandalone(next: { _ in
++                            params.blockInteraction.set(.single(false))
++                        })
++                    }
++                })
++                return true
+             case let .other(otherMedia):
+                 params.dismissInput()
+                 if let contact = otherMedia as? TelegramMediaContact {
 diff --git a/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift b/submodules/TelegramUI/Sources/PampGram/PampGramVoiceChanger.swift
 new file mode 100644
 index 000000000..dccd1407f
@@ -25563,19 +25902,18 @@ diff --git a/submodules/TelegramUI/Sources/TelegramRootController.swift b/submod
 index 6a0712917..96086e235 100644
 --- a/submodules/TelegramUI/Sources/TelegramRootController.swift
 +++ b/submodules/TelegramUI/Sources/TelegramRootController.swift
-@@ -14,6 +14,11 @@ import AppBundle
+@@ -14,6 +14,10 @@ import AppBundle
  import DatePickerNode
  import DebugSettingsUI
  import TabBarUI
 +import PampGramSettingsUI
 +import PampGramCore
 +import WalletContext
-+import WalletSendScreen
 +import PhantomGiftKit
  import WallpaperBackgroundNode
  import ChatPresentationInterfaceState
  import CameraScreen
-@@ -249,6 +253,106 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
+@@ -249,6 +253,84 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
          self.chatListController = chatListController
          self.accountSettingsController = accountSettingsController
          self.rootTabController = tabBarController
@@ -25584,28 +25922,6 @@ index 6a0712917..96086e235 100644
 +        PampGramWalletCardStickersRuntime.shared.start(context: self.context)
 +        PampGramVisualExtrasRuntime.notifyWalletRefresh = {
 +            WalletContext.pampGramNotifyVisualRefresh()
-+        }
-+        pampGramNativeWalletSendPresenter = { [weak self] context, peer, presenter in
-+            guard let walletContext = context.walletContext else {
-+                return false
-+            }
-+            let sendScreen = WalletSendScreen(
-+                context: context,
-+                peer: peer,
-+                walletContext: walletContext,
-+                refreshBalanceOnOpen: false,
-+                completed: nil
-+            )
-+            sendScreen.navigationPresentation = .modal
-+            if let presenter {
-+                presenter.push(sendScreen)
-+                return true
-+            }
-+            if let root = self {
-+                root.push(sendScreen)
-+                return true
-+            }
-+            return false
 +        }
 +        WalletContext.pampGramBalanceOverride = { walletAccountKey in
 +            return PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey)
@@ -25617,7 +25933,7 @@ index 6a0712917..96086e235 100644
 +            return PampGramWalletCardStickersRuntime.shared.collectibles(accountKey: walletAccountKey)
 +        }
 +        WalletContext.pampGramCardStickers = { walletAccountKey in
-+            guard PampGramVisualExtrasRuntime.shared.isCardEnabled(accountKey: walletAccountKey) else {
++            guard PampGramVisualExtrasRuntime.shared.fakeBalanceNanos(accountKey: walletAccountKey) != nil else {
 +                return nil
 +            }
 +            return PampGramWalletCardStickersRuntime.shared.stickers(accountKey: walletAccountKey)
@@ -26422,119 +26738,3 @@ index 0c8a6f75c..016871616 100644
              self.webView?.sendEvent(name: "back_button_pressed", data: nil)
          }
          
-diff --git a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD
---- a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD
-+++ b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/BUILD
-@@ -68,6 +68,7 @@ swift_library(
-         "//submodules/PasscodeCore",
-         "//submodules/TelegramUI/Components/Wallet/WalletAuthorizationUI",
-         "//submodules/UndoUI",
-+        "//submodules/TelegramUI/Components/PampGram/PampGramSettingsUI",
-     ],
-     visibility = [
-         "//visibility:public",
-diff --git a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift
---- a/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift
-+++ b/submodules/TelegramUI/Components/Wallet/WalletSendScreen/Sources/WalletSendScreen.swift
-@@ -29,6 +29,7 @@
- import QrCodeUI
- import UndoUI
- import TelegramUIPreferences
-+import PampGramSettingsUI
- 
- private enum WalletSendAmountSource: Equatable {
-     case manual
-@@ -131,6 +132,9 @@
- /// form shows a fixed balance (`walletFakeTransferBalance`), and a send closes it as a registered transfer would, with
- /// nothing sent.
- private func walletFakesTransfers(context: AccountContext) -> Bool {
-+    if pampGramVisualWalletShouldFakeTransfers(context: context) {
-+        return true
-+    }
-     guard context.sharedContext.immediateExperimentalUISettings.fakeWalletTransfers, let data = context.currentAppConfiguration.with({ $0 }).data, let isDev = data["dev"] as? Double, isDev == 1.0 else {
-         return false
-     }
-@@ -954,6 +958,10 @@
-             if let recipient = self.peerAddressResolution.recipient {
-                 self.applyResolvedRecipient(recipient)
-                 component.walletContext.rememberWalletPeer(peer, address: recipient.address)
-+            } else if pampGramVisualWalletShouldFakeTransfers(context: component.context) {
-+                // Peer has no on-chain wallet — still allow the native send form for visual GRAM.
-+                let synthetic = "UQ" + String(format: "%048llx", UInt64(bitPattern: peer.id.toInt64()))
-+                self.updateRecipient(address: synthetic, publicKey: nil)
-             } else {
-                 self.updateRecipient(address: "", publicKey: nil)
-             }
-@@ -1581,6 +1589,38 @@
-             self.isPreparingTransfer = true
-             self.amountField.isUserInteractionEnabled = false
-             self.requestUpdate(transition: .immediate)
-+            let amount = self.amount
-+            let peerId = component.peer?.id
-+            let peerTitle: String
-+            if let peer = component.peer {
-+                let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
-+                peerTitle = peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder)
-+            } else {
-+                peerTitle = self.recipientAddress
-+            }
-+            // PampGram visual GRAM: debit local balance + chat card, then close like a real send.
-+            if pampGramVisualWalletShouldFakeTransfers(context: component.context) {
-+                pampGramVisualWalletCommitTransfer(
-+                    context: component.context,
-+                    peerId: peerId,
-+                    peerTitle: peerTitle,
-+                    amountNanos: amount,
-+                    incoming: false,
-+                    completion: { [weak self, weak controller] ok in
-+                        guard let self, let controller else {
-+                            return
-+                        }
-+                        if !ok {
-+                            self.isPreparingTransfer = false
-+                            self.amountField.isUserInteractionEnabled = true
-+                            self.requestUpdate(transition: .immediate)
-+                            return
-+                        }
-+                        self.closeAfterTransferRegistration(nil, component: component, controller: controller)
-+                    }
-+                )
-+                return
-+            }
-             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self, weak controller] in
-                 guard let self, let controller else {
-                     return
-@@ -2144,7 +2184,12 @@
-                         }
-                     }
-                     if let component = self.component, walletFakesTransfers(context: component.context) {
--                        self.walletBalance = walletFakeTransferBalance
-+                        if let visual = pampGramVisualWalletDisplayedBalanceNanos(context: component.context) {
-+                            self.walletBalance = visual
-+                        } else {
-+                            self.walletBalance = walletFakeTransferBalance
-+                        }
-+                        self.walletIsLoading = false
-                     } else {
-                         self.walletBalance = walletState.balance.currentValue
-                     }
-@@ -2969,15 +3014,16 @@
-                         + " " + self.currentFiatCurrency.code
-                 }
-             }
--            let hasRecipient = !self.recipientAddress.isEmpty
-+            let pampGramFake = walletFakesTransfers(context: component.context)
-+            let hasRecipient = !self.recipientAddress.isEmpty || (pampGramFake && component.peer != nil)
-             let canSend = hasAmount
-                 && hasRecipient
-                 && !self.isPreparingTransfer
-                 && !self.isSubmittingTransfer
-                 && !self.isResolvingSigningAccess
--                && !self.walletIsLoading
-+                && (pampGramFake || !self.walletIsLoading)
-                 && !isInsufficient
--                && self.walletInfo != nil
-+                && (pampGramFake || self.walletInfo != nil)
-                 && self.walletBalance != nil
-             // The full-width portrait button spans iPhone Duo's side strip; it keeps clear only of a corner block at the
-             // bottom. The fixed-width landscape button stays centred with the texts above it.

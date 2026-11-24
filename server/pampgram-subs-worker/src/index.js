@@ -263,11 +263,19 @@ import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSee
 import { recordAppSeen, noteTier, getUser, summarizeLedger, summarizeRealLedger } from "./users.js";
 import { readForceVideo, writeForceVideo, clearForceVideo } from "./forcevideo.js";
 import { handleWebhook, runScheduled } from "./bot/webhook.js";
+import { withSubsFallback } from "./kv-fallback.js";
 
 function jsonResponse(body, status = 200) {
 	return new Response(JSON.stringify(body), {
 		status,
-		headers: { "content-type": "application/json; charset=utf-8" },
+		headers: {
+			"content-type": "application/json; charset=utf-8",
+			// Gate checks (/min-version, /ban-status, /status) must not stick in URLSession /
+			// Cloudflare caches — a stale high minVersion would keep showing «обновите» after
+			// the admin already set 0.
+			"cache-control": "no-store, no-cache, must-revalidate",
+			pragma: "no-cache",
+		},
 	});
 }
 
@@ -883,6 +891,9 @@ async function handleConfirmDaily(request, env) {
 
 export default {
 	async fetch(request, env, ctx) {
+		// Free-plan KV write quota (1000/day) exhausted → Cache API fallback so grants/keys/gifts
+		// keep working until UTC midnight reset or Workers Paid. See kv-fallback.js.
+		env = withSubsFallback(env);
 		const url = new URL(request.url);
 
 		if (request.method === "POST" && url.pathname === "/tg") {
@@ -959,6 +970,6 @@ export default {
 
 	// Cron (see wrangler.toml): expires verification requests nobody answered.
 	async scheduled(event, env, ctx) {
-		ctx.waitUntil(runScheduled(env));
+		ctx.waitUntil(runScheduled(withSubsFallback(env)));
 	},
 };

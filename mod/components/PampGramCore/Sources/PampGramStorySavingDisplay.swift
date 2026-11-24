@@ -24,6 +24,12 @@ public final class PampGramStorySavingDisplay {
         return self.enabledByAccount[accountKey] ?? false
     }
 
+    public func seed(accountKey: Int64, enabled: Bool) {
+        self.lock.lock()
+        self.enabledByAccount[accountKey] = enabled
+        self.lock.unlock()
+    }
+
     /// Starts (once per account) the subscription that keeps the flag current.
     public func start(accountKey: Int64, postbox: Postbox) {
         self.lock.lock()
@@ -34,14 +40,15 @@ public final class PampGramStorySavingDisplay {
         self.startedAccounts.insert(accountKey)
         self.lock.unlock()
 
+        let _ = (postbox.transaction { transaction -> PampGramSettings in
+            return PampGramCore.settings(transaction: transaction)
+        }).startStandalone(next: { [weak self] settings in
+            self?.seed(accountKey: accountKey, enabled: settings.storySavingEnabled)
+        })
+
         let disposable = (PampGramCore.settingsSignal(postbox: postbox)
         |> deliverOn(Queue.concurrentDefaultQueue())).start(next: { [weak self] settings in
-            guard let self else {
-                return
-            }
-            self.lock.lock()
-            self.enabledByAccount[accountKey] = settings.storySavingEnabled
-            self.lock.unlock()
+            self?.seed(accountKey: accountKey, enabled: settings.storySavingEnabled)
         })
 
         self.lock.lock()

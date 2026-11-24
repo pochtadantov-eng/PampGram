@@ -725,6 +725,14 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             }).start()
         },
         toggleBypassViewOnceMedia: { value in
+            let accountKey = context.account.peerId.toInt64()
+            // Flip the layout mirror immediately — Postbox write is async and chat bubbles
+            // consult the mirror on every layout without waiting for settingsSignal.
+            PampGramTemporaryMediaDisplay.shared.seed(
+                accountKey: accountKey,
+                viewOnceEnabled: value,
+                timedEnabled: PampGramTemporaryMediaDisplay.shared.isTimedEnabled(accountKey: accountKey)
+            )
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.bypassViewOnceMediaEnabled = value
@@ -732,6 +740,12 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             }).start()
         },
         toggleBypassTimedMedia: { value in
+            let accountKey = context.account.peerId.toInt64()
+            PampGramTemporaryMediaDisplay.shared.seed(
+                accountKey: accountKey,
+                viewOnceEnabled: PampGramTemporaryMediaDisplay.shared.isViewOnceEnabled(accountKey: accountKey),
+                timedEnabled: value
+            )
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.bypassTimedMediaEnabled = value
@@ -746,6 +760,7 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             }).start()
         },
         toggleStorySaving: { value in
+            PampGramStorySavingDisplay.shared.seed(accountKey: context.account.peerId.toInt64(), enabled: value)
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.storySavingEnabled = value
@@ -753,6 +768,7 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             }).start()
         },
         toggleScreenshotBypass: { value in
+            PampGramScreenshotBypassDisplay.shared.seed(accountKey: context.account.peerId.toInt64(), enabled: value)
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.bypassScreenshotProtectionEnabled = value
@@ -760,6 +776,7 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             }).start()
         },
         toggleForwardProtectedToSaved: { value in
+            PampGramForwardProtectedDisplay.shared.seed(accountKey: context.account.peerId.toInt64(), enabled: value)
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.forwardProtectedToSavedEnabled = value
@@ -767,6 +784,7 @@ public func pampGramAdditionalSettingsController(context: AccountContext) -> Vie
             }).start()
         },
         toggleAutoSaveVideoMessages: { value in
+            PampGramVideoMessageSaver.shared.seed(accountKey: context.account.peerId.toInt64(), enabled: value)
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.autoSaveVideoMessagesEnabled = value
