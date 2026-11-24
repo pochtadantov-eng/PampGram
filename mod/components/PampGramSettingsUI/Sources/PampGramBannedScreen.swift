@@ -244,7 +244,8 @@ public func pampGramGateSection(context: AccountContext, section: PampGramBanSec
         isOwner ? Signal<Bool, NoError>.single(true) : PampGramChannelSubscriptionEnforcer.checkNow(account: context.account)
     )
     |> deliverOnMainQueue).start(next: { minVersion, status, isChannelSubscribed in
-        if PampGramSubscriptionAPI.currentBuildVersion < minVersion {
+        // minVersion <= 0 means «no floor» (admin cleared the lock).
+        if minVersion > 0, PampGramSubscriptionAPI.currentBuildVersion < minVersion {
             pampGramPresentUpdateRequiredScreen(context: context)
         } else if !isChannelSubscribed {
             pampGramPresentFrozenScreen(context: context)
@@ -269,7 +270,7 @@ public func pampGramGateFullAccess(context: AccountContext, onAllowed: @escaping
         isOwner ? Signal<Bool, NoError>.single(true) : PampGramChannelSubscriptionEnforcer.checkNow(account: context.account)
     )
     |> deliverOnMainQueue).start(next: { minVersion, status, isChannelSubscribed in
-        if PampGramSubscriptionAPI.currentBuildVersion < minVersion {
+        if minVersion > 0, PampGramSubscriptionAPI.currentBuildVersion < minVersion {
             pampGramPresentUpdateRequiredScreen(context: context)
         } else if !isChannelSubscribed {
             pampGramPresentFrozenScreen(context: context)

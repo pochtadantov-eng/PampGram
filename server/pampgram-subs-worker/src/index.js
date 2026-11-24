@@ -267,7 +267,14 @@ import { handleWebhook, runScheduled } from "./bot/webhook.js";
 function jsonResponse(body, status = 200) {
 	return new Response(JSON.stringify(body), {
 		status,
-		headers: { "content-type": "application/json; charset=utf-8" },
+		headers: {
+			"content-type": "application/json; charset=utf-8",
+			// Gate checks (/min-version, /ban-status, /status) must not stick in URLSession /
+			// Cloudflare caches — a stale high minVersion would keep showing «обновите» after
+			// the admin already set 0.
+			"cache-control": "no-store, no-cache, must-revalidate",
+			pragma: "no-cache",
+		},
 	});
 }
 
