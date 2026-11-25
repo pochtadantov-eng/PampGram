@@ -21271,7 +21271,7 @@ index 91c2a2b6e..5ee233c3e 100644
  
  public func buyStarGiftImpl(
      context: AccountContext,
-@@ -19,13 +23,43 @@ public func buyStarGiftImpl(
+@@ -19,13 +23,36 @@ public func buyStarGiftImpl(
      message: GiftMessageScreen.Result? = nil,
      starsTopUpOptions: Signal<[StarsTopUpOption]?, NoError>,
      buyGift: ((String, EnginePeer.Id, CurrencyAmount?, Bool, String?, [MessageTextEntity]?) -> Signal<Never, BuyStarGiftError>)?,
@@ -21288,26 +21288,19 @@ index 91c2a2b6e..5ee233c3e 100644
      let presentationData = context.sharedContext.currentPresentationData.with { $0 }
 -                    
 +
-+    // PampGram: always read settings. Unique-gift resale screens used to pass `.real` from
-+    // GiftValue/Auction/profile/"не Все" filters even with «Подарок ему» on, which hit
-+    // Telegram's payments.getPaymentForm → RPC 406 "Этот подарок временно недоступен.
-+    // Обновите Telegram…" (custom api_id / non-App-Store clients get that on TON/Stars
-+    // resale). Other 13.2 mods "work" because they never send that RPC. We fake whenever
-+    // phantom is on, regardless of which entry point forgot to pass `.sendFake`.
-+    let pampGramSettingsSignal: Signal<PampGramSettings, NoError> = PampGramCore.settingsSignal(postbox: context.account.postbox)
++    // PampGram: unique-gift marketplace buy NEVER hits Telegram payments on this client.
++    // Custom api_id / non-App-Store builds get RPC 406 «Обновите Telegram» on real
++    // getPaymentForm/sendStarsForm — Cloudflare has zero involvement in that path (worker
++    // only relays optional P2P visual gift transfers). Other 13.2 mods "just work" because
++    // they always buy locally. We do the same for every entry point except explicit
++    // «Подарок мне». Settings are still read for the receive-fake toggle + fake balances.
++    let pampGramSettingsSignal: Signal<PampGramSettings, NoError> = PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
 +
 +    let _ = (pampGramSettingsSignal
 +    |> take(1)
 +    |> deliverOnMainQueue).start(next: { pampGramSettings in
-+    // Fake unless this screen was explicitly opened as «Подарок мне».
-+    // Also treat "локальные звёзды/TON" display as play-money mode: users see a huge
-+    // fake balance, tap Buy, and without this they'd hit the same Telegram 406. Other
-+    // 13.2 mods don't send the real resale payment RPC at all.
-+    let pampGramFakePurchaseActive = pampGramGiftFlow != .receiveFake && (
-+        pampGramSettings.phantomGiftsEnabled
-+        || pampGramSettings.fakeStarsDisplayEnabled
-+        || pampGramSettings.fakeTonDisplayEnabled
-+    )
++    // Always local for resale buy — no toggle, no PRO, no masterEnabled gate.
++    let pampGramFakePurchaseActive = pampGramGiftFlow != .receiveFake
 +    // PampGram: "Подарок мне" — the resulting message reads as bought and sent *to* this
 +    // account by the other side, so unlike a fake purchase, no balance is ever checked or
 +    // spent; see the balance gate below.
@@ -21316,7 +21309,7 @@ index 91c2a2b6e..5ee233c3e 100644
      let action: (CurrencyAmount.Currency, GiftMessageScreen.Result, @escaping () -> Void) -> Void = { currency, message, beforeCompletion in
          guard let resellAmount = uniqueGift.resellAmounts?.first(where: { $0.currency == currency }) else {
              guard let controller = getController() else {
-@@ -51,11 +85,30 @@ public func buyStarGiftImpl(
+@@ -51,11 +78,30 @@ public func buyStarGiftImpl(
              finalPrice = resellAmount
          }
          
@@ -21348,7 +21341,7 @@ index 91c2a2b6e..5ee233c3e 100644
                  buyGiftImpl = { slug, peerId, price, hideName, text, entities in
                      return buyGift(slug, peerId, price, hideName, text, entities)
                  }
-@@ -117,6 +170,7 @@ public func buyStarGiftImpl(
+@@ -117,6 +163,7 @@ public func buyStarGiftImpl(
                                      message: message,
                                      starsTopUpOptions: starsTopUpOptions,
                                      buyGift: buyGift,
@@ -21356,50 +21349,15 @@ index 91c2a2b6e..5ee233c3e 100644
                                      getController: getController,
                                      updateProgress: updateProgress,
                                      updateIsBalanceVisible: updateIsBalanceVisible,
-@@ -149,7 +203,69 @@ public func buyStarGiftImpl(
+@@ -149,7 +196,34 @@ public func buyStarGiftImpl(
              })
          }
          
 -        if finalPrice.currency == .stars, let starsContext = context.starsContext, let starsState = context.starsContext?.currentState, starsState.balance < finalPrice.amount {
 +        if pampGramFakePurchaseActive {
-+            // PampGram: the real Stars/TON balance is irrelevant here — a fake purchase
-+            // never touches it, so the real "top up"/"go to Fragment" gates below would be
-+            // actively wrong (they'd block a purchase that was never going to spend real
-+            // money in the first place). Checked against the fake balance instead.
-+            let hasEnough: Bool
-+            switch finalPrice.currency {
-+            case .stars:
-+                hasEnough = pampGramSettings.fakeStarsBalance >= finalPrice.amount.value
-+            case .ton:
-+                hasEnough = pampGramSettings.fakeTonBalanceNanos >= finalPrice.amount.value
-+            }
-+            if hasEnough {
-+                proceed()
-+            } else {
-+                guard let controller = getController() else {
-+                    beforeCompletion()
-+                    return
-+                }
-+                let haveText: String
-+                let needText: String
-+                switch finalPrice.currency {
-+                case .stars:
-+                    haveText = "⭐ \(pampGramSettings.fakeStarsBalance)"
-+                    needText = "⭐ \(finalPrice.amount.value)"
-+                case .ton:
-+                    haveText = formatTonAmountText(pampGramSettings.fakeTonBalanceNanos, dateTimeFormat: presentationData.dateTimeFormat)
-+                    needText = formatTonAmountText(finalPrice.amount.value, dateTimeFormat: presentationData.dateTimeFormat)
-+                }
-+                let alertController = textAlertController(
-+                    context: context,
-+                    title: "Недостаточно средств",
-+                    text: "У вас \(haveText), а нужно \(needText).",
-+                    actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})],
-+                    parseMarkdown: true
-+                )
-+                controller.present(alertController, in: .window(.root))
-+                beforeCompletion()
-+            }
++            // Always proceed — marketplace is local-only on this client. Ledger still
++            // deducts fake balance when present; never block with «Недостаточно» / Fragment.
++            proceed()
 +        } else if pampGramFakeReceiveActive {
 +            // PampGram: "Подарок мне" never checks or spends any balance — nothing was
 +            // bought, real or fake, in this direction. Offers a delay first: "Сразу" falls
@@ -21427,7 +21385,7 @@ index 91c2a2b6e..5ee233c3e 100644
              let _ = (starsTopUpOptions
               |> filter { $0 != nil }
               |> take(1)
-@@ -190,6 +306,7 @@ public func buyStarGiftImpl(
+@@ -190,6 +264,7 @@ public func buyStarGiftImpl(
                                          message: message,
                                          starsTopUpOptions: starsTopUpOptions,
                                          buyGift: buyGift,
@@ -21435,7 +21393,7 @@ index 91c2a2b6e..5ee233c3e 100644
                                          getController: getController,
                                          updateProgress: updateProgress,
                                          updateIsBalanceVisible: updateIsBalanceVisible,
-@@ -285,4 +402,5 @@ public func buyStarGiftImpl(
+@@ -285,4 +360,5 @@ public func buyStarGiftImpl(
              controller.push(messageScreen)
          })
      }
