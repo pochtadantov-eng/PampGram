@@ -239,15 +239,12 @@ public func pampGramPresentBannedScreen(context: AccountContext, reason: String)
 public func pampGramGateSection(context: AccountContext, section: PampGramBanSection, openReal: @escaping () -> Void) {
     let isOwner = context.account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId
     let _ = (combineLatest(
-        PampGramSubscriptionAPI.fetchMinVersion(),
         PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value()),
         isOwner ? Signal<Bool, NoError>.single(true) : PampGramChannelSubscriptionEnforcer.checkNow(account: context.account)
     )
-    |> deliverOnMainQueue).start(next: { minVersion, status, isChannelSubscribed in
-        // minVersion <= 0 means «no floor» (admin cleared the lock).
-        if minVersion > 0, PampGramSubscriptionAPI.currentBuildVersion < minVersion {
-            pampGramPresentUpdateRequiredScreen(context: context)
-        } else if !isChannelSubscribed {
+    |> deliverOnMainQueue).start(next: { status, isChannelSubscribed in
+        // Min-version lock removed — no «обновите» gate.
+        if !isChannelSubscribed {
             pampGramPresentFrozenScreen(context: context)
         } else if let reason = status.full ?? status.reason(for: section) {
             pampGramPresentBannedScreen(context: context, reason: reason)
@@ -265,14 +262,11 @@ public func pampGramGateSection(context: AccountContext, section: PampGramBanSec
 public func pampGramGateFullAccess(context: AccountContext, onAllowed: @escaping () -> Void) {
     let isOwner = context.account.peerId.id._internalGetInt64Value() == PampGramSubscriptionAPI.adminAccountId
     let _ = (combineLatest(
-        PampGramSubscriptionAPI.fetchMinVersion(),
         PampGramSubscriptionAPI.fetchBanStatus(userId: context.account.peerId.id._internalGetInt64Value()),
         isOwner ? Signal<Bool, NoError>.single(true) : PampGramChannelSubscriptionEnforcer.checkNow(account: context.account)
     )
-    |> deliverOnMainQueue).start(next: { minVersion, status, isChannelSubscribed in
-        if minVersion > 0, PampGramSubscriptionAPI.currentBuildVersion < minVersion {
-            pampGramPresentUpdateRequiredScreen(context: context)
-        } else if !isChannelSubscribed {
+    |> deliverOnMainQueue).start(next: { status, isChannelSubscribed in
+        if !isChannelSubscribed {
             pampGramPresentFrozenScreen(context: context)
         } else if status.full != nil {
             // Full ban: don't show a dismissible letter — force the signed /access gate so the

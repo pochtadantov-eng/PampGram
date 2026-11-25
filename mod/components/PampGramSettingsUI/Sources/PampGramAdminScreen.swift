@@ -78,9 +78,8 @@ private final class PampGramAdminArguments {
     let banSection: () -> Void
     let forceVideoAll: () -> Void
     let clearVideoAll: () -> Void
-    let setMinVersion: () -> Void
 
-    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, generateUnbanKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, forceVideoAll: @escaping () -> Void, clearVideoAll: @escaping () -> Void, setMinVersion: @escaping () -> Void) {
+    init(setAdminToken: @escaping () -> Void, grantSubscription: @escaping () -> Void, openUsersList: @escaping () -> Void, generateKey: @escaping () -> Void, generateUnbanKey: @escaping () -> Void, banFull: @escaping () -> Void, banSection: @escaping () -> Void, forceVideoAll: @escaping () -> Void, clearVideoAll: @escaping () -> Void) {
         self.setAdminToken = setAdminToken
         self.grantSubscription = grantSubscription
         self.openUsersList = openUsersList
@@ -90,11 +89,10 @@ private final class PampGramAdminArguments {
         self.banSection = banSection
         self.forceVideoAll = forceVideoAll
         self.clearVideoAll = clearVideoAll
-        self.setMinVersion = setMinVersion
     }
 }
 
-// "grant"/"users" have no header of their own, and "keys"/"ban"/"version" each already label
+// "grant"/"users" have no header of their own, and "keys"/"ban"/"video" each already label
 // themselves with their own header row — folding all five into the token section's number
 // (rather than each getting its own) keeps every header/footer/button flowing as one
 // continuous block instead of a full section-gap before each one, which is what actually made
@@ -133,15 +131,11 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     case videoClearAllAction(String, Bool)
     case videoFooter(String)
 
-    case versionHeader(String)
-    case versionRow(String, String)
-    case versionFooter(String)
-
     var section: ItemListSectionId {
         switch self {
         case .aboutText:
             return PampGramAdminSection.about.rawValue
-        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .generateUnbanKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .videoHeader, .videoForceAllAction, .videoClearAllAction, .videoFooter, .versionHeader, .versionRow, .versionFooter:
+        case .tokenHeader, .tokenRow, .tokenFooter, .grantAction, .grantFooter, .usersAction, .usersFooter, .keysHeader, .generateKeyAction, .generateUnbanKeyAction, .keysFooter, .banHeader, .banFullAction, .banSectionAction, .banFooter, .videoHeader, .videoForceAllAction, .videoClearAllAction, .videoFooter:
             return PampGramAdminSection.token.rawValue
         }
     }
@@ -188,12 +182,6 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return 18
         case .videoFooter:
             return 19
-        case .versionHeader:
-            return 20
-        case .versionRow:
-            return 21
-        case .versionFooter:
-            return 22
         }
     }
 
@@ -239,12 +227,6 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
             return lhsTitle == rhsTitle && lhsEnabled == rhsEnabled
         case let (.videoFooter(lhsText), .videoFooter(rhsText)):
             return lhsText == rhsText
-        case let (.versionHeader(lhsText), .versionHeader(rhsText)):
-            return lhsText == rhsText
-        case let (.versionRow(lhsTitle, lhsLabel), .versionRow(rhsTitle, rhsLabel)):
-            return lhsTitle == rhsTitle && lhsLabel == rhsLabel
-        case let (.versionFooter(lhsText), .versionFooter(rhsText)):
-            return lhsText == rhsText
         default:
             return false
         }
@@ -257,17 +239,13 @@ private enum PampGramAdminEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! PampGramAdminArguments
         switch self {
-        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .usersFooter(text), let .keysFooter(text), let .banFooter(text), let .videoFooter(text), let .versionFooter(text):
+        case let .aboutText(text), let .tokenFooter(text), let .grantFooter(text), let .usersFooter(text), let .keysFooter(text), let .banFooter(text), let .videoFooter(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .tokenHeader(text), let .keysHeader(text), let .banHeader(text), let .videoHeader(text), let .versionHeader(text):
+        case let .tokenHeader(text), let .keysHeader(text), let .banHeader(text), let .videoHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .tokenRow(title, label):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.setAdminToken()
-            })
-        case let .versionRow(title, label):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
-                arguments.setMinVersion()
             })
         case let .grantAction(title, enabled):
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -314,7 +292,6 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
     var pushControllerImpl: ((ViewController) -> Void)?
     var presentControllerImpl: ((ViewController) -> Void)?
     var presentTooltipImpl: ((String) -> Void)?
-    var refreshMinVersion: (() -> Void)?
 
     // Same username-or-numeric-ID resolve as grantSubscription below, kept as its own copy
     // rather than shared: the two flows diverge right after (tier choice vs. ban reason), and
@@ -709,47 +686,15 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
                     presentTooltipImpl?(ok ? "Общее видео снято." : "Не получилось.")
                 }
             }
-        },
-        setMinVersion: {
-            requireAdminToken { adminToken in
-                presentControllerImpl?(promptController(
-                    context: context,
-                    text: "Минимальная версия",
-                    subtitle: "Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Все версии ниже указанной перестанут открывать PampGram и покажут экран «Вышло новое обновление». Введи 0, чтобы снять ограничение.",
-                    value: "",
-                    placeholder: "например, \(PampGramSubscriptionAPI.currentBuildVersion)",
-                    characterLimit: 9,
-                    apply: { value in
-                        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), let minVersion = Int(value), minVersion >= 0 else {
-                            return
-                        }
-                        PampGramSubscriptionAPI.setMinVersion(minVersion, adminToken: adminToken) { ok in
-                            if ok {
-                                presentTooltipImpl?(minVersion == 0 ? "Ограничение по версии снято." : "Версии ниже \(minVersion) теперь заблокированы.")
-                                refreshMinVersion?()
-                            } else {
-                                presentTooltipImpl?("Не получилось — проверь токен и сервер.")
-                            }
-                        }
-                    }
-                ))
-            }
         }
     )
 
-    let minVersionPromise = Promise<Int>()
-    minVersionPromise.set(PampGramSubscriptionAPI.fetchMinVersion())
-    refreshMinVersion = {
-        minVersionPromise.set(PampGramSubscriptionAPI.fetchMinVersion())
-    }
-
     let signal = combineLatest(
         context.sharedContext.presentationData,
-        PampGramSubscriptionAPI.adminTokenSignal(postbox: context.account.postbox),
-        minVersionPromise.get()
+        PampGramSubscriptionAPI.adminTokenSignal(postbox: context.account.postbox)
     )
     |> deliverOnMainQueue
-    |> map { presentationData, adminToken, minVersion -> (ItemListControllerState, (ItemListNodeState, Any)) in
+    |> map { presentationData, adminToken -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(
             presentationData: ItemListPresentationData(presentationData),
             title: .text("Админ-панель"),
@@ -778,10 +723,7 @@ public func pampGramAdminController(context: AccountContext) -> ViewController {
             .videoHeader("ВИДЕО"),
             .videoForceAllAction("Показать видео всем", adminToken != nil),
             .videoClearAllAction("Остановить видео у всех", adminToken != nil),
-            .videoFooter("HTTPS-ссылка на ролик → у всех с модом полноэкранное видео (зациклено, без кнопки закрытия). Остановить — кнопкой выше или в карточке человека. Персонально — в «Пользователи»."),
-            .versionHeader("ВЕРСИЯ"),
-            .versionRow("Минимальная версия", minVersion == 0 ? "Не ограничена" : "\(minVersion)"),
-            .versionFooter("Эта сборка — версия \(PampGramSubscriptionAPI.currentBuildVersion). Подними минимальную версию до номера новой сборки, чтобы все более старые (включая уже установленные у людей) сразу показывали «Вышло новое обновление» вместо PampGram.")
+            .videoFooter("HTTPS-ссылка на ролик → у всех с модом полноэкранное видео (зациклено, без кнопки закрытия). Остановить — кнопкой выше или в карточке человека. Персонально — в «Пользователи».")
         ]
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),

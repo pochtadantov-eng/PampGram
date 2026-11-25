@@ -447,9 +447,9 @@ async function handleUnban(request, env) {
 }
 
 async function handleMinVersion(request, env) {
-	const stored = await env.SUBS.get("min_version");
-	const parsed = stored === null ? 0 : parseInt(stored, 10);
-	const minVersion = Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+	// Version lock retired: always report 0 so old installs never see «обновите».
+	await env.SUBS.delete("min_version").catch(() => {});
+	const minVersion = 0;
 	const sig = await hmacSign(env, `${minVersion}`);
 	return jsonResponse({ minVersion, sig });
 }
@@ -462,21 +462,14 @@ async function handleSetMinVersion(request, env) {
 		return jsonResponse({ error: "invalid json" }, 400);
 	}
 
-	const { minVersion, token } = payload ?? {};
+	const { token } = payload ?? {};
 
 	if (!isAuthorized(token, env)) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
-	if (!Number.isInteger(minVersion) || minVersion < 0) {
-		return jsonResponse({ error: "invalid minVersion" }, 400);
-	}
 
-	if (minVersion === 0) {
-		await env.SUBS.delete("min_version");
-	} else {
-		await env.SUBS.put("min_version", String(minVersion));
-	}
-
+	// Admin UI for min-version was removed — any call only clears the floor.
+	await env.SUBS.delete("min_version");
 	return jsonResponse({ ok: true });
 }
 
