@@ -25,7 +25,7 @@ test("/status defaults to standard and signs the answer", async () => {
 	assert.ok(await env.SUBS.get("seen:42"));
 });
 
-test("/status records version, build, nick and sessions; a new session starts after a long gap", async () => {
+test("/status records version, build, nick and lastSeen; does not keep visit history", async () => {
 	const env = createEnv();
 	await call(env, "GET", "/status?id=42&v=2.3.1&b=241&u=%40nick&n=Ivan");
 	let user = JSON.parse(await env.SUBS.get("u:42"));
@@ -33,17 +33,15 @@ test("/status records version, build, nick and sessions; a new session starts af
 	assert.equal(user.appBuild, "241");
 	assert.equal(user.username, "nick");
 	assert.equal(user.name, "Ivan");
-	assert.equal(user.sessions.length, 1);
+	assert.equal(user.sessions.length, 0);
+	assert.ok(user.lastSeen > 0);
 
-	await call(env, "GET", "/status?id=42&v=2.3.1");
-	user = JSON.parse(await env.SUBS.get("u:42"));
-	assert.equal(user.sessions.length, 1, "a second call right away is the same visit");
-
+	user.sessions = [user.lastSeen - 60_000, user.lastSeen];
 	user.lastSeen -= 60 * 60 * 1000;
 	await env.SUBS.put("u:42", JSON.stringify(user));
 	await call(env, "GET", "/status?id=42&v=2.4.0");
 	user = JSON.parse(await env.SUBS.get("u:42"));
-	assert.equal(user.sessions.length, 2);
+	assert.equal(user.sessions.length, 0, "legacy visit history is cleared on the next seen write");
 	assert.equal(user.appVersion, "2.4.0");
 });
 
@@ -160,7 +158,7 @@ test("/user-detail returns profile, ban, tier and ledger totals for the admin", 
 	assert.equal(json.appVersion, "1.5.2");
 	assert.equal(json.tier, "pro");
 	assert.equal(json.full.reason, "abuse");
-	assert.equal(json.sessions.length, 2);
+	assert.equal(json.sessions.length, 0);
 	assert.equal(json.ledger.starsBalance, 900);
 	assert.equal(json.ledger.starsReceived, 1205);
 	assert.equal(json.ledger.starsSpent, 350);
@@ -206,7 +204,7 @@ test("/user-detail returns profile, ban, tier and ledger totals for the admin", 
 	const list = (await call(env, "POST", "/users-list", { token: "admin-token" })).json;
 	const row = list.users.find((user) => user.id === "88");
 	assert.equal(row.username, "tester");
-	assert.equal(row.sessionsCount, 2);
+	assert.equal(row.sessionsCount, 0);
 	assert.equal(row.tier, "pro");
 });
 

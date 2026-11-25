@@ -183,9 +183,6 @@ private func pampGramBanSummaryShort(_ user: PampGramUserSummary) -> String {
 /// without a third slot.
 private func pampGramRowSubtitle(_ user: PampGramUserSummary) -> String {
     var parts: [String] = [pampGramBanSummaryShort(user), "был(а) \(pampGramFormatLastSeen(user.lastSeen))"]
-    if user.sessionsCount > 0 {
-        parts.append("заходов \(user.sessionsCount)")
-    }
     if !user.appVersion.isEmpty {
         parts.append("v\(user.appVersion)")
     }

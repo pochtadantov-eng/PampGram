@@ -209,7 +209,7 @@ test("admin panel is for admins only", async () => {
 	assert.match(tg.texts().join(), /Админ-панель/);
 });
 
-test("admin sees users with version, sessions and online state; stats add up", async () => {
+test("admin sees users with version and online state; stats add up", async () => {
 	const { env, tg } = setup();
 	const now = Date.now();
 	await recordAppSeen(env, "2001", { version: "2.3.1", build: "241", username: "alice", name: "Alice A" }, now - 120000);
@@ -231,7 +231,8 @@ test("admin sees users with version, sessions and online state; stats add up", a
 	text = tg.last("editMessageText").text;
 	assert.match(text, /@alice/);
 	assert.match(text, /Версия: 2\.3\.1 \(241\)/);
-	assert.match(text, /Заходы \(1\)/);
+	assert.match(text, /Последний:/);
+	assert.doesNotMatch(text, /Заходы \(/);
 });
 
 test("admin can find a user by @nick and by id", async () => {

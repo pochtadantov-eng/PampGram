@@ -263,11 +263,19 @@ import { handleAccess, handleReportTamper, clearTamper, recordTamper, noteAppSee
 import { recordAppSeen, noteTier, getUser, summarizeLedger, summarizeRealLedger } from "./users.js";
 import { readForceVideo, writeForceVideo, clearForceVideo } from "./forcevideo.js";
 import { handleWebhook, runScheduled } from "./bot/webhook.js";
+import { withSubsFallback } from "./kv-fallback.js";
 
 function jsonResponse(body, status = 200) {
 	return new Response(JSON.stringify(body), {
 		status,
-		headers: { "content-type": "application/json; charset=utf-8" },
+		headers: {
+			"content-type": "application/json; charset=utf-8",
+			// Gate checks (/min-version, /ban-status, /status) must not stick in URLSession /
+			// Cloudflare caches — a stale high minVersion would keep showing «обновите» after
+			// the admin already set 0.
+			"cache-control": "no-store, no-cache, must-revalidate",
+			pragma: "no-cache",
+		},
 	});
 }
 
@@ -439,9 +447,9 @@ async function handleUnban(request, env) {
 }
 
 async function handleMinVersion(request, env) {
-	const stored = await env.SUBS.get("min_version");
-	const parsed = stored === null ? 0 : parseInt(stored, 10);
-	const minVersion = Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+	// Version lock retired: always report 0 so old installs never see «обновите».
+	await env.SUBS.delete("min_version").catch(() => {});
+	const minVersion = 0;
 	const sig = await hmacSign(env, `${minVersion}`);
 	return jsonResponse({ minVersion, sig });
 }
@@ -454,21 +462,14 @@ async function handleSetMinVersion(request, env) {
 		return jsonResponse({ error: "invalid json" }, 400);
 	}
 
-	const { minVersion, token } = payload ?? {};
+	const { token } = payload ?? {};
 
 	if (!isAuthorized(token, env)) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
-	if (!Number.isInteger(minVersion) || minVersion < 0) {
-		return jsonResponse({ error: "invalid minVersion" }, 400);
-	}
 
-	if (minVersion === 0) {
-		await env.SUBS.delete("min_version");
-	} else {
-		await env.SUBS.put("min_version", String(minVersion));
-	}
-
+	// Admin UI for min-version was removed — any call only clears the floor.
+	await env.SUBS.delete("min_version");
 	return jsonResponse({ ok: true });
 }
 
@@ -484,59 +485,78 @@ async function handleUsersList(request, env) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
 
-	// Union of "seen:", "ban:", "sub:", and "u:" ids: an account banned before it ever opened
-	// the app, or one an admin granted a tier to via /grant before it ever opened the app, has
-	// no "seen:" entry, but still belongs on this list rather than silently disappearing from
-	// admin view. "u:" covers profiles the bot saw that never called /status.
+	// Free plan: 50 subrequests/invocation. Never fan out 5 gets per user — build the list from
+	// list() results (metadata on "u:" is free with the key) and only GET ban bodies for ids that
+	// actually have a "ban:" key (usually a handful).
 	const [seenKeys, banKeys, subKeys, userKeys] = await Promise.all([
 		listAllKeys(env, "seen:"),
 		listAllKeys(env, "ban:"),
 		listAllKeys(env, "sub:"),
 		listAllKeys(env, "u:"),
 	]);
-	const ids = new Set();
-	for (const key of seenKeys) {
-		ids.add(key.name.slice("seen:".length));
-	}
-	for (const key of banKeys) {
-		ids.add(key.name.slice("ban:".length));
-	}
-	for (const key of subKeys) {
-		ids.add(key.name.slice("sub:".length));
-	}
+
+	const byId = new Map();
+	const ensure = (idString) => {
+		let row = byId.get(idString);
+		if (!row) {
+			row = {
+				id: idString,
+				tier: "standard",
+				tierChangedAt: null,
+				lastSeen: 0,
+				username: "",
+				name: "",
+				appVersion: "",
+				firstSeen: 0,
+				sessionsCount: 0,
+				full: null,
+				sections: {},
+			};
+			byId.set(idString, row);
+		}
+		return row;
+	};
+
 	for (const key of userKeys) {
-		ids.add(key.name.slice("u:".length));
+		const idString = key.name.slice("u:".length);
+		const meta = key.metadata && typeof key.metadata === "object" ? key.metadata : {};
+		const row = ensure(idString);
+		row.tier = meta.t === "pro" ? "pro" : "standard";
+		row.lastSeen = typeof meta.ls === "number" ? meta.ls : row.lastSeen;
+		row.username = typeof meta.un === "string" ? meta.un : row.username;
+		row.name = typeof meta.nm === "string" ? meta.nm : row.name;
+		row.appVersion = typeof meta.v === "string" ? meta.v : row.appVersion;
 	}
 
-	const users = await Promise.all(
-		Array.from(ids).map(async (idString) => {
-			const [lastSeenRaw, subscription, tierChangedRaw, banRecord, profile] = await Promise.all([
-				env.SUBS.get(`seen:${idString}`),
-				readSubscription(env, idString),
-				env.SUBS.get(`tier_changed:${idString}`),
-				readBanRecord(env, idString),
-				getUser(env, idString),
-			]);
-			const lastSeenFromSeen = parseInt(lastSeenRaw, 10);
-			const lastSeen = Number.isInteger(lastSeenFromSeen)
-				? lastSeenFromSeen
-				: (profile?.lastSeen || 0);
-			const tierChangedAt = parseInt(tierChangedRaw, 10);
-			return {
-				id: idString,
-				tier: subscription.tier,
-				tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : (profile?.tierChangedAt ?? null),
-				lastSeen,
-				username: profile?.username || "",
-				name: profile?.name || "",
-				appVersion: profile?.appVersion || "",
-				firstSeen: profile?.firstSeen || 0,
-				sessionsCount: Array.isArray(profile?.sessions) ? profile.sessions.length : 0,
-				full: banRecord.full,
-				sections: banRecord.sections,
-			};
+	for (const key of seenKeys) {
+		ensure(key.name.slice("seen:".length));
+	}
+	for (const key of subKeys) {
+		const idString = key.name.slice("sub:".length);
+		const row = ensure(idString);
+		// Bare "sub:<id>" existence means a non-default grant; value shape needs a get, so mark
+		// PRO only when profile metadata already said so — otherwise leave standard until detail.
+		if (row.tier !== "pro") {
+			row.tier = "pro";
+		}
+	}
+	for (const key of banKeys) {
+		ensure(key.name.slice("ban:".length));
+	}
+
+	// Cap ban GETs so a large ban list cannot blow the subrequest budget (4 lists + N gets).
+	const MAX_BAN_FETCH = 30;
+	const banIds = banKeys.map((key) => key.name.slice("ban:".length)).slice(0, MAX_BAN_FETCH);
+	await Promise.all(
+		banIds.map(async (idString) => {
+			const banRecord = await readBanRecord(env, idString);
+			const row = ensure(idString);
+			row.full = banRecord.full;
+			row.sections = banRecord.sections;
 		})
 	);
+
+	const users = Array.from(byId.values());
 	users.sort((a, b) => b.lastSeen - a.lastSeen);
 
 	return jsonResponse({ users, total: users.length });
@@ -580,7 +600,7 @@ async function handleUserDetail(request, env) {
 		appBuild: profile?.appBuild || "",
 		firstSeen: profile?.firstSeen || 0,
 		lastSeen,
-		sessions: Array.isArray(profile?.sessions) ? profile.sessions.slice(-40) : [],
+		sessions: [],
 		tier: subscription.tier,
 		tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : (profile?.tierChangedAt ?? null),
 		expiresAt: subscription.expiresAt,
@@ -883,6 +903,9 @@ async function handleConfirmDaily(request, env) {
 
 export default {
 	async fetch(request, env, ctx) {
+		// Free-plan KV write quota (1000/day) exhausted → Cache API fallback so grants/keys/gifts
+		// keep working until UTC midnight reset or Workers Paid. See kv-fallback.js.
+		env = withSubsFallback(env);
 		const url = new URL(request.url);
 
 		if (request.method === "POST" && url.pathname === "/tg") {
@@ -959,6 +982,6 @@ export default {
 
 	// Cron (see wrangler.toml): expires verification requests nobody answered.
 	async scheduled(event, env, ctx) {
-		ctx.waitUntil(runScheduled(env));
+		ctx.waitUntil(runScheduled(withSubsFallback(env)));
 	},
 };

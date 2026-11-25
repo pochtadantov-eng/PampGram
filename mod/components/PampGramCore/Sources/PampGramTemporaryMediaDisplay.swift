@@ -35,6 +35,24 @@ public final class PampGramTemporaryMediaDisplay {
         return self.timedEnabledByAccount[accountKey] ?? false
     }
 
+    /// Whether `seed` / the first settingsSignal emission has already written values for this
+    /// account. Layout code uses this to distinguish "toggles are off" from "mirror not warmed".
+    public func isSeeded(accountKey: Int64) -> Bool {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.viewOnceEnabledByAccount[accountKey] != nil
+    }
+
+    /// Immediate write — used by the settings toggles so the mirror flips before the Postbox
+    /// transaction finishes, and by `PampGramTemporaryMediaBypass` when it reads settings inside
+    /// a transaction (so layout/open paths that still consult the mirror see the same values).
+    public func seed(accountKey: Int64, viewOnceEnabled: Bool, timedEnabled: Bool) {
+        self.lock.lock()
+        self.viewOnceEnabledByAccount[accountKey] = viewOnceEnabled
+        self.timedEnabledByAccount[accountKey] = timedEnabled
+        self.lock.unlock()
+    }
+
     /// Starts (once per account) the subscription that keeps both flags current.
     public func start(accountKey: Int64, postbox: Postbox) {
         self.lock.lock()
@@ -45,15 +63,17 @@ public final class PampGramTemporaryMediaDisplay {
         self.startedAccounts.insert(accountKey)
         self.lock.unlock()
 
+        // Seed from Postbox as soon as a transaction can run — do not wait for preferencesView
+        // wiring, otherwise the first layouts / gallery opens still see the default `false`.
+        let _ = (postbox.transaction { transaction -> PampGramSettings in
+            return PampGramCore.settings(transaction: transaction)
+        }).startStandalone(next: { [weak self] settings in
+            self?.seed(accountKey: accountKey, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
+        })
+
         let disposable = (PampGramCore.settingsSignal(postbox: postbox)
         |> deliverOn(Queue.concurrentDefaultQueue())).start(next: { [weak self] settings in
-            guard let self else {
-                return
-            }
-            self.lock.lock()
-            self.viewOnceEnabledByAccount[accountKey] = settings.bypassViewOnceMediaEnabled
-            self.timedEnabledByAccount[accountKey] = settings.bypassTimedMediaEnabled
-            self.lock.unlock()
+            self?.seed(accountKey: accountKey, viewOnceEnabled: settings.bypassViewOnceMediaEnabled, timedEnabled: settings.bypassTimedMediaEnabled)
         })
 
         self.lock.lock()

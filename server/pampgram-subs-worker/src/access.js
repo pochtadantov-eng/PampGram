@@ -201,8 +201,10 @@ function json(body, status = 200) {
  * How often an app's "last seen" is written. The app asks /access every minute; writing on every
  * request used up Cloudflare's free daily KV write quota (1000/day) within hours, after which
  * every other write — keys, orders, the bot's own state — failed for the rest of the day.
+ * 30 minutes: admin «Пользователи» shows who opened the mod at that cadence, without a
+ * per-user visit history list.
  */
-export const SEEN_WRITE_INTERVAL_MS = 60 * 60 * 1000;
+export const SEEN_WRITE_INTERVAL_MS = 30 * 60 * 1000;
 
 /** Records that the app was seen, at most once per SEEN_WRITE_INTERVAL_MS per account. */
 export async function noteAppSeen(env, id, info, now = Date.now()) {

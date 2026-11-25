@@ -63,7 +63,7 @@ private struct PampGramAccessRecord: Codable, Equatable {
 ///    seen are remembered; a clock behind either locks the app until the server is reachable.
 ///  - Editing local settings while locked (balances, the ban flag, the owner flag): detected,
 ///    undone at once, reported to the server (which escalates a banned account).
-///  - Staying on an old build: bump `/set-min-version` to this build's number after shipping.
+///  - Staying on an old build: min-version lock was removed; ship a new IPA when needed.
 /// It can NOT stop someone who patches the app binary itself (nothing client-side can).
 public final class PampGramAccessGate {
     public static let shared = PampGramAccessGate()
