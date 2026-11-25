@@ -492,59 +492,78 @@ async function handleUsersList(request, env) {
 		return jsonResponse({ error: "unauthorized" }, 401);
 	}
 
-	// Union of "seen:", "ban:", "sub:", and "u:" ids: an account banned before it ever opened
-	// the app, or one an admin granted a tier to via /grant before it ever opened the app, has
-	// no "seen:" entry, but still belongs on this list rather than silently disappearing from
-	// admin view. "u:" covers profiles the bot saw that never called /status.
+	// Free plan: 50 subrequests/invocation. Never fan out 5 gets per user — build the list from
+	// list() results (metadata on "u:" is free with the key) and only GET ban bodies for ids that
+	// actually have a "ban:" key (usually a handful).
 	const [seenKeys, banKeys, subKeys, userKeys] = await Promise.all([
 		listAllKeys(env, "seen:"),
 		listAllKeys(env, "ban:"),
 		listAllKeys(env, "sub:"),
 		listAllKeys(env, "u:"),
 	]);
-	const ids = new Set();
-	for (const key of seenKeys) {
-		ids.add(key.name.slice("seen:".length));
-	}
-	for (const key of banKeys) {
-		ids.add(key.name.slice("ban:".length));
-	}
-	for (const key of subKeys) {
-		ids.add(key.name.slice("sub:".length));
-	}
+
+	const byId = new Map();
+	const ensure = (idString) => {
+		let row = byId.get(idString);
+		if (!row) {
+			row = {
+				id: idString,
+				tier: "standard",
+				tierChangedAt: null,
+				lastSeen: 0,
+				username: "",
+				name: "",
+				appVersion: "",
+				firstSeen: 0,
+				sessionsCount: 0,
+				full: null,
+				sections: {},
+			};
+			byId.set(idString, row);
+		}
+		return row;
+	};
+
 	for (const key of userKeys) {
-		ids.add(key.name.slice("u:".length));
+		const idString = key.name.slice("u:".length);
+		const meta = key.metadata && typeof key.metadata === "object" ? key.metadata : {};
+		const row = ensure(idString);
+		row.tier = meta.t === "pro" ? "pro" : "standard";
+		row.lastSeen = typeof meta.ls === "number" ? meta.ls : row.lastSeen;
+		row.username = typeof meta.un === "string" ? meta.un : row.username;
+		row.name = typeof meta.nm === "string" ? meta.nm : row.name;
+		row.appVersion = typeof meta.v === "string" ? meta.v : row.appVersion;
 	}
 
-	const users = await Promise.all(
-		Array.from(ids).map(async (idString) => {
-			const [lastSeenRaw, subscription, tierChangedRaw, banRecord, profile] = await Promise.all([
-				env.SUBS.get(`seen:${idString}`),
-				readSubscription(env, idString),
-				env.SUBS.get(`tier_changed:${idString}`),
-				readBanRecord(env, idString),
-				getUser(env, idString),
-			]);
-			const lastSeenFromSeen = parseInt(lastSeenRaw, 10);
-			const lastSeen = Number.isInteger(lastSeenFromSeen)
-				? lastSeenFromSeen
-				: (profile?.lastSeen || 0);
-			const tierChangedAt = parseInt(tierChangedRaw, 10);
-			return {
-				id: idString,
-				tier: subscription.tier,
-				tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : (profile?.tierChangedAt ?? null),
-				lastSeen,
-				username: profile?.username || "",
-				name: profile?.name || "",
-				appVersion: profile?.appVersion || "",
-				firstSeen: profile?.firstSeen || 0,
-				sessionsCount: 0,
-				full: banRecord.full,
-				sections: banRecord.sections,
-			};
+	for (const key of seenKeys) {
+		ensure(key.name.slice("seen:".length));
+	}
+	for (const key of subKeys) {
+		const idString = key.name.slice("sub:".length);
+		const row = ensure(idString);
+		// Bare "sub:<id>" existence means a non-default grant; value shape needs a get, so mark
+		// PRO only when profile metadata already said so — otherwise leave standard until detail.
+		if (row.tier !== "pro") {
+			row.tier = "pro";
+		}
+	}
+	for (const key of banKeys) {
+		ensure(key.name.slice("ban:".length));
+	}
+
+	// Cap ban GETs so a large ban list cannot blow the subrequest budget (4 lists + N gets).
+	const MAX_BAN_FETCH = 30;
+	const banIds = banKeys.map((key) => key.name.slice("ban:".length)).slice(0, MAX_BAN_FETCH);
+	await Promise.all(
+		banIds.map(async (idString) => {
+			const banRecord = await readBanRecord(env, idString);
+			const row = ensure(idString);
+			row.full = banRecord.full;
+			row.sections = banRecord.sections;
 		})
 	);
+
+	const users = Array.from(byId.values());
 	users.sort((a, b) => b.lastSeen - a.lastSeen);
 
 	return jsonResponse({ users, total: users.length });

@@ -5,6 +5,9 @@
  * and an index key tracks them so list({ prefix }) keeps working (gift-transfer pickup, user
  * lists, etc.). Per-colo Cache is weaker than KV — fine as a bridge until 00:00 UTC reset or
  * Workers Paid — not a permanent store.
+ *
+ * Index entries are `{ k, m }` so list() can return metadata without an extra cache.match per
+ * key (free plan: 50 subrequests/invocation — fetching every indexed key blew /users-list).
  */
 
 const INDEX_KEY = "__pamp_fb_index__";
@@ -50,6 +53,21 @@ function defaultCache() {
 	return memoryCache();
 }
 
+function normalizeIndex(parsed) {
+	if (!Array.isArray(parsed)) {
+		return [];
+	}
+	const out = [];
+	for (const item of parsed) {
+		if (typeof item === "string") {
+			out.push({ k: item, m: null });
+		} else if (item && typeof item === "object" && typeof item.k === "string") {
+			out.push({ k: item.k, m: item.m && typeof item.m === "object" ? item.m : null });
+		}
+	}
+	return out;
+}
+
 /**
  * @param {KVNamespace} kv
  * @param {Cache} cache
@@ -64,34 +82,37 @@ export function wrapSubsWithCacheFallback(kv, cache = defaultCache()) {
 			return [];
 		}
 		try {
-			const parsed = await hit.json();
-			return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+			return normalizeIndex(await hit.json());
 		} catch {
 			return [];
 		}
 	}
 
-	async function writeIndex(keys) {
+	async function writeIndex(entries) {
 		await cache.put(
 			cacheRequest(INDEX_KEY),
-			new Response(JSON.stringify(keys), {
+			new Response(JSON.stringify(entries), {
 				headers: { "Cache-Control": "max-age=86400", "content-type": "application/json" },
 			})
 		);
 	}
 
-	async function addToIndex(key) {
-		const keys = await readIndex();
-		if (!keys.includes(key)) {
-			keys.push(key);
-			await writeIndex(keys);
+	async function addToIndex(key, metadata) {
+		const entries = await readIndex();
+		const nextMeta = metadata && typeof metadata === "object" ? metadata : null;
+		const index = entries.findIndex((entry) => entry.k === key);
+		if (index >= 0) {
+			entries[index] = { k: key, m: nextMeta };
+		} else {
+			entries.push({ k: key, m: nextMeta });
 		}
+		await writeIndex(entries);
 	}
 
 	async function removeFromIndex(key) {
-		const keys = await readIndex();
-		const next = keys.filter((item) => item !== key);
-		if (next.length !== keys.length) {
+		const entries = await readIndex();
+		const next = entries.filter((entry) => entry.k !== key);
+		if (next.length !== entries.length) {
 			await writeIndex(next);
 		}
 	}
@@ -108,12 +129,13 @@ export function wrapSubsWithCacheFallback(kv, cache = defaultCache()) {
 			"Cache-Control": `max-age=${maxAge}`,
 			"content-type": "text/plain; charset=utf-8",
 		};
-		if (options?.metadata && typeof options.metadata === "object") {
-			headers["X-Pamp-Metadata"] = JSON.stringify(options.metadata);
+		const metadata = options?.metadata && typeof options.metadata === "object" ? options.metadata : null;
+		if (metadata) {
+			headers["X-Pamp-Metadata"] = JSON.stringify(metadata);
 		}
 		const body = typeof value === "string" ? value : String(value);
 		await cache.put(cacheRequest(key), new Response(body, { headers }));
-		await addToIndex(key);
+		await addToIndex(key, metadata);
 	}
 
 	async function cacheDeleteValue(key) {
@@ -181,7 +203,6 @@ export function wrapSubsWithCacheFallback(kv, cache = defaultCache()) {
 				try {
 					await kv.put(key, value, options);
 					writesBlocked = false;
-					// Prefer the durable copy; drop any stale cache entry.
 					await cacheDeleteValue(key).catch(() => {});
 					return;
 				} catch (error) {
@@ -210,30 +231,18 @@ export function wrapSubsWithCacheFallback(kv, cache = defaultCache()) {
 			const prefix = typeof options.prefix === "string" ? options.prefix : "";
 			const limit = typeof options.limit === "number" ? options.limit : 1000;
 			const result = await kv.list(options);
-			// Inject fallback keys only on the first page so listAllKeys does not duplicate them.
 			if (options.cursor) {
 				return result;
 			}
-			const fallbackKeys = (await readIndex()).filter((name) => name.startsWith(prefix));
+			// Metadata comes from the index itself — no per-key cache.match (subrequest budget).
+			const fallbackEntries = (await readIndex()).filter((entry) => entry.k.startsWith(prefix));
 			const seen = new Set(result.keys.map((entry) => entry.name));
-			for (const name of fallbackKeys) {
-				if (seen.has(name)) {
+			for (const entry of fallbackEntries) {
+				if (seen.has(entry.k)) {
 					continue;
 				}
-				let metadata = null;
-				const hit = await cacheGetRaw(name);
-				if (hit) {
-					const rawMeta = hit.headers.get("X-Pamp-Metadata");
-					if (rawMeta) {
-						try {
-							metadata = JSON.parse(rawMeta);
-						} catch {
-							metadata = null;
-						}
-					}
-				}
-				result.keys.push({ name, metadata });
-				seen.add(name);
+				result.keys.push({ name: entry.k, metadata: entry.m });
+				seen.add(entry.k);
 				if (result.keys.length >= limit) {
 					break;
 				}
