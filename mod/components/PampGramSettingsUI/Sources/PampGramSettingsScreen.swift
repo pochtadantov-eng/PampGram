@@ -527,7 +527,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
 
     entries.append(.phantomGiftsHeader("ВИЗУАЛЬНЫЕ ПОДАРКИ"))
     entries.append(.phantomGiftsToggle("«Подарок ему»", settings.phantomGiftsEnabled))
-    entries.append(.phantomGiftsFooter("Тот же настоящий маркет, но покупка из вкладки визуальная, без списания настоящих Stars/TON."))
+    entries.append(.phantomGiftsFooter("Весь маркет коллекционных подарков (все вкладки и экраны) покупает визуально: без реального RPC в Telegram и без списания настоящих Stars/TON. Без этого Telegram на этом клиенте отвечает «Обновите Telegram» на реальную покупку — так же, как ломается любой неофициальный клиент; рабочие моды на 13.2 тоже не шлют этот RPC."))
 
     entries.append(.fromHimGiftsToggle("«Подарок мне»", settings.fromHimGiftsEnabled))
     entries.append(.fromHimGiftsFooter("Добавляет вкладку «Подарок мне» — тот же маркет, но подарок выглядит подаренным вам собеседником."))
@@ -535,12 +535,12 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ · ЗВЁЗДЫ"))
     entries.append(.fakeStarsDisplayToggle("Локальные звёзды", settings.fakeStarsDisplayEnabled))
     entries.append(.starsBalance("Звёзды", "\(settings.fakeStarsBalance)"))
-    entries.append(.starsBalanceFooter("Показывает этот баланс вместо настоящего — в настройках и шапке подарка."))
+    entries.append(.starsBalanceFooter("Показывает этот баланс вместо настоящего. Пока включено — покупки в маркете коллекционок тоже визуальные (как «Подарок ему»), иначе кнопка «Купить» бьёт в Telegram и ловит «Обновите Telegram»."))
 
     entries.append(.tonBalanceHeader("ТОНЫ"))
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.tonBalance("TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
-    entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM, независимо от звёзд."))
+    entries.append(.tonBalanceFooter("То же для TON/GRAM: показ баланса и визуальные покупки в маркете, независимо от звёзд."))
 
     entries.append(.localRublesHeader("РУБЛИ ДЛЯ ПОПОЛНЕНИЯ ЗВЁЗД"))
     entries.append(.localRublesPurchaseToggle("Покупка звёзд за рубли", settings.localRublesPurchaseEnabled))

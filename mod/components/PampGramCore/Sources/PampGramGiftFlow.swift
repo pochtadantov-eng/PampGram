@@ -6,8 +6,15 @@ import Foundation
 /// A plain `Bool` stopped being enough once there were two different fakes instead of one:
 /// "send" and "receive" aren't independent flags, they're mutually exclusive alternatives to
 /// the real flow, which is exactly what an enum is for.
+///
+/// Note: `buyStarGiftImpl` also reads `phantomGiftsEnabled` / local-balance display flags
+/// directly. Entry points that still pass `.real` (GiftValue, Auction, profile) will still
+/// fake the purchase when those settings are on — otherwise Telegram returns RPC 406
+/// «Обновите Telegram» on TON/Stars resale for this unofficial client, while other 13.2
+/// mods never hit that RPC.
 public enum PampGramGiftFlow: Equatable {
-    /// The real market: purchase spends real Stars/TON through the real Telegram API.
+    /// Intended real market purchase. May still be faked inside `buyStarGiftImpl` when
+    /// «Подарок ему» or local Stars/TON display is enabled (see note above).
     case real
     /// "Подарок ему": the same real market, but the purchase is a local-only fake — deducts
     /// PampGram's own play-money balance and inserts a real-looking message as if this
