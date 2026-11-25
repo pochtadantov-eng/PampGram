@@ -6,7 +6,7 @@
  *   each profile (KV list() returns metadata for free; metadata must stay under 1 KB).
  *
  * Two sources feed a profile, and they share the Telegram account id:
- *   - the app, through /status (version, build, own username/name, last seen, sessions);
+ *   - the app, through /status (version, build, own username/name, last seen);
  *   - the bot, through any update (username/name as Telegram reports them, whether the user
  *     ever started the bot, purchases).
  * What the app reports about itself is unauthenticated (the route is public by design, see
@@ -15,15 +15,13 @@
 
 import { readSubscription, listAllKeys } from "./core.js";
 
-// A new "visit" starts when the app is seen after being quiet this long.
-export const SESSION_GAP_MS = 30 * 60 * 1000;
-const MAX_SESSIONS = 40;
-
 export function newUser(id, now) {
 	return {
 		id: String(id),
 		firstSeen: now,
 		lastSeen: 0,
+		// Kept empty for API/compat; visit history was removed — admin only needs lastSeen
+		// (refreshed at most every SEEN_WRITE_INTERVAL_MS).
 		sessions: [],
 		username: "",
 		name: "",
@@ -92,11 +90,10 @@ export async function recordAppSeen(env, id, info, now = Date.now()) {
 		env,
 		id,
 		(user) => {
-			const previous = user.lastSeen || 0;
-			if (previous === 0 || now - previous > SESSION_GAP_MS) {
-				user.sessions = [...(user.sessions ?? []), now].slice(-MAX_SESSIONS);
-			}
 			user.lastSeen = now;
+			// Drop any legacy visit-history array so profiles stop growing and the admin UI
+			// only relies on lastSeen (one stamp per SEEN_WRITE_INTERVAL_MS).
+			user.sessions = [];
 			const version = cleanText(info?.version, 16);
 			if (version) {
 				user.appVersion = version;
@@ -177,9 +174,7 @@ export async function importLegacyUsers(env) {
 		const user = newUser(id, Number.isInteger(lastSeen) ? lastSeen : Date.now());
 		user.lastSeen = Number.isInteger(lastSeen) ? lastSeen : 0;
 		user.tier = subscription.tier;
-		if (user.lastSeen) {
-			user.sessions = [user.lastSeen];
-		}
+		user.sessions = [];
 		await saveUser(env, user);
 		imported++;
 	}

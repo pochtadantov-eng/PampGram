@@ -539,7 +539,7 @@ async function handleUsersList(request, env) {
 				name: profile?.name || "",
 				appVersion: profile?.appVersion || "",
 				firstSeen: profile?.firstSeen || 0,
-				sessionsCount: Array.isArray(profile?.sessions) ? profile.sessions.length : 0,
+				sessionsCount: 0,
 				full: banRecord.full,
 				sections: banRecord.sections,
 			};
@@ -588,7 +588,7 @@ async function handleUserDetail(request, env) {
 		appBuild: profile?.appBuild || "",
 		firstSeen: profile?.firstSeen || 0,
 		lastSeen,
-		sessions: Array.isArray(profile?.sessions) ? profile.sessions.slice(-40) : [],
+		sessions: [],
 		tier: subscription.tier,
 		tierChangedAt: Number.isInteger(tierChangedAt) ? tierChangedAt : (profile?.tierChangedAt ?? null),
 		expiresAt: subscription.expiresAt,

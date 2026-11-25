@@ -341,11 +341,7 @@ private func pampGramUserDetailEntries(detail: PampGramUserDetail?) -> [PampGram
     entries.append(.videoAction("Показать видео на весь экран"))
     entries.append(.clearVideoAction("Остановить видео"))
 
-    entries.append(.sessionsHeader("ЗАХОДЫ"))
-    entries.append(.sessionsSummary("Всего заходов: \(detail.sessions.count)"))
-    for (index, session) in detail.sessions.reversed().prefix(12).enumerated() {
-        entries.append(.sessionRow(Int32(index), pampGramUserDetailFormatMs(session)))
-    }
+    // Visit-history list removed: «Последний» above is enough (server stamps lastSeen ≤ every 30 min).
 
     entries.append(.realOpsHeader("ИСТОРИЯ ОПЕРАЦИЙ"))
     if let real = detail.real {

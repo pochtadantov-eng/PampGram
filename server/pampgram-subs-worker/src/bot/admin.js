@@ -140,8 +140,7 @@ async function profileText(ctx, id) {
 	lines.push(`Версия: ${profile.appVersion ? `${esc(profile.appVersion)}${profile.appBuild ? ` (${esc(profile.appBuild)})` : ""}` : "нет данных"}`);
 	lines.push(`Первый вход: ${esc(fmtTime(profile.firstSeen, tz))}`);
 	lines.push(`Последний: ${esc(fmtAgo(profile.lastSeen, ctx.now))}${profile.lastSeen ? ` (${esc(fmtTime(profile.lastSeen, tz))})` : ""}`);
-	const sessions = (profile.sessions ?? []).slice(-8).reverse();
-	lines.push(`Заходы (${(profile.sessions ?? []).length}): ${sessions.length ? sessions.map((ms) => esc(fmtTime(ms, tz).slice(0, 11) + fmtTime(ms, tz).slice(-5))).join(", ") : "нет данных"}`);
+	// Visit-history list removed — lastSeen (≤ every 30 min) is enough.
 	lines.push(`Ключ активирован: ${profile.activatedAt ? `да (${esc(fmtTime(profile.activatedAt, tz))})` : "нет"}`);
 	lines.push(`Бот: ${profile.bot ? (profile.bot.blocked ? "заблокировал бота" : "запускал") : "не запускал"}`);
 	const paid = orders.filter((order) => order.status === "paid" || order.status === "delivered");
