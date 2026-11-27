@@ -20029,19 +20029,16 @@ index b8743ba4d..165e55bce 100644
 +        private var pampGramFromHimGiftsEnabled = PampGramSettings.defaultSettings.fromHimGiftsEnabled
 +        // PampGram: which fake purchase flow (if any) the current tab selection maps to —
 +        // threaded into every push below instead of a bare Bool, since "send fake" and
-+        // "receive fake" are mutually exclusive alternatives to the real flow, not
-+        // independent toggles. With «Подарок ему» on, EVERY market tab is `.sendFake`
-+        // (not only «Все») — otherwise Limited/Resale/price filters silently hit real
-+        // Telegram payments and get RPC 406 "Обновите Telegram".
++        // "receive fake" are mutually exclusive alternatives to the real flow.
++        // Unique + catalog buys on this unofficial client ALWAYS go local (VisualGram-
++        // style) — real payments.getPaymentForm returns RPC 406. Only «Подарок мне»
++        // overrides framing; every other tab is `.sendFake` regardless of the phantom
++        // toggle (that toggle still drives UI chrome / settingsSignal display).
 +        private var pampGramGiftFlow: PampGramGiftFlow {
-+            // «Подарок мне» wins; otherwise any tab is send-fake while the toggle is on.
 +            if case .phantomReceived = self.starsFilter {
 +                return .receiveFake
 +            }
-+            if self.pampGramPhantomGiftsEnabled {
-+                return .sendFake
-+            }
-+            return .real
++            return .sendFake
 +        }
 +        private var pampGramSettingsDisposable: Disposable?
          private var starsState: StarsContext.State?
@@ -20616,14 +20613,16 @@ index e1624f68a..badd2d022 100644
 +                // The result value below isn't read by anything downstream (checked: the
 +                // `next:` handler never touches `result`), so any placeholder satisfies it.
 +                let signal: Signal<SendBotPaymentResult, SendBotPaymentFormError>
-+                if component.pampGramGiftFlow == .sendFake, let pampGramStarGift {
++                // Always-local catalog send (incl. 15⭐ «Мишка») unless «Подарок мне» —
++                // same rule as buyStarGiftImpl for unique gifts. `.real` from older entry
++                // points still must not hit Telegram payments (RPC 406).
++                if component.pampGramGiftFlow != .receiveFake, let pampGramStarGift {
 +                    // `sendGenericGift` returns `Signal<Never, NoError>` — it only ever
 +                    // completes, so it can't be `map`-ed into a `SendBotPaymentResult` (the
 +                    // compiler correctly rejects that as dead code: a `Never` is never
 +                    // produced to map). Wrapped by hand instead: run it for its side effect,
 +                    // then synthesize the one placeholder value the `next:` handler below
-+                    // needs to fire (it never reads the value itself). Includes the 15-Star
-+                    // «Мишка» — no real-Stars exception when visual flow is on.
++                    // needs to fire (it never reads the value itself).
 +                    let fakeSendSignal = PampGramPhantomGiftManager.sendGenericGift(context: context, peerId: peerId, gift: pampGramStarGift, starPrice: finalPrice, text: textInputText.string.isEmpty ? nil : textInputText.string, entities: entities.isEmpty ? nil : entities, nameHidden: self.hideName)
 +                    signal = Signal<SendBotPaymentResult, SendBotPaymentFormError> { subscriber in
 +                        return fakeSendSignal.start(completed: {
@@ -20631,7 +20630,7 @@ index e1624f68a..badd2d022 100644
 +                            subscriber.putCompletion()
 +                        })
 +                    }
-+                } else if component.pampGramGiftFlow == .sendFake, case let .premium(product) = component.subject {
++                } else if component.pampGramGiftFlow != .receiveFake, case let .premium(product) = component.subject {
 +                    // Same as IAP fake Premium: open the chat and arm play-next-gift *before*
 +                    // inserting the message, matching real server delivery after purchase.
 +                    if peerId.namespace == Namespaces.Peer.CloudUser, peerId != context.account.peerId,
@@ -20728,30 +20727,12 @@ index e1624f68a..badd2d022 100644
              }
              
 -            if starsState.balance < StarsAmount(value: finalPrice, nanos: 0) {
-+            if component.pampGramGiftFlow == .sendFake {
-+                // PampGram: the real Stars balance is irrelevant to a fake send — checked
-+                // against the fake one instead, and the real top-up screen below is never
-+                // shown for it (topping up real Stars wouldn't do anything here anyway).
-+                let _ = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
-+                |> take(1)
-+                |> deliverOnMainQueue).start(next: { [weak self] pampGramSettings in
-+                    guard let self, let controller = self.environment?.controller() else {
-+                        return
-+                    }
-+                    if pampGramSettings.fakeStarsBalance >= finalPrice {
-+                        // Visual flow: every catalog gift including 15-Star «Мишка» is local.
-+                        proceed()
-+                    } else {
-+                        let alertController = textAlertController(
-+                            context: context,
-+                            title: "Недостаточно звёзд",
-+                            text: "У вас ⭐ \(pampGramSettings.fakeStarsBalance), а нужно ⭐ \(finalPrice).",
-+                            actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})],
-+                            parseMarkdown: true
-+                        )
-+                        controller.present(alertController, in: .window(.root))
-+                    }
-+                })
++            if component.pampGramGiftFlow != .receiveFake {
++                // Always-local catalog: never open real Stars top-up / Fragment. Ledger still
++                // deducts fake balance inside sendGenericGift; do not block with «Недостаточно»
++                // — same as buyStarGiftImpl for unique market (zero default balance used to
++                // make visual look "broken").
++                proceed()
 +            } else if component.pampGramGiftFlow == .receiveFake {
 +                // PampGram: "Подарок мне" never checks or spends any balance — nothing was
 +                // bought, real or fake, in this direction. Offers a delay first: "Сразу" falls

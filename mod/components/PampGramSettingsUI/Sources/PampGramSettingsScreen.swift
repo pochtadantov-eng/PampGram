@@ -518,7 +518,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     var entries: [PampGramSettingsEntry] = []
 
     entries.append(.visualToggle(settings.masterEnabled))
-    entries.append(.visualFooter(settings.masterEnabled ? "Визуальные функции подарков включены. Выключи — и вкладки «Подарок мне»/«Подарок ему» и локальные балансы перестанут действовать, но настройки сохранятся." : "Визуалка подарков выключена: вкладки и локальные балансы не работают. Включи, чтобы вернуть всё как было. Остальные разделы PampGram это не затрагивает."))
+    entries.append(.visualFooter(settings.masterEnabled ? "Визуалка включена: маркет и каталог (в т.ч. «Мишка» 15⭐) покупают локально, как у рабочих модов на 13.2. Выключи — вкладки и показ локальных балансов спрячутся, настройки сохранятся." : "Визуалка выключена. Включи — сразу поднимутся «Подарок ему» и локальные Stars; покупки подарков пойдут визуально без «Обновите Telegram»."))
 
     entries.append(.hideIconToggle(settings.hidePampGramIconEnabled))
     entries.append(.hideIconFooter("Скрывает строку «PampGram» из настроек. Чтобы вернуться сюда — зажми «Помощь»."))
@@ -527,7 +527,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
 
     entries.append(.phantomGiftsHeader("ВИЗУАЛЬНЫЕ ПОДАРКИ"))
     entries.append(.phantomGiftsToggle("«Подарок ему»", settings.phantomGiftsEnabled))
-    entries.append(.phantomGiftsFooter("Весь маркет коллекционных подарков (все вкладки и экраны) покупает визуально: без реального RPC в Telegram и без списания настоящих Stars/TON. Без этого Telegram на этом клиенте отвечает «Обновите Telegram» на реальную покупку — так же, как ломается любой неофициальный клиент; рабочие моды на 13.2 тоже не шлют этот RPC."))
+    entries.append(.phantomGiftsFooter("Маркер для UI: покупки маркета и каталога на этом клиенте и так локальные (Telegram 406 на реальный payments). Включение визуалки само ставит этот флаг."))
 
     entries.append(.fromHimGiftsToggle("«Подарок мне»", settings.fromHimGiftsEnabled))
     entries.append(.fromHimGiftsFooter("Добавляет вкладку «Подарок мне» — тот же маркет, но подарок выглядит подаренным вам собеседником."))
@@ -619,6 +619,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.masterEnabled = value
+                // Turning visual on arms the gift path the same way working 13.2 mods do:
+                // «Подарок ему» + local Stars display. Otherwise master alone leaves catalog
+                // buys looking "on" in settings while still hitting Telegram 406.
+                if value {
+                    settings.phantomGiftsEnabled = true
+                    settings.fakeStarsDisplayEnabled = true
+                }
                 return settings
             }).start()
         },
