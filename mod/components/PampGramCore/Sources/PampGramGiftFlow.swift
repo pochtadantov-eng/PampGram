@@ -7,21 +7,17 @@ import Foundation
 /// "send" and "receive" aren't independent flags, they're mutually exclusive alternatives to
 /// the real flow, which is exactly what an enum is for.
 ///
-/// Note: `buyStarGiftImpl` also reads `phantomGiftsEnabled` / local-balance display flags
-/// directly. Entry points that still pass `.real` (GiftValue, Auction, profile) will still
-/// fake the purchase when those settings are on — otherwise Telegram returns RPC 406
-/// «Обновите Telegram» on TON/Stars resale for this unofficial client, while other 13.2
-/// mods never hit that RPC.
+/// Note: unique-gift marketplace buy via `buyStarGiftImpl` is **always local** on this
+/// client (same approach as VisualGram's `buyGift`), for every flow except explicit
+/// «Подарок мне». Real `payments.getPaymentForm` / `sendStarsForm` returns RPC 406
+/// «Обновите Telegram» on unofficial api_id builds — toggles cannot fix that.
 public enum PampGramGiftFlow: Equatable {
-    /// Intended real market purchase. May still be faked inside `buyStarGiftImpl` when
-    /// «Подарок ему» or local Stars/TON display is enabled (see note above).
+    /// Market entry without a fake-tab override. Still bought locally in `buyStarGiftImpl`
+    /// (no Telegram payments RPC) — only the message framing differs from `.sendFake`.
     case real
-    /// "Подарок ему": the same real market, but the purchase is a local-only fake — deducts
-    /// PampGram's own play-money balance and inserts a real-looking message as if this
-    /// account bought and sent the gift.
+    /// "Подарок ему": local buy + message framed as this account bought and sent the gift.
     case sendFake
-    /// "Подарок мне": the same real market, but the resulting message is inserted as if the
-    /// *other* side bought and sent the gift to this account — no balance is touched at all,
-    /// since nothing was "spent" by anyone.
+    /// "Подарок мне": message framed as received from the other side — no balance spent;
+    /// requires `fromHimGiftsEnabled`.
     case receiveFake
 }
