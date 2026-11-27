@@ -518,7 +518,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     var entries: [PampGramSettingsEntry] = []
 
     entries.append(.visualToggle(settings.masterEnabled))
-    entries.append(.visualFooter(settings.masterEnabled ? "Визуальные функции подарков включены. Выключи — и вкладки «Подарок мне»/«Подарок ему» и локальные балансы перестанут действовать, но настройки сохранятся." : "Визуалка подарков выключена: вкладки и локальные балансы не работают. Включи, чтобы вернуть всё как было. Остальные разделы PampGram это не затрагивает."))
+    entries.append(.visualFooter(settings.masterEnabled ? "Визуалка включена: маркет и каталог (в т.ч. «Мишка» 15⭐) покупают локально, как у рабочих модов на 13.2. Выключи — вкладки и показ локальных балансов спрячутся, настройки сохранятся." : "Визуалка выключена. Включи — сразу поднимутся «Подарок ему» и локальные Stars; покупки подарков пойдут визуально без «Обновите Telegram»."))
 
     entries.append(.hideIconToggle(settings.hidePampGramIconEnabled))
     entries.append(.hideIconFooter("Скрывает строку «PampGram» из настроек. Чтобы вернуться сюда — зажми «Помощь»."))
@@ -527,7 +527,7 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
 
     entries.append(.phantomGiftsHeader("ВИЗУАЛЬНЫЕ ПОДАРКИ"))
     entries.append(.phantomGiftsToggle("«Подарок ему»", settings.phantomGiftsEnabled))
-    entries.append(.phantomGiftsFooter("Тот же настоящий маркет, но покупка из вкладки визуальная, без списания настоящих Stars/TON."))
+    entries.append(.phantomGiftsFooter("Маркер для UI: покупки маркета и каталога на этом клиенте и так локальные (Telegram 406 на реальный payments). Включение визуалки само ставит этот флаг."))
 
     entries.append(.fromHimGiftsToggle("«Подарок мне»", settings.fromHimGiftsEnabled))
     entries.append(.fromHimGiftsFooter("Добавляет вкладку «Подарок мне» — тот же маркет, но подарок выглядит подаренным вам собеседником."))
@@ -535,12 +535,12 @@ private func pampGramSettingsEntries(settings: PampGramSettings, profileVisuals:
     entries.append(.starsBalanceHeader("ЛОКАЛЬНЫЕ БАЛАНСЫ · ЗВЁЗДЫ"))
     entries.append(.fakeStarsDisplayToggle("Локальные звёзды", settings.fakeStarsDisplayEnabled))
     entries.append(.starsBalance("Звёзды", "\(settings.fakeStarsBalance)"))
-    entries.append(.starsBalanceFooter("Показывает этот баланс вместо настоящего — в настройках и шапке подарка."))
+    entries.append(.starsBalanceFooter("Показывает этот баланс вместо настоящего. Пока включено — покупки в маркете коллекционок тоже визуальные (как «Подарок ему»), иначе кнопка «Купить» бьёт в Telegram и ловит «Обновите Telegram»."))
 
     entries.append(.tonBalanceHeader("ТОНЫ"))
     entries.append(.fakeTonDisplayToggle("Локальные TON/GRAM", settings.fakeTonDisplayEnabled))
     entries.append(.tonBalance("TON", formatFakeTon(nanos: settings.fakeTonBalanceNanos)))
-    entries.append(.tonBalanceFooter("То же самое, но для TON/GRAM, независимо от звёзд."))
+    entries.append(.tonBalanceFooter("То же для TON/GRAM: показ баланса и визуальные покупки в маркете, независимо от звёзд."))
 
     entries.append(.localRublesHeader("РУБЛИ ДЛЯ ПОПОЛНЕНИЯ ЗВЁЗД"))
     entries.append(.localRublesPurchaseToggle("Покупка звёзд за рубли", settings.localRublesPurchaseEnabled))
@@ -619,6 +619,13 @@ public func pampGramGiftsSettingsController(context: AccountContext) -> ViewCont
             let _ = PampGramCore.updateSettingsInteractively(postbox: context.account.postbox, { settings in
                 var settings = settings
                 settings.masterEnabled = value
+                // Turning visual on arms the gift path the same way working 13.2 mods do:
+                // «Подарок ему» + local Stars display. Otherwise master alone leaves catalog
+                // buys looking "on" in settings while still hitting Telegram 406.
+                if value {
+                    settings.phantomGiftsEnabled = true
+                    settings.fakeStarsDisplayEnabled = true
+                }
                 return settings
             }).start()
         },

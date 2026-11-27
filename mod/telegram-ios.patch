@@ -20009,7 +20009,7 @@ index b8743ba4d..165e55bce 100644
                                  return true
                              case .limited:
                                  if case let .generic(gift) = $0 {
-@@ -278,6 +285,36 @@ final class GiftOptionsScreenComponent: Component {
+@@ -278,6 +285,37 @@ final class GiftOptionsScreenComponent: Component {
          private var isUpdating: Bool = false
          
          private var starsStateDisposable: Disposable?
@@ -20029,24 +20029,22 @@ index b8743ba4d..165e55bce 100644
 +        private var pampGramFromHimGiftsEnabled = PampGramSettings.defaultSettings.fromHimGiftsEnabled
 +        // PampGram: which fake purchase flow (if any) the current tab selection maps to —
 +        // threaded into every push below instead of a bare Bool, since "send fake" and
-+        // "receive fake" are mutually exclusive alternatives to the real flow, not
-+        // independent toggles. "Все" carries `.sendFake` itself while the toggle is on
-+        // (rather than a separate "Подарок ему" tab next to it) — see `pampGramPhantomGiftsEnabled`.
++        // "receive fake" are mutually exclusive alternatives to the real flow.
++        // Unique + catalog buys on this unofficial client ALWAYS go local (VisualGram-
++        // style) — real payments.getPaymentForm returns RPC 406. Only «Подарок мне»
++        // overrides framing; every other tab is `.sendFake` regardless of the phantom
++        // toggle (that toggle still drives UI chrome / settingsSignal display).
 +        private var pampGramGiftFlow: PampGramGiftFlow {
-+            switch self.starsFilter {
-+            case .all where self.pampGramPhantomGiftsEnabled:
-+                return .sendFake
-+            case .phantomReceived:
++            if case .phantomReceived = self.starsFilter {
 +                return .receiveFake
-+            default:
-+                return .real
 +            }
++            return .sendFake
 +        }
 +        private var pampGramSettingsDisposable: Disposable?
          private var starsState: StarsContext.State?
          
          private let optionsPromise = Promise<[StarsTopUpOption]?>(nil)
-@@ -344,6 +381,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -344,6 +382,7 @@ final class GiftOptionsScreenComponent: Component {
          deinit {
              self.starsStateDisposable?.dispose()
              self.auctionDisposable.dispose()
@@ -20054,7 +20052,7 @@ index b8743ba4d..165e55bce 100644
          }
  
          func scrollToTop() {
-@@ -359,11 +397,12 @@ final class GiftOptionsScreenComponent: Component {
+@@ -359,11 +398,12 @@ final class GiftOptionsScreenComponent: Component {
              guard let component = self.component, let environment = self.environment else {
                  return
              }
@@ -20068,7 +20066,7 @@ index b8743ba4d..165e55bce 100644
              if let controller = environment.controller() as? GiftOptionsScreen {
                  let mainController: ViewController
                  if let parentController = controller.parentController() {
-@@ -535,7 +574,8 @@ final class GiftOptionsScreenComponent: Component {
+@@ -535,7 +575,8 @@ final class GiftOptionsScreenComponent: Component {
                                  let storeController = component.context.sharedContext.makeGiftStoreController(
                                      context: component.context,
                                      peerId: component.peerId,
@@ -20078,7 +20076,7 @@ index b8743ba4d..165e55bce 100644
                                  )
                                  mainController.push(storeController)
                              } else {
-@@ -559,6 +599,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -559,6 +600,7 @@ final class GiftOptionsScreenComponent: Component {
                                  context: component.context,
                                  peerId: component.peerId,
                                  subject: .starGift(gift, forceUnique),
@@ -20086,7 +20084,7 @@ index b8743ba4d..165e55bce 100644
                                  completion: component.completion
                              )
                              mainController.push(giftController)
-@@ -889,12 +930,18 @@ final class GiftOptionsScreenComponent: Component {
+@@ -889,12 +931,18 @@ final class GiftOptionsScreenComponent: Component {
                  } else {
                      return false
                  }
@@ -20107,7 +20105,7 @@ index b8743ba4d..165e55bce 100644
                  let dateString = stringForFullDate(timestamp: canTransferDate, strings: environment.strings, dateTimeFormat: environment.dateTimeFormat)
                  let alertController = textAlertController(
                      context: component.context,
-@@ -920,34 +967,51 @@ final class GiftOptionsScreenComponent: Component {
+@@ -920,34 +968,51 @@ final class GiftOptionsScreenComponent: Component {
              let presentationData = context.sharedContext.currentPresentationData.with { $0 }
              
              var dismissAlertImpl: (() -> Void)?
@@ -20170,7 +20168,7 @@ index b8743ba4d..165e55bce 100644
                          }
                          
                          guard let controller = mainController, let navigationController = controller.navigationController as? NavigationController else {
-@@ -1038,7 +1102,22 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1038,7 +1103,22 @@ final class GiftOptionsScreenComponent: Component {
                          }
                      }
                      
@@ -20194,7 +20192,7 @@ index b8743ba4d..165e55bce 100644
                          if starsState.balance < StarsAmount(value: transferStars, nanos: 0) {
                              let _ = (self.optionsPromise.get()
                              |> filter { $0 != nil }
-@@ -1089,6 +1168,31 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1089,6 +1169,31 @@ final class GiftOptionsScreenComponent: Component {
              self.appliedStarsFilter = self.starsFilter
              
              if self.component == nil {
@@ -20226,7 +20224,7 @@ index b8743ba4d..165e55bce 100644
                  self.starsStateDisposable = (component.starsContext.state
                  |> deliverOnMainQueue).start(next: { [weak self] state in
                      guard let self else {
-@@ -1315,7 +1419,21 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1315,7 +1420,21 @@ final class GiftOptionsScreenComponent: Component {
                  containerSize: availableSize
              )
              
@@ -20249,7 +20247,7 @@ index b8743ba4d..165e55bce 100644
              let smallLabelFont = Font.regular(11.0)
              let labelFont = Font.semibold(14.0)
              let balanceText = tonAmountAttributedString(formattedBalance, integralFont: labelFont, fractionalFont: smallLabelFont, color: theme.actionSheet.primaryTextColor, decimalSeparator: environment.dateTimeFormat.decimalSeparator)
-@@ -1535,6 +1653,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1535,6 +1654,7 @@ final class GiftOptionsScreenComponent: Component {
                              }
                          }
                          
@@ -20257,7 +20255,7 @@ index b8743ba4d..165e55bce 100644
                          let giftItemComponent = GiftItemComponent(
                              context: component.context,
                              style: .glass,
-@@ -1545,12 +1664,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1545,12 +1665,7 @@ final class GiftOptionsScreenComponent: Component {
                              title: title,
                              subtitle: strings.Gift_Options_Premium_Premium,
                              label: label,
@@ -20271,7 +20269,7 @@ index b8743ba4d..165e55bce 100644
                              isLoading: false
                          )
                          
-@@ -1575,6 +1689,7 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1575,6 +1690,7 @@ final class GiftOptionsScreenComponent: Component {
                                                      context: component.context,
                                                      peerId: component.peerId,
                                                      subject: .premium(product),
@@ -20279,7 +20277,7 @@ index b8743ba4d..165e55bce 100644
                                                      completion: component.completion
                                                  )
                                                  mainController.push(giftController)
-@@ -1749,7 +1864,14 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1749,7 +1865,14 @@ final class GiftOptionsScreenComponent: Component {
                          title: strings.Gift_Options_Gift_Filter_Collectibles
                      ))
                  }
@@ -20295,7 +20293,7 @@ index b8743ba4d..165e55bce 100644
                  let tabSelectorSize = self.tabSelector.update(
                      transition: transition,
                      component: AnyComponent(TabSelectorComponent(
-@@ -1887,8 +2009,11 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1887,8 +2010,11 @@ final class GiftOptionsScreenComponent: Component {
                  ),
                  availableProducts,
                  context.engine.payments.cachedStarGifts(),
@@ -20309,7 +20307,7 @@ index b8743ba4d..165e55bce 100644
                  guard let self else {
                      return
                  }
-@@ -1955,13 +2080,30 @@ final class GiftOptionsScreenComponent: Component {
+@@ -1955,13 +2081,30 @@ final class GiftOptionsScreenComponent: Component {
                      
                      if let disallowedGifts, disallowedGifts.contains(.unique) {
                      } else {
@@ -20572,7 +20570,7 @@ index e1624f68a..badd2d022 100644
              let source: BotPaymentInvoiceSource
              switch component.subject {
              case let .premium(product):
-@@ -539,36 +657,102 @@ private final class GiftSetupScreenComponent: Component {
+@@ -539,36 +657,97 @@ private final class GiftSetupScreenComponent: Component {
                  }
                  perUserLimit = starGift.perUserLimit?.total
                  giftFile = starGift.file
@@ -20581,12 +20579,6 @@ index e1624f68a..badd2d022 100644
              }
 -            
 +
-+            // PampGram: set by `pampGramConfirmMishkaThenProceed` below, right before it calls
-+            // `proceed()` for real — makes the one exception (the 15-Star "Мишка") take the
-+            // real branch just this once, without touching what "Подарок ему" does for every
-+            // other gift. Captured by reference into `proceed` below, same as any other local
-+            // var a nested closure reads.
-+            var pampGramForceRealMishka = false
 +            // When fake Premium already armed the chat before insert, skip a second navigate
 +            // in `next:` (that would re-set the hint too late).
 +            var pampGramPremiumChatArmed = false
@@ -20621,7 +20613,10 @@ index e1624f68a..badd2d022 100644
 +                // The result value below isn't read by anything downstream (checked: the
 +                // `next:` handler never touches `result`), so any placeholder satisfies it.
 +                let signal: Signal<SendBotPaymentResult, SendBotPaymentFormError>
-+                if component.pampGramGiftFlow == .sendFake && !pampGramForceRealMishka, let pampGramStarGift {
++                // Always-local catalog send (incl. 15⭐ «Мишка») unless «Подарок мне» —
++                // same rule as buyStarGiftImpl for unique gifts. `.real` from older entry
++                // points still must not hit Telegram payments (RPC 406).
++                if component.pampGramGiftFlow != .receiveFake, let pampGramStarGift {
 +                    // `sendGenericGift` returns `Signal<Never, NoError>` — it only ever
 +                    // completes, so it can't be `map`-ed into a `SendBotPaymentResult` (the
 +                    // compiler correctly rejects that as dead code: a `Never` is never
@@ -20635,7 +20630,7 @@ index e1624f68a..badd2d022 100644
 +                            subscriber.putCompletion()
 +                        })
 +                    }
-+                } else if component.pampGramGiftFlow == .sendFake && !pampGramForceRealMishka, case let .premium(product) = component.subject {
++                } else if component.pampGramGiftFlow != .receiveFake, case let .premium(product) = component.subject {
 +                    // Same as IAP fake Premium: open the chat and arm play-next-gift *before*
 +                    // inserting the message, matching real server delivery after purchase.
 +                    if peerId.namespace == Namespaces.Peer.CloudUser, peerId != context.account.peerId,
@@ -20694,7 +20689,7 @@ index e1624f68a..badd2d022 100644
                      guard let self, let controller = self.environment?.controller(), let navigationController = controller.navigationController as? NavigationController else {
                          return
                      }
-@@ -609,6 +793,15 @@ private final class GiftSetupScreenComponent: Component {
+@@ -609,6 +788,15 @@ private final class GiftSetupScreenComponent: Component {
                          
                          navigationController.view.addSubview(ConfettiView(frame: navigationController.view.bounds))
                      } else if peerId.namespace == Namespaces.Peer.CloudUser {
@@ -20710,7 +20705,7 @@ index e1624f68a..badd2d022 100644
                          let navigateToChat = {
                              var controllers = navigationController.viewControllers
                              controllers = controllers.filter { !($0 is GiftSetupScreen) && !($0 is GiftOptionsScreenProtocol) && !($0 is PeerInfoScreen) && !($0 is ContactSelectionController) }
-@@ -626,6 +819,16 @@ private final class GiftSetupScreenComponent: Component {
+@@ -626,6 +814,16 @@ private final class GiftSetupScreenComponent: Component {
                                  controllers.append(chatController)
                              }
                              navigationController.setViewControllers(controllers, animated: true)
@@ -20727,58 +20722,17 @@ index e1624f68a..badd2d022 100644
                              
                              if case let .starGift(starGift, _) = component.subject, let perUserLimit = starGift.perUserLimit {
                                  Queue.mainQueue().after(0.5) {
-@@ -700,7 +903,91 @@ private final class GiftSetupScreenComponent: Component {
+@@ -700,7 +898,68 @@ private final class GiftSetupScreenComponent: Component {
                  })
              }
              
 -            if starsState.balance < StarsAmount(value: finalPrice, nanos: 0) {
-+            if component.pampGramGiftFlow == .sendFake {
-+                // PampGram: the real Stars balance is irrelevant to a fake send — checked
-+                // against the fake one instead, and the real top-up screen below is never
-+                // shown for it (topping up real Stars wouldn't do anything here anyway).
-+                let _ = (PampGramCore.settingsSignal(postbox: component.context.account.postbox)
-+                |> take(1)
-+                |> deliverOnMainQueue).start(next: { [weak self] pampGramSettings in
-+                    guard let self, let controller = self.environment?.controller() else {
-+                        return
-+                    }
-+                    if pampGramSettings.fakeStarsBalance >= finalPrice {
-+                        // PampGram: the one gift this account's real Stars balance still has
-+                        // to cover even with "Подарок ему" faking everything else — see
-+                        // PampGramRealGiftAutoSend.swift for why exactly this one (15 Stars,
-+                        // matches the message-menu's real "Подарить 2 мишек"). Everything
-+                        // above this — the fake-balance check just passed — stays exactly as
-+                        // it already reads on screen; only the actual send, right here, goes
-+                        // real, and only after its own explicit warning.
-+                        if let pampGramStarGift, pampGramStarGift.price == 15 {
-+                            let alertController = textAlertController(
-+                                context: context,
-+                                title: "Отправить подарок?",
-+                                text: "Спишется 15 настоящих Stars — подарок «Мишка» уйдёт собеседнику по-настоящему, а не как визуальный. Отменить после отправки нельзя.",
-+                                actions: [
-+                                    TextAlertAction(type: .genericAction, title: "Отмена", action: {}),
-+                                    TextAlertAction(type: .destructiveAction, title: "Отправить", action: {
-+                                        pampGramForceRealMishka = true
-+                                        proceed()
-+                                    })
-+                                ],
-+                                actionLayout: .horizontal
-+                            )
-+                            controller.present(alertController, in: .window(.root))
-+                        } else {
-+                            proceed()
-+                        }
-+                    } else {
-+                        let alertController = textAlertController(
-+                            context: context,
-+                            title: "Недостаточно звёзд",
-+                            text: "У вас ⭐ \(pampGramSettings.fakeStarsBalance), а нужно ⭐ \(finalPrice).",
-+                            actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})],
-+                            parseMarkdown: true
-+                        )
-+                        controller.present(alertController, in: .window(.root))
-+                    }
-+                })
++            if component.pampGramGiftFlow != .receiveFake {
++                // Always-local catalog: never open real Stars top-up / Fragment. Ledger still
++                // deducts fake balance inside sendGenericGift; do not block with «Недостаточно»
++                // — same as buyStarGiftImpl for unique market (zero default balance used to
++                // make visual look "broken").
++                proceed()
 +            } else if component.pampGramGiftFlow == .receiveFake {
 +                // PampGram: "Подарок мне" never checks or spends any balance — nothing was
 +                // bought, real or fake, in this direction. Offers a delay first: "Сразу" falls
@@ -20820,7 +20774,7 @@ index e1624f68a..badd2d022 100644
                  let _ = (self.optionsPromise.get()
                  |> filter { $0 != nil }
                  |> take(1)
-@@ -721,7 +1008,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -721,7 +980,7 @@ private final class GiftSetupScreenComponent: Component {
                              }
                              self.inProgress = true
                              self.state?.updated()
@@ -20829,7 +20783,7 @@ index e1624f68a..badd2d022 100644
                              starsContext.add(balance: StarsAmount(value: stars, nanos: 0))
                              let _ = (starsContext.onUpdate
                              |> deliverOnMainQueue).start(next: {
-@@ -950,6 +1237,20 @@ private final class GiftSetupScreenComponent: Component {
+@@ -950,6 +1209,20 @@ private final class GiftSetupScreenComponent: Component {
                  if isSelfGift {
                      self.hideName = true
                  }
@@ -20850,7 +20804,7 @@ index e1624f68a..badd2d022 100644
                  
                  if case let .starGift(gift, _) = component.subject, gift.flags.contains(.isAuction), let giftAuctionsManager = component.context.giftAuctionsManager {
                      let _ = (giftAuctionsManager.auctionContext(for: .giftId(gift.id))
-@@ -1413,7 +1714,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1413,7 +1686,7 @@ private final class GiftSetupScreenComponent: Component {
                      if self.payWithStars, let starsPrice = product.starsPrice {
                          subject = .premium(months: product.months, amount: starsPrice, currency: "XTR")
                      } else {
@@ -20859,7 +20813,7 @@ index e1624f68a..badd2d022 100644
                          subject = .premium(months: product.months, amount: amount, currency: currency)
                      }
                  case let .starGift(gift, _):
-@@ -1533,7 +1834,8 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1533,7 +1806,8 @@ private final class GiftSetupScreenComponent: Component {
                                          let storeController = component.context.sharedContext.makeGiftStoreController(
                                              context: component.context,
                                              peerId: component.peerId,
@@ -20869,7 +20823,7 @@ index e1624f68a..badd2d022 100644
                                          )
                                          controller.push(storeController)
                                      }
-@@ -1557,11 +1859,22 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1557,11 +1831,22 @@ private final class GiftSetupScreenComponent: Component {
              
              switch component.subject {
              case let .premium(product):
@@ -20895,7 +20849,7 @@ index e1624f68a..badd2d022 100644
                      let starsFooterText = NSMutableAttributedString(attributedString: parseMarkdownIntoAttributedString(starsFooterRawString, attributes: footerAttributes))
                      
                      if self.cachedChevronImage == nil || self.cachedChevronImage?.1 !== environment.theme {
-@@ -1570,7 +1883,7 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1570,7 +1855,7 @@ private final class GiftSetupScreenComponent: Component {
                      if let range = starsFooterText.string.range(of: "#") {
                          starsFooterText.addAttribute(ChatTextInputAttributes.customEmoji, value: ChatTextInputTextCustomEmojiAttribute(interactivelySelectedFromPackId: nil, fileId: 0, file: nil, custom: .stars(tinted: false)), range: NSRange(range, in: starsFooterText.string))
                      }
@@ -20904,7 +20858,7 @@ index e1624f68a..badd2d022 100644
                          starsFooterText.addAttribute(.attachment, value: chevronImage, range: NSRange(range, in: starsFooterText.string))
                      }
                      
-@@ -1608,6 +1921,11 @@ private final class GiftSetupScreenComponent: Component {
+@@ -1608,6 +1893,11 @@ private final class GiftSetupScreenComponent: Component {
                                      guard let self, let component = self.component, let controller = self.environment?.controller(), let starsContext = component.context.starsContext else {
                                          return
                                      }
@@ -20916,7 +20870,7 @@ index e1624f68a..badd2d022 100644
                                      let _ = (self.optionsPromise.get()
                                      |> filter { $0 != nil }
                                      |> take(1)
-@@ -2171,15 +2489,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
+@@ -2171,15 +2461,17 @@ public class GiftSetupScreen: ViewControllerComponentContainer, GiftSetupScreenP
          peerId: EnginePeer.Id,
          subject: Subject,
          auctionAcquiredGifts: Signal<[GiftAuctionAcquiredGift], NoError>? = nil,
@@ -20935,7 +20889,7 @@ index e1624f68a..badd2d022 100644
              completion: completion
          ), navigationBarAppearance: .none, theme: .default)
          
-@@ -2244,8 +2564,46 @@ public final class PremiumGiftProduct: Equatable {
+@@ -2244,8 +2536,46 @@ public final class PremiumGiftProduct: Equatable {
          return self.giftOption.months
      }
      
@@ -20983,7 +20937,7 @@ index e1624f68a..badd2d022 100644
      }
      
      public var starsPrice: Int64? {
-@@ -2292,3 +2650,30 @@ func hasFirstResponder(_ view: UIView) -> Bool {
+@@ -2292,3 +2622,30 @@ func hasFirstResponder(_ view: UIView) -> Bool {
      }
      return false
  }
@@ -21298,7 +21252,7 @@ index 91c2a2b6e..5ee233c3e 100644
  
  public func buyStarGiftImpl(
      context: AccountContext,
-@@ -19,13 +23,35 @@ public func buyStarGiftImpl(
+@@ -19,13 +23,36 @@ public func buyStarGiftImpl(
      message: GiftMessageScreen.Result? = nil,
      starsTopUpOptions: Signal<[StarsTopUpOption]?, NoError>,
      buyGift: ((String, EnginePeer.Id, CurrencyAmount?, Bool, String?, [MessageTextEntity]?) -> Signal<Never, BuyStarGiftError>)?,
@@ -21315,18 +21269,19 @@ index 91c2a2b6e..5ee233c3e 100644
      let presentationData = context.sharedContext.currentPresentationData.with { $0 }
 -                    
 +
-+    // PampGram: resolved once, up front, so both the real-balance gate below and the
-+    // purchase itself agree on whether this specific attempt is faked. Callers that never
-+    // opt in (pampGramGiftFlow: .real, the default) skip the Postbox read entirely and get
-+    // exactly the pre-existing real behaviour.
-+    let pampGramSettingsSignal: Signal<PampGramSettings, NoError> = pampGramGiftFlow == .real
-+        ? .single(PampGramSettings.defaultSettings)
-+        : PampGramCore.settingsSignal(postbox: context.account.postbox)
++    // PampGram: unique-gift marketplace buy NEVER hits Telegram payments on this client.
++    // Custom api_id / non-App-Store builds get RPC 406 «Обновите Telegram» on real
++    // getPaymentForm/sendStarsForm — Cloudflare has zero involvement in that path (worker
++    // only relays optional P2P visual gift transfers). Other 13.2 mods "just work" because
++    // they always buy locally. We do the same for every entry point except explicit
++    // «Подарок мне». Settings are still read for the receive-fake toggle + fake balances.
++    let pampGramSettingsSignal: Signal<PampGramSettings, NoError> = PampGramCore.rawSettingsSignal(postbox: context.account.postbox)
 +
 +    let _ = (pampGramSettingsSignal
 +    |> take(1)
 +    |> deliverOnMainQueue).start(next: { pampGramSettings in
-+    let pampGramFakePurchaseActive = pampGramGiftFlow == .sendFake && pampGramSettings.phantomGiftsEnabled
++    // Always local for resale buy — no toggle, no PRO, no masterEnabled gate.
++    let pampGramFakePurchaseActive = pampGramGiftFlow != .receiveFake
 +    // PampGram: "Подарок мне" — the resulting message reads as bought and sent *to* this
 +    // account by the other side, so unlike a fake purchase, no balance is ever checked or
 +    // spent; see the balance gate below.
@@ -21335,7 +21290,7 @@ index 91c2a2b6e..5ee233c3e 100644
      let action: (CurrencyAmount.Currency, GiftMessageScreen.Result, @escaping () -> Void) -> Void = { currency, message, beforeCompletion in
          guard let resellAmount = uniqueGift.resellAmounts?.first(where: { $0.currency == currency }) else {
              guard let controller = getController() else {
-@@ -51,11 +77,30 @@ public func buyStarGiftImpl(
+@@ -51,11 +78,30 @@ public func buyStarGiftImpl(
              finalPrice = resellAmount
          }
          
@@ -21367,7 +21322,7 @@ index 91c2a2b6e..5ee233c3e 100644
                  buyGiftImpl = { slug, peerId, price, hideName, text, entities in
                      return buyGift(slug, peerId, price, hideName, text, entities)
                  }
-@@ -117,6 +162,7 @@ public func buyStarGiftImpl(
+@@ -117,6 +163,7 @@ public func buyStarGiftImpl(
                                      message: message,
                                      starsTopUpOptions: starsTopUpOptions,
                                      buyGift: buyGift,
@@ -21375,50 +21330,15 @@ index 91c2a2b6e..5ee233c3e 100644
                                      getController: getController,
                                      updateProgress: updateProgress,
                                      updateIsBalanceVisible: updateIsBalanceVisible,
-@@ -149,7 +195,69 @@ public func buyStarGiftImpl(
+@@ -149,7 +196,34 @@ public func buyStarGiftImpl(
              })
          }
          
 -        if finalPrice.currency == .stars, let starsContext = context.starsContext, let starsState = context.starsContext?.currentState, starsState.balance < finalPrice.amount {
 +        if pampGramFakePurchaseActive {
-+            // PampGram: the real Stars/TON balance is irrelevant here — a fake purchase
-+            // never touches it, so the real "top up"/"go to Fragment" gates below would be
-+            // actively wrong (they'd block a purchase that was never going to spend real
-+            // money in the first place). Checked against the fake balance instead.
-+            let hasEnough: Bool
-+            switch finalPrice.currency {
-+            case .stars:
-+                hasEnough = pampGramSettings.fakeStarsBalance >= finalPrice.amount.value
-+            case .ton:
-+                hasEnough = pampGramSettings.fakeTonBalanceNanos >= finalPrice.amount.value
-+            }
-+            if hasEnough {
-+                proceed()
-+            } else {
-+                guard let controller = getController() else {
-+                    beforeCompletion()
-+                    return
-+                }
-+                let haveText: String
-+                let needText: String
-+                switch finalPrice.currency {
-+                case .stars:
-+                    haveText = "⭐ \(pampGramSettings.fakeStarsBalance)"
-+                    needText = "⭐ \(finalPrice.amount.value)"
-+                case .ton:
-+                    haveText = formatTonAmountText(pampGramSettings.fakeTonBalanceNanos, dateTimeFormat: presentationData.dateTimeFormat)
-+                    needText = formatTonAmountText(finalPrice.amount.value, dateTimeFormat: presentationData.dateTimeFormat)
-+                }
-+                let alertController = textAlertController(
-+                    context: context,
-+                    title: "Недостаточно средств",
-+                    text: "У вас \(haveText), а нужно \(needText).",
-+                    actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})],
-+                    parseMarkdown: true
-+                )
-+                controller.present(alertController, in: .window(.root))
-+                beforeCompletion()
-+            }
++            // Always proceed — marketplace is local-only on this client. Ledger still
++            // deducts fake balance when present; never block with «Недостаточно» / Fragment.
++            proceed()
 +        } else if pampGramFakeReceiveActive {
 +            // PampGram: "Подарок мне" never checks or spends any balance — nothing was
 +            // bought, real or fake, in this direction. Offers a delay first: "Сразу" falls
@@ -21446,7 +21366,7 @@ index 91c2a2b6e..5ee233c3e 100644
              let _ = (starsTopUpOptions
               |> filter { $0 != nil }
               |> take(1)
-@@ -190,6 +298,7 @@ public func buyStarGiftImpl(
+@@ -190,6 +264,7 @@ public func buyStarGiftImpl(
                                          message: message,
                                          starsTopUpOptions: starsTopUpOptions,
                                          buyGift: buyGift,
@@ -21454,7 +21374,7 @@ index 91c2a2b6e..5ee233c3e 100644
                                          getController: getController,
                                          updateProgress: updateProgress,
                                          updateIsBalanceVisible: updateIsBalanceVisible,
-@@ -285,4 +394,5 @@ public func buyStarGiftImpl(
+@@ -285,4 +360,5 @@ public func buyStarGiftImpl(
              controller.push(messageScreen)
          })
      }
